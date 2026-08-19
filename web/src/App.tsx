@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt } from './store';
 import {
@@ -305,22 +305,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     return streak;
   })();
 
-  const [reward, setReward] = useState<{ id: number; text: string } | null>(null);
-  const lastSeenTradeRef = useRef<number | null>(null);
-  useEffect(() => {
-    const latest = s.trades[0];
-    if (!latest) {
-      lastSeenTradeRef.current = null;
-      return;
-    }
-    const isNewWin = latest.id !== lastSeenTradeRef.current && latest.status === 'won';
-    lastSeenTradeRef.current = latest.id;
-    if (!isNewWin) return;
-    setReward({ id: latest.id, text: `+10 XP · ${fmtSigned(latest.profit ?? 0, '$')}` });
-    const timer = window.setTimeout(() => setReward(null), 2600);
-    return () => window.clearTimeout(timer);
-  }, [s.trades]);
-
   const toggleBot = async () => {
     setStartError('');
     if (automation) {
@@ -479,13 +463,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
           </section>
         </div>
       </div>
-
-      {reward && (
-        <div class="reward-toast" key={reward.id}>
-          <span class="reward-spark">✦</span>
-          <span>{reward.text}</span>
-        </div>
-      )}
     </>
   );
 }
@@ -697,8 +674,12 @@ function DecisionHero({
         <span>{winFlash ? 'WIN RECORDED' : status.label}</span>
       </div>
 
-      <div class={`cockpit-activity${live ? ' live' : ''}`}>
-        <span class="activity-sweep"></span>
+      <div class="cockpit-note">
+        {live
+          ? `Scanning ${markets.length} markets · ${candidates.length} candidate${candidates.length === 1 ? '' : 's'} qualify${best ? ` · ${Math.round(best.estWin * 100)}% model` : ''}`
+          : automation
+            ? `Feed down (${markets.length} cached markets) — waiting to reconnect`
+            : 'Idle — press START to begin scanning'}
       </div>
 
       <div class="cockpit-metrics">

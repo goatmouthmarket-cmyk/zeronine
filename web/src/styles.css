@@ -280,7 +280,7 @@ button {
     letter-spacing: .06em;
     text-transform: uppercase;
 
-    color: #ffb066;
+    color: var(--green);
 }
 
 .live-dot {
@@ -574,43 +574,19 @@ button {
     color: var(--red);
 }
 
-/* ---- breathing activity bar: proves the bot is alive while it waits ---- */
-
-.cockpit-activity {
+.cockpit-note {
     margin-top: 10px;
 
-    height: 3px;
-    border-radius: 999px;
-
-    background: rgba(255,255,255,.05);
-    overflow: hidden;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.45;
+    letter-spacing: .01em;
+    color: var(--muted-2);
+    overflow-wrap: anywhere;
 }
 
-.activity-sweep {
-    display: block;
-    width: 100%;
-    height: 100%;
-    opacity: 0;
-}
-
-.cockpit-activity.live .activity-sweep {
-    opacity: 1;
-
-    width: 45%;
-
-    background: linear-gradient(90deg, transparent, var(--purple), var(--green), transparent);
-    border-radius: 999px;
-
-    animation: sweep 1.4s linear infinite;
-}
-
-@keyframes sweep {
-    from {
-        transform: translateX(-100%);
-    }
-    to {
-        transform: translateX(320%);
-    }
+.cockpit-note b {
+    color: #c8cad4;
 }
 
 /* ---- barrier picker ---- */
@@ -735,57 +711,6 @@ button {
     letter-spacing: .1em;
     text-transform: uppercase;
     color: var(--green);
-}
-
-/* ---- reward toast ---- */
-
-.reward-toast {
-    position: fixed;
-    left: 50%;
-    bottom: calc(92px + env(safe-area-inset-bottom));
-    transform: translateX(-50%);
-    z-index: 90;
-
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    padding: 10px 16px;
-    border-radius: 999px;
-
-    background: rgba(16,17,22,.94);
-    border: 1px solid rgba(34,197,94,.5);
-    box-shadow: 0 12px 36px rgba(0,0,0,.5);
-
-    color: var(--green);
-    font-size: 13px;
-    font-weight: 700;
-
-    pointer-events: none;
-
-    animation: reward-pop .26s ease, reward-fade .5s ease 2.1s forwards;
-}
-
-.reward-spark {
-    color: var(--green);
-}
-
-@keyframes reward-pop {
-    from {
-        transform: translateX(-50%) translateY(12px) scale(.9);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(-50%) translateY(0) scale(1);
-        opacity: 1;
-    }
-}
-
-@keyframes reward-fade {
-    to {
-        transform: translateX(-50%) translateY(-6px);
-        opacity: 0;
-    }
 }
 
 /* compact cockpit on phones */
@@ -2451,10 +2376,8 @@ button {
         animation: none;
     }
 
-    .reward-toast,
     .cockpit-status-dot,
-    .scan-dot.live,
-    .cockpit-activity.live .activity-sweep {
+    .scan-dot.live {
         animation: none;
     }
 
