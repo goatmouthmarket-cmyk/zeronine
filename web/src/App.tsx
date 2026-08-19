@@ -431,8 +431,8 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               </div>
               {currentStreak > 0 && (
                 <div class="streak-chip">
-                  <span>🔥</span>
-                  <span>{currentStreak}</span>
+                  <span class="fire">♨</span>
+                  <span>{currentStreak} STREAK</span>
                 </div>
               )}
             </div>
@@ -490,7 +490,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             {s.hold?.reason && automation && <div class="bot-hold">{s.hold.reason}</div>}
             {startError && <div class="bot-error">{startError}</div>}
 
-            <button class="bot-control" disabled={!automation && cooldownLeft > 0} onClick={() => void toggleBot()}>
+<button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
               <span>{automation ? 'Stop Bot' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
             </button>
@@ -617,9 +617,6 @@ interface HeroTarget {
   edge: number;
   breakeven: number;
   consistency: number;
-  momentum: number;
-  entropy: number;
-  shortLongDeviation: number;
   from: 'decision' | 'candidate';
 }
 
@@ -689,6 +686,10 @@ function ScannerHero({
   const windowSize = digits.length;
   const pctOf = (i: number) => (windowSize > 0 ? Math.round((counts[i] / windowSize) * 100) : 0);
 
+  const ranked = Array.from({ length: 10 }, (_, i) => ({ i, n: counts[i] })).sort((a, b) => b.n - a.n);
+  const hotPurple = ranked[0] && ranked[0].n > 0 ? ranked[0].i : -1;
+  const hotPink = ranked[1] && ranked[1].n > 0 && ranked[1].n < ranked[0]?.n ? ranked[1].i : -1;
+
   const quoteKey = (m: string, d: string, b: number) => `${m}|${d}|${b}`;
 
   const target = (() => {
@@ -707,9 +708,6 @@ function ScannerHero({
         edge: breakeven > 0 ? decision.estWin - breakeven : 0,
         breakeven,
         consistency: matched?.consistency ?? 0.5,
-        momentum: matched?.momentum ?? 0,
-        entropy: matched?.entropy ?? 0,
-        shortLongDeviation: matched?.shortLongDeviation ?? 0,
         from: 'decision' as const,
       };
     }
@@ -726,9 +724,6 @@ function ScannerHero({
       edge: q?.realEdge ?? c.edge,
       breakeven,
       consistency: c.consistency,
-      momentum: c.momentum,
-      entropy: c.entropy,
-      shortLongDeviation: c.shortLongDeviation,
       from: 'candidate' as const,
     };
   })();
@@ -736,7 +731,7 @@ function ScannerHero({
   const stateLabel = !automation
     ? 'BOT IDLE'
     : decision
-      ? 'TARGET LOCKED'
+      ? 'TARGET ACQUIRED'
       : holdReason
         ? 'NO EDGE — KEEP SCANNING'
         : scannerPhaseLabel(phase);
@@ -747,98 +742,82 @@ function ScannerHero({
       : automation
         ? 'scan'
         : 'idle';
-  const confLabel =
-    target != null
-      ? target.consistency >= 0.7
-        ? 'HIGH CONFIDENCE'
-        : target.consistency >= 0.5
-          ? 'MEDIUM CONFIDENCE'
-          : 'LOW CONFIDENCE'
-      : null;
+  const confLabel = target
+    ? target.consistency >= 0.7
+      ? 'STRONG'
+      : target.consistency >= 0.5
+        ? 'MEDIUM'
+        : 'WEAK'
+    : null;
+  const confTone = confLabel && confLabel !== 'WEAK' ? (confLabel === 'STRONG' ? 'strong' : 'medium') : 'weak';
 
   return (
     <div class={`scanner${target ? ' targeting' : ''}`}>
       <div class={`scanner-state ${stateTone}`}>
         <span class="scanner-dot"></span>
         <span class="scanner-label">{stateLabel}</span>
-        {windowSize > 0 && <span class="scanner-window">· last {windowSize} ticks</span>}
+        {windowSize > 0 && <span class="scanner-window">· {windowSize} ticks</span>}
       </div>
 
-      <div class="digit-grid">
+      <div class={`digit-grid${automation ? ' scanning' : ''}`}>
         {Array.from({ length: 10 }, (_, i) => (
           <div
             key={i}
-            class={`digit-tile${pulseDigit === i ? ' pulse' : ''}${market?.lastDigit === i ? ' hot' : ''}`}
+            class={[
+              'digit-card',
+              pulseDigit === i ? 'pulse' : '',
+              hotPurple === i ? 'hot-purple' : '',
+              hotPink === i && hotPink !== hotPurple ? 'hot-pink' : '',
+              market?.lastDigit === i ? 'live' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ animationDelay: `-${i * 0.6}s` }}
           >
-            <span class="digit-d">{i}</span>
-            <span class="digit-pct">{pctOf(i)}%</span>
+            <span class="digit-number">{i}</span>
+            <span class="digit-percent">{pctOf(i)}%</span>
           </div>
         ))}
       </div>
 
-      <div class={`target-card${target ? ' locked' : ''}`}>
-        {target && (
-          <div class="target-reticle">
-            <Icon name="crosshair" size={34} strokeWidth={1.4} />
-          </div>
-        )}
-        <div class={`target-kicker${target && decision ? ' real' : ''}`}>
-          {target ? (decision ? 'TARGET ACQUIRED' : 'TARGET LOCK') : 'AWAITING SIGNAL'}
-        </div>
-        <div class="target-name">
-          {target
-            ? `${target.market && target.market !== market?.symbol ? `${shortMarketName(target.market)} · ` : ''}${Math.round(target.estWin * 100)}% · ${sideLabel(target.direction, target.barrier).toUpperCase()}`
-            : '—'}
-        </div>
-        {(target || automation) && (
-          <div class="target-strip">
-            <div class="target-stat">
-              <span class="target-stat-label">Model</span>
-              <span class="target-stat-value">{target ? `${Math.round(target.estWin * 100)}%` : '—'}</span>
-            </div>
-            <div class="target-stat">
-              <span class="target-stat-label">Break-even</span>
-              <span class="target-stat-value">{target ? `${Math.round(target.breakeven * 100)}%` : '—'}</span>
-            </div>
-            <div class={`target-stat${target && target.edge > 0 ? ' pos' : target ? ' neg' : ''}`}>
-              <span class="target-stat-label">Edge</span>
-              <span class="target-stat-value">{target ? `${target.edge >= 0 ? '+' : ''}${(target.edge * 100).toFixed(1)}%` : '—'}</span>
-            </div>
-          </div>
-        )}
-        {target && (
-          <div class="target-meta">
-            {confLabel && <span class={`target-conf ${target.consistency >= 0.7 ? 'high' : target.consistency >= 0.5 ? 'med' : 'low'}`}>{confLabel}</span>}
-            {target.from === 'candidate' && target.momentum !== 0 && (
-              <span class="target-extra">
-                force {target.momentum >= 0 ? '+' : ''}
-                {(target.momentum * 100).toFixed(1)}% · Δsl {(target.shortLongDeviation >= 0 ? '+' : '')}
-                {(target.shortLongDeviation * 100).toFixed(1)}%
-              </span>
-            )}
-          </div>
-        )}
+      <div class="scanner-lines">
+        <div class="scanner-line left"></div>
+        <div class="scanner-line right"></div>
+        <div class="scanner-dot-line"></div>
       </div>
 
-      <div class="scanner-bar">
-        <span class="scanner-bar-step">
-          <i class={windowSize >= 25 ? 'on' : ''}></i>w25
-        </span>
-        <span class="scanner-bar-step">
-          <i class={windowSize >= 50 ? 'on' : ''}></i>w50
-        </span>
-        <span class="scanner-bar-step">
-          <i class={windowSize >= 100 ? 'on' : ''}></i>w100
-        </span>
-        <span class="scanner-bar-step">
-          <i class={windowSize >= 250 ? 'on' : ''}></i>w250
-        </span>
-        <span class="scanner-bar-step">
-          <i class={windowSize >= 500 ? 'on' : ''}></i>w500
-        </span>
-        <span class="scanner-bar-step">
-          <i class={windowSize >= 1000 ? 'on' : ''}></i>w1000
-        </span>
+      <div class={`target-lock${target ? ' locked' : ''}`}>
+        <div class="target-icon">
+          <span class="ring one"></span>
+          <span class="ring two"></span>
+          <span class="ring three"></span>
+          <span class="cross horizontal"></span>
+          <span class="cross vertical"></span>
+          <span class="lock"></span>
+        </div>
+        <div class="target-copy">
+          <div class="target-name">
+            {target
+              ? `${target.market !== market?.symbol ? `${shortMarketName(target.market)} / ` : ''}${sideLabel(target.direction, target.barrier).toUpperCase()}`
+              : 'STAND BY'}
+          </div>
+          <div class="target-score">{target ? `${Math.round(target.estWin * 100)}%` : '—'}</div>
+          <div class={`target-status${decision ? ' acquired' : ''}`}>
+            {decision ? 'TARGET ACQUIRED' : target ? 'TARGET LOCK' : 'AWAITING SIGNAL'}
+          </div>
+        </div>
+      </div>
+
+      <div class="edge-info">
+        <div class="metric">
+          Break even{' '}
+          <b>{target ? `${Math.round(target.breakeven * 100)}%` : '—'}</b>
+        </div>
+        <div class={`metric edge${target && target.edge < 0 ? ' neg' : ''}`}>
+          EDGE{' '}
+          <b>{target ? `${target.edge >= 0 ? '+' : ''}${(target.edge * 100).toFixed(1)}%` : '—'}</b>
+        </div>
+        <div class={`metric conf ${confTone}`}>{confLabel ?? '—'}</div>
       </div>
     </div>
   );
