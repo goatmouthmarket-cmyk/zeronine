@@ -99,8 +99,9 @@ export function pickSignal(
   const best = candidates[0];
   if (best.edge < minEdge) {
     // The best candidate is not credible enough yet. WAIT is a valid outcome:
-    // the bot is under no obligation to trade every scan.
-    return { candidates: [], holds: true, reason: 'edge below threshold' };
+    // the bot is under no obligation to trade every scan. Keep the shortlist
+    // attached so the UI can show the near-miss it chose not to take.
+    return { candidates, holds: true, reason: 'edge below threshold' };
   }
   return { candidates, holds: false, reason: 'signal' };
 }

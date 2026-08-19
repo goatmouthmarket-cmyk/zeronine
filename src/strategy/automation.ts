@@ -250,12 +250,12 @@ export class Automation {
       undefined,
       barrierAllowed(settings),
     );
+    this.emit({ type: 'signal', ts: Date.now(), signal, phase: this.phase });
     if (signal.holds) {
       this.emit({ type: HOLD, ts: Date.now(), reason: signal.reason });
       this.phase = 'waiting-edge';
       return 1500; // WAIT is a valid outcome: no obligation to trade every scan
     }
-    this.emit({ type: 'signal', ts: Date.now(), signal, phase: this.phase });
 
     // Quote every shortlist candidate across markets. Real ratios (payout/ask)
     // give the actual breakeven / edge / EV that drive the pick.
@@ -398,6 +398,13 @@ export class Automation {
         market: eligible[0].market,
       };
     }
+    // Re-check the run state after the async quoting phase: the user may have
+    // stopped the bot mid-span, and we must not broadcast (or buy) a bet once
+    // we're no longer meant to trade.
+    if (!this.running) {
+      this.phase = 'standby';
+      return 1500;
+    }
     this.emit({
       type: 'decision',
       ts: Date.now(),
@@ -420,6 +427,12 @@ export class Automation {
     if (!gate.ok) {
       this.emit({ type: HOLD, ts: Date.now(), reason: gate.reason });
       if (gate.reason.includes('drawdown')) this.stop(gate.reason);
+      return 900;
+    }
+
+    // Final gate before spending money — a stop can race this far in.
+    if (!this.running) {
+      this.phase = 'standby';
       return 900;
     }
 

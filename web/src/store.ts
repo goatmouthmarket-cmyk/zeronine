@@ -298,6 +298,7 @@ function applyEvent(evt: Record<string, unknown>): void {
         phase: String(evt.phase ?? ''),
       };
       patch.quotes = {};
+      patch.hold = null;
       break;
     }
     case 'quote': {
@@ -319,6 +320,7 @@ function applyEvent(evt: Record<string, unknown>): void {
         attempts: Number(evt.attempts ?? 0),
         cycleStake: Number(evt.cycleStake ?? 0),
       };
+      patch.hold = null;
       break;
     case 'hold':
       patch.hold = { reason: String(evt.reason ?? '') };

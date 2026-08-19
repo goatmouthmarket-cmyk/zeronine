@@ -284,7 +284,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
   const automation = s.automation?.running ?? false;
-  const decision = s.decision?.decision;
+  const decision = automation ? s.decision?.decision : undefined;
 
   const winCount = s.trades.filter((t) => t.status === 'won').length;
   const lossCount = s.trades.filter((t) => t.status === 'lost').length;
@@ -679,7 +679,11 @@ function DecisionHero({
       return `Trying to win back the loss — recovery attempt ${recovery.attempts} · debt ${fmtMoney(recovery.debt)} · staking ${fmtMoney(recovery.cycleStake)}`;
     }
     if (holdReason) {
-      return `Holding off so I don't chase — ${holdReason.charAt(0).toLowerCase()}${holdReason.slice(1)}`;
+      if (best && Math.round(best.estWin * 100) >= 70) {
+        const edgePct = Math.round(best.edge * 1000) / 10;
+        return `Holding — ${bestLabel} ${sideLabel(best.direction, best.barrier)} wins ~${Math.round(best.estWin * 100)}% of the time but only banks ${edgePct >= 0 ? '+' : ''}${edgePct}% after the payout. Not worth risking cash yet — waiting for a real edge.`;
+      }
+      return `Holding — no bet is worth the risk right now (${holdReason}). Keep scanning for a genuinely profitable shot.`;
     }
     if (best) {
       return `Watching ${bestLabel} — leaning ${best.direction} ${best.barrier} because it's looking like a ${Math.round(best.estWin * 100)}% easy win`;
