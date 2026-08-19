@@ -117,7 +117,10 @@ export function planRecovery(
     if (o.estWin < ctx.minRecoveryWinRate) continue; // win probability too low
 
     const ev = o.estWin * ratio - 1;
-    if (ev <= RECOVERY_MIN_EDGE) continue; // strict positive-EV gate
+    // Conservative trades the safe favorite for its win probability, not its
+    // edge — the payout EV gate is skipped so recovery never stalls on a
+    // ~90% Over 0 / Under 9. All other profiles need strictly positive EV.
+    if (ev <= RECOVERY_MIN_EDGE && ctx.strategy !== 'conservative') continue;
 
     const requiredStake = target / gain;
     // Never dribble sub-base bets: if the profitably-required stake is below

@@ -258,11 +258,17 @@ export class Automation {
     }
 
     this.phase = 'scanning';
+    const conservative = settings.strategy_mode === 'conservative';
     const { minWin, minEdge } = modeGates(settings);
+    // Conservative is about the safe favorites (Over 0 / Under 9): the payout
+    // edge gate is skipped so a ~90% win candidate is never priced out of a
+    // $stake bet. That's the whole point of the profile.
+    const scanMinWin = conservative ? 0 : minWin;
+    const scanMinEdge = conservative ? -1 : minEdge;
     const signal = pickSignal(
       this.registry,
-      minWin,
-      minEdge,
+      scanMinWin,
+      scanMinEdge,
       (symbol, count) =>
         lastDigitEvents(symbol, count)
           .reverse()
@@ -398,12 +404,18 @@ export class Automation {
         market: quotes.find((o) => o.direction === base.direction && o.barrier === base.barrier)?.market ?? top?.market ?? '',
       };
     } else {
-      // Base bet: only the candidate with a real positive edge qualifies.
-      const eligible = quotes
-        .filter((o) => o.estWin >= minWin && o.realEdge >= minEdge)
-        .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
+      // Base bet: default modes only trade a candidate with a real positive
+      // edge. Conservative fires on the safe extremes for their win rate
+      // instead — the payout edge never prices out the $stake favorite.
+      const eligible = conservative
+        ? quotes
+            .filter((o) => o.estWin >= minWin)
+            .sort((a, b) => b.estWin - a.estWin || b.realEV - a.realEV)
+        : quotes
+            .filter((o) => o.estWin >= minWin && o.realEdge >= minEdge)
+            .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
       if (eligible.length === 0) {
-        this.emit({ type: HOLD, ts: Date.now(), reason: 'no positive live edge after quote' });
+        this.emit({ type: HOLD, ts: Date.now(), reason: 'no live quote available' });
         this.phase = 'waiting-edge';
         return 1500;
       }
