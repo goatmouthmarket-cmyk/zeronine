@@ -443,11 +443,11 @@ button {
 
     display: grid;
     grid-template-columns: repeat(10, 1fr);
-    gap: 5px;
+    gap: 6px;
 }
 
 .digit-card {
-    height: 70px;
+    height: 60px;
 
     display: flex;
     flex-direction: column;
@@ -521,76 +521,25 @@ button {
     animation: digit-pulse .52s ease;
 }
 
-/* running sweep across the grid (pure CSS, staggered via inline delay) */
-.digit-grid.scanning .digit-card {
-    animation: scan-sweep 6s linear infinite;
-}
-
-.digit-grid.scanning .digit-card.pulse {
-    animation: digit-pulse .52s ease;
-}
-
-/* ---- scanner connection lines ---- */
-
-.scanner-lines {
-    height: 39px;
-    position: relative;
-}
-
-.scanner-line {
-    position: absolute;
-    top: 2px;
-    height: 1px;
-
-    background-image: linear-gradient(90deg, transparent, #7542e7 50%, transparent);
-    opacity: .7;
-}
-
-.scanner-line.left {
-    width: 38%;
-    left: 5%;
-    transform: rotate(8deg);
-    transform-origin: right center;
-}
-
-.scanner-line.right {
-    width: 38%;
-    right: 5%;
-    transform: rotate(-8deg);
-    transform-origin: left center;
-}
-
-.scanner-dot-line {
-    position: absolute;
-    left: 18%;
-    right: 18%;
-    top: 17px;
-    height: 2px;
-    opacity: .7;
-
-    background-image: radial-gradient(circle, #814ff1 1.5px, transparent 2px);
-    background-size: 18px 2px;
-}
-
 /* ---- target lock ---- */
 
 .target-lock {
     width: 100%;
     max-width: 420px;
-    min-height: 118px;
-    margin: 0 auto;
+    min-height: 98px;
+    margin: 14px auto 12px;
 
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 26px;
-    padding: 16px 18px;
+    gap: 18px;
+    padding: 12px 16px;
 
-    border-radius: 14px;
+    border-radius: 12px;
     border: 1px solid #7146c5;
 
     background:
-        radial-gradient(circle at 30% 50%, rgba(126,71,223,.12), transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(126,71,223,.12), transparent 60%),
         rgba(15,16,26,.88);
     box-shadow: 0 0 22px rgba(124,58,237,.08);
 
@@ -598,13 +547,17 @@ button {
 }
 
 .target-lock.locked {
+    box-shadow: 0 0 26px rgba(124,58,237,.16), inset 0 0 20px rgba(124,58,237,.05);
+}
+
+.target-lock.acquired {
     border-color: rgba(34,197,94,.55);
-    box-shadow: 0 0 30px rgba(34,197,94,.14), inset 0 0 24px rgba(34,197,94,.06);
+    box-shadow: 0 0 26px rgba(34,197,94,.13), inset 0 0 20px rgba(34,197,94,.05);
 }
 
 .target-icon {
-    width: 88px;
-    height: 88px;
+    width: 60px;
+    height: 60px;
     position: relative;
     flex: 0 0 auto;
 
@@ -620,31 +573,31 @@ button {
 }
 
 .ring.one {
-    width: 70px;
-    height: 70px;
+    width: 48px;
+    height: 48px;
 }
 
 .ring.two {
-    width: 50px;
-    height: 50px;
+    width: 34px;
+    height: 34px;
     opacity: .75;
 }
 
 .ring.three {
-    width: 29px;
-    height: 29px;
+    width: 20px;
+    height: 20px;
     opacity: .55;
 }
 
-.target-lock.locked .ring {
+.target-lock .ring {
     animation: reticle-pulse 2.2s ease-in-out infinite;
 }
 
-.target-lock.locked .ring.two {
+.target-lock .ring.two {
     animation-delay: .18s;
 }
 
-.target-lock.locked .ring.three {
+.target-lock .ring.three {
     animation-delay: .36s;
 }
 
@@ -653,14 +606,14 @@ button {
 }
 
 .cross.horizontal {
-    width: 86px;
+    width: 60px;
     height: 2px;
     background: linear-gradient(90deg, #7e4fe0 0 13%, transparent 13% 87%, #7e4fe0 87%);
 }
 
 .cross.vertical {
     width: 2px;
-    height: 86px;
+    height: 60px;
     background: linear-gradient(180deg, #7e4fe0 0 13%, transparent 13% 87%, #7e4fe0 87%);
 }
 
@@ -668,8 +621,8 @@ button {
     position: relative;
     z-index: 4;
 
-    width: 20px;
-    height: 17px;
+    width: 18px;
+    height: 15px;
 
     background: #8b5cf6;
     border-radius: 4px;
@@ -680,15 +633,15 @@ button {
 .lock::before {
     content: "";
     position: absolute;
-    width: 11px;
-    height: 10px;
+    width: 10px;
+    height: 9px;
 
     border: 3px solid #8b5cf6;
     border-bottom: 0;
     border-radius: 10px 10px 0 0;
 
-    left: 2px;
-    top: -9px;
+    left: 1px;
+    top: -8px;
 }
 
 .target-copy {
@@ -698,7 +651,7 @@ button {
 
 .target-name {
     color: #b88bff;
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 800;
     letter-spacing: .02em;
     font-variant-numeric: tabular-nums;
@@ -708,9 +661,9 @@ button {
 }
 
 .target-score {
-    margin-top: 3px;
+    margin-top: 2px;
 
-    font-size: 40px;
+    font-size: 30px;
     line-height: 1;
     font-weight: 800;
     color: #fafafa;
@@ -719,10 +672,10 @@ button {
 }
 
 .target-status {
-    margin-top: 8px;
+    margin-top: 6px;
 
     color: #9d70ff;
-    font-size: 11px;
+    font-size: 10.5px;
     letter-spacing: .15em;
     font-weight: 800;
 }
@@ -731,96 +684,17 @@ button {
     color: var(--green);
 }
 
-/* ---- edge stats strip ---- */
+.target-sub {
+    margin-top: 3px;
 
-.edge-info {
-    width: 100%;
-    max-width: 560px;
-    height: 42px;
-    margin: 16px auto 0;
-
-    border-radius: 9px;
-    border: 1px solid #232530;
-
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    align-items: center;
-
-    background: rgba(255,255,255,.015);
-    color: #9697a4;
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-}
-
-.metric {
-    text-align: center;
-    position: relative;
-}
-
-.metric + .metric::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: -3px;
-    width: 1px;
-    height: 20px;
-    background: #252733;
-}
-
-.metric b {
-    font-weight: 750;
-    color: #b8bac6;
-}
-
-.metric.edge {
-    color: #13d978;
-    font-weight: 750;
-}
-
-.metric.edge b {
-    color: inherit;
-}
-
-.metric.edge.neg {
-    color: var(--red);
-}
-
-.metric.conf {
-    font-weight: 750;
-}
-
-.metric.conf.strong {
-    color: #18db7d;
-}
-
-.metric.conf.strong::after {
-    content: "";
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    margin-left: 7px;
-    border-radius: 50%;
-    background: #14dd7e;
-    box-shadow: 0 0 8px rgba(20,221,126,.4);
-}
-
-.metric.conf.medium {
-    color: #FBBF24;
-}
-
-.metric.conf.medium::after {
-    content: "";
-    display: inline-block;
-    width: 7px;
-    height: 7px;
-    margin-left: 7px;
-    border-radius: 50%;
-    background: #FBBF24;
-    box-shadow: 0 0 8px rgba(251,191,36,.4);
-}
-
-.metric.conf.weak {
-    color: var(--red);
+    color: #777984;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ---- level / xp ---- */
@@ -913,25 +787,6 @@ button {
     }
 }
 
-@keyframes scan-sweep {
-    0%,
-    100% {
-        border-color: #292c3b;
-        transform: translateY(0);
-        box-shadow: none;
-    }
-    7% {
-        border-color: #7252d5;
-        transform: translateY(-3px);
-        box-shadow: 0 0 20px rgba(124,58,237,.22);
-    }
-    14% {
-        border-color: #292c3b;
-        transform: translateY(0);
-        box-shadow: none;
-    }
-}
-
 @keyframes reticle-pulse {
     0%,
     100% {
@@ -978,45 +833,41 @@ button {
     }
 
     .target-lock {
-        gap: 18px;
-        min-height: 104px;
-        padding: 14px 14px;
+        gap: 14px;
+        min-height: 86px;
+        padding: 10px 12px;
     }
 
     .target-icon {
-        width: 68px;
-        height: 68px;
+        width: 50px;
+        height: 50px;
     }
 
     .ring.one {
-        width: 54px;
-        height: 54px;
+        width: 40px;
+        height: 40px;
     }
 
     .ring.two {
-        width: 38px;
-        height: 38px;
+        width: 28px;
+        height: 28px;
     }
 
     .ring.three {
-        width: 22px;
-        height: 22px;
+        width: 17px;
+        height: 17px;
     }
 
     .cross.horizontal {
-        width: 66px;
+        width: 48px;
     }
 
     .cross.vertical {
-        height: 66px;
+        height: 48px;
     }
 
     .target-score {
-        font-size: 33px;
-    }
-
-    .edge-info {
-        font-size: 11px;
+        font-size: 26px;
     }
 }
 
@@ -1092,6 +943,21 @@ button {
 .side-btn:disabled {
     opacity: .55;
     cursor: default;
+}
+
+.manual-msg {
+    grid-column: 1 / -1;
+
+    margin: 8px 10px 2px;
+
+    font-size: 11.5px;
+    font-weight: 650;
+    color: var(--purple-light);
+    text-align: center;
+}
+
+.manual-msg.error {
+    color: var(--red);
 }
 
 .betting-status {
@@ -1172,7 +1038,8 @@ button {
 .bot-control {
     width: 100%;
     height: 54px;
-    margin-top: 16px;
+    margin-top: 14px;
+    flex-shrink: 0;
 
     display: flex;
     align-items: center;
@@ -2488,11 +2355,6 @@ button {
         display: none;
     }
 
-    .view-home .trade-card .betting-status,
-    .view-home .trade-card .status-line {
-        display: none;
-    }
-
     /* home dashboard: left column trade + perf, right column markets + activity */
     .view-home .dashboard {
         grid-column: 1;
@@ -2652,8 +2514,7 @@ button {
     }
 
     .digit-card.pulse,
-    .digit-grid.scanning .digit-card,
-    .target-lock.locked .ring,
+    .target-lock .ring,
     .reward-toast {
         animation: none;
     }

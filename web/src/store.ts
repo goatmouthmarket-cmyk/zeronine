@@ -292,6 +292,10 @@ function applyEvent(evt: Record<string, unknown>): void {
       break;
     case 'status':
       patch.automation = evt.state as AutomationState;
+      if (evt.state && (evt.state as AutomationState).running === false) {
+        patch.signal = null;
+        patch.quotes = {};
+      }
       if (evt.reason) pushLog('info', `automation: ${String(evt.reason)}`);
       break;
     case 'signal': {

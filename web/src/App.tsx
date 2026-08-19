@@ -292,14 +292,10 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   })();
   const oddsText = odds ? odds.toFixed(2) : '—';
 
-  const statusText = (() => {
-    if (!automation) return 'Bot idle';
-    if (s.hold?.reason) return s.hold.reason;
-    if (decision) return `${sideLabel(decision.direction, decision.barrier)} placed`;
-    return scannerPhaseLabel(s.automation?.phase);
-  })();
-
   const candidates = s.signal?.signal.candidates ?? [];
+  const heroTarget = resolveTarget(candidates, s.quotes, decision);
+  const showTargetCard = !!decision || (automation && !!heroTarget);
+  const targetCard = showTargetCard ? heroTarget : null;
 
   const currentStreak = (() => {
     let streak = 0;
@@ -437,16 +433,38 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               )}
             </div>
 
-            <ScannerHero
+<ScannerHero
               market={market}
-              candidates={candidates}
-              quotes={s.quotes}
+              markets={s.markets}
+              target={targetCard}
               digits={s.digits[market?.symbol ?? ''] ?? []}
               automation={automation}
               phase={s.automation?.phase}
               decision={decision}
               holdReason={automation && !decision ? (s.hold?.reason ?? null) : null}
             />
+
+            {!targetCard && (
+              <div class="side-selector">
+                <button
+                  class={`side-btn over${activeDirection === 'over' ? ' active' : ''}`}
+                  disabled={!market || manualBusy}
+                  onClick={() => placeManual('over')}
+                >
+                  <span class="side-name">Over 0</span>
+                  <span class="side-odds">{oddsText}</span>
+                </button>
+                <button
+                  class={`side-btn under${activeDirection === 'under' ? ' active' : ''}`}
+                  disabled={!market || manualBusy}
+                  onClick={() => placeManual('under')}
+                >
+                  <span class="side-name">Under 9</span>
+                  <span class="side-odds">{oddsText}</span>
+                </button>
+                {manualMsg && <div class="manual-msg">{manualMsg}</div>}
+              </div>
+            )}
 
             <div class="xp-bar">
               <span class="xp-level">Lv {levelInfo.level}</span>
@@ -456,41 +474,9 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               <span class="xp-count">{levelInfo.inLevel}/10 XP</span>
             </div>
 
-            <div class="side-selector">
-              <button
-                class={`side-btn over${activeDirection === 'over' ? ' active' : ''}`}
-                disabled={!market || manualBusy}
-                onClick={() => placeManual('over')}
-              >
-                <span class="side-name">Over 0</span>
-                <span class="side-odds">{oddsText}</span>
-              </button>
-              <button
-                class={`side-btn under${activeDirection === 'under' ? ' active' : ''}`}
-                disabled={!market || manualBusy}
-                onClick={() => placeManual('under')}
-              >
-                <span class="side-name">Under 9</span>
-                <span class="side-odds">{oddsText}</span>
-              </button>
-            </div>
-
-            <div class="betting-status">
-              <span>Betting</span>
-              <b class={`side-tag ${activeDirection}`}>{activeSide}</b>
-              <span class="status-check">
-                <Icon name="check" size={11} strokeWidth={2.6} />
-              </span>
-            </div>
-
-            <div class={`status-line${automation ? '' : ' muted'}`}>
-              {manualBusy ? 'Placing…' : manualMsg || statusText}
-            </div>
-
-            {s.hold?.reason && automation && <div class="bot-hold">{s.hold.reason}</div>}
             {startError && <div class="bot-error">{startError}</div>}
 
-<button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0} onClick={() => void toggleBot()}>
+            <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
               <span>{automation ? 'Stop Bot' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
             </button>
@@ -617,7 +603,6 @@ interface HeroTarget {
   edge: number;
   breakeven: number;
   consistency: number;
-  from: 'decision' | 'candidate';
 }
 
 function scannerPhaseLabel(phase?: string): string {
@@ -646,10 +631,49 @@ function scannerPhaseLabel(phase?: string): string {
   }
 }
 
+function resolveTarget(
+  candidates: SignalCandidate[],
+  quotes: Record<string, QuoteEvt>,
+  decision?: Decision,
+): HeroTarget | null {
+  const key = (m: string, d: string, b: number) => `${m}|${d}|${b}`;
+  if (decision) {
+    const q = quotes[key(decision.market, decision.direction, decision.barrier)];
+    const ratio = q?.ask && q?.payout ? q.payout / q.ask : decision.payout ?? 0;
+    const breakeven = ratio > 0 ? 1 / ratio : 0;
+    const matched = candidates.find(
+      (c) => c.market === decision.market && c.direction === decision.direction && c.barrier === decision.barrier,
+    );
+    return {
+      market: decision.market,
+      direction: decision.direction,
+      barrier: decision.barrier,
+      estWin: decision.estWin,
+      edge: breakeven > 0 ? decision.estWin - breakeven : 0,
+      breakeven,
+      consistency: matched?.consistency ?? 0.5,
+    };
+  }
+  const c = candidates[0];
+  if (!c) return null;
+  const q = quotes[key(c.market, c.direction, c.barrier)];
+  const ratio = q?.ask && q?.payout ? q.payout / q.ask : c.estPayout;
+  const breakeven = ratio > 0 ? 1 / ratio : 0;
+  return {
+    market: c.market,
+    direction: c.direction,
+    barrier: c.barrier,
+    estWin: c.estWin,
+    edge: q?.realEdge ?? c.edge,
+    breakeven,
+    consistency: c.consistency,
+  };
+}
+
 function ScannerHero({
   market,
-  candidates,
-  quotes,
+  markets,
+  target,
   digits,
   automation,
   phase,
@@ -657,8 +681,8 @@ function ScannerHero({
   holdReason,
 }: {
   market?: Market;
-  candidates: SignalCandidate[];
-  quotes: Record<string, QuoteEvt>;
+  markets: Market[];
+  target: HeroTarget | null;
   digits: number[];
   automation: boolean;
   phase?: string;
@@ -690,44 +714,6 @@ function ScannerHero({
   const hotPurple = ranked[0] && ranked[0].n > 0 ? ranked[0].i : -1;
   const hotPink = ranked[1] && ranked[1].n > 0 && ranked[1].n < ranked[0]?.n ? ranked[1].i : -1;
 
-  const quoteKey = (m: string, d: string, b: number) => `${m}|${d}|${b}`;
-
-  const target = (() => {
-    if (decision) {
-      const q = quotes[quoteKey(decision.market, decision.direction, decision.barrier)];
-      const ratio = q?.ask && q?.payout ? q.payout / q.ask : decision.payout ?? 0;
-      const breakeven = ratio > 0 ? 1 / ratio : 0;
-      const matched = candidates.find(
-        (c) => c.market === decision.market && c.direction === decision.direction && c.barrier === decision.barrier,
-      );
-      return {
-        market: decision.market,
-        direction: decision.direction,
-        barrier: decision.barrier,
-        estWin: decision.estWin,
-        edge: breakeven > 0 ? decision.estWin - breakeven : 0,
-        breakeven,
-        consistency: matched?.consistency ?? 0.5,
-        from: 'decision' as const,
-      };
-    }
-    const c = candidates[0];
-    if (!c) return null;
-    const q = quotes[quoteKey(c.market, c.direction, c.barrier)];
-    const ratio = q?.ask && q?.payout ? q.payout / q.ask : c.estPayout;
-    const breakeven = ratio > 0 ? 1 / ratio : 0;
-    return {
-      market: c.market,
-      direction: c.direction,
-      barrier: c.barrier,
-      estWin: c.estWin,
-      edge: q?.realEdge ?? c.edge,
-      breakeven,
-      consistency: c.consistency,
-      from: 'candidate' as const,
-    };
-  })();
-
   const stateLabel = !automation
     ? 'BOT IDLE'
     : decision
@@ -742,24 +728,21 @@ function ScannerHero({
       : automation
         ? 'scan'
         : 'idle';
-  const confLabel = target
-    ? target.consistency >= 0.7
-      ? 'STRONG'
-      : target.consistency >= 0.5
-        ? 'MEDIUM'
-        : 'WEAK'
-    : null;
-  const confTone = confLabel && confLabel !== 'WEAK' ? (confLabel === 'STRONG' ? 'strong' : 'medium') : 'weak';
+
+  const targetLabel = target
+    ? (markets.find((m) => m.symbol === target.market)?.display ?? target.market)
+    : '';
+  const targetSub = target ? `${shortMarketName(targetLabel)} · ${target.market}` : '';
 
   return (
-    <div class={`scanner${target ? ' targeting' : ''}`}>
+    <div class="scanner">
       <div class={`scanner-state ${stateTone}`}>
         <span class="scanner-dot"></span>
         <span class="scanner-label">{stateLabel}</span>
         {windowSize > 0 && <span class="scanner-window">· {windowSize} ticks</span>}
       </div>
 
-      <div class={`digit-grid${automation ? ' scanning' : ''}`}>
+      <div class="digit-grid">
         {Array.from({ length: 10 }, (_, i) => (
           <div
             key={i}
@@ -780,45 +763,26 @@ function ScannerHero({
         ))}
       </div>
 
-      <div class="scanner-lines">
-        <div class="scanner-line left"></div>
-        <div class="scanner-line right"></div>
-        <div class="scanner-dot-line"></div>
-      </div>
-
-      <div class={`target-lock${target ? ' locked' : ''}`}>
-        <div class="target-icon">
-          <span class="ring one"></span>
-          <span class="ring two"></span>
-          <span class="ring three"></span>
-          <span class="cross horizontal"></span>
-          <span class="cross vertical"></span>
-          <span class="lock"></span>
-        </div>
-        <div class="target-copy">
-          <div class="target-name">
-            {target
-              ? `${target.market !== market?.symbol ? `${shortMarketName(target.market)} / ` : ''}${sideLabel(target.direction, target.barrier).toUpperCase()}`
-              : 'STAND BY'}
+      {target && (
+        <div class={`target-lock${decision ? ' acquired' : ' locked'}`}>
+          <div class="target-icon">
+            <span class="ring one"></span>
+            <span class="ring two"></span>
+            <span class="ring three"></span>
+            <span class="cross horizontal"></span>
+            <span class="cross vertical"></span>
+            <span class="lock"></span>
           </div>
-          <div class="target-score">{target ? `${Math.round(target.estWin * 100)}%` : '—'}</div>
-          <div class={`target-status${decision ? ' acquired' : ''}`}>
-            {decision ? 'TARGET ACQUIRED' : target ? 'TARGET LOCK' : 'AWAITING SIGNAL'}
+          <div class="target-copy">
+            <div class="target-name">{sideLabel(target.direction, target.barrier).toUpperCase()}</div>
+            <div class="target-score">{Math.round(target.estWin * 100)}%</div>
+            <div class={`target-status${decision ? ' acquired' : ''}`}>
+              {decision ? 'TARGET ACQUIRED' : 'TARGET LOCK'}
+            </div>
+            <div class="target-sub">{targetSub}</div>
           </div>
         </div>
-      </div>
-
-      <div class="edge-info">
-        <div class="metric">
-          Break even{' '}
-          <b>{target ? `${Math.round(target.breakeven * 100)}%` : '—'}</b>
-        </div>
-        <div class={`metric edge${target && target.edge < 0 ? ' neg' : ''}`}>
-          EDGE{' '}
-          <b>{target ? `${target.edge >= 0 ? '+' : ''}${(target.edge * 100).toFixed(1)}%` : '—'}</b>
-        </div>
-        <div class={`metric conf ${confTone}`}>{confLabel ?? '—'}</div>
-      </div>
+      )}
     </div>
   );
 }
