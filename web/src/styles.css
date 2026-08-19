@@ -1969,7 +1969,21 @@ button {
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    /* non-chart sections keep natural size; only the chart absorbs slack */
+    .view-home .dash-main .trade-card > :not(.chart-box) {
+        flex: 0 0 auto;
+    }
+
+    /* start/stop button stays pinned to the bottom edge, never clipped */
+    .view-home .dash-main .trade-card .bot-control {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
     }
 
     .view-home .dash-main .perf {
@@ -1978,7 +1992,7 @@ button {
 
     .view-home .dash-main .chart-box {
         flex: 1 1 auto;
-        min-height: 110px;
+        min-height: 80px;
         height: auto;
         margin-top: 12px;
     }
@@ -2059,8 +2073,8 @@ button {
         padding: 0 2px 4px;
     }
 
-    .view-home .chart-box {
-        min-height: 100px;
+    .view-home .dash-main .chart-box {
+        min-height: 48px;
     }
 
     .view-home .dash-main,
