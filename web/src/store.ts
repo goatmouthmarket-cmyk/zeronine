@@ -283,6 +283,8 @@ function applyEvent(evt: Record<string, unknown>): void {
       if (evt.state && (evt.state as AutomationState).running === false) {
         patch.signal = null;
         patch.quotes = {};
+        patch.decision = null;
+        patch.hold = null;
       }
       break;
     case 'signal': {
@@ -490,7 +492,7 @@ export async function startAutomation(opts?: {
 
 export async function stopAutomation(): Promise<void> {
   const res = await api<{ state: AutomationState }>('/api/automation/stop', { method: 'POST' });
-  set({ automation: res.state });
+  set({ automation: res.state, signal: null, quotes: {}, decision: null, hold: null });
 }
 
 export async function arm(): Promise<void> {
