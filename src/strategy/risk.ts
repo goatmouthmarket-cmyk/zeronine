@@ -51,7 +51,6 @@ export function riskCheck(params: {
   const { stake, settings, balance, context, lastTradeAt, tradeGapMs } = params;
 
   if (!Number.isFinite(stake) || stake <= 0) return { ok: false, reason: 'invalid stake' };
-  if (stake > settings.max_stake) return { ok: false, reason: 'stake exceeds max stake' };
   if (balance > 0 && stake > balance * 0.9) return { ok: false, reason: 'insufficient balance' };
 
   const dailyLoss = runningPnlToday();

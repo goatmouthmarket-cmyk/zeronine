@@ -6,6 +6,7 @@ import type { LadderOption, RecoveryDecision } from '../strategy/recovery.ts';
 import { planRecovery } from '../strategy/recovery.ts';
 import { pickSignal } from '../strategy/signal.ts';
 import { applyOutcome, buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
+import { contractProfit } from '../strategy/pnl.ts';
 import type { Direction } from '../core/digitMath.ts';
 import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
@@ -566,7 +567,7 @@ export class Automation {
     if (outcome.settled) {
       const won = outcome.status === 'won';
       const status: TradeRow['status'] = won ? 'won' : 'lost';
-      const profit = Number.isFinite(outcome.profit) ? outcome.profit : (won ? bought.payout - decision.stake : -decision.stake);
+      const profit = contractProfit(won, decision.stake, bought.payout);
       const exitDetails = {
         entrySpot: outcome.entrySpot,
         exitSpot: outcome.exitSpot,
@@ -636,11 +637,7 @@ export class Automation {
         if (outcome.settled) {
           const won = outcome.status === 'won';
           const status: TradeRow['status'] = won ? 'won' : 'lost';
-          const profit = Number.isFinite(outcome.profit)
-            ? outcome.profit
-            : won
-              ? (t.payout ?? 0) - (t.stake ?? 0)
-              : -(t.stake ?? 0);
+          const profit = contractProfit(won, t.stake ?? 0, t.payout ?? 0);
           resolveTrade(t.id, status, profit, t.contract_id, {
             entrySpot: outcome.entrySpot,
             exitSpot: outcome.exitSpot,

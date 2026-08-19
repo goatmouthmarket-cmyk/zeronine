@@ -15,6 +15,7 @@ import {
 } from '../deriv/oauth.ts';
 import type { TokenSet } from '../deriv/oauth.ts';
 import type { Direction } from '../core/digitMath.ts';
+import { contractProfit } from '../strategy/pnl.ts';
 import {
   clearSession,
   getAutomation as storeGetAutomation,
@@ -274,12 +275,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `unknown market ${market}` };
     }
-    const settings = getSettings();
-    if (stake > settings.max_stake) {
-      reply.code(400);
-      return { error: 'stake exceeds max stake' };
-    }
-    
     // Check for stale pending trades and clear them
     const openTrade = getOpenTrade();
     if (openTrade) {
@@ -323,7 +318,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const bought = await client.placeBuy(quote.id, quote.askPrice);
       resolveTrade(trade.id, 'pending', 0, bought.contractId);
       hub.emit({ type: 'trade', ts: Date.now(), trade, manual: true });
-      settleInBackground(client, hub, trade.id, bought.contractId);
+      settleInBackground(client, hub, trade.id, bought.contractId, stake, quote.payout);
       return { ok: true, trade: { id: trade.id, contractId: bought.contractId, ask: quote.askPrice, payout: quote.payout } };
     } catch (err) {
       reply.code(502);
@@ -402,14 +397,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 }
 
-function settleInBackground(client: DerivPrivateClient, hub: Hub, tradeId: number, contractId: string): void {
+function settleInBackground(client: DerivPrivateClient, hub: Hub, tradeId: number, contractId: string, stake: number, payout: number): void {
   void client
     .settleContract(contractId, (u) => hub.emit({ type: 'contract', ts: Date.now(), contractId: u.contractId, update: u, manual: true }))
     .then((outcome) => {
       if (outcome.settled) {
         const won = outcome.status === 'won';
         const status = won ? ('won' as const) : ('lost' as const);
-        const profit = Number.isFinite(outcome.profit) ? outcome.profit : 0;
+        const profit = contractProfit(won, stake, payout);
         resolveTrade(
           tradeId,
           status,

@@ -99,7 +99,7 @@ export function planRecovery(
   if (ctx.debt >= ctx.maxRecoveryDebt) {
     return hold(ctx.strategy, `recovery debt cap (${ctx.maxRecoveryDebt}) reached`);
   }
-  if (ctx.cycleStake + ctx.maxStake > ctx.maxRecoveryExposure) {
+  if (ctx.cycleStake + ctx.debt > ctx.maxRecoveryExposure) {
     return hold(ctx.strategy, `recovery exposure cap (${ctx.maxRecoveryExposure}) would be exceeded`);
   }
   if (ctx.streak + 1 > ctx.maxConsecutiveLosses) {
@@ -130,7 +130,7 @@ export function planRecovery(
     const requiredStake = target / gain;
     // Never dribble sub-base bets: if the profitably-required stake is below
     // baseStake, fall back to a flat baseStake so the bet stays meaningful.
-    const stake = requiredStake < ctx.baseStake ? ctx.baseStake : Math.min(requiredStake, ctx.maxStake);
+    const stake = Math.max(requiredStake, ctx.baseStake);
 
     const efficiency = Math.min(1, (stake * gain) / Math.max(0.0001, ctx.debt));
     const score = EDGE_W * ev + PROB_W * o.estWin + EFF_W * efficiency;

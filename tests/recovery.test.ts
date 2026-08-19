@@ -69,23 +69,23 @@ test('conservative recovers the lost amount with one win, not flat bets', () => 
 });
 
 test('martingale clears the whole debt on one winning bet', () => {
-  // Best-score candidate is Over 3 (best EV + win probability when both
-  // mid barriers clear the debt). debt 7 / 0.63 = 11.111.
+  // With no max-stake cap the deepest-probability Under 9 wins the score
+  // (full required stake, efficiency 1). debt 7 / 0.2 = 35.
   const d = planRecovery(ladder(), ctx({ strategy: 'martingale', mode: 'recovering', streak: 1, debt: 7 }), pref);
   assert.equal(d.reason, 'martingale');
-  assert.equal(d.barrier, 3);
-  assert.ok(Math.abs(d.stake - 7 / 0.63) < 1e-6, `stake ${d.stake}`);
+  assert.equal(d.barrier, 9);
+  assert.ok(Math.abs(d.stake - 7 / 0.2) < 1e-6, `stake ${d.stake}`);
 });
 
 test('boosted martingale adds a half base-stake buffer to the recovery target', () => {
-  // target = debt + baseStake * recoveryBuffer = 10.5; 10.5 / 0.63 = 16.667.
+  // target = debt + baseStake * recoveryBuffer = 10.5; 10.5 / 0.2 = 52.5.
   const d = planRecovery(
     ladder(),
     ctx({ strategy: 'boosted_martingale', mode: 'recovering', streak: 2, debt: 10 }),
     pref,
   );
   assert.equal(d.reason, 'boosted_martingale');
-  assert.ok(Math.abs(d.stake - 10.5 / 0.63) < 1e-6, `stake ${d.stake}`);
+  assert.ok(Math.abs(d.stake - 10.5 / 0.2) < 1e-6, `stake ${d.stake}`);
 });
 
 test('chase amortizes the debt at 35% per winning bet', () => {
@@ -104,19 +104,19 @@ test('stake never drops below the flat base stake', () => {
   assert.ok(d.stake >= 1, `stake ${d.stake}`);
 });
 
-test('oversized recovery is split: stake is clamped to max stake, bet still placed', () => {
+test('no stake cap: full required stake is bet even when it exceeds max_stake', () => {
   const d = planRecovery(
     ladder(),
     ctx({ strategy: 'martingale', mode: 'recovering', streak: 1, debt: 40, maxStake: 25 }),
     pref,
   );
   assert.equal(d.holds, false);
-  assert.equal(d.stake, 25); // required = 40/1.4 > 25
+  assert.ok(Math.abs(d.stake - 40 / 0.2) < 1e-6, `stake ${d.stake} (should not be capped)`);
 });
 
-test('caps the stake at max stake when required stake overflows', () => {
+test('chase keeps escalating beyond max_stake when the required stake overflows', () => {
   const d = planRecovery(ladder(), ctx({ strategy: 'chase', mode: 'recovering', streak: 1, debt: 10, maxStake: 2 }), pref);
-  assert.equal(d.stake, 2);
+  assert.ok(Math.abs(d.stake - 3.5 / 0.2) < 1e-6, `stake ${d.stake} (should not be capped)`);
 });
 
 test('holds when debt cap is reached', () => {
@@ -132,7 +132,7 @@ test('holds when debt cap is reached', () => {
 test('holds when exposure cap would be exceeded', () => {
   const d = planRecovery(
     ladder(),
-    ctx({ strategy: 'martingale', mode: 'recovering', streak: 0, debt: 10, cycleStake: 90, maxStake: 25, maxRecoveryExposure: 100 }),
+    ctx({ strategy: 'martingale', mode: 'recovering', streak: 0, debt: 30, cycleStake: 90, maxRecoveryExposure: 100 }),
     pref,
   );
   assert.equal(d.holds, true);
