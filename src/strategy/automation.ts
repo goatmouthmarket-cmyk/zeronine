@@ -40,6 +40,10 @@ interface QuotedOption {
   realEV: number;
 }
 
+function coolKey(o: { market: string; direction: Direction; barrier: number }): string {
+  return `${o.market}|${o.direction}|${o.barrier}`;
+}
+
 type RecoveryStake = RecoveryDecision & { market: string };
 
 function recoveryHold(): RecoveryStake {
@@ -107,6 +111,7 @@ export class Automation {
 
   private runTarget = 0;
   private runTrades = 0;
+  private coolOffs = new Map<string, number>();
 
   constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub) {
     this.registry = registry;
@@ -131,6 +136,20 @@ export class Automation {
   private lastCompletedAt(): number {
     const trades = listTrades(1);
     return trades.length ? trades[0].ts : 0;
+  }
+
+  private cooled(o: { market: string; direction: Direction; barrier: number }, now = Date.now()): boolean {
+    const until = this.coolOffs.get(coolKey(o));
+    if (until === undefined) return false;
+    if (until <= now) {
+      this.coolOffs.delete(coolKey(o));
+      return false;
+    }
+    return true;
+  }
+
+  private markLoss(market: string, direction: Direction, barrier: number): void {
+    this.coolOffs.set(coolKey({ market, direction, barrier }), Date.now() + config.coolOffMs);
   }
 
   start(opts: { maxTrades?: number } = {}): void {
@@ -375,13 +394,20 @@ export class Automation {
     const recovering = ctx.debt > 0.005;
     let decision: RecoveryStake = recoveryHold();
     if (recovering) {
-      const ladder: LadderOption[] = quotes.map((o) => ({
+      const now = Date.now();
+      const ladderSrc = conservative ? quotes.filter((o) => !this.cooled(o, now)) : quotes;
+      const ladder: LadderOption[] = ladderSrc.map((o) => ({
         direction: o.direction,
         barrier: o.barrier,
         estWin: o.estWin,
         ask: o.ask,
         payout: o.payout,
       }));
+      if (ladder.length === 0) {
+        this.emit({ type: HOLD, ts: Date.now(), reason: 'cooling off after a loss' });
+        this.phase = 'waiting-edge';
+        return 1500;
+      }
       const base = planRecovery(ladder, ctx, { direction: top?.direction ?? 'over', barrier: top?.barrier ?? 1 });
       if (base.holds) {
         this.emit({ type: HOLD, ts: Date.now(), reason: base.holdReason });
@@ -406,16 +432,19 @@ export class Automation {
     } else {
       // Base bet: default modes only trade a candidate with a real positive
       // edge. Conservative fires on the safe extremes for their win rate
-      // instead — the payout edge never prices out the $stake favorite.
+      // instead — the payout edge never prices out the $stake favorite, but
+      // a hot extreme digit (0 for Over, 9 for Under) skips that side until
+      // it cools off, and neither side is re-fired right after a loss.
+      const now = Date.now();
       const eligible = conservative
         ? quotes
-            .filter((o) => o.estWin >= minWin)
+            .filter((o) => o.estWin >= Math.max(minWin, config.minExtremeWin) && !this.cooled(o, now))
             .sort((a, b) => b.estWin - a.estWin || b.realEV - a.realEV)
         : quotes
             .filter((o) => o.estWin >= minWin && o.realEdge >= minEdge)
             .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
       if (eligible.length === 0) {
-        this.emit({ type: HOLD, ts: Date.now(), reason: 'no live quote available' });
+        this.emit({ type: HOLD, ts: Date.now(), reason: conservative ? 'extreme digit too hot' : 'no live quote available' });
         this.phase = 'waiting-edge';
         return 1500;
       }
@@ -544,6 +573,7 @@ export class Automation {
         exitDigit: outcome.exitDigit,
       };
       resolveTrade(trade.id, status, profit, bought.contractId, exitDetails);
+      if (!won && conservative) this.markLoss(decision.market, decision.direction, decision.barrier);
       const next = applyOutcome(won, profit, settings, session.balance);
       saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery().last_win_epoch, updated_at: Date.now() });
       this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won });

@@ -33,6 +33,7 @@ export interface RecoveryContext {
   baseStake: number;
   maxStake: number;
   minRecoveryWinRate: number;
+  minExtremeWin: number;
   martingaleSteps: number;
   maxConsecutiveLosses: number;
   strategy: StrategyMode;
@@ -114,12 +115,16 @@ export function planRecovery(
     const ratio = o.ask > 0 ? o.payout / o.ask : 0;
     const gain = ratio - 1;
     if (gain <= 1e-6) continue;                      // payout too low to recover
-    if (o.estWin < ctx.minRecoveryWinRate) continue; // win probability too low
+    // Conservative trades the safe extreme for its win probability, not its
+    // edge — but it never chases a hot losing digit: the side whose extreme
+    // digit has been landing recently is bypassed by the high probability gate.
+    const probFloor =
+      ctx.strategy === 'conservative' ? Math.max(ctx.minRecoveryWinRate, ctx.minExtremeWin) : ctx.minRecoveryWinRate;
+    if (o.estWin < probFloor) continue; // win probability too low
 
     const ev = o.estWin * ratio - 1;
-    // Conservative trades the safe favorite for its win probability, not its
-    // edge — the payout EV gate is skipped so recovery never stalls on a
-    // ~90% Over 0 / Under 9. All other profiles need strictly positive EV.
+    // Conservative skips the payout EV gate so recovery never stalls on a
+    // ~90% Over 0 / Under 9; all other profiles need strictly positive EV.
     if (ev <= RECOVERY_MIN_EDGE && ctx.strategy !== 'conservative') continue;
 
     const requiredStake = target / gain;

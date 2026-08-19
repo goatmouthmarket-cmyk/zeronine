@@ -25,6 +25,7 @@ function ctx(patch: Partial<RecoveryContext> = {}): RecoveryContext {
     baseStake: 1,
     maxStake: 25,
     minRecoveryWinRate: 0.3,
+    minExtremeWin: 0.75,
     martingaleSteps: 5,
     maxConsecutiveLosses: 10,
     strategy: 'conservative',
@@ -51,10 +52,20 @@ test('base state (no debt) uses base stake and preferred barrier for every strat
 });
 
 test('conservative recovers the lost amount with one win, not flat bets', () => {
-  const d = planRecovery(ladder(), ctx({ strategy: 'conservative', mode: 'recovering', streak: 4, debt: 6 }), pref);
+  // Conservative only plays the safe extremes (Over 0 / Under 9) and skips a
+  // side when its losing digit is hot: Over 0 at 0.62 fails the 0.75 gate.
+  const conservativeLadder: LadderOption[] = [
+    { direction: 'over', barrier: 0, estWin: 0.62, ask: 1, payout: 1.6 },
+    { direction: 'over', barrier: 0, estWin: 0.93, ask: 1, payout: 1.6 },
+    { direction: 'under', barrier: 9, estWin: 0.9, ask: 1, payout: 1.8 }, // gain 0.8 -> 6/0.8 = 7.5
+  ];
+  const d = planRecovery(conservativeLadder, ctx({ strategy: 'conservative', mode: 'recovering', streak: 4, debt: 6 }), {
+    direction: 'over',
+    barrier: 0,
+  });
   assert.equal(d.reason, 'conservative');
-  assert.equal(d.barrier, 3);
-  assert.ok(Math.abs(d.stake - 6 / 0.63) < 1e-6, `stake ${d.stake}`);
+  assert.equal(d.barrier, 9);
+  assert.ok(Math.abs(d.stake - 6 / 0.8) < 1e-6, `stake ${d.stake}`);
 });
 
 test('martingale clears the whole debt on one winning bet', () => {

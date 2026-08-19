@@ -33,6 +33,8 @@ export interface AppConfig {
   maxRecoveryDebt: number;
   maxRecoveryExposure: number;
   maxDrawdownPct: number;
+  minExtremeWin: number;
+  coolOffMs: number;
   allowedMarkets: string[];
   tradeGapMs: number;
 }
@@ -98,6 +100,8 @@ export function loadConfig(): AppConfig {
     maxRecoveryDebt: num('MAX_RECOVERY_DEBT', 50),
     maxRecoveryExposure: num('MAX_RECOVERY_EXPOSURE', 100),
     maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 20),
+    minExtremeWin: num('MIN_EXTREME_WIN', 0.75),
+    coolOffMs: num('COOL_OFF_MS', 5000),
     allowedMarkets: (process.env.ALLOWED_MARKETS || '')
       .split(',')
       .map((s) => s.trim())

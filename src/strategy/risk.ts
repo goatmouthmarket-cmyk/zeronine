@@ -1,6 +1,7 @@
 import { runningPnlToday, getOpenTrade, getRecovery } from '../db/store.ts';
 import type { SettingsRow } from '../db/store.ts';
 import type { RecoveryContext, StrategyMode } from '../strategy/recovery.ts';
+import { config } from '../config.ts';
 
 export interface RiskCheck {
   ok: boolean;
@@ -25,6 +26,7 @@ export function buildRecoveryContext(settings: SettingsRow): RecoveryContext {
     baseStake: settings.base_stake,
     maxStake: settings.max_stake,
     minRecoveryWinRate: settings.min_recovery_win,
+    minExtremeWin: config.minExtremeWin,
     martingaleSteps: settings.martingale_steps,
     maxConsecutiveLosses: settings.max_consecutive_losses,
     strategy,
