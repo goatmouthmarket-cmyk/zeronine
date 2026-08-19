@@ -1899,7 +1899,7 @@ button {
     pointer-events: auto;
 
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
 
     align-items: center;
 
@@ -2098,6 +2098,7 @@ button {
     .app[data-page="home"] .view-home,
     .app[data-page="bot"] .view-bot,
     .app[data-page="history"] .view-history,
+    .app[data-page="backtest"] .view-backtest,
     .app[data-page="account"] .view-account {
         display: block;
     }
@@ -2140,6 +2141,7 @@ button {
 
     .app[data-page="bot"] .view-bot,
     .app[data-page="history"] .view-history,
+    .app[data-page="backtest"] .view-backtest,
     .app[data-page="account"] .view-account {
         display: block;
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery } from './store';
 import {
@@ -14,7 +14,7 @@ import {
   updateSettings,
 } from './store';
 
-type Page = 'home' | 'bot' | 'history' | 'account';
+type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
 
 const CURRENCY_SYMBOL: Record<string, string> = {
   USD: '$',
@@ -204,6 +204,9 @@ export function App(): JSX.Element {
           <div class="view view-history">
             <HistoryPage />
           </div>
+          <div class="view view-backtest">
+            <BacktestPage />
+          </div>
           <div class="view view-account">
             <AccountPage />
           </div>
@@ -380,6 +383,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             <button class={`nav-link${page === 'home' ? ' active' : ''}`} onClick={() => onNavigate('home')}>Home</button>
             <button class={`nav-link${page === 'history' ? ' active' : ''}`} onClick={() => onNavigate('history')}>History</button>
             <button class={`nav-link${page === 'bot' ? ' active' : ''}`} onClick={() => onNavigate('bot')}>Bot</button>
+            <button class={`nav-link${page === 'backtest' ? ' active' : ''}`} onClick={() => onNavigate('backtest')}>Backtest</button>
             <button class={`nav-link${page === 'account' ? ' active' : ''}`} onClick={() => onNavigate('account')}>Account</button>
           </nav>
           <div class="balance">
@@ -1114,6 +1118,166 @@ function Bar({ label, rate, count, tone }: { label: string; rate: number; count:
   );
 }
 
+/* ---------------- backtest ---------------- */
+
+interface BacktestResult {
+  trades: number;
+  wins: number;
+  losses: number;
+  net: number;
+  avgStake: number;
+  maxDrawdownPct: number;
+  bestStreak: number;
+  worstStreak: number;
+}
+
+function simulateBacktest(
+  trades: TradeRow[],
+  strategy: Settings['strategy_mode'],
+  baseStake: number,
+): BacktestResult | null {
+  const sim = trades
+    .filter(
+      (t) =>
+        (t.status === 'won' || t.status === 'lost') &&
+        Number.isFinite(t.stake) &&
+        t.stake > 0 &&
+        Number.isFinite(t.payout) &&
+        t.payout > 0 &&
+        Number.isFinite(t.ask_price) &&
+        t.ask_price > 0,
+    )
+    .sort((a, b) => a.ts - b.ts);
+  if (!sim.length || !(baseStake > 0)) return null;
+
+  const startBalance = baseStake * 100;
+  let balance = startBalance;
+  let peak = balance;
+  let debt = 0;
+  let streak = 0;
+  let lossRun = 0;
+  let wins = 0;
+  let losses = 0;
+  let net = 0;
+  let bestStreak = 0;
+  let worstStreak = 0;
+  let maxDrawdownPct = 0;
+  let totalStake = 0;
+  let scored = 0;
+
+  for (const t of sim) {
+    const ratio = Number(t.payout) / Number(t.ask_price);
+    const gain = ratio - 1;
+    if (!(gain > 0)) continue;
+    const winning = t.status === 'won';
+    scored += 1;
+
+    const stake =
+      debt <= 0.005
+        ? baseStake
+        : Math.max(
+            (strategy === 'boosted_martingale'
+              ? debt + baseStake * 0.5
+              : strategy === 'chase'
+                ? debt * 0.35
+                : debt) / gain,
+            baseStake,
+          );
+    totalStake += stake;
+
+    if (winning) {
+      const profit = stake * gain;
+      wins += 1;
+      net += profit;
+      balance += profit;
+      debt = Math.max(0, debt - Math.max(0, profit));
+      streak += 1;
+      bestStreak = Math.max(bestStreak, streak);
+      lossRun = 0;
+    } else {
+      losses += 1;
+      net -= stake;
+      balance -= stake;
+      debt += stake;
+      streak = 0;
+      lossRun += 1;
+      worstStreak = Math.max(worstStreak, lossRun);
+    }
+
+    peak = Math.max(peak, balance);
+    if (peak > 0) maxDrawdownPct = Math.max(maxDrawdownPct, ((peak - balance) / peak) * 100);
+  }
+
+  if (!scored) return null;
+  return { trades: scored, wins, losses, net, avgStake: totalStake / scored, maxDrawdownPct, bestStreak, worstStreak };
+}
+
+function BacktestPage(): JSX.Element {
+  const s = useStore();
+  const [strategy, setStrategy] = useState<Settings['strategy_mode']>(s.settings?.strategy_mode ?? 'conservative');
+  const [stakeText, setStakeText] = useState(String(s.settings?.base_stake ?? 1));
+  const baseStake = Math.max(0.1, Number(stakeText) || 0);
+  const result = useMemo(() => simulateBacktest(s.trades, strategy, baseStake), [s.trades, strategy, baseStake]);
+  const winRate = result && result.trades > 0 ? (result.wins / result.trades) * 100 : 0;
+  const currency = s.session?.currency ?? '';
+
+  return (
+    <>
+      <header class="header">
+        <div class="page-title">Backtest</div>
+        <div class="subtitle">Replays recorded trades through a strategy</div>
+      </header>
+
+      <div class="section">
+        <div class="set-group">
+          <div class="set-label-top">Strategy</div>
+          <div class="seg">
+            {(Object.keys(STRATEGY_META) as Settings['strategy_mode'][]).map((key) => (
+              <button key={key} class={`seg-btn${strategy === key ? ' active' : ''}`} onClick={() => setStrategy(key)}>
+                {STRATEGY_META[key].label}
+              </button>
+            ))}
+          </div>
+          <div class="set-hint">{STRATEGY_META[strategy].hint}</div>
+        </div>
+
+        <div class="set-group">
+          <div class="set-label-top">Base stake</div>
+          <input
+            class="set-input"
+            type="number"
+            min="0.1"
+            step="0.1"
+            value={stakeText}
+            onInput={(e) => setStakeText((e.target as HTMLInputElement).value)}
+          />
+        </div>
+      </div>
+
+      {result ? (
+        <div class="metric-grid">
+          <Metric label="Trades" value={String(result.trades)} />
+          <Metric label="Net P&L" value={fmtSigned(result.net, currency)} tone={result.net >= 0 ? 'up' : 'down'} />
+          <Metric label="Win Rate" value={`${winRate.toFixed(1)}%`} tone={winRate >= 50 ? 'up' : 'down'} />
+          <Metric label="Avg Stake" value={fmtMoney(result.avgStake, currency)} />
+          <Metric label="Max Drawdown" value={`${result.maxDrawdownPct.toFixed(1)}%`} tone="down" />
+          <Metric label="Best Streak" value={String(result.bestStreak)} tone="up" />
+          <Metric label="Worst Streak" value={String(result.worstStreak)} tone="down" />
+          <Metric label="Wins" value={String(result.wins)} />
+          <Metric label="Losses" value={String(result.losses)} />
+        </div>
+      ) : (
+        <div class="empty-hint">No settled trades on record yet — run the bot, then come back to backtest.</div>
+      )}
+
+      <div class="set-hint">
+        Estimate only: replays the recorded win/loss outcomes and payout ratios through the chosen strategy from a
+        starting balance of ${baseStake.toFixed(2)} × 100.
+      </div>
+    </>
+  );
+}
+
 /* ---------------- account ---------------- */
 
 function AccountPage(): JSX.Element {
@@ -1193,6 +1357,10 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
             <Icon name={automation ? 'square' : 'play'} size={15} strokeWidth={2.4} />
           </span>
           Bot
+        </button>
+        <button class={`nav-item${page === 'backtest' ? ' active' : ''}`} onClick={() => setPage('backtest')}>
+          <Icon name="stats" size={20} />
+          Backtest
         </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} onClick={() => setPage('account')}>
           <Icon name="account" size={20} />
