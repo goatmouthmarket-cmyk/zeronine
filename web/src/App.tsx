@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision } from './store';
+import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, SessionInfo, Recovery, LogEntry } from './store';
 import {
   useStore,
   connectPat,
@@ -293,9 +293,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const oddsText = odds ? odds.toFixed(2) : '—';
 
   const candidates = s.signal?.signal.candidates ?? [];
-  const heroTarget = resolveTarget(candidates, s.quotes, decision);
-  const showTargetCard = !!decision || (automation && !!heroTarget);
-  const targetCard = showTargetCard ? heroTarget : null;
 
   const currentStreak = (() => {
     let streak = 0;
@@ -411,32 +408,24 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               </div>
             </div>
 
-            <div class="market-title-row">
-              <div>
-                <div class="market-name">{market ? shortMarketName(market.display) : 'Loading…'}</div>
-                <div class="market-meta">
-                  <Icon name="arrowUpRight" size={13} />
-                  <span>Synthetic Index</span>
-                </div>
-              </div>
-              <div class="streak-chip">
-                  <span class="fire">♨</span>
-                  <span>{currentStreak} STREAK</span>
-                </div>
-            </div>
-
-<ScannerHero
-              market={market}
+            <DecisionHero
               markets={s.markets}
-              target={targetCard}
-              digits={s.digits[market?.symbol ?? ''] ?? []}
+              candidates={candidates}
+              quotes={s.quotes}
+              decision={decision}
+              streak={currentStreak}
               automation={automation}
               phase={s.automation?.phase}
-              decision={decision}
               holdReason={automation && !decision ? (s.hold?.reason ?? null) : null}
+              contract={s.contract}
+              session={s.session}
+              settings={s.settings}
+              recovery={s.recovery}
+              trades={s.trades}
+              logs={s.logs}
             />
 
-            {!targetCard && (
+            {!automation && !decision && (
               <div class="side-selector">
                 <button
                   class={`side-btn over${activeDirection === 'over' ? ' active' : ''}`}
@@ -654,76 +643,152 @@ function resolveTarget(
   };
 }
 
-function ScannerHero({
-  market,
+function DecisionHero({
   markets,
-  target,
-  digits,
+  candidates,
+  quotes,
+  decision,
+  streak,
   automation,
   phase,
-  decision,
   holdReason,
+  contract,
+  session,
+  settings,
+  recovery,
+  trades,
+  logs,
 }: {
-  market?: Market;
   markets: Market[];
-  target: HeroTarget | null;
-  digits: number[];
+  candidates: SignalCandidate[];
+  quotes: Record<string, QuoteEvt>;
+  decision?: Decision;
+  streak: number;
   automation: boolean;
   phase?: string;
-  decision?: Decision;
   holdReason: string | null;
+  contract: ContractEvt | null;
+  session: SessionInfo | null;
+  settings: Settings | null;
+  recovery: Recovery | null;
+  trades: TradeRow[];
+  logs: LogEntry[];
 }): JSX.Element {
-  const counts = new Array(10).fill(0) as number[];
-  for (const d of digits) {
-    if (d >= 0 && d <= 9) counts[d] += 1;
-  }
-  const windowSize = digits.length;
-  const pctOf = (i: number) => (windowSize > 0 ? Math.round((counts[i] / windowSize) * 100) : 0);
+  const best = resolveTarget(candidates, quotes, decision);
 
-  const stateLabel = !automation
-    ? 'BOT IDLE'
+  const balance = session?.balance ?? 0;
+  const currency = session?.currency ?? '';
+  const net = trades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
+  const start = balance - net;
+  const ddPct = Math.max(0, Math.min(80, settings?.max_drawdown_pct ?? 20));
+  const floor = Math.max(0, start * (1 - ddPct / 100));
+  const range = Math.max(start - floor, 0.01);
+  const cushion = Math.max(0, balance - floor);
+  const gauge = Math.min(100, (cushion / range) * 100);
+
+  const health =
+    gauge >= 70
+      ? { label: 'HEALTHY', tone: 'good' }
+      : gauge >= 35
+        ? { label: 'CAUTION', tone: 'warn' }
+        : gauge > 0
+          ? { label: 'DEFENSE', tone: 'bad' }
+          : { label: 'LOCKED', tone: 'dead' };
+
+  const stake = decision?.stake ?? recovery?.cycleStake ?? settings?.base_stake ?? 0;
+
+  const signalOk = !!best;
+  const riskOk = stake > 0 && cushion >= stake * 3;
+  const bankOk = balance > floor;
+
+  const status = !automation
+    ? { label: 'BOT IDLE', tone: 'idle' }
     : decision
-      ? 'TARGET ACQUIRED'
+      ? { label: 'TRADE ACTIVE', tone: 'go' }
       : holdReason
-        ? 'NO EDGE — KEEP SCANNING'
-        : scannerPhaseLabel(phase);
-  const stateTone = decision
-    ? 'locked'
-    : holdReason
-      ? 'warn'
-      : automation
-        ? 'scan'
-        : 'idle';
+        ? { label: holdReason.toUpperCase().slice(0, 32), tone: 'warn' }
+        : { label: (phase ? scannerPhaseLabel(phase) : 'SCANNING'), tone: 'scan' };
 
-  const targetLabel = target
-    ? (markets.find((m) => m.symbol === target.market)?.display ?? target.market)
-    : '';
+  const bestLabel = best
+    ? shortMarketName(markets.find((m) => m.symbol === best.market)?.display ?? best.market)
+    : markets[0]
+      ? shortMarketName(markets[0].display)
+      : '—';
+
+  const thoughts = logs.slice(-3);
+
+  const lastResult = contract?.result ?? trades[0]?.status;
+  const winFlash = lastResult === 'won';
 
   return (
-    <div class="scanner">
-      <div class={`scanner-state ${stateTone}`}>
-        <span class="scanner-dot"></span>
-        <span class="scanner-label">{stateLabel}</span>
-        {windowSize > 0 && <span class="scanner-window">· {windowSize} ticks</span>}
+    <div class="cockpit">
+      <div class="cockpit-top">
+        <span class={`cockpit-pill${automation ? ' live' : ''}`}>{automation ? '● BOT LIVE' : '● BOT IDLE'}</span>
+        <span class="cockpit-count">{candidates.length} / {markets.length} SCANNED</span>
+        {streak > 0 && <span class="cockpit-streak">🔥 {streak} STREAK</span>}
       </div>
 
-      <div class="digit-grid">
-        {Array.from({ length: 10 }, (_, i) => (
-          <div key={i} class={`digit-card${market?.lastDigit === i ? ' live' : ''}`}>
-            <span class="digit-number">{i}</span>
-            <span class="digit-percent">{pctOf(i)}%</span>
-          </div>
-        ))}
+      <div class="cockpit-market">{bestLabel}</div>
+
+      <div class="cockpit-pick">
+        <div class="cockpit-side">{best ? sideLabel(best.direction, best.barrier) : 'AWAITING SIGNAL'}</div>
+        {best && <div class="cockpit-pct">{Math.round(best.estWin * 100)}%</div>}
       </div>
 
-      {target && (
-        <div class="target-strip">
-          <span class={`target-pill ${target.direction}`}>{sideLabel(target.direction, target.barrier)}</span>
-          <span class="target-pct">{Math.round(target.estWin * 100)}%</span>
-          <span class="target-mkt">{shortMarketName(targetLabel)}</span>
-          <span class={`target-state${decision ? ' acquired' : ''}`}>
-            {decision ? 'LOCKED' : 'TARGET'}
-          </span>
+      <div class={`cockpit-status ${status.tone}${winFlash ? ' win' : ''}`}>
+        <span class="cockpit-status-dot"></span>
+        <span>{winFlash ? 'WIN RECORDED' : status.label}</span>
+      </div>
+
+      <div class="cockpit-metrics">
+        <div class="ckm">
+          <span class="ckm-label">Model</span>
+          <b>{best ? `${(best.estWin * 100).toFixed(1)}%` : '—'}</b>
+        </div>
+        <div class="ckm">
+          <span class="ckm-label">Break-even</span>
+          <b>{best ? `${Math.round(best.breakeven * 100)}%` : '—'}</b>
+        </div>
+        <div class={`ckm ckm-edge${best && best.edge < 0 ? ' neg' : ''}`}>
+          <span class="ckm-label">EDGE</span>
+          <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
+        </div>
+      </div>
+
+      <div class="cockpit-divider"></div>
+
+      <div class="shield">
+        <div class="shield-head">
+          <span class="shield-title">BANKROLL SHIELD</span>
+          <span class={`shield-state ${health.tone}`}>{health.label} · {Math.round(gauge)}%</span>
+        </div>
+        <div class="shield-track">
+          <div class={`shield-fill ${health.tone}`} style={{ width: `${Math.round(gauge)}%` }} />
+        </div>
+        <div class="shield-stats">
+          <span><em>Balance</em><b>{fmtMoney(balance, currency)}</b></span>
+          <span><em>Profit</em><b class={net >= 0 ? 'pos' : 'neg'}>{fmtSigned(net, currency)}</b></span>
+          <span><em>Protected</em><b>{fmtMoney(Math.min(balance, Math.max(0, floor)), currency)}</b></span>
+        </div>
+      </div>
+
+      <div class="cockpit-checks">
+        <span class={`check${signalOk ? ' ok' : ''}`}>{signalOk ? '✓' : '○'} SIGNAL</span>
+        <span class={`check${riskOk ? ' ok' : ''}`}>{riskOk ? '✓' : '○'} RISK</span>
+        <span class={`check${bankOk ? ' ok' : ''}`}>{bankOk ? '✓' : '○'} BANKROLL</span>
+      </div>
+
+      <div class="cockpit-stake">NEXT STAKE <b>{fmtMoney(stake, currency)}</b></div>
+
+      {thoughts.length > 0 && (
+        <div class="cockpit-thought">
+          <div class="cockpit-thought-head">BOT THINKING</div>
+          {thoughts.map((l, i) => (
+            <div class="cockpit-thought-line" key={i}>
+              <span class="t-time">{new Date(l.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+              {l.message}
+            </div>
+          ))}
         </div>
       )}
     </div>
