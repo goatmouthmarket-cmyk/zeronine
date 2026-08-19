@@ -276,7 +276,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const cooldownLeft = useBotCooldown();
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
-  const marketIndex = s.markets.findIndex((m) => m.symbol === market?.symbol);
   const automation = s.automation?.running ?? false;
   const decision = s.decision?.decision;
 
@@ -401,18 +400,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
       <div class="dashboard">
         <div class="dash-main">
           <section class="trade-card">
-            <div class="market-head">
-              <div class="market-position">
-                {marketIndex >= 0 ? `Market ${marketIndex + 1} / ${s.markets.length}` : '—'}
-              </div>
-            </div>
-            <div class="tape">
-              <span class="tape-scan">SCANNING</span>
-              <span class="tape-text">
-                {marketIndex >= 0 ? `MARKET ${marketIndex + 1} OF ${s.markets.length} · ${shortMarketName(market?.display ?? '')}` : 'WAITING FOR FEED'}
-              </span>
-            </div>
-
             <DecisionHero
               markets={s.markets}
               candidates={candidates}
@@ -723,7 +710,6 @@ function DecisionHero({
   return (
     <div class="cockpit">
       <div class="cockpit-top">
-        <span class="cockpit-count">{candidates.length} / {markets.length} SCANNED</span>
         {streak > 0 && <span class="cockpit-streak">🔥 {streak} STREAK</span>}
       </div>
 
@@ -778,15 +764,13 @@ function DecisionHero({
       </div>
 
       <div class="cockpit-stake">NEXT STAKE <b>{fmtMoney(stake, currency)}</b></div>
-
-      <BarrierPicker settings={settings} />
     </div>
   );
 }
 
 /* ---------------- barrier picker ---------------- */
 
-function BarrierPicker({ settings }: { settings: Settings | null }): JSX.Element {
+function BarrierPicker({ settings, showLabel = true }: { settings: Settings | null; showLabel?: boolean }): JSX.Element {
   const isConservative = (settings?.strategy_mode ?? 'conservative') === 'conservative';
   const raw = settings?.barrier_preference;
   const mode: 'auto' | 'over' | 'under' =
@@ -816,7 +800,7 @@ function BarrierPicker({ settings }: { settings: Settings | null }): JSX.Element
 
   return (
     <div class="barrier-pick">
-      <span class="barrier-pick-label">BET ON</span>
+      {showLabel && <span class="barrier-pick-label">BET ON</span>}
       <div class="barrier-seg">
         <button class={`bseg${mode === 'auto' ? ' active' : ''}`} onClick={() => commit('auto', 0)}>
           Auto
@@ -944,6 +928,14 @@ function BotPage(): JSX.Element {
             ))}
           </div>
           <div class="set-hint">{STRATEGY_META[strategy].hint}</div>
+        </div>
+
+        <div class="set-group">
+          <div class="set-label-top">Bet on</div>
+          <BarrierPicker settings={s.settings} showLabel={false} />
+          <div class="set-hint">
+            Auto scans every barrier. Conservative is locked to Over 0 / Under 9.
+          </div>
         </div>
 
         <div class="set-group">
