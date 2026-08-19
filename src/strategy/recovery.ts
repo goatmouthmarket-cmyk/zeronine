@@ -10,7 +10,7 @@ export interface LadderOption {
 
 export type StrategyMode = 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
 
-export type RecoveryReason = 'base' | 'martingale' | 'boosted_martingale' | 'chase';
+export type RecoveryReason = 'base' | 'martingale' | 'boosted_martingale' | 'chase' | 'conservative';
 
 export interface RecoveryDecision {
   stake: number;
@@ -88,9 +88,9 @@ export function planRecovery(
     holds: false,
   };
 
-  // Conservative: flat bet every round, no stake escalation, no recovery.
-  if (ctx.strategy === 'conservative') return baseBet;
-
+  // Conservative is flat until a loss frees the recovery logic. On a loss it
+  // behaves like martingale - the stake is sized to clear the whole debt with
+  // one win, but only ever on the safe extremes (Over 0 / Under 9).
   // No debt to recover - base bet at the flat stake.
   if (ctx.debt <= 0.005) return baseBet;
 

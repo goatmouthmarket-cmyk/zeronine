@@ -101,6 +101,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       'max_recovery_debt',
       'max_recovery_exposure',
       'max_drawdown_pct',
+      'barrier_number',
     ];
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body)) {

@@ -40,6 +40,7 @@ export interface Settings {
   min_edge: number;
   min_recovery_win: number;
   barrier_preference: string;
+  barrier_number: number;
   strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
   strategy_multiplier: number;
   recovery_buffer: number;
@@ -110,12 +111,6 @@ export interface Decision {
   reason: string;
 }
 
-export interface LogEntry {
-  ts: number;
-  level: string;
-  message: string;
-}
-
 export interface AutomationState {
   running: boolean;
   phase: string;
@@ -160,7 +155,6 @@ export interface State {
   hold: { reason: string } | null;
   contract: ContractEvt | null;
   botCooldownUntil: number;
-  logs: LogEntry[];
 }
 
 const initial: State = {
@@ -181,7 +175,6 @@ const initial: State = {
   hold: null,
   contract: null,
   botCooldownUntil: 0,
-  logs: [],
 };
 
 let state: State = initial;
@@ -190,11 +183,6 @@ const listeners = new Set<() => void>();
 function set(patch: Partial<State>): void {
   state = { ...state, ...patch };
   for (const cb of listeners) cb();
-}
-
-function pushLog(level: string, message: string): void {
-  const logs = [...state.logs.slice(-49), { ts: Date.now(), level, message }];
-  set({ logs });
 }
 
 export function useStore(): State {
@@ -296,7 +284,6 @@ function applyEvent(evt: Record<string, unknown>): void {
         patch.signal = null;
         patch.quotes = {};
       }
-      if (evt.reason) pushLog('info', `automation: ${String(evt.reason)}`);
       break;
     case 'signal': {
       const raw = evt.signal as Partial<SignalPick> | null | undefined;
@@ -321,7 +308,6 @@ function applyEvent(evt: Record<string, unknown>): void {
     case 'quote_error':
       patch.quote = null;
       patch.quotes = {};
-      pushLog('warn', `quote error: ${String(evt.message ?? '')}`);
       break;
     case 'decision':
       patch.decision = {
@@ -337,7 +323,6 @@ function applyEvent(evt: Record<string, unknown>): void {
       break;
     case 'cooldown':
       patch.botCooldownUntil = Date.now() + Number(evt.seconds ?? 60) * 1000;
-      pushLog('warn', `cooldown: ${String(evt.reason ?? '')} — start blocked for ${Number(evt.seconds ?? 60)}s`);
       break;
     case 'trade': {
       const t = evt.trade as TradeRow;
@@ -355,7 +340,6 @@ function applyEvent(evt: Record<string, unknown>): void {
       patch.contract = c;
       if (c.result) {
         if (c.phase !== 'purchased') {
-          pushLog(c.result === 'won' ? 'info' : 'warn', `contract ${c.result} ${c.profit != null ? `(${c.profit})` : ''}`);
           void refreshTrades();
         }
       }
@@ -367,10 +351,6 @@ function applyEvent(evt: Record<string, unknown>): void {
       break;
     }
     case 'error':
-      pushLog('error', String(evt.message ?? ''));
-      break;
-    case 'log':
-      pushLog(String(evt.level ?? 'info'), String(evt.message ?? ''));
       break;
     default:
       return;
@@ -462,7 +442,7 @@ export async function bootstrap(): Promise<void> {
       selected: s.selected ?? s.markets[0]?.symbol ?? null,
     });
   } catch (err) {
-    pushLog('error', `state load failed: ${String(err)}`);
+    // best-effort state load; the ws stream will repopulate
   }
   connectWs();
 }
@@ -502,9 +482,8 @@ export async function startAutomation(opts?: {
       body: JSON.stringify(body),
     });
     set({ automation: res.state });
-    pushLog('info', `automation started${opts?.maxTrades ? ` (${opts.maxTrades} trades)` : ''}`);
+    return;
   } catch (err) {
-    pushLog('error', `automation start failed: ${String(err)}`);
     throw err;
   }
 }
@@ -516,7 +495,7 @@ export async function stopAutomation(): Promise<void> {
 
 export async function arm(): Promise<void> {
   await api('/api/automation/arm', { method: 'POST' });
-  pushLog('info', 'real-account automation armed for 10 minutes');
+  return;
 }
 
 export interface ManualOrder {
@@ -533,10 +512,9 @@ export async function manualTrade(order: ManualOrder): Promise<void> {
       body: JSON.stringify(order),
     });
     if (res.ok) {
-      pushLog('info', `manual trade placed: ${order.market} ${order.direction} @${order.barrier}`);
+      return;
     }
   } catch (err) {
-    pushLog('error', `trade failed: ${String(err)}`);
     throw err;
   }
 }
@@ -557,9 +535,8 @@ export function selectMarket(symbol: string | null): void {
 export async function clearStuckTrade(): Promise<void> {
   try {
     const res = await api<{ ok: boolean; message: string }>('/api/trade/clear-stuck', { method: 'POST' });
-    pushLog('info', res.message);
+    return;
   } catch (err) {
-    pushLog('error', `clear stuck trade failed: ${String(err)}`);
     throw err;
   }
 }

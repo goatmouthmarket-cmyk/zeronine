@@ -155,7 +155,7 @@ export function scanMarket(symbol: string, display: string, digits: number[]): M
 
   const features: BarrierFeatures[] = [];
   for (const direction of ['over', 'under'] as Direction[]) {
-    for (const barrier of direction === 'over' ? [1, 2, 3, 4, 5, 6, 7] : [9, 8, 7, 6, 5, 4, 3]) {
+    for (const barrier of direction === 'over' ? [0, 1, 2, 3, 4, 5, 6, 7] : [9, 8, 7, 6, 5, 4, 3]) {
       const base = theoreticalWin(direction, barrier);
 
       const p = {

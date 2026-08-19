@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, SessionInfo, Recovery, LogEntry } from './store';
+import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, SessionInfo, Recovery } from './store';
 import {
   useStore,
   connectPat,
@@ -47,7 +47,10 @@ function sideLabel(direction: string, barrier: number): string {
 }
 
 const STRATEGY_META: Record<Settings['strategy_mode'], { label: string; hint: string }> = {
-  conservative: { label: 'Conservative', hint: 'Flat bet every round; only bets with a positive edge' },
+  conservative: {
+    label: 'Conservative',
+    hint: 'Only plays Over 0 / Under 9; on a loss it stakes to recover the lost amount',
+  },
   martingale: {
     label: 'Martingale',
     hint: 'One-win recovery: stake sized to clear the whole debt on a determined barrier',
@@ -399,13 +402,15 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
         <div class="dash-main">
           <section class="trade-card">
             <div class="market-head">
-              <div class="live">
-                <span class="live-dot"></span>
-                {s.feed?.connected ? 'LIVE' : 'OFFLINE'}
-              </div>
               <div class="market-position">
                 {marketIndex >= 0 ? `Market ${marketIndex + 1} / ${s.markets.length}` : '—'}
               </div>
+            </div>
+            <div class="tape">
+              <span class="tape-scan">SCANNING</span>
+              <span class="tape-text">
+                {marketIndex >= 0 ? `MARKET ${marketIndex + 1} OF ${s.markets.length} · ${shortMarketName(market?.display ?? '')}` : 'WAITING FOR FEED'}
+              </span>
             </div>
 
             <DecisionHero
@@ -422,7 +427,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               settings={s.settings}
               recovery={s.recovery}
               trades={s.trades}
-              logs={s.logs}
             />
 
             {!automation && !decision && (
@@ -657,7 +661,6 @@ function DecisionHero({
   settings,
   recovery,
   trades,
-  logs,
 }: {
   markets: Market[];
   candidates: SignalCandidate[];
@@ -672,7 +675,6 @@ function DecisionHero({
   settings: Settings | null;
   recovery: Recovery | null;
   trades: TradeRow[];
-  logs: LogEntry[];
 }): JSX.Element {
   const best = resolveTarget(candidates, quotes, decision);
 
@@ -715,15 +717,12 @@ function DecisionHero({
       ? shortMarketName(markets[0].display)
       : '—';
 
-  const thoughts = logs.slice(-3);
-
   const lastResult = contract?.result ?? trades[0]?.status;
   const winFlash = lastResult === 'won';
 
   return (
     <div class="cockpit">
       <div class="cockpit-top">
-        <span class={`cockpit-pill${automation ? ' live' : ''}`}>{automation ? '● BOT LIVE' : '● BOT IDLE'}</span>
         <span class="cockpit-count">{candidates.length} / {markets.length} SCANNED</span>
         {streak > 0 && <span class="cockpit-streak">🔥 {streak} STREAK</span>}
       </div>
@@ -780,15 +779,75 @@ function DecisionHero({
 
       <div class="cockpit-stake">NEXT STAKE <b>{fmtMoney(stake, currency)}</b></div>
 
-      {thoughts.length > 0 && (
-        <div class="cockpit-thought">
-          <div class="cockpit-thought-head">BOT THINKING</div>
-          {thoughts.map((l, i) => (
-            <div class="cockpit-thought-line" key={i}>
-              <span class="t-time">{new Date(l.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-              {l.message}
-            </div>
-          ))}
+      <BarrierPicker settings={settings} />
+    </div>
+  );
+}
+
+/* ---------------- barrier picker ---------------- */
+
+function BarrierPicker({ settings }: { settings: Settings | null }): JSX.Element {
+  const isConservative = (settings?.strategy_mode ?? 'conservative') === 'conservative';
+  const raw = settings?.barrier_preference;
+  const mode: 'auto' | 'over' | 'under' =
+    raw === 'over' || raw?.startsWith('over') ? 'over' : raw === 'under' || raw?.startsWith('under') ? 'under' : 'auto';
+  const [draft, setDraft] = useState(String(settings?.barrier_number ?? (mode === 'under' ? 9 : 0)));
+
+  const commit = (m: 'auto' | 'over' | 'under', n: number) => {
+    let barrier = n;
+    if (m === 'over') barrier = Math.round(Math.max(0, Math.min(8, n)));
+    else if (m === 'under') barrier = Math.round(Math.max(1, Math.min(9, n)));
+    else barrier = 0;
+    if (isConservative && m !== 'auto') barrier = m === 'under' ? 9 : 0;
+    void updateSettings({ barrier_preference: m, barrier_number: barrier });
+    setDraft(String(barrier));
+  };
+
+  const canEditNumber = !isConservative && mode !== 'auto';
+  const guard = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+  };
+  const clampDraft = () => {
+    const parsed = Math.round(Number(draft));
+    const max = mode === 'over' ? 8 : 9;
+    const min = mode === 'over' ? 0 : 1;
+    commit(mode, Number.isFinite(parsed) ? parsed : min);
+  };
+
+  return (
+    <div class="barrier-pick">
+      <span class="barrier-pick-label">BET ON</span>
+      <div class="barrier-seg">
+        <button class={`bseg${mode === 'auto' ? ' active' : ''}`} onClick={() => commit('auto', 0)}>
+          Auto
+        </button>
+        <button class={`bseg over${mode === 'over' ? ' active' : ''}`} onClick={() => commit('over', isConservative ? 0 : settings?.barrier_number ?? 0)}>
+          Over
+        </button>
+        <button class={`bseg under${mode === 'under' ? ' active' : ''}`} onClick={() => commit('under', isConservative ? 9 : settings?.barrier_number ?? 9)}>
+          Under
+        </button>
+      </div>
+      {mode !== 'auto' && (
+        <div class="barrier-num">
+          {canEditNumber ? (
+            <>
+              <button class="bstep" onClick={() => commit(mode, (settings?.barrier_number ?? 0) - 1)}>−</button>
+              <input
+                class="bnum"
+                type="number"
+                value={isConservative ? (mode === 'under' ? 9 : 0) : draft}
+                disabled={isConservative}
+                onInput={(e) => setDraft((e.target as HTMLInputElement).value)}
+                onBlur={clampDraft}
+                onKeyDown={guard}
+              />
+              <button class="bstep" onClick={() => commit(mode, (settings?.barrier_number ?? 0) + 1)}>+</button>
+            </>
+          ) : (
+            <span class="bnum-locked">{mode === 'under' ? '9' : '0'}</span>
+          )}
+          {isConservative && <span class="barrier-safe">SAFE LOCK — OVER 0 / UNDER 9 ONLY</span>}
         </div>
       )}
     </div>

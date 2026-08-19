@@ -74,7 +74,7 @@ export function riskCheck(params: {
   }
 
   // Cycle-limit rails are only active while recovering debt.
-  if (context.strategy !== 'conservative' && context.debt > 0.005) {
+  if (context.debt > 0.005) {
     if (context.cycleStake + stake > settings.max_recovery_exposure) {
       return { ok: false, reason: `recovery exposure cap (${settings.max_recovery_exposure}) would be exceeded` };
     }
@@ -98,7 +98,8 @@ export function riskCheck(params: {
  * accumulates the lost amount as debt; wins pay the debt down. The bot only
  * returns to base once the whole debt is cleared.
  *
- * - conservative: flat bets only, never holds debt (streak still tracks losses).
+ * - conservative: flat ~90% bets (Over 0 / Under 9); on a loss it recovers
+ *   the lost amount the same way martingale does.
  * - martingale / boosted_martingale: a win should clear the whole debt.
  * - chase: a win clears the amortized chunk and keeps hunting until debt is 0.
  */
@@ -109,19 +110,8 @@ export function applyOutcome(
   balance?: number,
 ): { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number } {
   const cur = getRecovery();
-  const strategy: StrategyMode =
-    settings.strategy_mode === 'martingale' ||
-    settings.strategy_mode === 'boosted_martingale' ||
-    settings.strategy_mode === 'chase'
-      ? settings.strategy_mode
-      : 'conservative';
   const peakBalance =
     balance != null && balance > 0 ? Math.max(cur.peakBalance || balance, balance) : cur.peakBalance;
-
-  if (strategy === 'conservative') {
-    if (won) return { mode: 'base', streak: 0, debt: 0, attempts: 0, cycleStake: 0, peakBalance };
-    return { mode: 'base', streak: cur.streak + 1, debt: 0, attempts: 0, cycleStake: 0, peakBalance };
-  }
 
   if (won) {
     const debt = cur.debt - Math.max(0, profit);

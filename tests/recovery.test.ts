@@ -50,11 +50,11 @@ test('base state (no debt) uses base stake and preferred barrier for every strat
   }
 });
 
-test('conservative ignores the debt and keeps betting flat', () => {
+test('conservative recovers the lost amount with one win, not flat bets', () => {
   const d = planRecovery(ladder(), ctx({ strategy: 'conservative', mode: 'recovering', streak: 4, debt: 6 }), pref);
-  assert.equal(d.reason, 'base');
-  assert.equal(d.stake, 1);
-  assert.equal(d.barrier, 1);
+  assert.equal(d.reason, 'conservative');
+  assert.equal(d.barrier, 3);
+  assert.ok(Math.abs(d.stake - 6 / 0.63) < 1e-6, `stake ${d.stake}`);
 });
 
 test('martingale clears the whole debt on one winning bet', () => {

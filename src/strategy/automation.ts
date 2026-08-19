@@ -7,7 +7,7 @@ import { planRecovery } from '../strategy/recovery.ts';
 import { pickSignal } from '../strategy/signal.ts';
 import { applyOutcome, buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import type { Direction } from '../core/digitMath.ts';
-import type { TradeRow } from '../db/store.ts';
+import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
   getPendingTrades,
   getRecovery,
@@ -44,6 +44,35 @@ type RecoveryStake = RecoveryDecision & { market: string };
 
 function recoveryHold(): RecoveryStake {
   return { stake: 0, direction: 'over', barrier: 1, reason: 'base', estWin: 0, payout: 0, holds: true, market: '' };
+}
+
+/**
+ * Resolve the user's barrier preference into the concrete set of
+ * (direction, barrier) contracts the strategy may quote and buy.
+ *
+ * - 'auto': every scanned barrier is eligible. Conservative is the exception:
+ *   it never plays anything but the safe extremes (Over 0 / Under 9).
+ * - 'over' / 'under': only that side is played, at the configured barrier.
+ *   Conservative still locks to the safe extreme for that side (0 for Over,
+ *   9 for Under).
+ */
+function barrierAllowed(settings: SettingsRow): Array<{ direction: Direction; barrier: number }> | null {
+  const raw = settings.barrier_preference;
+  const mode: 'auto' | 'over' | 'under' =
+    raw === 'over' || raw.startsWith('over') ? 'over' : raw === 'under' || raw.startsWith('under') ? 'under' : 'auto';
+  const barrier = settings.barrier_number ?? (mode === 'under' ? 9 : 0);
+
+  if (settings.strategy_mode === 'conservative') {
+    if (mode === 'over') return [{ direction: 'over', barrier: 0 }];
+    if (mode === 'under') return [{ direction: 'under', barrier: 9 }];
+    return [
+      { direction: 'over', barrier: 0 },
+      { direction: 'under', barrier: 9 },
+    ];
+  }
+  if (mode === 'over') return [{ direction: 'over', barrier: Math.max(0, Math.min(8, Math.trunc(barrier))) }];
+  if (mode === 'under') return [{ direction: 'under', barrier: Math.max(1, Math.min(9, Math.trunc(barrier))) }];
+  return null;
 }
 
 export class Automation {
@@ -190,10 +219,16 @@ export class Automation {
     }
 
     this.phase = 'scanning';
-    const signal = pickSignal(this.registry, 0.35, settings.min_edge, (symbol, count) =>
-      lastDigitEvents(symbol, count)
-        .reverse()
-        .map((e) => e.digit),
+    const signal = pickSignal(
+      this.registry,
+      0.35,
+      settings.min_edge,
+      (symbol, count) =>
+        lastDigitEvents(symbol, count)
+          .reverse()
+          .map((e) => e.digit),
+      undefined,
+      barrierAllowed(settings),
     );
     if (signal.holds) {
       this.emit({ type: HOLD, ts: Date.now(), reason: signal.reason });
@@ -284,7 +319,7 @@ export class Automation {
       }
     }
 
-    const recovering = ctx.strategy !== 'conservative' && ctx.debt > 0.005;
+    const recovering = ctx.debt > 0.005;
     let decision: RecoveryStake = recoveryHold();
     if (recovering) {
       const ladder: LadderOption[] = quotes.map((o) => ({

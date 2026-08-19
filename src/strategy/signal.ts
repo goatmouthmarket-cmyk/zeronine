@@ -78,6 +78,7 @@ export function pickSignal(
   minEdge: number,
   digits: DigitProvider,
   maxCandidates = 5,
+  allowed?: Array<{ direction: Direction; barrier: number }> | null,
 ): SignalPick {
   const all: SignalCandidate[] = [];
   for (const snap of registry.allSnapshots()) {
@@ -86,6 +87,7 @@ export function pickSignal(
     const scan = scanMarket(snap.symbol, snap.display, history.length ? history : snap.recentDigits);
     for (const f of scan.features) {
       if (f.estimatedWin < minWin) continue;
+      if (allowed && !allowed.some((a) => a.direction === f.direction && a.barrier === f.barrier)) continue;
       all.push(toCandidate(snap.symbol, snap.display, f));
     }
   }

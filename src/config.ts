@@ -24,6 +24,7 @@ export interface AppConfig {
   minEdge: number;
   minRecoveryWinRate: number;
   barrierPreference: string;
+  barrierNumber: number;
   strategyMode: string;
   strategyMultiplier: number;
   recoveryBuffer: number;
@@ -86,7 +87,8 @@ export function loadConfig(): AppConfig {
     dailyLossLimit: num('DAILY_LOSS_LIMIT', 100),
     minEdge: num('MIN_EDGE', 0.01),
     minRecoveryWinRate: num('MIN_RECOVERY_WIN_RATE', 0.3),
-    barrierPreference: process.env.BARRIER_PREFERENCE || 'over1',
+    barrierPreference: process.env.BARRIER_PREFERENCE || 'auto',
+    barrierNumber: num('BARRIER_NUMBER', 0),
     strategyMode: process.env.STRATEGY_MODE || 'conservative',
     strategyMultiplier: num('STRATEGY_MULTIPLIER', 3),
     recoveryBuffer: num('RECOVERY_BUFFER', 0.5),
