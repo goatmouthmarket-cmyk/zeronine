@@ -133,6 +133,13 @@ const ICON_PATHS: Record<string, JSX.Element> = {
       <path d="M19 12H9" />
     </>
   ),
+  flame: (
+    <>
+      <path d="M12 3c1 2.5 3 3.5 3 6a3 3 0 0 1-6 0c0-1.5.7-2.3 1.3-3.4C9.9 4.8 10.4 3.6 12 3Z" />
+      <path d="M12 4.5C13.5 6 15 7.8 15 10.2a3.6 3.6 0 0 1-7.2 0C7.8 8 9.4 6.2 12 4.5Z" />
+      <path d="M10.6 15.8c-.4.9.1 1.9 1 2.2.5.2 1 0 1.3-.4" />
+    </>
+  ),
 };
 
 function Icon({
@@ -384,7 +391,12 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
       <div class="dashboard">
         <div class="dash-main">
           <section class="trade-card">
-            {currentStreak > 0 && <span class="card-streak">🔥 {currentStreak} STREAK</span>}
+            {currentStreak > 0 && (
+              <span class="card-streak streak-up" key={currentStreak}>
+                <Icon name="flame" size={13} strokeWidth={1.8} />
+                {currentStreak} STREAK
+              </span>
+            )}
             <DecisionHero
               markets={s.markets}
               candidates={candidates}
