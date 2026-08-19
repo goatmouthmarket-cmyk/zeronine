@@ -540,48 +540,6 @@ button {
     color: var(--green);
 }
 
-/* ---- level / xp ---- */
-
-.xp-bar {
-    margin-top: 12px;
-
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.xp-level {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--purple-light);
-    white-space: nowrap;
-}
-
-.xp-track {
-    flex: 1;
-    height: 6px;
-    border-radius: 999px;
-    background: var(--surface-3);
-    overflow: hidden;
-}
-
-.xp-fill {
-    display: block;
-    height: 100%;
-    border-radius: 999px;
-    background: linear-gradient(90deg, var(--purple), var(--pink));
-
-    transition: width .5s ease;
-}
-
-.xp-count {
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
-
 /* ---- reward toast ---- */
 
 .reward-toast {

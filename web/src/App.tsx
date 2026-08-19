@@ -306,12 +306,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     return streak;
   })();
 
-  const levelInfo = (() => {
-    const level = Math.floor(winCount / 10) + 1;
-    const inLevel = winCount % 10;
-    return { level, inLevel, pct: (inLevel / 10) * 100 };
-  })();
-
   const [reward, setReward] = useState<{ id: number; text: string } | null>(null);
   const lastSeenTradeRef = useRef<number | null>(null);
   useEffect(() => {
@@ -425,12 +419,10 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                   <span>Synthetic Index</span>
                 </div>
               </div>
-              {currentStreak > 0 && (
-                <div class="streak-chip">
+              <div class="streak-chip">
                   <span class="fire">♨</span>
                   <span>{currentStreak} STREAK</span>
                 </div>
-              )}
             </div>
 
 <ScannerHero
@@ -465,14 +457,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                 {manualMsg && <div class="manual-msg">{manualMsg}</div>}
               </div>
             )}
-
-            <div class="xp-bar">
-              <span class="xp-level">Lv {levelInfo.level}</span>
-              <span class="xp-track">
-                <span class="xp-fill" style={{ width: `${levelInfo.pct}%` }}></span>
-              </span>
-              <span class="xp-count">{levelInfo.inLevel}/10 XP</span>
-            </div>
 
             {startError && <div class="bot-error">{startError}</div>}
 
