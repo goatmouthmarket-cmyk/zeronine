@@ -75,6 +75,25 @@ function barrierAllowed(settings: SettingsRow): Array<{ direction: Direction; ba
   return null;
 }
 
+/**
+ * How easily the bot pulls the trigger.
+ * - 'rapid': lower probability floor and half the edge bar — fires on thinner
+ *   edges, so more bets land. Higher whipsaw risk.
+ * - 'balanced': stock gates.
+ * - 'strict': higher probability floor and double the edge bar — fewer, higher
+ *   confidence trades.
+ */
+function modeGates(settings: SettingsRow): { minWin: number; minEdge: number } {
+  switch (settings.bot_mode) {
+    case 'rapid':
+      return { minWin: 0.3, minEdge: Math.max(0.003, settings.min_edge * 0.5) };
+    case 'strict':
+      return { minWin: 0.4, minEdge: settings.min_edge * 2 };
+    default:
+      return { minWin: 0.35, minEdge: settings.min_edge };
+  }
+}
+
 export class Automation {
   private running = false;
   private disposed = false;
@@ -239,10 +258,11 @@ export class Automation {
     }
 
     this.phase = 'scanning';
+    const { minWin, minEdge } = modeGates(settings);
     const signal = pickSignal(
       this.registry,
-      0.35,
-      settings.min_edge,
+      minWin,
+      minEdge,
       (symbol, count) =>
         lastDigitEvents(symbol, count)
           .reverse()
@@ -380,7 +400,7 @@ export class Automation {
     } else {
       // Base bet: only the candidate with a real positive edge qualifies.
       const eligible = quotes
-        .filter((o) => o.estWin >= 0.35 && o.realEdge >= settings.min_edge)
+        .filter((o) => o.estWin >= minWin && o.realEdge >= minEdge)
         .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
       if (eligible.length === 0) {
         this.emit({ type: HOLD, ts: Date.now(), reason: 'no positive live edge after quote' });

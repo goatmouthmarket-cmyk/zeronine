@@ -42,6 +42,7 @@ export interface Settings {
   barrier_preference: string;
   barrier_number: number;
   strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
+  bot_mode: 'rapid' | 'balanced' | 'strict';
   strategy_multiplier: number;
   recovery_buffer: number;
   chase_amortize: number;

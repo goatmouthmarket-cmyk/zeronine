@@ -60,6 +60,7 @@ export interface SettingsRow {
   barrier_preference: string;
   barrier_number: number;
   strategy_mode: string;
+  bot_mode: string;
   strategy_multiplier: number;
   recovery_buffer: number;
   chase_amortize: number;
@@ -201,6 +202,7 @@ function migrate(d: DatabaseSync): void {
       barrier_preference TEXT,
       barrier_number REAL,
       strategy_mode TEXT,
+      bot_mode TEXT,
       strategy_multiplier REAL,
       recovery_buffer REAL,
       chase_amortize REAL,
@@ -240,6 +242,7 @@ function migrate(d: DatabaseSync): void {
   if (!settingsCols.has('max_recovery_debt')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_debt REAL`);
   if (!settingsCols.has('max_recovery_exposure')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_exposure REAL`);
   if (!settingsCols.has('max_drawdown_pct')) d.exec(`ALTER TABLE settings ADD COLUMN max_drawdown_pct REAL`);
+  if (!settingsCols.has('bot_mode')) d.exec(`ALTER TABLE settings ADD COLUMN bot_mode TEXT DEFAULT 'balanced'`);
   void settingsCols;
 
   const recoveryCols = new Set(
@@ -265,12 +268,12 @@ INSERT OR IGNORE INTO recovery_state (id, mode, streak, lost, debt, attempts, cy
       VALUES (1, 'base', 0, 0, 0, 0, 0, 0, 0, 0);
     INSERT OR IGNORE INTO settings (id, base_stake, max_stake, martingale_steps,
       max_consecutive_losses, daily_loss_limit, min_edge, min_recovery_win, barrier_preference,
-      barrier_number, strategy_mode, strategy_multiplier, recovery_buffer, chase_amortize,
+      barrier_number, strategy_mode, bot_mode, strategy_multiplier, recovery_buffer, chase_amortize,
       max_recovery_debt, max_recovery_exposure, max_drawdown_pct)
       VALUES (1, ${config.baseStake}, ${config.maxStake}, ${config.martingaleSteps},
         ${config.maxConsecutiveLosses}, ${config.dailyLossLimit}, ${config.minEdge},
         ${config.minRecoveryWinRate}, '${config.barrierPreference}', ${config.barrierNumber},
-        '${config.strategyMode}',
+        '${config.strategyMode}', '${config.botMode}',
         ${config.strategyMultiplier}, ${config.recoveryBuffer}, ${config.chaseAmortize},
         ${config.maxRecoveryDebt}, ${config.maxRecoveryExposure},
         ${config.maxDrawdownPct});
@@ -318,6 +321,7 @@ export function getSettings(): SettingsRow {
     barrier_preference,
     barrier_number,
     strategy_mode,
+    bot_mode: ['rapid', 'balanced', 'strict'].includes(String(row.bot_mode)) ? String(row.bot_mode) : 'balanced',
     strategy_multiplier: Number(row.strategy_multiplier ?? 3),
     recovery_buffer: Number(row.recovery_buffer ?? 0.5),
     chase_amortize: Number(row.chase_amortize ?? 0.35),
@@ -334,7 +338,7 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
     .prepare(
       `UPDATE settings SET base_stake=?, max_stake=?, martingale_steps=?, max_consecutive_losses=?,
        daily_loss_limit=?, min_edge=?, min_recovery_win=?, barrier_preference=?, barrier_number=?,
-       strategy_mode=?,
+       strategy_mode=?, bot_mode=?,
        strategy_multiplier=?, recovery_buffer=?, chase_amortize=?, max_recovery_debt=?,
        max_recovery_exposure=?, max_drawdown_pct=? WHERE id=1`,
     )
@@ -349,6 +353,7 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       next.barrier_preference,
       next.barrier_number,
       next.strategy_mode,
+      next.bot_mode,
       next.strategy_multiplier,
       next.recovery_buffer,
       next.chase_amortize,

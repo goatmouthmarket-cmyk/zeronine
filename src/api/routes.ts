@@ -107,6 +107,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     for (const [k, v] of Object.entries(body)) {
       if (k === 'barrier_preference' && typeof v === 'string') patch[k] = v;
       else if (k === 'strategy_mode' && typeof v === 'string') patch[k] = v;
+      else if (k === 'bot_mode' && (v === 'rapid' || v === 'balanced' || v === 'strict')) patch[k] = v;
       else if (numeric.includes(k) && typeof v === 'number' && Number.isFinite(v)) patch[k] = v;
     }
     return updateSettings(patch);

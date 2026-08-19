@@ -65,6 +65,21 @@ const STRATEGY_META: Record<Settings['strategy_mode'], { label: string; hint: st
   },
 };
 
+const MODE_META: Record<Settings['bot_mode'], { label: string; hint: string }> = {
+  rapid: {
+    label: 'Rapid',
+    hint: 'Fires on thinner edges — more bets, more often. Expect more volatility.',
+  },
+  balanced: {
+    label: 'Balanced',
+    hint: 'Default: only bets when the edge clearly clears the payout.',
+  },
+  strict: {
+    label: 'Strict',
+    hint: 'Waits for a wide edge — fewer trades, each with a big margin.',
+  },
+};
+
 function useBotCooldown(): number {
   const s = useStore();
   const [left, setLeft] = useState(0);
@@ -802,6 +817,7 @@ function BotPage(): JSX.Element {
   const [stakeText, setStakeText] = useState(String(s.settings?.base_stake ?? 1));
   const [maxTradesText, setMaxTradesText] = useState('0');
   const [strategy, setStrategy] = useState<Settings['strategy_mode']>(s.settings?.strategy_mode ?? 'conservative');
+  const [mode, setMode] = useState<Settings['bot_mode']>(s.settings?.bot_mode ?? 'balanced');
   const [error, setError] = useState('');
   const cooldownLeft = useBotCooldown();
   const automation = s.automation?.running ?? false;
@@ -815,6 +831,11 @@ function BotPage(): JSX.Element {
   const pickStrategy = (m: Settings['strategy_mode']) => {
     setStrategy(m);
     void updateSettings({ strategy_mode: m });
+  };
+
+  const pickMode = (m: Settings['bot_mode']) => {
+    setMode(m);
+    void updateSettings({ bot_mode: m });
   };
 
   const toggleBot = async () => {
@@ -869,6 +890,22 @@ function BotPage(): JSX.Element {
             value={stakeText}
             onInput={(e) => persistStake((e.target as HTMLInputElement).value)}
           />
+        </div>
+
+        <div class="set-group">
+          <div class="set-label-top">Mode</div>
+          <div class="seg">
+            {(Object.keys(MODE_META) as Settings['bot_mode'][]).map((key) => (
+              <button
+                key={key}
+                class={`seg-btn${mode === key ? ' active' : ''}`}
+                onClick={() => pickMode(key)}
+              >
+                {MODE_META[key].label}
+              </button>
+            ))}
+          </div>
+          <div class="set-hint">{MODE_META[mode].hint}</div>
         </div>
 
         <div class="set-group">

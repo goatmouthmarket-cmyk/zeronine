@@ -26,6 +26,7 @@ export interface AppConfig {
   barrierPreference: string;
   barrierNumber: number;
   strategyMode: string;
+  botMode: string;
   strategyMultiplier: number;
   recoveryBuffer: number;
   chaseAmortize: number;
@@ -90,6 +91,7 @@ export function loadConfig(): AppConfig {
     barrierPreference: process.env.BARRIER_PREFERENCE || 'auto',
     barrierNumber: num('BARRIER_NUMBER', 0),
     strategyMode: process.env.STRATEGY_MODE || 'conservative',
+    botMode: process.env.BOT_MODE || 'balanced',
     strategyMultiplier: num('STRATEGY_MULTIPLIER', 3),
     recoveryBuffer: num('RECOVERY_BUFFER', 0.5),
     chaseAmortize: num('CHASE_AMORTIZE', 0.35),
