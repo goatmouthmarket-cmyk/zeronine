@@ -689,30 +689,12 @@ function ScannerHero({
   decision?: Decision;
   holdReason: string | null;
 }): JSX.Element {
-  const [pulseDigit, setPulseDigit] = useState(-1);
-  const lastDigitRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const d = market?.lastDigit ?? -1;
-    if (d >= 0 && lastDigitRef.current !== d) {
-      lastDigitRef.current = d;
-      setPulseDigit(d);
-      const t = window.setTimeout(() => setPulseDigit(-1), 520);
-      return () => window.clearTimeout(t);
-    }
-    if (lastDigitRef.current === null) lastDigitRef.current = d;
-  }, [market?.lastDigit]);
-
   const counts = new Array(10).fill(0) as number[];
   for (const d of digits) {
     if (d >= 0 && d <= 9) counts[d] += 1;
   }
   const windowSize = digits.length;
   const pctOf = (i: number) => (windowSize > 0 ? Math.round((counts[i] / windowSize) * 100) : 0);
-
-  const ranked = Array.from({ length: 10 }, (_, i) => ({ i, n: counts[i] })).sort((a, b) => b.n - a.n);
-  const hotPurple = ranked[0] && ranked[0].n > 0 ? ranked[0].i : -1;
-  const hotPink = ranked[1] && ranked[1].n > 0 && ranked[1].n < ranked[0]?.n ? ranked[1].i : -1;
 
   const stateLabel = !automation
     ? 'BOT IDLE'
@@ -732,7 +714,6 @@ function ScannerHero({
   const targetLabel = target
     ? (markets.find((m) => m.symbol === target.market)?.display ?? target.market)
     : '';
-  const targetSub = target ? `${shortMarketName(targetLabel)} · ${target.market}` : '';
 
   return (
     <div class="scanner">
@@ -744,19 +725,7 @@ function ScannerHero({
 
       <div class="digit-grid">
         {Array.from({ length: 10 }, (_, i) => (
-          <div
-            key={i}
-            class={[
-              'digit-card',
-              pulseDigit === i ? 'pulse' : '',
-              hotPurple === i ? 'hot-purple' : '',
-              hotPink === i && hotPink !== hotPurple ? 'hot-pink' : '',
-              market?.lastDigit === i ? 'live' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            style={{ animationDelay: `-${i * 0.6}s` }}
-          >
+          <div key={i} class={`digit-card${market?.lastDigit === i ? ' live' : ''}`}>
             <span class="digit-number">{i}</span>
             <span class="digit-percent">{pctOf(i)}%</span>
           </div>
@@ -764,23 +733,13 @@ function ScannerHero({
       </div>
 
       {target && (
-        <div class={`target-lock${decision ? ' acquired' : ' locked'}`}>
-          <div class="target-icon">
-            <span class="ring one"></span>
-            <span class="ring two"></span>
-            <span class="ring three"></span>
-            <span class="cross horizontal"></span>
-            <span class="cross vertical"></span>
-            <span class="lock"></span>
-          </div>
-          <div class="target-copy">
-            <div class="target-name">{sideLabel(target.direction, target.barrier).toUpperCase()}</div>
-            <div class="target-score">{Math.round(target.estWin * 100)}%</div>
-            <div class={`target-status${decision ? ' acquired' : ''}`}>
-              {decision ? 'TARGET ACQUIRED' : 'TARGET LOCK'}
-            </div>
-            <div class="target-sub">{targetSub}</div>
-          </div>
+        <div class="target-strip">
+          <span class={`target-pill ${target.direction}`}>{sideLabel(target.direction, target.barrier)}</span>
+          <span class="target-pct">{Math.round(target.estWin * 100)}%</span>
+          <span class="target-mkt">{shortMarketName(targetLabel)}</span>
+          <span class={`target-state${decision ? ' acquired' : ''}`}>
+            {decision ? 'LOCKED' : 'TARGET'}
+          </span>
         </div>
       )}
     </div>
