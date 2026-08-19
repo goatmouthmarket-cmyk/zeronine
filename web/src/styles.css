@@ -1986,10 +1986,6 @@ button {
         z-index: 1;
     }
 
-    .view-home .dash-main .perf {
-        flex: none;
-    }
-
     .view-home .dash-main .chart-box {
         flex: 1 1 auto;
         min-height: 80px;
@@ -1997,15 +1993,7 @@ button {
         margin-top: 12px;
     }
 
-    /* desktop: recent activity above the markets */
-    .dash-side > .section:first-of-type {
-        order: 1;
-    }
-
-    .dash-side > .section:nth-of-type(2) {
-        order: 0;
-    }
-
+    /* desktop: recent activity then win/loss stats, in document order */
     .dashboard .section {
         margin-top: 0;
     }

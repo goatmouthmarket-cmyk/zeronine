@@ -483,6 +483,21 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               <span>{automation ? 'Stop Bot' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
             </button>
           </section>
+        </div>
+
+        <div class="dash-side">
+          <section class="section">
+            <div class="section-head">
+              <div class="section-title">Recent Activity</div>
+              <button class="section-action" onClick={() => onNavigate('history')}>View All</button>
+            </div>
+            <div class="activity">
+              {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
+              {s.trades.slice(0, 5).map((t) => (
+                <ActivityRow key={t.id} trade={t} />
+              ))}
+            </div>
+          </section>
 
           <section class="perf">
             <div class="perf-cell win">
@@ -500,21 +515,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             <div class={`perf-cell profit${profit >= 0 ? '' : ' negative'}`}>
               <div class="perf-value">{fmtSigned(profit, s.session?.currency)}</div>
               <div class="perf-label">Profit</div>
-            </div>
-          </section>
-        </div>
-
-        <div class="dash-side">
-          <section class="section">
-            <div class="section-head">
-              <div class="section-title">Recent Activity</div>
-              <button class="section-action" onClick={() => onNavigate('history')}>View All</button>
-            </div>
-            <div class="activity">
-              {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
-              {s.trades.slice(0, 5).map((t) => (
-                <ActivityRow key={t.id} trade={t} />
-              ))}
             </div>
           </section>
         </div>
