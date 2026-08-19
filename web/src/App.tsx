@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, SessionInfo, Recovery } from './store';
+import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, SessionInfo } from './store';
 import {
   useStore,
   connectPat,
@@ -400,19 +400,18 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
       <div class="dashboard">
         <div class="dash-main">
           <section class="trade-card">
+            {currentStreak > 0 && <span class="card-streak">🔥 {currentStreak} STREAK</span>}
             <DecisionHero
               markets={s.markets}
               candidates={candidates}
               quotes={s.quotes}
               decision={decision}
-              streak={currentStreak}
               automation={automation}
               phase={s.automation?.phase}
               holdReason={automation && !decision ? (s.hold?.reason ?? null) : null}
               contract={s.contract}
               session={s.session}
               settings={s.settings}
-              recovery={s.recovery}
               trades={s.trades}
             />
 
@@ -639,28 +638,24 @@ function DecisionHero({
   candidates,
   quotes,
   decision,
-  streak,
   automation,
   phase,
   holdReason,
   contract,
   session,
   settings,
-  recovery,
   trades,
 }: {
   markets: Market[];
   candidates: SignalCandidate[];
   quotes: Record<string, QuoteEvt>;
   decision?: Decision;
-  streak: number;
   automation: boolean;
   phase?: string;
   holdReason: string | null;
   contract: ContractEvt | null;
   session: SessionInfo | null;
   settings: Settings | null;
-  recovery: Recovery | null;
   trades: TradeRow[];
 }): JSX.Element {
   const best = resolveTarget(candidates, quotes, decision);
@@ -684,12 +679,6 @@ function DecisionHero({
           ? { label: 'DEFENSE', tone: 'bad' }
           : { label: 'LOCKED', tone: 'dead' };
 
-  const stake = decision?.stake ?? recovery?.cycleStake ?? settings?.base_stake ?? 0;
-
-  const signalOk = !!best;
-  const riskOk = stake > 0 && cushion >= stake * 3;
-  const bankOk = balance > floor;
-
   const status = !automation
     ? { label: 'BOT IDLE', tone: 'idle' }
     : decision
@@ -709,10 +698,6 @@ function DecisionHero({
 
   return (
     <div class="cockpit">
-      <div class="cockpit-top">
-        {streak > 0 && <span class="cockpit-streak">🔥 {streak} STREAK</span>}
-      </div>
-
       <div class="cockpit-market">{bestLabel}</div>
 
       <div class="cockpit-pick">
@@ -756,14 +741,6 @@ function DecisionHero({
           <span><em>Protected</em><b>{fmtMoney(Math.min(balance, Math.max(0, floor)), currency)}</b></span>
         </div>
       </div>
-
-      <div class="cockpit-checks">
-        <span class={`check${signalOk ? ' ok' : ''}`}>{signalOk ? '✓' : '○'} SIGNAL</span>
-        <span class={`check${riskOk ? ' ok' : ''}`}>{riskOk ? '✓' : '○'} RISK</span>
-        <span class={`check${bankOk ? ' ok' : ''}`}>{bankOk ? '✓' : '○'} BANKROLL</span>
-      </div>
-
-      <div class="cockpit-stake">NEXT STAKE <b>{fmtMoney(stake, currency)}</b></div>
     </div>
   );
 }
