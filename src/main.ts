@@ -69,6 +69,8 @@ async function main(): Promise<void> {
 
   await feed.connect();
 
+  automation.watch();
+
   const reconnectPrivate = async (): Promise<void> => {
     const session = getSession();
     if (!session || client.isConnected) return;
@@ -93,7 +95,7 @@ async function main(): Promise<void> {
     console.info(`[server] ${signal} — shutting down`);
     clearInterval(pruneTimer);
     clearInterval(reconnectTimer);
-    automation.stop('server shutdown');
+    automation.dispose();
     client.disconnect();
     feed.stop();
     await app.close();

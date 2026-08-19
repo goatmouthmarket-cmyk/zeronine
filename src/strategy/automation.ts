@@ -77,7 +77,7 @@ function barrierAllowed(settings: SettingsRow): Array<{ direction: Direction; ba
 
 export class Automation {
   private running = false;
-  private stopped = true;
+  private disposed = false;
   private timer: NodeJS.Timeout | null = null;
   private busiest = 0;
   private phase = 'idle';
@@ -116,7 +116,6 @@ export class Automation {
 
   start(opts: { maxTrades?: number } = {}): void {
     if (this.running) return;
-    this.stopped = false;
     this.running = true;
     this.runTarget = Math.max(0, Math.floor(opts.maxTrades ?? 0) || 0);
     this.runTrades = 0;
@@ -134,17 +133,34 @@ export class Automation {
   }
 
   stop(reason = 'stopped'): void {
-    this.stopped = true;
+    if (!this.running) return;
     this.running = false;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    this.phase = 'idle';
+    this.phase = 'standby';
     setAutomation({ running: 0, stopped_at: Date.now(), reason, trades_done: this.runTrades });
     this.emit({ type: 'status', ts: Date.now(), state: this.state(), reason });
   }
 
+  /**
+   * Watch mode: keep the scanner alive even when the bot is stopped so the
+   * hero always shows a fresh entry (useful for manual bets). Scan + quote
+   * run on every cycle, but purchases only happen while `this.running`.
+   */
+  watch(): void {
+    if (this.timer) return;
+    this.disposed = false;
+    this.schedule(50);
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.running = false;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    setAutomation({ running: 0, stopped_at: Date.now(), reason: 'server shutdown', trades_done: this.runTrades });
+  }
+
   private schedule(delay: number): void {
-    if (this.stopped) return;
+    if (this.disposed) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
@@ -157,7 +173,7 @@ export class Automation {
   }
 
   private async loop(): Promise<void> {
-    if (this.stopped) return;
+    if (this.disposed) return;
     let delay = 600;
     try {
       const result = await this.cycle();
@@ -202,20 +218,24 @@ export class Automation {
     const rec = getRecovery();
     const ctx = buildRecoveryContext(settings);
 
-    // Daily loss guard
-    const guard = riskCheck({
-      stake: settings.max_stake,
-      settings,
-      balance: session.balance,
-      context: ctx,
-      lastTradeAt: 0,
-      tradeGapMs: 0,
-      now: Date.now(),
-    });
-    if (!guard.ok && (guard.reason.includes('daily loss') || guard.reason.includes('drawdown'))) {
-      this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
-      this.stop(guard.reason);
-      return 0;
+    // Betting-only guards. In watch mode (bot stopped) these would trip on a
+    // burnt daily limit and spin forever, so they only apply once trading.
+    if (this.running) {
+      // Daily loss guard
+      const guard = riskCheck({
+        stake: settings.max_stake,
+        settings,
+        balance: session.balance,
+        context: ctx,
+        lastTradeAt: 0,
+        tradeGapMs: 0,
+        now: Date.now(),
+      });
+      if (!guard.ok && (guard.reason.includes('daily loss') || guard.reason.includes('drawdown'))) {
+        this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
+        this.stop(guard.reason);
+        return 0;
+      }
     }
 
     this.phase = 'scanning';
@@ -285,6 +305,13 @@ export class Automation {
     if (quotes.length === 0) {
       this.emit({ type: HOLD, ts: Date.now(), reason: 'no live quotes available' });
       this.phase = 'waiting-quotes';
+      return 1500;
+    }
+
+    // Watch mode: bot is stopped but we still surface fresh signals so the
+    // hero always has a target for manual bets. Nothing is ever purchased here.
+    if (!this.running) {
+      this.phase = 'standby';
       return 1500;
     }
 
