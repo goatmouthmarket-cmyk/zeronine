@@ -41,7 +41,6 @@ export interface RecoveryContext {
   chaseAmortize: number;
   maxRecoveryDebt: number;
   maxRecoveryExposure: number;
-  maxRecoveryAttempts: number;
   maxDrawdownPct: number;
 }
 
@@ -98,9 +97,6 @@ export function planRecovery(
   // Cycle-level safety rails. These stop the run rather than trade through.
   if (ctx.debt >= ctx.maxRecoveryDebt) {
     return hold(ctx.strategy, `recovery debt cap (${ctx.maxRecoveryDebt}) reached`);
-  }
-  if (ctx.attempts >= ctx.maxRecoveryAttempts) {
-    return hold(ctx.strategy, `recovery attempt cap (${ctx.maxRecoveryAttempts}) reached`);
   }
   if (ctx.cycleStake + ctx.maxStake > ctx.maxRecoveryExposure) {
     return hold(ctx.strategy, `recovery exposure cap (${ctx.maxRecoveryExposure}) would be exceeded`);

@@ -100,7 +100,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       'chase_amortize',
       'max_recovery_debt',
       'max_recovery_exposure',
-      'max_recovery_attempts',
       'max_drawdown_pct',
     ];
     const patch: Record<string, unknown> = {};

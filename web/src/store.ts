@@ -46,7 +46,6 @@ export interface Settings {
   chase_amortize: number;
   max_recovery_debt: number;
   max_recovery_exposure: number;
-  max_recovery_attempts: number;
   max_drawdown_pct: number;
 }
 

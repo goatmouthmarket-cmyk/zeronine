@@ -30,7 +30,6 @@ export interface AppConfig {
   chaseAmortize: number;
   maxRecoveryDebt: number;
   maxRecoveryExposure: number;
-  maxRecoveryAttempts: number;
   maxDrawdownPct: number;
   allowedMarkets: string[];
   tradeGapMs: number;
@@ -94,7 +93,6 @@ export function loadConfig(): AppConfig {
     chaseAmortize: num('CHASE_AMORTIZE', 0.35),
     maxRecoveryDebt: num('MAX_RECOVERY_DEBT', 50),
     maxRecoveryExposure: num('MAX_RECOVERY_EXPOSURE', 100),
-    maxRecoveryAttempts: num('MAX_RECOVERY_ATTEMPTS', 15),
     maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 20),
     allowedMarkets: (process.env.ALLOWED_MARKETS || '')
       .split(',')

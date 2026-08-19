@@ -64,7 +64,6 @@ export interface SettingsRow {
   chase_amortize: number;
   max_recovery_debt: number;
   max_recovery_exposure: number;
-  max_recovery_attempts: number;
   max_drawdown_pct: number;
 }
 
@@ -205,7 +204,6 @@ function migrate(d: DatabaseSync): void {
       chase_amortize REAL,
       max_recovery_debt REAL,
       max_recovery_exposure REAL,
-      max_recovery_attempts INTEGER,
       max_drawdown_pct REAL
     );
     CREATE TABLE IF NOT EXISTS automation (
@@ -238,7 +236,6 @@ function migrate(d: DatabaseSync): void {
   if (!settingsCols.has('chase_amortize')) d.exec(`ALTER TABLE settings ADD COLUMN chase_amortize REAL`);
   if (!settingsCols.has('max_recovery_debt')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_debt REAL`);
   if (!settingsCols.has('max_recovery_exposure')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_exposure REAL`);
-  if (!settingsCols.has('max_recovery_attempts')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_attempts INTEGER`);
   if (!settingsCols.has('max_drawdown_pct')) d.exec(`ALTER TABLE settings ADD COLUMN max_drawdown_pct REAL`);
   void settingsCols;
 
@@ -266,12 +263,12 @@ INSERT OR IGNORE INTO recovery_state (id, mode, streak, lost, debt, attempts, cy
     INSERT OR IGNORE INTO settings (id, base_stake, max_stake, martingale_steps,
       max_consecutive_losses, daily_loss_limit, min_edge, min_recovery_win, barrier_preference,
       strategy_mode, strategy_multiplier, recovery_buffer, chase_amortize,
-      max_recovery_debt, max_recovery_exposure, max_recovery_attempts, max_drawdown_pct)
+      max_recovery_debt, max_recovery_exposure, max_drawdown_pct)
       VALUES (1, ${config.baseStake}, ${config.maxStake}, ${config.martingaleSteps},
         ${config.maxConsecutiveLosses}, ${config.dailyLossLimit}, ${config.minEdge},
         ${config.minRecoveryWinRate}, '${config.barrierPreference}', '${config.strategyMode}',
         ${config.strategyMultiplier}, ${config.recoveryBuffer}, ${config.chaseAmortize},
-        ${config.maxRecoveryDebt}, ${config.maxRecoveryExposure}, ${config.maxRecoveryAttempts},
+        ${config.maxRecoveryDebt}, ${config.maxRecoveryExposure},
         ${config.maxDrawdownPct});
     INSERT OR IGNORE INTO automation (id, running, armed_until, started_at, stopped_at, reason,
       target_trades, trades_done)
@@ -303,7 +300,6 @@ export function getSettings(): SettingsRow {
     chase_amortize: Number(row.chase_amortize ?? 0.35),
     max_recovery_debt: Number(row.max_recovery_debt ?? 50),
     max_recovery_exposure: Number(row.max_recovery_exposure ?? 100),
-    max_recovery_attempts: Number(row.max_recovery_attempts ?? 15),
     max_drawdown_pct: Number(row.max_drawdown_pct ?? 20),
   };
 }
@@ -316,7 +312,7 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       `UPDATE settings SET base_stake=?, max_stake=?, martingale_steps=?, max_consecutive_losses=?,
        daily_loss_limit=?, min_edge=?, min_recovery_win=?, barrier_preference=?, strategy_mode=?,
        strategy_multiplier=?, recovery_buffer=?, chase_amortize=?, max_recovery_debt=?,
-       max_recovery_exposure=?, max_recovery_attempts=?, max_drawdown_pct=? WHERE id=1`,
+       max_recovery_exposure=?, max_drawdown_pct=? WHERE id=1`,
     )
     .run(
       next.base_stake,
@@ -333,7 +329,6 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       next.chase_amortize,
       next.max_recovery_debt,
       next.max_recovery_exposure,
-      next.max_recovery_attempts,
       next.max_drawdown_pct,
     );
   return next;

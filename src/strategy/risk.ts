@@ -33,7 +33,6 @@ export function buildRecoveryContext(settings: SettingsRow): RecoveryContext {
     chaseAmortize: settings.chase_amortize,
     maxRecoveryDebt: settings.max_recovery_debt,
     maxRecoveryExposure: settings.max_recovery_exposure,
-    maxRecoveryAttempts: settings.max_recovery_attempts,
     maxDrawdownPct: settings.max_drawdown_pct,
   };
 }
@@ -81,9 +80,6 @@ export function riskCheck(params: {
     }
     if (context.debt >= settings.max_recovery_debt) {
       return { ok: false, reason: `recovery debt cap (${settings.max_recovery_debt}) reached` };
-    }
-    if (context.attempts >= settings.max_recovery_attempts) {
-      return { ok: false, reason: `recovery attempt cap (${settings.max_recovery_attempts}) reached` };
     }
   }
 
