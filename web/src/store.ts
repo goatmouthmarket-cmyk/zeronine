@@ -83,16 +83,30 @@ export interface SignalCandidate {
   market: string;
   direction: 'over' | 'under';
   barrier: number;
-  winRate: number;
+  estWin: number;
+  estPayout: number;
   edge: number;
-  reason?: string;
+  expectedROI: number;
+  consistency: number;
+  entropy: number;
+  momentum: number;
+  shortLongDeviation: number;
+  transitionProb: number;
+}
+
+export interface SignalPick {
+  candidates: SignalCandidate[];
+  holds: boolean;
+  reason: string;
 }
 
 export interface Decision {
+  market: string;
   direction: 'over' | 'under';
   barrier: number;
   stake: number;
   estWin: number;
+  payout?: number;
   reason: string;
 }
 
@@ -117,6 +131,7 @@ export interface QuoteEvt {
   ask?: number;
   payout?: number;
   estWin?: number;
+  realEdge?: number;
 }
 
 export interface ContractEvt {
@@ -137,8 +152,10 @@ export interface State {
   automation: AutomationState | null;
   trades: TradeRow[];
   selected: string | null;
-  signal: { signal: SignalCandidate; phase: string } | null;
+  signal: { signal: SignalPick; phase: string } | null;
+  quotes: Record<string, QuoteEvt>;
   quote: QuoteEvt | null;
+  digits: Record<string, number[]>;
   decision: { decision: Decision; streak: number; debt: number; attempts: number; cycleStake: number } | null;
   hold: { reason: string } | null;
   contract: ContractEvt | null;
@@ -157,7 +174,9 @@ const initial: State = {
   trades: [],
   selected: null,
   signal: null,
+  quotes: {},
   quote: null,
+  digits: {},
   decision: null,
   hold: null,
   contract: null,
@@ -207,11 +226,21 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
 
 function applyEvent(evt: Record<string, unknown>): void {
   const type = String(evt.type ?? '');
+
+  const seedDigits = (markets: Market[]): Record<string, number[]> => {
+    const out: Record<string, number[]> = {};
+    for (const m of markets) {
+      if (m.recentDigits.length) out[m.symbol] = m.recentDigits.slice(-1000);
+    }
+    return out;
+  };
+
   const patch: Partial<State> = {};
   switch (type) {
     case 'hello': {
       const markets = (evt.markets as Market[]) ?? [];
       patch.markets = markets;
+      patch.digits = seedDigits(markets);
       if (!patch.selected && markets.length) patch.selected = markets[0]?.symbol ?? null;
       break;
     }
@@ -246,6 +275,13 @@ function applyEvent(evt: Record<string, unknown>): void {
       }
       patch.markets = markets;
       if (!patch.selected) patch.selected = symbol;
+      const nd = m.lastDigit;
+      const hist = state.digits[symbol] ?? [];
+      if (nd >= 0 && m.recentDigits.length && hist.length === 0) {
+        patch.digits = { ...state.digits, [symbol]: m.recentDigits.slice(-1000) };
+      } else if (nd >= 0 && hist.length > 0 && hist[hist.length - 1] !== nd) {
+        patch.digits = { ...state.digits, [symbol]: [...hist, nd].slice(-1000) };
+      }
       break;
     }
     case 'session':
@@ -258,14 +294,29 @@ function applyEvent(evt: Record<string, unknown>): void {
       patch.automation = evt.state as AutomationState;
       if (evt.reason) pushLog('info', `automation: ${String(evt.reason)}`);
       break;
-    case 'signal':
-      patch.signal = { signal: evt.signal as SignalCandidate, phase: String(evt.phase ?? '') };
+    case 'signal': {
+      const raw = evt.signal as Partial<SignalPick> | null | undefined;
+      patch.signal = {
+        signal: {
+          candidates: Array.isArray(raw?.candidates) ? (raw.candidates as SignalCandidate[]) : [],
+          holds: Boolean(raw?.holds),
+          reason: String(raw?.reason ?? ''),
+        },
+        phase: String(evt.phase ?? ''),
+      };
+      patch.quotes = {};
       break;
-    case 'quote':
-      patch.quote = evt as QuoteEvt;
+    }
+    case 'quote': {
+      const q = evt as QuoteEvt;
+      patch.quote = q;
+      const key = [q.market, q.direction, q.barrier].join('|');
+      if (key && !key.includes('|undefined')) patch.quotes = { ...state.quotes, [key]: q };
       break;
+    }
     case 'quote_error':
       patch.quote = null;
+      patch.quotes = {};
       pushLog('warn', `quote error: ${String(evt.message ?? '')}`);
       break;
     case 'decision':
@@ -397,6 +448,13 @@ export async function bootstrap(): Promise<void> {
       settings: s.settings,
       automation: s.automation,
       trades: s.trades,
+      digits: (() => {
+        const out: Record<string, number[]> = {};
+        for (const m of s.markets) {
+          if (m.recentDigits.length) out[m.symbol] = m.recentDigits.slice(-1000);
+        }
+        return out;
+      })(),
       selected: s.selected ?? s.markets[0]?.symbol ?? null,
     });
   } catch (err) {
@@ -422,7 +480,7 @@ export async function oauthStart(): Promise<string> {
 
 export async function logout(): Promise<void> {
   await api('/api/auth/logout', { method: 'POST' });
-  set({ session: null, automation: null, signal: null, decision: null, hold: null, contract: null });
+  set({ session: null, automation: null, signal: null, quotes: {}, decision: null, hold: null, contract: null });
 }
 
 export async function startAutomation(opts?: {

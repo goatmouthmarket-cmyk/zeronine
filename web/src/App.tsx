@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings } from './store';
+import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision } from './store';
 import {
   useStore,
   connectPat,
@@ -293,33 +293,44 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const oddsText = odds ? odds.toFixed(2) : '—';
 
   const statusText = (() => {
-    if (!automation) return 'Bot stopped';
+    if (!automation) return 'Bot idle';
     if (s.hold?.reason) return s.hold.reason;
-    if (decision) return 'Waiting for result';
-    if (s.quote || s.signal) return 'Analyzing digits';
-    return 'Scanning market';
+    if (decision) return `${sideLabel(decision.direction, decision.barrier)} placed`;
+    return scannerPhaseLabel(s.automation?.phase);
   })();
 
-  const liveSignal = s.signal?.signal;
-  const prediction =
-    automation && liveSignal && liveSignal.winRate > 0
-      ? {
-          direction: liveSignal.direction,
-          winRate: liveSignal.winRate,
-          edge: liveSignal.edge,
-          reason: liveSignal.reason,
-          market: liveSignal.market,
-        }
-      : null;
-  const predPct = prediction ? Math.round(prediction.winRate * 100) : null;
-  const predMarker = prediction
-    ? Math.min(
-        96,
-        Math.max(4, prediction.direction === 'over' ? 50 + (prediction.winRate - 0.5) * 100 : 50 - (prediction.winRate - 0.5) * 100),
-      )
-    : 50;
-  const predReason = prediction?.reason ?? null;
-  const holdReason = automation && !prediction ? (s.hold?.reason ?? null) : null;
+  const candidates = s.signal?.signal.candidates ?? [];
+
+  const currentStreak = (() => {
+    let streak = 0;
+    for (const t of s.trades) {
+      if (t.status === 'lost' || t.status === 'error') break;
+      if (t.status === 'won') streak += 1;
+    }
+    return streak;
+  })();
+
+  const levelInfo = (() => {
+    const level = Math.floor(winCount / 10) + 1;
+    const inLevel = winCount % 10;
+    return { level, inLevel, pct: (inLevel / 10) * 100 };
+  })();
+
+  const [reward, setReward] = useState<{ id: number; text: string } | null>(null);
+  const lastSeenTradeRef = useRef<number | null>(null);
+  useEffect(() => {
+    const latest = s.trades[0];
+    if (!latest) {
+      lastSeenTradeRef.current = null;
+      return;
+    }
+    const isNewWin = latest.id !== lastSeenTradeRef.current && latest.status === 'won';
+    lastSeenTradeRef.current = latest.id;
+    if (!isNewWin) return;
+    setReward({ id: latest.id, text: `+10 XP · ${fmtSigned(latest.profit ?? 0, '$')}` });
+    const timer = window.setTimeout(() => setReward(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [s.trades]);
 
   const toggleBot = async () => {
     setStartError('');
@@ -418,36 +429,31 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                   <span>Synthetic Index</span>
                 </div>
               </div>
+              {currentStreak > 0 && (
+                <div class="streak-chip">
+                  <span>🔥</span>
+                  <span>{currentStreak}</span>
+                </div>
+              )}
             </div>
 
-            <div class="prediction">
-              <div class="prediction-head">
-                <span class="prediction-label">Prediction</span>
-                <span class={`prediction-value ${prediction ? prediction.direction : 'none'}`}>
-                  {prediction
-                    ? `${prediction.market && prediction.market !== market?.symbol ? `${shortMarketName(prediction.market)} · ` : ''}${prediction.direction === 'over' ? 'Over 0' : 'Under 9'} · ${predPct}%`
-                    : automation
-                      ? holdReason
-                        ? 'Scanning…'
-                        : 'Analyzing…'
-                      : 'Bot idle'}
-                </span>
-              </div>
-              <div class="prediction-track">
-                <span class="prediction-half under">Under 9</span>
-                <span class="prediction-rail">
-                  {prediction && (
-                    <span class={`prediction-marker ${prediction.direction}`} style={{ left: `${predMarker}%` }}></span>
-                  )}
-                </span>
-                <span class="prediction-half over">Over 0</span>
-              </div>
-              {(predReason || holdReason) && <div class="prediction-reason">{predReason ?? holdReason}</div>}
-            </div>
+            <ScannerHero
+              market={market}
+              candidates={candidates}
+              quotes={s.quotes}
+              digits={s.digits[market?.symbol ?? ''] ?? []}
+              automation={automation}
+              phase={s.automation?.phase}
+              decision={decision}
+              holdReason={automation && !decision ? (s.hold?.reason ?? null) : null}
+            />
 
-            <div class="chart-box">
-              <ChartCanvas market={market} />
-              <div class="tick-badge">{market?.lastQuote != null ? market.lastQuote.toFixed(2) : '--'}</div>
+            <div class="xp-bar">
+              <span class="xp-level">Lv {levelInfo.level}</span>
+              <span class="xp-track">
+                <span class="xp-fill" style={{ width: `${levelInfo.pct}%` }}></span>
+              </span>
+              <span class="xp-count">{levelInfo.inLevel}/10 XP</span>
             </div>
 
             <div class="side-selector">
@@ -525,6 +531,13 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
           </section>
         </div>
       </div>
+
+      {reward && (
+        <div class="reward-toast" key={reward.id}>
+          <span class="reward-spark">✦</span>
+          <span>{reward.text}</span>
+        </div>
+      )}
     </>
   );
 }
@@ -532,8 +545,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
 function TickerItem({ market, active }: { market: Market; active: boolean }): JSX.Element {
   const s = useStore();
   const digit = market.lastDigit >= 0 ? market.lastDigit : '–';
-  const liveSignal = s.signal?.signal;
-  const pred = liveSignal && liveSignal.market === market.symbol && liveSignal.winRate > 0 ? liveSignal : null;
+  const pred = (s.signal?.signal.candidates ?? []).find((c) => c.market === market.symbol);
   const trades = s.trades.filter((t) => t.market === market.symbol);
   const profit = trades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
 
@@ -548,7 +560,7 @@ function TickerItem({ market, active }: { market: Market; active: boolean }): JS
       </span>
       <span class="tick-quote">{market.lastQuote != null ? market.lastQuote.toFixed(2) : '--'}</span>
       <span class={`tick-pred${pred ? ` ${pred.direction}` : ' none'}`}>
-        {pred ? `${pred.direction === 'over' ? 'O' : 'U'}${Math.round(pred.winRate * 100)}%` : '—'}
+        {pred ? `${pred.direction === 'over' ? 'O' : 'U'}${Math.round(pred.estWin * 100)}%` : '—'}
       </span>
       <span class={`tick-pl${profit >= 0 ? ' pos' : ' neg'}`}>
         {trades.length ? fmtSigned(profit, '$') : '·'}
@@ -595,121 +607,241 @@ function ActivityRow({ trade }: { trade: TradeRow }): JSX.Element {
   );
 }
 
-/* ---------------- chart ---------------- */
+/* ---------------- market scanner hero ---------------- */
 
-function ChartCanvas({ market }: { market?: Market }): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const valuesRef = useRef<number[]>([]);
-  const lastQuote = market?.lastQuote;
-
-  useEffect(() => {
-    if (lastQuote == null) return;
-    const arr = valuesRef.current;
-    if (arr[arr.length - 1] !== lastQuote) {
-      valuesRef.current = [...arr.slice(-44), lastQuote];
-    }
-  }, [lastQuote]);
-
-  useEffect(() => {
-    drawChart(canvasRef.current, valuesRef.current);
-  }, [lastQuote]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    drawChart(canvas, valuesRef.current);
-
-    const onResize = () => drawChart(canvasRef.current, valuesRef.current);
-    window.addEventListener('resize', onResize);
-
-    let observer: ResizeObserver | undefined;
-    if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
-      observer = new ResizeObserver(() => drawChart(canvasRef.current, valuesRef.current));
-      observer.observe(canvas.parentElement);
-    }
-
-    return () => {
-      window.removeEventListener('resize', onResize);
-      observer?.disconnect();
-    };
-  }, []);
-
-  return <canvas ref={canvasRef}></canvas>;
+interface HeroTarget {
+  market: string;
+  direction: 'over' | 'under';
+  barrier: number;
+  estWin: number;
+  edge: number;
+  breakeven: number;
+  consistency: number;
+  momentum: number;
+  entropy: number;
+  shortLongDeviation: number;
+  from: 'decision' | 'candidate';
 }
 
-function drawChart(canvas: HTMLCanvasElement | null, chartValues: number[]): void {
-  if (!canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(rect.width * dpr);
-  canvas.height = Math.round(rect.height * dpr);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const width = rect.width;
-  const height = rect.height;
-  ctx.clearRect(0, 0, width, height);
-
-  const values = chartValues.length >= 2 ? chartValues : [0, 0];
-  const padding = 9;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-
-  ctx.strokeStyle = 'rgba(255,255,255,.045)';
-  ctx.lineWidth = 1;
-  for (let i = 1; i < 4; i++) {
-    const y = height * (i / 4);
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
+function scannerPhaseLabel(phase?: string): string {
+  switch (phase) {
+    case 'scanning':
+      return 'SCANNING DIGITS';
+    case 'waiting-edge':
+      return 'NO EDGE — KEEP SCANNING';
+    case 'quoting':
+    case 'waiting-quotes':
+      return 'CHECKING QUOTES';
+    case 'deciding':
+      return 'LOCKING TARGET';
+    case 'buying':
+      return 'PLACING BET';
+    case 'settling':
+      return 'AWAITING RESULT';
+    case 'settled':
+      return 'ROUND COMPLETE';
+    case 'waiting-connection':
+      return 'RECONNECTING';
+    case 'waiting-settlement':
+      return 'AWAITING SETTLEMENT';
+    default:
+      return phase ? phase.toUpperCase().replace(/-/g, ' ') : 'SCANNING';
   }
+}
 
-  const points = values.map((value, index) => {
-    const x = padding + (index / (values.length - 1)) * (width - padding * 2);
-    const y = padding + (1 - (value - min) / range) * (height - padding * 2);
-    return { x, y };
-  });
+function ScannerHero({
+  market,
+  candidates,
+  quotes,
+  digits,
+  automation,
+  phase,
+  decision,
+  holdReason,
+}: {
+  market?: Market;
+  candidates: SignalCandidate[];
+  quotes: Record<string, QuoteEvt>;
+  digits: number[];
+  automation: boolean;
+  phase?: string;
+  decision?: Decision;
+  holdReason: string | null;
+}): JSX.Element {
+  const [pulseDigit, setPulseDigit] = useState(-1);
+  const lastDigitRef = useRef<number | null>(null);
 
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, 'rgba(139,92,246,.16)');
-  gradient.addColorStop(1, 'rgba(139,92,246,0)');
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, height);
-  points.forEach((p) => ctx.lineTo(p.x, p.y));
-  ctx.lineTo(points[points.length - 1].x, height);
-  ctx.closePath();
-  ctx.fillStyle = gradient;
-  ctx.fill();
+  useEffect(() => {
+    const d = market?.lastDigit ?? -1;
+    if (d >= 0 && lastDigitRef.current !== d) {
+      lastDigitRef.current = d;
+      setPulseDigit(d);
+      const t = window.setTimeout(() => setPulseDigit(-1), 520);
+      return () => window.clearTimeout(t);
+    }
+    if (lastDigitRef.current === null) lastDigitRef.current = d;
+  }, [market?.lastDigit]);
 
-  const lineGradient = ctx.createLinearGradient(0, 0, width, 0);
-  lineGradient.addColorStop(0, '#7c5cff');
-  lineGradient.addColorStop(0.7, '#8b5cf6');
-  lineGradient.addColorStop(1, '#ff4d91');
-  ctx.beginPath();
-  points.forEach((p, index) => {
-    if (index === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
-  });
-  ctx.strokeStyle = lineGradient;
-  ctx.lineWidth = 2;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  ctx.stroke();
+  const counts = new Array(10).fill(0) as number[];
+  for (const d of digits) {
+    if (d >= 0 && d <= 9) counts[d] += 1;
+  }
+  const windowSize = digits.length;
+  const pctOf = (i: number) => (windowSize > 0 ? Math.round((counts[i] / windowSize) * 100) : 0);
 
-  const last = points[points.length - 1];
-  ctx.beginPath();
-  ctx.arc(last.x, last.y, 3.5, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(last.x, last.y, 6, 0, Math.PI * 2);
-  ctx.strokeStyle = '#ff4d91';
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  const quoteKey = (m: string, d: string, b: number) => `${m}|${d}|${b}`;
+
+  const target = (() => {
+    if (decision) {
+      const q = quotes[quoteKey(decision.market, decision.direction, decision.barrier)];
+      const ratio = q?.ask && q?.payout ? q.payout / q.ask : decision.payout ?? 0;
+      const breakeven = ratio > 0 ? 1 / ratio : 0;
+      const matched = candidates.find(
+        (c) => c.market === decision.market && c.direction === decision.direction && c.barrier === decision.barrier,
+      );
+      return {
+        market: decision.market,
+        direction: decision.direction,
+        barrier: decision.barrier,
+        estWin: decision.estWin,
+        edge: breakeven > 0 ? decision.estWin - breakeven : 0,
+        breakeven,
+        consistency: matched?.consistency ?? 0.5,
+        momentum: matched?.momentum ?? 0,
+        entropy: matched?.entropy ?? 0,
+        shortLongDeviation: matched?.shortLongDeviation ?? 0,
+        from: 'decision' as const,
+      };
+    }
+    const c = candidates[0];
+    if (!c) return null;
+    const q = quotes[quoteKey(c.market, c.direction, c.barrier)];
+    const ratio = q?.ask && q?.payout ? q.payout / q.ask : c.estPayout;
+    const breakeven = ratio > 0 ? 1 / ratio : 0;
+    return {
+      market: c.market,
+      direction: c.direction,
+      barrier: c.barrier,
+      estWin: c.estWin,
+      edge: q?.realEdge ?? c.edge,
+      breakeven,
+      consistency: c.consistency,
+      momentum: c.momentum,
+      entropy: c.entropy,
+      shortLongDeviation: c.shortLongDeviation,
+      from: 'candidate' as const,
+    };
+  })();
+
+  const stateLabel = !automation
+    ? 'BOT IDLE'
+    : decision
+      ? 'TARGET LOCKED'
+      : holdReason
+        ? 'NO EDGE — KEEP SCANNING'
+        : scannerPhaseLabel(phase);
+  const stateTone = decision
+    ? 'locked'
+    : holdReason
+      ? 'warn'
+      : automation
+        ? 'scan'
+        : 'idle';
+  const confLabel =
+    target != null
+      ? target.consistency >= 0.7
+        ? 'HIGH CONFIDENCE'
+        : target.consistency >= 0.5
+          ? 'MEDIUM CONFIDENCE'
+          : 'LOW CONFIDENCE'
+      : null;
+
+  return (
+    <div class={`scanner${target ? ' targeting' : ''}`}>
+      <div class={`scanner-state ${stateTone}`}>
+        <span class="scanner-dot"></span>
+        <span class="scanner-label">{stateLabel}</span>
+        {windowSize > 0 && <span class="scanner-window">· last {windowSize} ticks</span>}
+      </div>
+
+      <div class="digit-grid">
+        {Array.from({ length: 10 }, (_, i) => (
+          <div
+            key={i}
+            class={`digit-tile${pulseDigit === i ? ' pulse' : ''}${market?.lastDigit === i ? ' hot' : ''}`}
+          >
+            <span class="digit-d">{i}</span>
+            <span class="digit-pct">{pctOf(i)}%</span>
+          </div>
+        ))}
+      </div>
+
+      <div class={`target-card${target ? ' locked' : ''}`}>
+        {target && (
+          <div class="target-reticle">
+            <Icon name="crosshair" size={34} strokeWidth={1.4} />
+          </div>
+        )}
+        <div class={`target-kicker${target && decision ? ' real' : ''}`}>
+          {target ? (decision ? 'TARGET ACQUIRED' : 'TARGET LOCK') : 'AWAITING SIGNAL'}
+        </div>
+        <div class="target-name">
+          {target
+            ? `${target.market && target.market !== market?.symbol ? `${shortMarketName(target.market)} · ` : ''}${Math.round(target.estWin * 100)}% · ${sideLabel(target.direction, target.barrier).toUpperCase()}`
+            : '—'}
+        </div>
+        {(target || automation) && (
+          <div class="target-strip">
+            <div class="target-stat">
+              <span class="target-stat-label">Model</span>
+              <span class="target-stat-value">{target ? `${Math.round(target.estWin * 100)}%` : '—'}</span>
+            </div>
+            <div class="target-stat">
+              <span class="target-stat-label">Break-even</span>
+              <span class="target-stat-value">{target ? `${Math.round(target.breakeven * 100)}%` : '—'}</span>
+            </div>
+            <div class={`target-stat${target && target.edge > 0 ? ' pos' : target ? ' neg' : ''}`}>
+              <span class="target-stat-label">Edge</span>
+              <span class="target-stat-value">{target ? `${target.edge >= 0 ? '+' : ''}${(target.edge * 100).toFixed(1)}%` : '—'}</span>
+            </div>
+          </div>
+        )}
+        {target && (
+          <div class="target-meta">
+            {confLabel && <span class={`target-conf ${target.consistency >= 0.7 ? 'high' : target.consistency >= 0.5 ? 'med' : 'low'}`}>{confLabel}</span>}
+            {target.from === 'candidate' && target.momentum !== 0 && (
+              <span class="target-extra">
+                force {target.momentum >= 0 ? '+' : ''}
+                {(target.momentum * 100).toFixed(1)}% · Δsl {(target.shortLongDeviation >= 0 ? '+' : '')}
+                {(target.shortLongDeviation * 100).toFixed(1)}%
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div class="scanner-bar">
+        <span class="scanner-bar-step">
+          <i class={windowSize >= 25 ? 'on' : ''}></i>w25
+        </span>
+        <span class="scanner-bar-step">
+          <i class={windowSize >= 50 ? 'on' : ''}></i>w50
+        </span>
+        <span class="scanner-bar-step">
+          <i class={windowSize >= 100 ? 'on' : ''}></i>w100
+        </span>
+        <span class="scanner-bar-step">
+          <i class={windowSize >= 250 ? 'on' : ''}></i>w250
+        </span>
+        <span class="scanner-bar-step">
+          <i class={windowSize >= 500 ? 'on' : ''}></i>w500
+        </span>
+        <span class="scanner-bar-step">
+          <i class={windowSize >= 1000 ? 'on' : ''}></i>w1000
+        </span>
+      </div>
+    </div>
+  );
 }
 
 /* ---------------- bot settings ---------------- */
