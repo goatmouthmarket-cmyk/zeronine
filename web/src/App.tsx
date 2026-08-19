@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt } from './store';
+import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery } from './store';
 import {
   useStore,
   connectPat,
@@ -396,6 +396,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               contract={s.contract}
               trades={s.trades}
               feedConnected={s.feed?.connected ?? false}
+              recovery={s.recovery}
             />
 
             {!automation && !decision && (
@@ -620,6 +621,7 @@ function DecisionHero({
   contract,
   trades,
   feedConnected,
+  recovery,
 }: {
   markets: Market[];
   candidates: SignalCandidate[];
@@ -631,6 +633,7 @@ function DecisionHero({
   contract: ContractEvt | null;
   trades: TradeRow[];
   feedConnected: boolean;
+  recovery: Recovery | null;
 }): JSX.Element {
   const best = resolveTarget(candidates, quotes, decision);
 
@@ -650,7 +653,27 @@ function DecisionHero({
 
   const lastResult = contract?.result ?? trades[0]?.status;
   const winFlash = lastResult === 'won';
-  const live = automation && feedConnected;
+  const note = (() => {
+    if (!feedConnected) {
+      return `Feed down — checking ${markets.length} cached markets, will resume betting when it reconnects`;
+    }
+    if (!automation) {
+      return `Idle — press START and I'll hunt ${markets.length} markets for an easy win`;
+    }
+    if (decision && best) {
+      return `Betting ${fmtMoney(decision.stake)} on ${bestLabel} ${sideLabel(best.direction, best.barrier)}${decision.reason ? ` — ${decision.reason}` : ''}`;
+    }
+    if (recovery?.mode === 'recovering') {
+      return `Trying to win back the loss — recovery attempt ${recovery.attempts} · debt ${fmtMoney(recovery.debt)} · staking ${fmtMoney(recovery.cycleStake)}`;
+    }
+    if (holdReason) {
+      return `Holding off so I don't chase — ${holdReason.charAt(0).toLowerCase()}${holdReason.slice(1)}`;
+    }
+    if (best) {
+      return `Watching ${bestLabel} — leaning ${best.direction} ${best.barrier} because it's looking like a ${Math.round(best.estWin * 100)}% easy win`;
+    }
+    return `Scanning ${markets.length} markets for an easy win — ${candidates.length} candidates in play`;
+  })();
 
   return (
     <div class="cockpit">
@@ -661,26 +684,12 @@ function DecisionHero({
         {best && <div class="cockpit-pct">{Math.round(best.estWin * 100)}%</div>}
       </div>
 
-      <div class="cockpit-scan">
-        <span class={`scan-dot${live ? ' live' : ''}`}></span>
-        <span class="scan-text">{feedConnected && automation ? 'SCANNING' : automation ? 'STANDBY' : 'IDLE'}</span>
-        <span class="scan-meta">{markets.length} MARKETS</span>
-        <span class="scan-meta">{candidates.length} CANDIDATES</span>
-        <span class="scan-meta">{feedConnected ? 'FEED OK' : 'NO FEED'}</span>
-      </div>
-
       <div class={`cockpit-status ${status.tone}${winFlash ? ' win' : ''}`}>
         <span class="cockpit-status-dot"></span>
         <span>{winFlash ? 'WIN RECORDED' : status.label}</span>
       </div>
 
-      <div class="cockpit-note">
-        {live
-          ? `Scanning ${markets.length} markets · ${candidates.length} candidate${candidates.length === 1 ? '' : 's'} qualify${best ? ` · ${Math.round(best.estWin * 100)}% model` : ''}`
-          : automation
-            ? `Feed down (${markets.length} cached markets) — waiting to reconnect`
-            : 'Idle — press START to begin scanning'}
-      </div>
+      <div class="cockpit-note">{note}</div>
 
       <div class="cockpit-metrics">
         <div class="ckm">
