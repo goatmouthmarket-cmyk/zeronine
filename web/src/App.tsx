@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, SessionInfo } from './store';
+import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt } from './store';
 import {
   useStore,
   connectPat,
@@ -410,9 +410,8 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               phase={s.automation?.phase}
               holdReason={automation && !decision ? (s.hold?.reason ?? null) : null}
               contract={s.contract}
-              session={s.session}
-              settings={s.settings}
               trades={s.trades}
+              feedConnected={s.feed?.connected ?? false}
             />
 
             {!automation && !decision && (
@@ -642,9 +641,8 @@ function DecisionHero({
   phase,
   holdReason,
   contract,
-  session,
-  settings,
   trades,
+  feedConnected,
 }: {
   markets: Market[];
   candidates: SignalCandidate[];
@@ -654,30 +652,10 @@ function DecisionHero({
   phase?: string;
   holdReason: string | null;
   contract: ContractEvt | null;
-  session: SessionInfo | null;
-  settings: Settings | null;
   trades: TradeRow[];
+  feedConnected: boolean;
 }): JSX.Element {
   const best = resolveTarget(candidates, quotes, decision);
-
-  const balance = session?.balance ?? 0;
-  const currency = session?.currency ?? '';
-  const net = trades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
-  const start = balance - net;
-  const ddPct = Math.max(0, Math.min(80, settings?.max_drawdown_pct ?? 20));
-  const floor = Math.max(0, start * (1 - ddPct / 100));
-  const range = Math.max(start - floor, 0.01);
-  const cushion = Math.max(0, balance - floor);
-  const gauge = Math.min(100, (cushion / range) * 100);
-
-  const health =
-    gauge >= 70
-      ? { label: 'HEALTHY', tone: 'good' }
-      : gauge >= 35
-        ? { label: 'CAUTION', tone: 'warn' }
-        : gauge > 0
-          ? { label: 'DEFENSE', tone: 'bad' }
-          : { label: 'LOCKED', tone: 'dead' };
 
   const status = !automation
     ? { label: 'BOT IDLE', tone: 'idle' }
@@ -695,6 +673,7 @@ function DecisionHero({
 
   const lastResult = contract?.result ?? trades[0]?.status;
   const winFlash = lastResult === 'won';
+  const live = automation && feedConnected;
 
   return (
     <div class="cockpit">
@@ -705,9 +684,21 @@ function DecisionHero({
         {best && <div class="cockpit-pct">{Math.round(best.estWin * 100)}%</div>}
       </div>
 
+      <div class="cockpit-scan">
+        <span class={`scan-dot${live ? ' live' : ''}`}></span>
+        <span class="scan-text">{feedConnected && automation ? 'SCANNING' : automation ? 'STANDBY' : 'IDLE'}</span>
+        <span class="scan-meta">{markets.length} MARKETS</span>
+        <span class="scan-meta">{candidates.length} CANDIDATES</span>
+        <span class="scan-meta">{feedConnected ? 'FEED OK' : 'NO FEED'}</span>
+      </div>
+
       <div class={`cockpit-status ${status.tone}${winFlash ? ' win' : ''}`}>
         <span class="cockpit-status-dot"></span>
         <span>{winFlash ? 'WIN RECORDED' : status.label}</span>
+      </div>
+
+      <div class={`cockpit-activity${live ? ' live' : ''}`}>
+        <span class="activity-sweep"></span>
       </div>
 
       <div class="cockpit-metrics">
@@ -722,23 +713,6 @@ function DecisionHero({
         <div class={`ckm ckm-edge${best && best.edge < 0 ? ' neg' : ''}`}>
           <span class="ckm-label">EDGE</span>
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
-        </div>
-      </div>
-
-      <div class="cockpit-divider"></div>
-
-      <div class="shield">
-        <div class="shield-head">
-          <span class="shield-title">BANKROLL SHIELD</span>
-          <span class={`shield-state ${health.tone}`}>{health.label} · {Math.round(gauge)}%</span>
-        </div>
-        <div class="shield-track">
-          <div class={`shield-fill ${health.tone}`} style={{ width: `${Math.round(gauge)}%` }} />
-        </div>
-        <div class="shield-stats">
-          <span><em>Balance</em><b>{fmtMoney(balance, currency)}</b></span>
-          <span><em>Profit</em><b class={net >= 0 ? 'pos' : 'neg'}>{fmtSigned(net, currency)}</b></span>
-          <span><em>Protected</em><b>{fmtMoney(Math.min(balance, Math.max(0, floor)), currency)}</b></span>
         </div>
       </div>
     </div>
