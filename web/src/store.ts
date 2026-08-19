@@ -354,6 +354,26 @@ export function connectWs(): void {
   };
 }
 
+window.addEventListener('pageshow', (ev) => {
+  if (ev.persisted) {
+    if (ws) {
+      try {
+        ws.onclose = null;
+        ws.close();
+      } catch {
+        // ignore
+      }
+      ws = null;
+    }
+    if (wsTimer) {
+      window.clearTimeout(wsTimer);
+      wsTimer = null;
+    }
+    retry = 0;
+    connectWs();
+  }
+});
+
 // ---- actions ----
 
 export async function bootstrap(): Promise<void> {
