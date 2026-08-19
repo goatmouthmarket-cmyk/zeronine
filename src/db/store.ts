@@ -41,7 +41,10 @@ export interface TradeRow {
 export interface RecoveryState {
   mode: 'base' | 'recovering';
   streak: number;
-  lost: number;
+  debt: number;
+  attempts: number;
+  cycleStake: number;
+  peakBalance: number;
   last_win_epoch: number;
   updated_at: number;
 }
@@ -57,6 +60,12 @@ export interface SettingsRow {
   barrier_preference: string;
   strategy_mode: string;
   strategy_multiplier: number;
+  recovery_buffer: number;
+  chase_amortize: number;
+  max_recovery_debt: number;
+  max_recovery_exposure: number;
+  max_recovery_attempts: number;
+  max_drawdown_pct: number;
 }
 
 export interface AutomationRow {
@@ -139,9 +148,47 @@ function migrate(d: DatabaseSync): void {
       mode TEXT DEFAULT 'base',
       streak INTEGER DEFAULT 0,
       lost REAL DEFAULT 0,
+      debt REAL DEFAULT 0,
+      attempts INTEGER DEFAULT 0,
+      cycle_stake REAL DEFAULT 0,
+      peak_balance REAL DEFAULT 0,
       last_win_epoch INTEGER DEFAULT 0,
       updated_at INTEGER
     );
+    CREATE TABLE IF NOT EXISTS quote_stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      market TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      barrier INTEGER NOT NULL,
+      samples INTEGER NOT NULL DEFAULT 0,
+      sum_ratio REAL NOT NULL DEFAULT 0,
+      min_ratio REAL,
+      max_ratio REAL,
+      updated_at INTEGER,
+      UNIQUE(market, direction, barrier)
+    );
+    CREATE TABLE IF NOT EXISTS scanner_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trade_id INTEGER,
+      ts INTEGER,
+      market TEXT,
+      direction TEXT,
+      barrier INTEGER,
+      est_win REAL,
+      ask REAL,
+      payout REAL,
+      ratio REAL,
+      breakeven REAL,
+      edge REAL,
+      prev_digit INTEGER,
+      consistency REAL,
+      entropy REAL,
+      momentum REAL,
+      result TEXT,
+      profit REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_scanner_trade ON scanner_logs(trade_id);
+    CREATE INDEX IF NOT EXISTS idx_scanner_ts ON scanner_logs(ts DESC);
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       base_stake REAL,
@@ -153,7 +200,13 @@ function migrate(d: DatabaseSync): void {
       min_recovery_win REAL,
       barrier_preference TEXT,
       strategy_mode TEXT,
-      strategy_multiplier REAL
+      strategy_multiplier REAL,
+      recovery_buffer REAL,
+      chase_amortize REAL,
+      max_recovery_debt REAL,
+      max_recovery_exposure REAL,
+      max_recovery_attempts INTEGER,
+      max_drawdown_pct REAL
     );
     CREATE TABLE IF NOT EXISTS automation (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -181,7 +234,22 @@ function migrate(d: DatabaseSync): void {
   );
   if (!settingsCols.has('strategy_mode')) d.exec(`ALTER TABLE settings ADD COLUMN strategy_mode TEXT`);
   if (!settingsCols.has('strategy_multiplier')) d.exec(`ALTER TABLE settings ADD COLUMN strategy_multiplier REAL`);
+  if (!settingsCols.has('recovery_buffer')) d.exec(`ALTER TABLE settings ADD COLUMN recovery_buffer REAL`);
+  if (!settingsCols.has('chase_amortize')) d.exec(`ALTER TABLE settings ADD COLUMN chase_amortize REAL`);
+  if (!settingsCols.has('max_recovery_debt')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_debt REAL`);
+  if (!settingsCols.has('max_recovery_exposure')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_exposure REAL`);
+  if (!settingsCols.has('max_recovery_attempts')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_attempts INTEGER`);
+  if (!settingsCols.has('max_drawdown_pct')) d.exec(`ALTER TABLE settings ADD COLUMN max_drawdown_pct REAL`);
   void settingsCols;
+
+  const recoveryCols = new Set(
+    (d.prepare(`PRAGMA table_info(recovery_state)`).all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!recoveryCols.has('debt')) d.exec(`ALTER TABLE recovery_state ADD COLUMN debt REAL DEFAULT 0`);
+  if (!recoveryCols.has('attempts')) d.exec(`ALTER TABLE recovery_state ADD COLUMN attempts INTEGER DEFAULT 0`);
+  if (!recoveryCols.has('cycle_stake')) d.exec(`ALTER TABLE recovery_state ADD COLUMN cycle_stake REAL DEFAULT 0`);
+  if (!recoveryCols.has('peak_balance')) d.exec(`ALTER TABLE recovery_state ADD COLUMN peak_balance REAL DEFAULT 0`);
+  void recoveryCols;
 
   const automationCols = new Set(
     (d.prepare(`PRAGMA table_info(automation)`).all() as Array<{ name: string }>).map((c) => c.name),
@@ -193,15 +261,18 @@ function migrate(d: DatabaseSync): void {
 
 function seedDefaults(d: DatabaseSync): void {
   d.exec(`
-    INSERT OR IGNORE INTO recovery_state (id, mode, streak, lost, last_win_epoch, updated_at)
-      VALUES (1, 'base', 0, 0, 0, 0);
+INSERT OR IGNORE INTO recovery_state (id, mode, streak, lost, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at)
+      VALUES (1, 'base', 0, 0, 0, 0, 0, 0, 0, 0);
     INSERT OR IGNORE INTO settings (id, base_stake, max_stake, martingale_steps,
       max_consecutive_losses, daily_loss_limit, min_edge, min_recovery_win, barrier_preference,
-      strategy_mode, strategy_multiplier)
+      strategy_mode, strategy_multiplier, recovery_buffer, chase_amortize,
+      max_recovery_debt, max_recovery_exposure, max_recovery_attempts, max_drawdown_pct)
       VALUES (1, ${config.baseStake}, ${config.maxStake}, ${config.martingaleSteps},
         ${config.maxConsecutiveLosses}, ${config.dailyLossLimit}, ${config.minEdge},
         ${config.minRecoveryWinRate}, '${config.barrierPreference}', '${config.strategyMode}',
-        ${config.strategyMultiplier});
+        ${config.strategyMultiplier}, ${config.recoveryBuffer}, ${config.chaseAmortize},
+        ${config.maxRecoveryDebt}, ${config.maxRecoveryExposure}, ${config.maxRecoveryAttempts},
+        ${config.maxDrawdownPct});
     INSERT OR IGNORE INTO automation (id, running, armed_until, started_at, stopped_at, reason,
       target_trades, trades_done)
       VALUES (1, 0, 0, 0, 0, '', 0, 0);
@@ -228,6 +299,12 @@ export function getSettings(): SettingsRow {
     barrier_preference: String(row.barrier_preference),
     strategy_mode,
     strategy_multiplier: Number(row.strategy_multiplier ?? 3),
+    recovery_buffer: Number(row.recovery_buffer ?? 0.5),
+    chase_amortize: Number(row.chase_amortize ?? 0.35),
+    max_recovery_debt: Number(row.max_recovery_debt ?? 50),
+    max_recovery_exposure: Number(row.max_recovery_exposure ?? 100),
+    max_recovery_attempts: Number(row.max_recovery_attempts ?? 15),
+    max_drawdown_pct: Number(row.max_drawdown_pct ?? 20),
   };
 }
 
@@ -238,7 +315,8 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
     .prepare(
       `UPDATE settings SET base_stake=?, max_stake=?, martingale_steps=?, max_consecutive_losses=?,
        daily_loss_limit=?, min_edge=?, min_recovery_win=?, barrier_preference=?, strategy_mode=?,
-       strategy_multiplier=? WHERE id=1`,
+       strategy_multiplier=?, recovery_buffer=?, chase_amortize=?, max_recovery_debt=?,
+       max_recovery_exposure=?, max_recovery_attempts=?, max_drawdown_pct=? WHERE id=1`,
     )
     .run(
       next.base_stake,
@@ -251,6 +329,12 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       next.barrier_preference,
       next.strategy_mode,
       next.strategy_multiplier,
+      next.recovery_buffer,
+      next.chase_amortize,
+      next.max_recovery_debt,
+      next.max_recovery_exposure,
+      next.max_recovery_attempts,
+      next.max_drawdown_pct,
     );
   return next;
 }
@@ -260,7 +344,10 @@ export function getRecovery(): RecoveryState {
   return {
     mode: row.mode as RecoveryState['mode'],
     streak: Number(row.streak),
-    lost: Number(row.lost),
+    debt: Number(row.debt ?? row.lost ?? 0),
+    attempts: Number(row.attempts ?? 0),
+    cycleStake: Number(row.cycle_stake ?? 0),
+    peakBalance: Number(row.peak_balance ?? 0),
     last_win_epoch: Number(row.last_win_epoch),
     updated_at: Number(row.updated_at),
   };
@@ -268,12 +355,152 @@ export function getRecovery(): RecoveryState {
 
 export function saveRecovery(r: RecoveryState): void {
   getDb()
-    .prepare('UPDATE recovery_state SET mode=?, streak=?, lost=?, last_win_epoch=?, updated_at=? WHERE id=1')
-    .run(r.mode, r.streak, r.lost, r.last_win_epoch, Date.now());
+    .prepare(
+      'UPDATE recovery_state SET mode=?, streak=?, debt=?, attempts=?, cycle_stake=?, peak_balance=?, last_win_epoch=?, updated_at=? WHERE id=1',
+    )
+    .run(r.mode, r.streak, r.debt, r.attempts, r.cycleStake, r.peakBalance, r.last_win_epoch, Date.now());
 }
 
 export function resetRecovery(): void {
-  saveRecovery({ mode: 'base', streak: 0, lost: 0, last_win_epoch: Date.now(), updated_at: Date.now() });
+  saveRecovery({
+    mode: 'base',
+    streak: 0,
+    debt: 0,
+    attempts: 0,
+    cycleStake: 0,
+    peakBalance: getRecovery().peakBalance,
+    last_win_epoch: Date.now(),
+    updated_at: Date.now(),
+  });
+}
+
+export function recordQuote(
+  market: string,
+  direction: string,
+  barrier: number,
+  ratio: number,
+): void {
+  if (!Number.isFinite(ratio) || ratio <= 0) return;
+  try {
+    getDb()
+      .prepare(
+        `INSERT INTO quote_stats (market, direction, barrier, samples, sum_ratio, min_ratio, max_ratio, updated_at)
+         VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+         ON CONFLICT(market, direction, barrier) DO UPDATE SET
+           samples = samples + 1,
+           sum_ratio = sum_ratio + excluded.sum_ratio,
+           min_ratio = MIN(min_ratio, excluded.min_ratio),
+           max_ratio = MAX(max_ratio, excluded.max_ratio),
+           updated_at = excluded.updated_at`,
+      )
+      .run(market, direction, barrier, ratio, ratio, ratio, Date.now());
+  } catch {
+    // best-effort: quote observations must never break the trade loop
+  }
+}
+
+export interface ScannerLogRow {
+  trade_id: number;
+  ts: number;
+  market: string;
+  direction: string;
+  barrier: number;
+  est_win: number;
+  ask: number;
+  payout: number;
+  ratio: number;
+  breakeven: number;
+  edge: number;
+  prev_digit: number | null;
+  consistency: number;
+  entropy: number;
+  momentum: number;
+}
+
+export function insertScannerLog(t: ScannerLogRow): number {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO scanner_logs (trade_id, ts, market, direction, barrier, est_win, ask, payout,
+        ratio, breakeven, edge, prev_digit, consistency, entropy, momentum)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      t.trade_id,
+      t.ts,
+      t.market,
+      t.direction,
+      t.barrier,
+      t.est_win,
+      t.ask,
+      t.payout,
+      t.ratio,
+      t.breakeven,
+      t.edge,
+      t.prev_digit,
+      t.consistency,
+      t.entropy,
+      t.momentum,
+    );
+  return Number(info.lastInsertRowid);
+}
+
+export function updateScannerLogResult(tradeId: number, result: string, profit: number): void {
+  try {
+    getDb()
+      .prepare('UPDATE scanner_logs SET result = ?, profit = ? WHERE trade_id = ?')
+      .run(result, profit, tradeId);
+  } catch {
+    // best-effort calibration bookkeeping
+  }
+}
+
+export interface CalibrationBucket {
+  bucket: string;
+  lo: number;
+  hi: number;
+  n: number;
+  wins: number;
+  rate: number | null;
+}
+
+const CALIB_BUCKET = 0.02;
+
+export function getCalibration(): { buckets: CalibrationBucket[]; total: number } {
+  const rows = getDb()
+    .prepare(
+      `SELECT est_win AS e, result AS r, profit AS p FROM scanner_logs
+       WHERE est_win IS NOT NULL AND result IN ('won','lost')`,
+    )
+    .all() as unknown as Array<{ e: number; r: string; p: number }>;
+  const width = CALIB_BUCKET;
+  const map = new Map<number, { n: number; wins: number; profit: number }>();
+  for (const row of rows) {
+    const bucket = Math.floor(row.e / width) * width;
+    const b = map.get(bucket) ?? { n: 0, wins: 0, profit: 0 };
+    b.n += 1;
+    if (row.r === 'won') b.wins += 1;
+    b.profit += row.p ?? 0;
+    map.set(bucket, b);
+  }
+  const buckets: CalibrationBucket[] = [...map.entries()]
+    .map(([lo, b]) => ({
+      bucket: `${(lo * 100).toFixed(0)}–${((lo + width) * 100).toFixed(0)}%`,
+      lo,
+      hi: lo + width,
+      n: b.n,
+      wins: b.wins,
+      rate: b.n > 0 ? b.wins / b.n : null,
+    }))
+    .sort((a, b) => a.lo - b.lo);
+  const total = rows.length;
+  return { buckets, total };
+}
+
+export function getQuoteStats(market?: string): Array<Record<string, unknown>> {
+  const sql = market
+    ? 'SELECT * FROM quote_stats WHERE market = ? ORDER BY barrier'
+    : 'SELECT * FROM quote_stats ORDER BY market, barrier';
+  return (market ? getDb().prepare(sql).all(market) : getDb().prepare(sql).all()) as Array<Record<string, unknown>>;
 }
 
 export function getAutomation(): AutomationRow {
@@ -446,6 +673,7 @@ export function resolveTrade(
       extra?.exitDigit ?? null,
       id,
     );
+  updateScannerLogResult(id, status, profit);
 }
 
 export function listTrades(limit = 50): TradeRow[] {

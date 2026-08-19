@@ -26,6 +26,12 @@ export interface AppConfig {
   barrierPreference: string;
   strategyMode: string;
   strategyMultiplier: number;
+  recoveryBuffer: number;
+  chaseAmortize: number;
+  maxRecoveryDebt: number;
+  maxRecoveryExposure: number;
+  maxRecoveryAttempts: number;
+  maxDrawdownPct: number;
   allowedMarkets: string[];
   tradeGapMs: number;
 }
@@ -84,6 +90,12 @@ export function loadConfig(): AppConfig {
     barrierPreference: process.env.BARRIER_PREFERENCE || 'over1',
     strategyMode: process.env.STRATEGY_MODE || 'conservative',
     strategyMultiplier: num('STRATEGY_MULTIPLIER', 3),
+    recoveryBuffer: num('RECOVERY_BUFFER', 0.5),
+    chaseAmortize: num('CHASE_AMORTIZE', 0.35),
+    maxRecoveryDebt: num('MAX_RECOVERY_DEBT', 50),
+    maxRecoveryExposure: num('MAX_RECOVERY_EXPOSURE', 100),
+    maxRecoveryAttempts: num('MAX_RECOVERY_ATTEMPTS', 15),
+    maxDrawdownPct: num('MAX_DRAWDOWN_PCT', 20),
     allowedMarkets: (process.env.ALLOWED_MARKETS || '')
       .split(',')
       .map((s) => s.trim())

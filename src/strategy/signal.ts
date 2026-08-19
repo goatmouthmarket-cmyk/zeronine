@@ -1,6 +1,10 @@
 import type { MarketRegistry, MarketSnapshot } from '../core/marketState.ts';
 import type { Direction } from '../core/digitMath.ts';
-import { breakevenWinRate, estimatePayoutRatio, estimateWinRate } from '../core/digitMath.ts';
+import { breakevenWinRate, estimatePayoutRatio } from '../core/digitMath.ts';
+import { scanMarket } from './scanner.ts';
+import type { BarrierFeatures } from './scanner.ts';
+
+export type DigitProvider = (symbol: string, count: number) => number[];
 
 export interface SignalCandidate {
   market: string;
@@ -9,35 +13,24 @@ export interface SignalCandidate {
   estWin: number;
   estPayout: number;
   edge: number;
+  expectedROI: number;
+  consistency: number;
+  entropy: number;
+  momentum: number;
+  shortLongDeviation: number;
+  transitionProb: number;
 }
 
 export interface SignalPick {
-  candidate: SignalCandidate;
-  alternatives: SignalCandidate[];
+  candidates: SignalCandidate[];
   holds: boolean;
   reason: string;
 }
 
-function candidatesFor(snap: MarketSnapshot, minWin: number, extremesOnly: boolean): SignalCandidate[] {
-  const dist = normalizedDist(snap);
-  const candidates: SignalCandidate[] = [];
-  // Conservative mode only ever considers the two extreme barriers:
-  // Over 0 (digit > 0) and Under 9 (digit < 9) — the highest win-rate sides.
-  const barriersOver = extremesOnly ? [0] : [1, 2, 3, 4, 5, 6, 7];
-  const barriersUnder = extremesOnly ? [9] : [9, 8, 7, 6, 5, 4, 3];
-  for (const barrier of barriersOver) {
-    const estWin = estimateWinRate(dist, 'over', barrier);
-    const estPayout = estimatePayoutRatio('over', barrier);
-    const edge = estWin - breakevenWinRate(1, estPayout);
-    candidates.push({ market: snap.symbol, direction: 'over', barrier, estWin, estPayout, edge });
-  }
-  for (const barrier of barriersUnder) {
-    const estWin = estimateWinRate(dist, 'under', barrier);
-    const estPayout = estimatePayoutRatio('under', barrier);
-    const edge = estWin - breakevenWinRate(1, estPayout);
-    candidates.push({ market: snap.symbol, direction: 'under', barrier, estWin, estPayout, edge });
-  }
-  return candidates.filter((c) => c.estWin >= minWin);
+export interface QuotePlanOption {
+  market: string;
+  direction: Direction;
+  barrier: number;
 }
 
 export function clampBarrier(direction: Direction, barrier: number): number {
@@ -45,44 +38,26 @@ export function clampBarrier(direction: Direction, barrier: number): number {
   return Math.max(1, Math.min(9, barrier));
 }
 
-export interface QuotePlanOption {
-  direction: Direction;
-  barrier: number;
-}
-
-export function buildQuotePlan(
-  pick: SignalPick,
-  preference: { direction: Direction; barrier: number },
-  extremesOnly = false,
-): QuotePlanOption[] {
-  const out: QuotePlanOption[] = [];
-  const push = (direction: Direction, barrier: number): void => {
-    const b = clampBarrier(direction, barrier);
-    if (!out.some((x) => x.direction === direction && x.barrier === b)) out.push({ direction, barrier });
+function toCandidate(
+  symbol: string,
+  display: string,
+  f: BarrierFeatures,
+): SignalCandidate {
+  const estPayout = estimatePayoutRatio(f.direction, f.barrier);
+  return {
+    market: symbol,
+    direction: f.direction,
+    barrier: f.barrier,
+    estWin: f.estimatedWin,
+    estPayout,
+    edge: f.estimatedWin - breakevenWinRate(1, estPayout),
+    expectedROI: f.estimatedWin * estPayout - 1,
+    consistency: f.consistency,
+    entropy: f.entropy,
+    momentum: f.momentum,
+    shortLongDeviation: f.shortLongDeviation,
+    transitionProb: f.transitionCond,
   };
-
-  // Conservative mode: only ever quote the two extreme barriers the bot may trade.
-  if (extremesOnly) {
-    push(pick.candidate.direction, pick.candidate.barrier);
-    push(pick.candidate.direction === 'over' ? 'under' : 'over', pick.candidate.direction === 'over' ? 9 : 0);
-    return out;
-  }
-
-  // best-edge signal candidate first
-  push(pick.candidate.direction, pick.candidate.barrier);
-  // configured preference as a fallback family
-  push(preference.direction, preference.barrier);
-  // recovering upward (over) or downward (under) keeps the same family cheap to reach.
-  push(pick.candidate.direction, pick.candidate.barrier + (pick.candidate.direction === 'over' ? 2 : -2));
-  push(pick.candidate.direction, pick.candidate.barrier + (pick.candidate.direction === 'over' ? 4 : -4));
-  // opposite family baseline for comparison
-  push(pick.candidate.direction === 'over' ? 'under' : 'over', pick.candidate.direction === 'over' ? 9 : 1);
-  // strongest alternates from signal ranking
-  for (const alt of pick.alternatives) {
-    push(alt.direction, alt.barrier);
-    if (out.length >= 6) break;
-  }
-  return out.slice(0, 6);
 }
 
 export function normalizedDist(snap: MarketSnapshot): number[] {
@@ -91,42 +66,53 @@ export function normalizedDist(snap: MarketSnapshot): number[] {
   return snap.dist.map((c) => c / sum);
 }
 
+/**
+ * Scan every fresh market across all rolling windows and return the top-N
+ * shortlist of (market, direction, barrier) candidates ranked by edge.
+ * Hit-rate is never profitability: probability above the floor alone is not
+ * enough - the model edge must clear minEdge to be eligible for a quote.
+ */
 export function pickSignal(
   registry: MarketRegistry,
   minWin: number,
   minEdge: number,
-  extremesOnly = false,
+  digits: DigitProvider,
+  maxCandidates = 5,
 ): SignalPick {
   const all: SignalCandidate[] = [];
   for (const snap of registry.allSnapshots()) {
     if (!snap.fresh) continue;
-    all.push(...candidatesFor(snap, minWin, extremesOnly));
+    const history = digits(snap.symbol, 1000);
+    const scan = scanMarket(snap.symbol, snap.display, history.length ? history : snap.recentDigits);
+    for (const f of scan.features) {
+      if (f.estimatedWin < minWin) continue;
+      all.push(toCandidate(snap.symbol, snap.display, f));
+    }
   }
   if (all.length === 0) {
-    return { candidate: null as unknown as SignalCandidate, alternatives: [], holds: true, reason: 'no fresh market' };
+    return { candidates: [], holds: true, reason: 'no candidate above the probability floor' };
   }
-  all.sort((a, b) => b.edge - a.edge || b.estWin - a.estWin);
-  const bestEdge = all[0].edge;
-  // When edges are effectively tied, alternate between over and under so the
-  // bot doesn't permanently ride one side because of stable-sort insertion order.
-  const tol = 0.004;
-  const tied = all.filter((c) => bestEdge - c.edge < tol);
-  let chosen = all[0];
-  const rest = all.slice(1);
-  if (tied.length > 1) {
-    tieCounter += 1;
-    const preferOver = tieCounter % 2 === 0;
-    const side = tied.filter((c) => c.direction === (preferOver ? 'over' : 'under'));
-    if (side.length > 0) chosen = side[0];
+  all.sort((a, b) => b.edge - a.edge || b.expectedROI - a.expectedROI || b.estWin - a.estWin);
+  const candidates = all.slice(0, maxCandidates);
+  const best = candidates[0];
+  if (best.edge < minEdge) {
+    // The best candidate is not credible enough yet. WAIT is a valid outcome:
+    // the bot is under no obligation to trade every scan.
+    return { candidates: [], holds: true, reason: 'edge below threshold' };
   }
-  const alternatives = rest.filter((c) => c !== chosen).slice(0, 5);
-  // Conservative mode trades the extreme barriers for consistent high win rate;
-  // the edge model scores them slightly negative (low payout), so gate on win
-  // rate only rather than blocking every trade on the min-edge threshold.
-  if (chosen.edge < minEdge && !extremesOnly) {
-    return { candidate: chosen, alternatives, holds: true, reason: 'edge below threshold' };
-  }
-  return { candidate: chosen, alternatives, holds: false, reason: 'signal' };
+  return { candidates, holds: false, reason: 'signal' };
 }
 
-let tieCounter = 0;
+export function buildQuotePlan(pick: SignalPick): QuotePlanOption[] {
+  const out: QuotePlanOption[] = [];
+  for (const c of pick.candidates) {
+    const b = clampBarrier(c.direction, c.barrier);
+    if (c.direction !== 'over' && c.direction !== 'under') continue;
+    const key = `${c.market}|${c.direction}|${b}`;
+    if (!out.some((x) => `${x.market}|${x.direction}|${x.barrier}` === key)) {
+      out.push({ market: c.market, direction: c.direction, barrier: b });
+    }
+    if (out.length >= 6) break;
+  }
+  return out;
+}

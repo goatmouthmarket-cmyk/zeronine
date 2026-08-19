@@ -47,13 +47,19 @@ function sideLabel(direction: string, barrier: number): string {
 }
 
 const STRATEGY_META: Record<Settings['strategy_mode'], { label: string; hint: string }> = {
-  conservative: { label: 'Conservative', hint: 'Flat bet every round' },
+  conservative: { label: 'Conservative', hint: 'Flat bet every round; only bets with a positive edge' },
   martingale: {
     label: 'Martingale',
-    hint: 'Same digit, raise stake (by math) to win back losses — splits over 2+ bets',
+    hint: 'One-win recovery: stake sized to clear the whole debt on a determined barrier',
   },
-  boosted_martingale: { label: 'Boosted Martingale', hint: 'Redo bet, raise stake by multiplier to recover' },
-  chase: { label: 'Chase', hint: 'Redo same bet, stake up to win losses back (splits over several bets)' },
+  boosted_martingale: {
+    label: 'Boosted Martingale',
+    hint: 'One-win recovery plus a profit buffer; clears debt and a half base stake',
+  },
+  chase: {
+    label: 'Chase',
+    hint: 'Amortized recovery: each win pays a 35% chunk of the debt until cleared',
+  },
 };
 
 function useBotCooldown(): number {
@@ -904,7 +910,14 @@ function HistoryPage(): JSX.Element {
         <Metric label="Avg Payout" value={avgPayout ? avgPayout.toFixed(2) : '—'} />
         <Metric label="Best Streak" value={String(best)} tone="up" />
         <Metric label="Worst Streak" value={String(worst)} tone="down" />
-        <Metric label="Recovery" value={s.recovery?.mode === 'recovering' ? 'Active' : 'Idle'} />
+        <Metric
+          label="Recovery"
+          value={
+            s.recovery?.mode === 'recovering'
+              ? `Active · debt ${fmtMoney(s.recovery.debt ?? 0, currency)}`
+              : 'Idle'
+          }
+        />
       </div>
 
       <div class="section">

@@ -23,7 +23,10 @@ export interface SessionInfo {
 export interface Recovery {
   mode: 'base' | 'recovering';
   streak: number;
-  lost: number;
+  debt: number;
+  attempts: number;
+  cycleStake: number;
+  peakBalance: number;
   last_win_epoch: number;
   updated_at: number;
 }
@@ -39,6 +42,12 @@ export interface Settings {
   barrier_preference: string;
   strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
   strategy_multiplier: number;
+  recovery_buffer: number;
+  chase_amortize: number;
+  max_recovery_debt: number;
+  max_recovery_exposure: number;
+  max_recovery_attempts: number;
+  max_drawdown_pct: number;
 }
 
 export interface TradeRow {
@@ -131,7 +140,7 @@ export interface State {
   selected: string | null;
   signal: { signal: SignalCandidate; phase: string } | null;
   quote: QuoteEvt | null;
-  decision: { decision: Decision; streak: number; lost: number } | null;
+  decision: { decision: Decision; streak: number; debt: number; attempts: number; cycleStake: number } | null;
   hold: { reason: string } | null;
   contract: ContractEvt | null;
   botCooldownUntil: number;
@@ -264,7 +273,9 @@ function applyEvent(evt: Record<string, unknown>): void {
       patch.decision = {
         decision: evt.decision as Decision,
         streak: Number(evt.streak ?? 0),
-        lost: Number(evt.lost ?? 0),
+        debt: Number(evt.debt ?? 0),
+        attempts: Number(evt.attempts ?? 0),
+        cycleStake: Number(evt.cycleStake ?? 0),
       };
       break;
     case 'hold':

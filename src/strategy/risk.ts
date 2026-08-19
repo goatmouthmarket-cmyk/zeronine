@@ -1,6 +1,5 @@
-import { runningPnlToday, getOpenTrade } from '../db/store.ts';
+import { runningPnlToday, getOpenTrade, getRecovery } from '../db/store.ts';
 import type { SettingsRow } from '../db/store.ts';
-import { getRecovery } from '../db/store.ts';
 import type { RecoveryContext, StrategyMode } from '../strategy/recovery.ts';
 
 export interface RiskCheck {
@@ -19,7 +18,10 @@ export function buildRecoveryContext(settings: SettingsRow): RecoveryContext {
   return {
     mode: rec.mode,
     streak: rec.streak,
-    lost: rec.lost,
+    debt: rec.debt,
+    attempts: rec.attempts,
+    cycleStake: rec.cycleStake,
+    peakBalance: rec.peakBalance,
     baseStake: settings.base_stake,
     maxStake: settings.max_stake,
     minRecoveryWinRate: settings.min_recovery_win,
@@ -27,6 +29,12 @@ export function buildRecoveryContext(settings: SettingsRow): RecoveryContext {
     maxConsecutiveLosses: settings.max_consecutive_losses,
     strategy,
     multiplier: settings.strategy_multiplier,
+    recoveryBuffer: settings.recovery_buffer,
+    chaseAmortize: settings.chase_amortize,
+    maxRecoveryDebt: settings.max_recovery_debt,
+    maxRecoveryExposure: settings.max_recovery_exposure,
+    maxRecoveryAttempts: settings.max_recovery_attempts,
+    maxDrawdownPct: settings.max_drawdown_pct,
   };
 }
 
@@ -50,8 +58,33 @@ export function riskCheck(params: {
     return { ok: false, reason: `daily loss limit would be breached (pnl ${dailyLoss.toFixed(2)})` };
   }
 
+  // Peak-drawdown rail: once the account drops maxDrawdownPct below its peak,
+  // no further trades are permitted until a manual reset of the run.
+  const drawdownPct = settings.max_drawdown_pct > 0 ? settings.max_drawdown_pct / 100 : 0;
+  if (
+    drawdownPct > 0 &&
+    context.peakBalance > 0 &&
+    balance > 0 &&
+    (context.peakBalance - balance) / context.peakBalance >= drawdownPct
+  ) {
+    return { ok: false, reason: `max drawdown (${settings.max_drawdown_pct}%) reached` };
+  }
+
   if (context.streak + 1 > settings.max_consecutive_losses) {
     return { ok: false, reason: `consecutive loss cap (${settings.max_consecutive_losses}) reached` };
+  }
+
+  // Cycle-limit rails are only active while recovering debt.
+  if (context.strategy !== 'conservative' && context.debt > 0.005) {
+    if (context.cycleStake + stake > settings.max_recovery_exposure) {
+      return { ok: false, reason: `recovery exposure cap (${settings.max_recovery_exposure}) would be exceeded` };
+    }
+    if (context.debt >= settings.max_recovery_debt) {
+      return { ok: false, reason: `recovery debt cap (${settings.max_recovery_debt}) reached` };
+    }
+    if (context.attempts >= settings.max_recovery_attempts) {
+      return { ok: false, reason: `recovery attempt cap (${settings.max_recovery_attempts}) reached` };
+    }
   }
 
   const open = getOpenTrade();
@@ -64,27 +97,51 @@ export function riskCheck(params: {
   return { ok: true, reason: 'ok' };
 }
 
+/**
+ * Debt-based recovery state machine. A loss pushes the bot into recovery and
+ * accumulates the lost amount as debt; wins pay the debt down. The bot only
+ * returns to base once the whole debt is cleared.
+ *
+ * - conservative: flat bets only, never holds debt (streak still tracks losses).
+ * - martingale / boosted_martingale: a win should clear the whole debt.
+ * - chase: a win clears the amortized chunk and keeps hunting until debt is 0.
+ */
 export function applyOutcome(
   won: boolean,
   profit: number,
   settings: SettingsRow,
-): { mode: 'base' | 'recovering'; streak: number; lost: number } {
-  const ctx = buildRecoveryContext(settings);
-  if (won) {
-    // Martingale/Chase: a win pays the debt down and only returns to base once
-    // the whole lost amount is recovered (the chase is split across several bets).
-    if ((ctx.strategy === 'martingale' || ctx.strategy === 'chase') && ctx.lost > 0) {
-      const debt = ctx.lost - Math.max(0, profit);
-      if (debt > 0.005) {
-        return { mode: 'recovering', streak: 0, lost: debt };
-      }
-    }
-    return { mode: 'base', streak: 0, lost: 0 };
+  balance?: number,
+): { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number } {
+  const cur = getRecovery();
+  const strategy: StrategyMode =
+    settings.strategy_mode === 'martingale' ||
+    settings.strategy_mode === 'boosted_martingale' ||
+    settings.strategy_mode === 'chase'
+      ? settings.strategy_mode
+      : 'conservative';
+  const peakBalance =
+    balance != null && balance > 0 ? Math.max(cur.peakBalance || balance, balance) : cur.peakBalance;
+
+  if (strategy === 'conservative') {
+    if (won) return { mode: 'base', streak: 0, debt: 0, attempts: 0, cycleStake: 0, peakBalance };
+    return { mode: 'base', streak: cur.streak + 1, debt: 0, attempts: 0, cycleStake: 0, peakBalance };
   }
-  const next = {
-    mode: 'recovering' as const,
-    streak: ctx.streak + 1,
-    lost: ctx.lost + Math.max(0, -profit),
+
+  if (won) {
+    const debt = cur.debt - Math.max(0, profit);
+    if (debt <= 0.005) {
+      return { mode: 'base', streak: 0, debt: 0, attempts: cur.attempts, cycleStake: 0, peakBalance };
+    }
+    return { mode: 'recovering', streak: 0, debt, attempts: cur.attempts, cycleStake: cur.cycleStake, peakBalance };
+  }
+
+  const loss = Math.max(0, -profit) || 0;
+  return {
+    mode: 'recovering',
+    streak: cur.streak + 1,
+    debt: cur.debt + loss,
+    attempts: cur.attempts + 1,
+    cycleStake: cur.cycleStake + loss,
+    peakBalance,
   };
-  return next;
 }

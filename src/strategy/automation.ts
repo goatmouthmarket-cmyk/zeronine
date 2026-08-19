@@ -2,11 +2,10 @@ import { config } from '../config.ts';
 import type { Hub } from '../api/hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import type { DerivPrivateClient, ContractUpdate } from '../deriv/privateClient.ts';
-import type { LadderOption } from '../strategy/recovery.ts';
+import type { LadderOption, RecoveryDecision } from '../strategy/recovery.ts';
 import { planRecovery } from '../strategy/recovery.ts';
-import { buildQuotePlan, pickSignal, normalizedDist } from '../strategy/signal.ts';
+import { pickSignal } from '../strategy/signal.ts';
 import { applyOutcome, buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
-import { estimateWinRate } from '../core/digitMath.ts';
 import type { Direction } from '../core/digitMath.ts';
 import type { TradeRow } from '../db/store.ts';
 import {
@@ -14,8 +13,11 @@ import {
   getRecovery,
   getSession,
   getSettings,
+  insertScannerLog,
   insertTrade,
+  lastDigitEvents,
   listTrades,
+  recordQuote,
   resetRecovery,
   resolveTrade,
   saveRecovery,
@@ -23,6 +25,26 @@ import {
 } from '../db/store.ts';
 
 const HOLD = 'hold';
+
+interface QuotedOption {
+  market: string;
+  direction: Direction;
+  barrier: number;
+  estWin: number;
+  consistency: number;
+  entropy: number;
+  momentum: number;
+  ask: number;
+  payout: number;
+  realEdge: number;
+  realEV: number;
+}
+
+type RecoveryStake = RecoveryDecision & { market: string };
+
+function recoveryHold(): RecoveryStake {
+  return { stake: 0, direction: 'over', barrier: 1, reason: 'base', estWin: 0, payout: 0, holds: true, market: '' };
+}
 
 export class Automation {
   private running = false;
@@ -161,104 +183,168 @@ export class Automation {
       tradeGapMs: 0,
       now: Date.now(),
     });
-    if (!guard.ok && guard.reason.includes('daily loss')) {
+    if (!guard.ok && (guard.reason.includes('daily loss') || guard.reason.includes('drawdown'))) {
       this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
       this.stop(guard.reason);
       return 0;
     }
 
     this.phase = 'scanning';
-    const conservative = settings.strategy_mode === 'conservative';
-    const signal = pickSignal(this.registry, 0.35, settings.min_edge, conservative);
+    const signal = pickSignal(this.registry, 0.35, settings.min_edge, (symbol, count) =>
+      lastDigitEvents(symbol, count)
+        .reverse()
+        .map((e) => e.digit),
+    );
     if (signal.holds) {
       this.emit({ type: HOLD, ts: Date.now(), reason: signal.reason });
-      return 1000;
+      this.phase = 'waiting-edge';
+      return 1500; // WAIT is a valid outcome: no obligation to trade every scan
     }
     this.emit({ type: 'signal', ts: Date.now(), signal, phase: this.phase });
 
-    const snap = this.registry.snapshot(signal.candidate.market);
-    if (!snap.fresh) {
-      this.emit({ type: HOLD, ts: Date.now(), reason: 'market feed stale' });
-      return 800;
-    }
-
-    const preference = parsePreference(settings.barrier_preference);
-
+    // Quote every shortlist candidate across markets. Real ratios (payout/ask)
+    // give the actual breakeven / edge / EV that drive the pick.
     this.phase = 'quoting';
-    const plan = buildQuotePlan(signal, preference, conservative);
-    const ladder: LadderOption[] = [];
-    for (const opt of plan) {
+    const quotes: QuotedOption[] = [];
+    for (const c of signal.candidates) {
       try {
         const q = await this.client.getQuote({
-          direction: opt.direction,
-          barrier: opt.barrier,
+          direction: c.direction,
+          barrier: c.barrier,
           amount: settings.base_stake,
           currency: session.currency || 'USD',
           duration: 1,
           durationUnit: 't',
-          symbol: signal.candidate.market,
+          symbol: c.market,
         });
-        const estWin = estimateWinRate(normalizedDist(snap), opt.direction, opt.barrier);
-        ladder.push({ direction: opt.direction, barrier: opt.barrier, estWin, ask: q.askPrice, payout: q.payout });
-        this.emit({ type: 'quote', ts: Date.now(), market: signal.candidate.market, ...opt, ask: q.askPrice, payout: q.payout, estWin });
+        const ratio = q.askPrice > 0 ? q.payout / q.askPrice : 0;
+        quotes.push({
+          market: c.market,
+          direction: c.direction,
+          barrier: c.barrier,
+          estWin: c.estWin,
+          consistency: c.consistency,
+          entropy: c.entropy,
+          momentum: c.momentum,
+          ask: q.askPrice,
+          payout: q.payout,
+          realEdge: c.estWin - (ratio > 0 ? 1 / ratio : 0),
+          realEV: c.estWin * ratio - 1,
+        });
+        recordQuote(c.market, c.direction, c.barrier, ratio);
+        this.emit({
+          type: 'quote',
+          ts: Date.now(),
+          market: c.market,
+          direction: c.direction,
+          barrier: c.barrier,
+          ask: q.askPrice,
+          payout: q.payout,
+          estWin: c.estWin,
+          realEdge: c.estWin - (ratio > 0 ? 1 / ratio : 0),
+        });
       } catch (err) {
-        this.emit({ type: 'quote_error', ts: Date.now(), option: opt, message: String(err) });
+        this.emit({ type: 'quote_error', ts: Date.now(), option: { ...c }, message: String(err) });
       }
     }
-    if (ladder.length === 0) {
+    if (quotes.length === 0) {
       this.emit({ type: HOLD, ts: Date.now(), reason: 'no live quotes available' });
       this.phase = 'waiting-quotes';
-      return 1000;
+      return 1500;
     }
 
     this.phase = 'deciding';
-    await new Promise((r) => setTimeout(r, 80)); // let market rotate onto the chosen barrier before exposing
-    const bestQuote = this.client.isConnected
-      ? await this.client.getQuote({
-          direction: signal.candidate.direction,
-          barrier: signal.candidate.barrier,
+    await new Promise((r) => setTimeout(r, 80)); // let the market rotate onto the chosen barrier
+    const top = quotes[0];
+    if (this.client.isConnected && top) {
+      try {
+        const q = await this.client.getQuote({
+          direction: top.direction,
+          barrier: top.barrier,
           amount: settings.base_stake,
           currency: session.currency || 'USD',
           duration: 1,
           durationUnit: 't',
-          symbol: signal.candidate.market,
-        })
-      : null;
-    if (bestQuote) {
-      const estWin = estimateWinRate(normalizedDist(snap), signal.candidate.direction, signal.candidate.barrier);
-      const idx = ladder.findIndex(
-        (o) => o.direction === signal.candidate.direction && o.barrier === signal.candidate.barrier,
-      );
-      const refreshed: LadderOption = {
-        direction: signal.candidate.direction,
-        barrier: signal.candidate.barrier,
-        estWin,
-        ask: bestQuote.askPrice,
-        payout: bestQuote.payout,
-      };
-      if (idx >= 0) ladder[idx] = refreshed;
-      else ladder.push(refreshed);
+          symbol: top.market,
+        });
+        const ratio = q.askPrice > 0 ? q.payout / q.askPrice : 0;
+        const idx = quotes.findIndex(
+          (o) => o.market === top.market && o.direction === top.direction && o.barrier === top.barrier,
+        );
+        quotes[idx] = {
+          ...quotes[idx],
+          ask: q.askPrice,
+          payout: q.payout,
+          realEdge: quotes[idx].estWin - (ratio > 0 ? 1 / ratio : 0),
+          realEV: quotes[idx].estWin * ratio - 1,
+        };
+        recordQuote(top.market, top.direction, top.barrier, ratio);
+      } catch {
+        // fresh top quote unavailable: the in-ladder proposal is still valid
+      }
     }
 
-    const decision = planRecovery(ladder, ctx, {
-      direction: signal.candidate.direction,
-      barrier: signal.candidate.barrier,
-    });
-    if (decision.holds) {
-      // Ten consecutive losses trigger a stop plus a 1-minute cooldown on the
-      // Start button; the user can resume betting after it elapses (daily loss
-      // limit remains the hard safety stop).
-      if (decision.holdReason?.includes('consecutive loss cap')) {
-        this.emit({ type: 'cooldown', ts: Date.now(), seconds: 60, reason: decision.holdReason });
-        this.emit({ type: HOLD, ts: Date.now(), reason: decision.holdReason });
-        this.stop(decision.holdReason);
+    const recovering = ctx.strategy !== 'conservative' && ctx.debt > 0.005;
+    let decision: RecoveryStake = recoveryHold();
+    if (recovering) {
+      const ladder: LadderOption[] = quotes.map((o) => ({
+        direction: o.direction,
+        barrier: o.barrier,
+        estWin: o.estWin,
+        ask: o.ask,
+        payout: o.payout,
+      }));
+      const base = planRecovery(ladder, ctx, { direction: top?.direction ?? 'over', barrier: top?.barrier ?? 1 });
+      if (base.holds) {
+        this.emit({ type: HOLD, ts: Date.now(), reason: base.holdReason });
+        if (base.holdReason?.includes('consecutive loss cap')) {
+          this.emit({ type: 'cooldown', ts: Date.now(), seconds: 60, reason: base.holdReason });
+          this.stop(base.holdReason);
+          return 0;
+        }
+        // Caps breach -> stop the run. No positive-edge candidate -> Wait: the
+        // market can rotate onto a better barrier, so keep scanning.
+        if (base.holdReason?.includes('no positive-edge')) {
+          this.phase = 'waiting-edge';
+          return 1500;
+        }
+        this.stop(base.holdReason ?? 'recovery hold');
         return 0;
       }
-      this.emit({ type: HOLD, ts: Date.now(), reason: decision.holdReason });
-      this.stop(decision.holdReason);
-      return 0;
+      decision = {
+        ...base,
+        market: quotes.find((o) => o.direction === base.direction && o.barrier === base.barrier)?.market ?? top?.market ?? '',
+      };
+    } else {
+      // Base bet: only the candidate with a real positive edge qualifies.
+      const eligible = quotes
+        .filter((o) => o.estWin >= 0.35 && o.realEdge >= settings.min_edge)
+        .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
+      if (eligible.length === 0) {
+        this.emit({ type: HOLD, ts: Date.now(), reason: 'no positive live edge after quote' });
+        this.phase = 'waiting-edge';
+        return 1500;
+      }
+      decision = {
+        stake: settings.base_stake,
+        direction: eligible[0].direction,
+        barrier: eligible[0].barrier,
+        reason: 'base',
+        estWin: eligible[0].estWin,
+        payout: eligible[0].payout,
+        holds: false,
+        market: eligible[0].market,
+      };
     }
-    this.emit({ type: 'decision', ts: Date.now(), decision, streak: rec.streak, lost: rec.lost });
+    this.emit({
+      type: 'decision',
+      ts: Date.now(),
+      decision,
+      streak: rec.streak,
+      debt: rec.debt,
+      attempts: rec.attempts,
+      cycleStake: rec.cycleStake,
+    });
 
     const gate = riskCheck({
       stake: decision.stake,
@@ -271,6 +357,7 @@ export class Automation {
     });
     if (!gate.ok) {
       this.emit({ type: HOLD, ts: Date.now(), reason: gate.reason });
+      if (gate.reason.includes('drawdown')) this.stop(gate.reason);
       return 900;
     }
 
@@ -282,13 +369,13 @@ export class Automation {
       currency: session.currency || 'USD',
       duration: 1,
       durationUnit: 't',
-      symbol: signal.candidate.market,
+      symbol: decision.market,
     });
 
     this.phase = 'buying';
     const trade = insertTrade({
       ts: Date.now(),
-      market: signal.candidate.market,
+      market: decision.market,
       contract_type: finalQuote.direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
       barrier: finalQuote.barrier,
       duration: 1,
@@ -303,6 +390,32 @@ export class Automation {
       purchase_id: `auto-${tradeSequence()}`,
       reason: decision.reason,
     });
+
+    // Calibration snapshot: remember the scanner state at the buy instant so we
+    // can later compare "when the scanner said X%, how often did it actually win?".
+    const traded = quotes.find(
+      (o) => o.market === decision.market && o.direction === decision.direction && o.barrier === decision.barrier,
+    );
+    if (traded) {
+      const prev = lastDigitEvents(decision.market, 1);
+      insertScannerLog({
+        trade_id: trade.id,
+        ts: Date.now(),
+        market: decision.market,
+        direction: decision.direction,
+        barrier: decision.barrier,
+        est_win: decision.estWin,
+        ask: finalQuote.askPrice,
+        payout: finalQuote.payout,
+        ratio: finalQuote.askPrice > 0 ? finalQuote.payout / finalQuote.askPrice : 0,
+        breakeven: finalQuote.askPrice > 0 ? finalQuote.askPrice / finalQuote.payout : 0,
+        edge: decision.estWin - (finalQuote.askPrice > 0 ? finalQuote.askPrice / finalQuote.payout : 0),
+        prev_digit: prev.length ? prev[0].digit : null,
+        consistency: traded.consistency,
+        entropy: traded.entropy,
+        momentum: traded.momentum,
+      });
+    }
     this.emit({ type: 'trade', ts: Date.now(), trade });
 
     const bought = await this.client.placeBuy(finalQuote.id, finalQuote.askPrice);
@@ -324,7 +437,7 @@ export class Automation {
         exitDigit: outcome.exitDigit,
       };
       resolveTrade(trade.id, status, profit, bought.contractId, exitDetails);
-      const next = applyOutcome(won, profit, settings);
+      const next = applyOutcome(won, profit, settings, session.balance);
       saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery().last_win_epoch, updated_at: Date.now() });
       this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won });
       this.emit({
@@ -347,7 +460,7 @@ export class Automation {
     this.emit({ type: 'status', ts: Date.now(), state: this.state() });
     if (this.runTarget > 0 && this.runTrades >= this.runTarget) {
       resetRecovery();
-      this.emit({ type: 'recovery', ts: Date.now(), recovery: { mode: 'base', streak: 0, lost: 0 }, reset: true });
+      this.emit({ type: 'recovery', ts: Date.now(), recovery: getRecovery(), reset: true });
       this.stop(`target of ${this.runTarget} trades completed`);
     }
 
@@ -417,16 +530,6 @@ export class Automation {
   }
 }
 
-function parsePreference(p: string): { direction: Direction; barrier: number } {
-  const m = /^(over|under)(\d)$/.exec(p.trim().toLowerCase());
-  if (!m) return { direction: 'over', barrier: 1 };
-  const direction: Direction = m[1] === 'under' ? 'under' : 'over';
-  let barrier = Number(m[2]);
-  if (direction === 'over') barrier = Math.max(0, Math.min(8, barrier));
-  else barrier = Math.max(1, Math.min(9, barrier));
-  return { direction, barrier };
-}
-
 let seq = 0;
 function tradeSequence(): number {
   return ++seq;
@@ -435,5 +538,5 @@ function tradeSequence(): number {
 export function emergencyStop(hub: Hub, automation: Automation): void {
   automation.stop('emergency stop');
   resetRecovery();
-  hub.emit({ type: 'recovery', ts: Date.now(), recovery: { mode: 'base', streak: 0, lost: 0 }, reset: true });
+  hub.emit({ type: 'recovery', ts: Date.now(), recovery: getRecovery(), reset: true });
 }

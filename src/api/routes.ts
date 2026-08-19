@@ -18,6 +18,7 @@ import type { Direction } from '../core/digitMath.ts';
 import {
   clearSession,
   getAutomation as storeGetAutomation,
+  getCalibration,
   getOpenTrade,
   getRecovery,
   getSession,
@@ -86,7 +87,22 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: 'invalid settings' };
     }
-    const numeric = ['base_stake', 'max_stake', 'daily_loss_limit', 'min_edge', 'min_recovery_win', 'martingale_steps', 'max_consecutive_losses', 'strategy_multiplier'];
+    const numeric = [
+      'base_stake',
+      'max_stake',
+      'daily_loss_limit',
+      'min_edge',
+      'min_recovery_win',
+      'martingale_steps',
+      'max_consecutive_losses',
+      'strategy_multiplier',
+      'recovery_buffer',
+      'chase_amortize',
+      'max_recovery_debt',
+      'max_recovery_exposure',
+      'max_recovery_attempts',
+      'max_drawdown_pct',
+    ];
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body)) {
       if (k === 'barrier_preference' && typeof v === 'string') patch[k] = v;
@@ -101,6 +117,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
     return { trades: listTrades(limit) };
   });
+
+  app.get('/api/calibration', async () => getCalibration());
 
   app.post('/api/auth/pat', async (req, reply) => {
     const body = req.body as { token?: string };
