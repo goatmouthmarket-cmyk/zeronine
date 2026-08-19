@@ -88,13 +88,25 @@ export function ping(): Record<string, unknown> {
   return { ping: 1 };
 }
 
-export function lastDigitOf(quote: number): number {
-  const s = Math.abs(quote).toString();
-  const parts = s.split('.');
-  let tail = parts.length > 1 ? parts[1] : parts[0];
-  if (parts.length > 1) tail = tail.replace(/0+$/, '');
-  if (tail.length === 0) return 0;
-  return Number(tail.slice(-1));
+const precisionRegistry = new Map<string, number>();
+
+export function setPrecision(symbol: string, decimals: number): void {
+  precisionRegistry.set(symbol, decimals);
+}
+
+export function getPrecision(symbol: string): number | undefined {
+  return precisionRegistry.get(symbol);
+}
+
+export function lastDigitOf(quote: number, decimals?: number): number {
+  const v = Math.abs(quote);
+  if (typeof decimals === 'number' && Number.isInteger(decimals) && decimals > 0) {
+    const tail = v.toFixed(decimals).split('.')[1];
+    return tail ? Number(tail[tail.length - 1]) : 0;
+  }
+  const s = v.toString();
+  const tail = s.split('.')[1] ?? s;
+  return tail.length === 0 ? 0 : Number(tail[tail.length - 1]);
 }
 
 export function winDigits(direction: Direction, barrier: number): number[] {

@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { config } from '../config.ts';
-import { balanceSubscribe, ping, proposal, buy, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
+import { balanceSubscribe, getPrecision, ping, proposal, buy, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
 import type { Direction } from '../core/digitMath.ts';
 import { updateSessionBalance } from '../db/store.ts';
 
@@ -235,7 +235,7 @@ export class DerivPrivateClient {
       buyPrice: Number(c.buy_price ?? 0),
       settled: !!c.is_sold,
       exitSpot: Number.isFinite(exitSpot) ? exitSpot : undefined,
-      exitDigit: Number.isFinite(exitSpot) ? lastDigitOf(exitSpot) : undefined,
+      exitDigit: Number.isFinite(exitSpot) ? lastDigitOf(exitSpot, getPrecision(c.underlying_symbol)) : undefined,
       entrySpot: Number.isFinite(Number(entryTick?.quote ?? NaN)) ? Number(entryTick.quote) : undefined,
     };
   }
@@ -302,13 +302,17 @@ export class DerivPrivateClient {
 
   async settleContract(contractId: string, onUpdate: (u: ContractUpdate) => void): Promise<ContractUpdate> {
     return new Promise((resolve) => {
+      let done = false;
       const subs = this.contractSubs.get(contractId) ?? new Set();
       const wrapped = (update: ContractUpdate): void => finish(update);
       subs.add(wrapped);
       this.contractSubs.set(contractId, subs);
 
-      const finish = (update: ContractUpdate) => {
+      const finish = (update: ContractUpdate): void => {
+        if (done) return;
         if (update.settled) {
+          done = true;
+          clearTimeout(hard);
           subs.delete(wrapped);
           resolve(update);
         } else {
@@ -316,12 +320,24 @@ export class DerivPrivateClient {
         }
       };
 
+      // Never let a settlement hang forever: resolve as unsettled so the
+      // automation can reconcile/expire the trade instead of stalling on it.
+      const hard = setTimeout(() => {
+        if (done) return;
+        done = true;
+        subs.delete(wrapped);
+        resolve({ contractId, status: 'open', profit: 0, sellPrice: 0, buyPrice: 0, settled: false });
+      }, 20000);
+
       this.request(proposalOpenContract(contractId, 0, true), 'proposal_open_contract', 60000)
         .then((msg) => {
           const c = (msg as any)?.proposal_open_contract;
           if (c?.contract_id) finish(this.normalizeContract(c));
         })
         .catch(() => {
+          if (done) return;
+          done = true;
+          clearTimeout(hard);
           subs.delete(wrapped);
           resolve({ contractId, status: 'open', profit: 0, sellPrice: 0, buyPrice: 0, settled: false });
         });

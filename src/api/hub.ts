@@ -10,6 +10,7 @@ export type HubEventType =
   | 'quote_error'
   | 'decision'
   | 'hold'
+  | 'cooldown'
   | 'trade'
   | 'contract'
   | 'recovery'

@@ -18,11 +18,13 @@ export interface SignalPick {
   reason: string;
 }
 
-function candidatesFor(snap: MarketSnapshot, minWin: number): SignalCandidate[] {
+function candidatesFor(snap: MarketSnapshot, minWin: number, extremesOnly: boolean): SignalCandidate[] {
   const dist = normalizedDist(snap);
   const candidates: SignalCandidate[] = [];
-  const barriersOver = [1, 2, 3, 4, 5, 6, 7];
-  const barriersUnder = [9, 8, 7, 6, 5, 4, 3];
+  // Conservative mode only ever considers the two extreme barriers:
+  // Over 0 (digit > 0) and Under 9 (digit < 9) — the highest win-rate sides.
+  const barriersOver = extremesOnly ? [0] : [1, 2, 3, 4, 5, 6, 7];
+  const barriersUnder = extremesOnly ? [9] : [9, 8, 7, 6, 5, 4, 3];
   for (const barrier of barriersOver) {
     const estWin = estimateWinRate(dist, 'over', barrier);
     const estPayout = estimatePayoutRatio('over', barrier);
@@ -51,12 +53,20 @@ export interface QuotePlanOption {
 export function buildQuotePlan(
   pick: SignalPick,
   preference: { direction: Direction; barrier: number },
+  extremesOnly = false,
 ): QuotePlanOption[] {
   const out: QuotePlanOption[] = [];
   const push = (direction: Direction, barrier: number): void => {
     const b = clampBarrier(direction, barrier);
     if (!out.some((x) => x.direction === direction && x.barrier === b)) out.push({ direction, barrier });
   };
+
+  // Conservative mode: only ever quote the two extreme barriers the bot may trade.
+  if (extremesOnly) {
+    push(pick.candidate.direction, pick.candidate.barrier);
+    push(pick.candidate.direction === 'over' ? 'under' : 'over', pick.candidate.direction === 'over' ? 9 : 0);
+    return out;
+  }
 
   // best-edge signal candidate first
   push(pick.candidate.direction, pick.candidate.barrier);
@@ -85,11 +95,12 @@ export function pickSignal(
   registry: MarketRegistry,
   minWin: number,
   minEdge: number,
+  extremesOnly = false,
 ): SignalPick {
   const all: SignalCandidate[] = [];
   for (const snap of registry.allSnapshots()) {
     if (!snap.fresh) continue;
-    all.push(...candidatesFor(snap, minWin));
+    all.push(...candidatesFor(snap, minWin, extremesOnly));
   }
   if (all.length === 0) {
     return { candidate: null as unknown as SignalCandidate, alternatives: [], holds: true, reason: 'no fresh market' };
@@ -109,7 +120,10 @@ export function pickSignal(
     if (side.length > 0) chosen = side[0];
   }
   const alternatives = rest.filter((c) => c !== chosen).slice(0, 5);
-  if (chosen.edge < minEdge) {
+  // Conservative mode trades the extreme barriers for consistent high win rate;
+  // the edge model scores them slightly negative (low payout), so gate on win
+  // rate only rather than blocking every trade on the min-edge threshold.
+  if (chosen.edge < minEdge && !extremesOnly) {
     return { candidate: chosen, alternatives, holds: true, reason: 'edge below threshold' };
   }
   return { candidate: chosen, alternatives, holds: false, reason: 'signal' };

@@ -10,6 +10,13 @@ const MAX_BUFFER = 64 * 1024;
 export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
   await app.register(websocket, { options: { maxPayload: 8192 } });
 
+  let lastSignal: unknown = null;
+  let lastHold: unknown = null;
+  hub.on((evt) => {
+    if (evt.type === 'signal') lastSignal = evt;
+    if (evt.type === 'hold') lastHold = evt;
+  });
+
   app.get('/ws', { websocket: true }, (socket: WebSocket) => {
     socket.send(
       JSON.stringify({
@@ -18,6 +25,8 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
         markets: registry.allSnapshots(),
       }),
     );
+    if (lastSignal) socket.send(JSON.stringify(lastSignal));
+    if (lastHold) socket.send(JSON.stringify(lastHold));
 
     let lastTickSent = 0;
     let pendingTick: unknown = null;

@@ -37,7 +37,7 @@ export interface Settings {
   min_edge: number;
   min_recovery_win: number;
   barrier_preference: string;
-  strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale';
+  strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
   strategy_multiplier: number;
 }
 
@@ -134,6 +134,7 @@ export interface State {
   decision: { decision: Decision; streak: number; lost: number } | null;
   hold: { reason: string } | null;
   contract: ContractEvt | null;
+  botCooldownUntil: number;
   logs: LogEntry[];
 }
 
@@ -152,6 +153,7 @@ const initial: State = {
   decision: null,
   hold: null,
   contract: null,
+  botCooldownUntil: 0,
   logs: [],
 };
 
@@ -267,6 +269,10 @@ function applyEvent(evt: Record<string, unknown>): void {
       break;
     case 'hold':
       patch.hold = { reason: String(evt.reason ?? '') };
+      break;
+    case 'cooldown':
+      patch.botCooldownUntil = Date.now() + Number(evt.seconds ?? 60) * 1000;
+      pushLog('warn', `cooldown: ${String(evt.reason ?? '')} — start blocked for ${Number(evt.seconds ?? 60)}s`);
       break;
     case 'trade': {
       const t = evt.trade as TradeRow;

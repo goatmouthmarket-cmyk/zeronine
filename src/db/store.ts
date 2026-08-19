@@ -212,6 +212,11 @@ export function getSettings(): SettingsRow {
   const row = getDb()
     .prepare('SELECT * FROM settings WHERE id = 1')
     .get() as unknown as Record<string, unknown>;
+  const rawMode = String(row.strategy_mode ?? 'conservative');
+  const strategy_mode =
+    rawMode === 'martingale' || rawMode === 'boosted_martingale' || rawMode === 'chase' || rawMode === 'conservative'
+      ? rawMode
+      : 'conservative';
   return {
     base_stake: Number(row.base_stake),
     max_stake: Number(row.max_stake),
@@ -221,7 +226,7 @@ export function getSettings(): SettingsRow {
     min_edge: Number(row.min_edge),
     min_recovery_win: Number(row.min_recovery_win),
     barrier_preference: String(row.barrier_preference),
-    strategy_mode: String(row.strategy_mode ?? 'conservative'),
+    strategy_mode,
     strategy_multiplier: Number(row.strategy_multiplier ?? 3),
   };
 }
@@ -411,6 +416,12 @@ export function getOpenTrade(): TradeRow | null {
     .prepare("SELECT * FROM trades WHERE status = 'pending' ORDER BY id DESC LIMIT 1")
     .get();
   return row ? (row as unknown as TradeRow) : null;
+}
+
+export function getPendingTrades(): TradeRow[] {
+  return getDb()
+    .prepare("SELECT * FROM trades WHERE status = 'pending' ORDER BY id ASC")
+    .all() as unknown as TradeRow[];
 }
 
 export function resolveTrade(

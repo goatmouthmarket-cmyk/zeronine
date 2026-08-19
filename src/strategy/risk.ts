@@ -1,8 +1,7 @@
 import { runningPnlToday, getOpenTrade } from '../db/store.ts';
 import type { SettingsRow } from '../db/store.ts';
 import { getRecovery } from '../db/store.ts';
-import type { RecoveryContext, LadderOption, StrategyMode } from '../strategy/recovery.ts';
-import { planRecovery } from '../strategy/recovery.ts';
+import type { RecoveryContext, StrategyMode } from '../strategy/recovery.ts';
 
 export interface RiskCheck {
   ok: boolean;
@@ -12,10 +11,13 @@ export interface RiskCheck {
 export function buildRecoveryContext(settings: SettingsRow): RecoveryContext {
   const rec = getRecovery();
   const strategy: StrategyMode =
-    settings.strategy_mode === 'martingale' || settings.strategy_mode === 'boosted_martingale'
+    settings.strategy_mode === 'martingale' ||
+    settings.strategy_mode === 'boosted_martingale' ||
+    settings.strategy_mode === 'chase'
       ? settings.strategy_mode
       : 'conservative';
   return {
+    mode: rec.mode,
     streak: rec.streak,
     lost: rec.lost,
     baseStake: settings.base_stake,
@@ -64,20 +66,25 @@ export function riskCheck(params: {
 
 export function applyOutcome(
   won: boolean,
-  stake: number,
-  decision: ReturnType<typeof planRecovery>,
-  ladder: LadderOption[],
+  profit: number,
   settings: SettingsRow,
 ): { mode: 'base' | 'recovering'; streak: number; lost: number } {
-  const rec = getRecovery();
   const ctx = buildRecoveryContext(settings);
   if (won) {
+    // Martingale/Chase: a win pays the debt down and only returns to base once
+    // the whole lost amount is recovered (the chase is split across several bets).
+    if ((ctx.strategy === 'martingale' || ctx.strategy === 'chase') && ctx.lost > 0) {
+      const debt = ctx.lost - Math.max(0, profit);
+      if (debt > 0.005) {
+        return { mode: 'recovering', streak: 0, lost: debt };
+      }
+    }
     return { mode: 'base', streak: 0, lost: 0 };
   }
   const next = {
     mode: 'recovering' as const,
     streak: ctx.streak + 1,
-    lost: ctx.lost + stake,
+    lost: ctx.lost + Math.max(0, -profit),
   };
   return next;
 }

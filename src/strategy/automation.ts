@@ -10,7 +10,7 @@ import { estimateWinRate } from '../core/digitMath.ts';
 import type { Direction } from '../core/digitMath.ts';
 import type { TradeRow } from '../db/store.ts';
 import {
-  getOpenTrade,
+  getPendingTrades,
   getRecovery,
   getSession,
   getSettings,
@@ -135,10 +135,17 @@ export class Automation {
       return 1200;
     }
 
-    if (getOpenTrade()) {
-      this.emit({ type: HOLD, ts: Date.now(), reason: 'waiting open contract to settle' });
-      this.phase = 'waiting-settlement';
-      return 350;
+    // Auto-unstick stale pending bets (leftover after a restart, a failed buy,
+    // or a settlement that never came back). Reconcile each one so the loop can
+    // never stall forever waiting on an open contract.
+    const pending = getPendingTrades();
+    if (pending.length > 0) {
+      await this.reconcilePending(pending);
+      if (getPendingTrades().length > 0) {
+        this.emit({ type: HOLD, ts: Date.now(), reason: 'waiting open contract to settle' });
+        this.phase = 'waiting-settlement';
+        return 350;
+      }
     }
 
     const rec = getRecovery();
@@ -161,7 +168,8 @@ export class Automation {
     }
 
     this.phase = 'scanning';
-    const signal = pickSignal(this.registry, 0.35, settings.min_edge);
+    const conservative = settings.strategy_mode === 'conservative';
+    const signal = pickSignal(this.registry, 0.35, settings.min_edge, conservative);
     if (signal.holds) {
       this.emit({ type: HOLD, ts: Date.now(), reason: signal.reason });
       return 1000;
@@ -177,7 +185,7 @@ export class Automation {
     const preference = parsePreference(settings.barrier_preference);
 
     this.phase = 'quoting';
-    const plan = buildQuotePlan(signal, preference);
+    const plan = buildQuotePlan(signal, preference, conservative);
     const ladder: LadderOption[] = [];
     for (const opt of plan) {
       try {
@@ -237,6 +245,15 @@ export class Automation {
       barrier: signal.candidate.barrier,
     });
     if (decision.holds) {
+      // Ten consecutive losses trigger a stop plus a 1-minute cooldown on the
+      // Start button; the user can resume betting after it elapses (daily loss
+      // limit remains the hard safety stop).
+      if (decision.holdReason?.includes('consecutive loss cap')) {
+        this.emit({ type: 'cooldown', ts: Date.now(), seconds: 60, reason: decision.holdReason });
+        this.emit({ type: HOLD, ts: Date.now(), reason: decision.holdReason });
+        this.stop(decision.holdReason);
+        return 0;
+      }
       this.emit({ type: HOLD, ts: Date.now(), reason: decision.holdReason });
       this.stop(decision.holdReason);
       return 0;
@@ -307,7 +324,7 @@ export class Automation {
         exitDigit: outcome.exitDigit,
       };
       resolveTrade(trade.id, status, profit, bought.contractId, exitDetails);
-      const next = applyOutcome(won, decision.stake, decision, ladder, settings);
+      const next = applyOutcome(won, profit, settings);
       saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery().last_win_epoch, updated_at: Date.now() });
       this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won });
       this.emit({
@@ -335,6 +352,68 @@ export class Automation {
     }
 
     return config.tradeGapMs;
+  }
+
+  /**
+   * Automatically resolve any stale 'pending' trades so the bot never gets
+   * stuck. Bets with no contract id never reached Deriv and are expired
+   * immediately; the rest are queried (with a hard timeout) and settled with
+   * their real outcome when reachable, otherwise expired.
+   */
+  private async reconcilePending(pending: TradeRow[]): Promise<void> {
+    const now = Date.now();
+    for (const t of pending) {
+      // Auto-void any bet still open after a minute - it can never settle now.
+      if (now - t.ts > 60_000) {
+        resolveTrade(t.id, 'expired', 0, t.contract_id);
+        this.emit({
+          type: 'contract',
+          ts: Date.now(),
+          contractId: t.contract_id,
+          result: 'expired',
+          reconciled: true,
+          voided: true,
+        });
+        continue;
+      }
+      if (!t.contract_id) {
+        resolveTrade(t.id, 'expired', 0, t.contract_id);
+        this.emit({ type: 'contract', ts: Date.now(), contractId: '', result: 'expired', reconciled: true });
+        continue;
+      }
+      try {
+        const outcome = await this.client.settleContract(t.contract_id, () => undefined);
+        if (outcome.settled) {
+          const won = outcome.status === 'won';
+          const status: TradeRow['status'] = won ? 'won' : 'lost';
+          const profit = Number.isFinite(outcome.profit)
+            ? outcome.profit
+            : won
+              ? (t.payout ?? 0) - (t.stake ?? 0)
+              : -(t.stake ?? 0);
+          resolveTrade(t.id, status, profit, t.contract_id, {
+            entrySpot: outcome.entrySpot,
+            exitSpot: outcome.exitSpot,
+            exitDigit: outcome.exitDigit,
+          });
+          this.emit({
+            type: 'contract',
+            ts: Date.now(),
+            contractId: t.contract_id,
+            update: outcome,
+            result: status,
+            profit,
+            reconciled: true,
+          });
+        } else {
+          resolveTrade(t.id, 'expired', 0, t.contract_id);
+          this.emit({ type: 'contract', ts: Date.now(), contractId: t.contract_id, result: 'expired', reconciled: true });
+        }
+      } catch (err) {
+        this.emit({ type: 'error', ts: Date.now(), message: `reconcile ${t.contract_id}: ${String(err)}` });
+        resolveTrade(t.id, 'expired', 0, t.contract_id);
+      }
+    }
   }
 }
 

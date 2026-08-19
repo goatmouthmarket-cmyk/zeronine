@@ -2,7 +2,7 @@ import WebSocket from 'ws';
 import { config } from '../config.ts';
 import { upsertMarket } from '../db/store.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
-import { contractsFor, lastDigitOf, ping, subscribeTicks, ticksHistory } from '../core/digitMath.ts';
+import { contractsFor, getPrecision, lastDigitOf, ping, setPrecision, subscribeTicks, ticksHistory } from '../core/digitMath.ts';
 
 export interface DiscoveredMarket {
   symbol: string;
@@ -25,6 +25,7 @@ export class DerivPublicFeed {
   private ws: WebSocket | null = null;
   private reqCounter = 1;
   private subSymbols = new Map<number, string>();
+  private histSymbols = new Map<number, string>();
   private pending = new Map<number, Pending>();
   private discovered = new Map<string, DiscoveredMarket>();
   private connectedAt = 0;
@@ -91,6 +92,7 @@ export class DerivPublicFeed {
     ws.on('close', () => {
       this.clearTimers();
       this.subSymbols.clear();
+      this.histSymbols.clear();
       this.onStatus(this.status());
       this.scheduleReconnect();
     });
@@ -114,12 +116,19 @@ export class DerivPublicFeed {
     if (msg.msg_type === 'ping') return;
     const reqId = msg.req_id as number | undefined;
 
+    if (msg.msg_type === 'history' && reqId !== undefined && this.histSymbols.has(reqId)) {
+      const symbol = this.histSymbols.get(reqId)!;
+      this.histSymbols.delete(reqId);
+      if (typeof msg.pip_size === 'number') setPrecision(symbol, msg.pip_size);
+      return;
+    }
+
     if (msg.msg_type === 'tick' && reqId !== undefined && this.subSymbols.has(reqId)) {
       const symbol = this.subSymbols.get(reqId)!;
       const tick = msg.tick;
       if (tick && typeof tick.quote === 'number') {
         const epoch = typeof tick.epoch === 'number' ? tick.epoch : Math.floor(Date.now() / 1000);
-        this.registry.push(symbol, tick.quote, epoch, lastDigitOf(tick.quote));
+        this.registry.push(symbol, tick.quote, epoch, lastDigitOf(tick.quote, getPrecision(symbol)));
       }
       return;
     }
@@ -209,6 +218,7 @@ export class DerivPublicFeed {
     const histReq = this.nextReqId();
     const subReq = this.nextReqId();
     this.subSymbols.set(subReq, symbol);
+    this.histSymbols.set(histReq, symbol);
     try {
       this.ws.send(JSON.stringify(ticksHistory(symbol, 250, histReq)));
       this.ws.send(JSON.stringify(subscribeTicks(symbol, subReq)));
