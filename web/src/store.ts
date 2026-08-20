@@ -49,6 +49,11 @@ export interface Settings {
   max_recovery_debt: number;
   max_recovery_exposure: number;
   max_drawdown_pct: number;
+  pattern_weight: number;
+  pattern_weight_conservative: number | null;
+  pattern_weight_martingale: number | null;
+  pattern_weight_boosted_martingale: number | null;
+  pattern_weight_chase: number | null;
 }
 
 export interface TradeRow {
@@ -94,6 +99,7 @@ export interface SignalCandidate {
   momentum: number;
   shortLongDeviation: number;
   transitionProb: number;
+  learnedWin: number | null;
 }
 
 export interface SignalPick {
@@ -141,6 +147,7 @@ export interface ContractEvt {
 export interface TestRunRow {
   id: number;
   kind: 'backtest' | 'paper';
+  source: 'manual' | 'auto';
   strategy_mode: string;
   bot_mode: string;
   base_stake: number;
@@ -220,6 +227,7 @@ export interface State {
   testlab: TestLabActive | null;
   testRuns: TestRunRow[];
   testEquity: Record<string, number[]>;
+  autoBacktest: { intervalMs: number; lastRunAt: number; nextRunAt: number; lastFingerprint: number; minNewDigits: number } | null;
   patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
 }
 
@@ -244,6 +252,7 @@ const initial: State = {
   testlab: null,
   testRuns: [],
   testEquity: {},
+  autoBacktest: null,
   patterns: null,
 };
 
@@ -535,7 +544,23 @@ export async function bootstrap(): Promise<void> {
   } catch (err) {
     // best-effort state load; the ws stream will repopulate
   }
+  void loadAutoBacktestStatus();
   connectWs();
+}
+
+export async function loadAutoBacktestStatus(): Promise<void> {
+  try {
+    const res = await api<{
+      intervalMs: number;
+      lastRunAt: number;
+      nextRunAt: number;
+      lastFingerprint: number;
+      minNewDigits: number;
+    }>('/api/test/backtest/status');
+    set({ autoBacktest: res });
+  } catch {
+    // server may not support it yet on older builds - ignore
+  }
 }
 
 export async function connectPat(token: string): Promise<SessionInfo> {

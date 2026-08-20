@@ -14,6 +14,7 @@ import {
   updateSettings,
   loadTestRuns,
   loadPatternsData,
+  loadAutoBacktestStatus,
   runTestBacktest,
   runTestPaper,
   runPatternScan,
@@ -579,6 +580,7 @@ interface HeroTarget {
   edge: number;
   breakeven: number;
   consistency: number;
+  learnedWin: number | null;
 }
 
 function scannerPhaseLabel(phase?: string): string {
@@ -628,6 +630,7 @@ function resolveTarget(
       edge: breakeven > 0 ? decision.estWin - breakeven : 0,
       breakeven,
       consistency: matched?.consistency ?? 0.5,
+      learnedWin: matched?.learnedWin ?? null,
     };
   }
   const c = candidates[0];
@@ -643,6 +646,7 @@ function resolveTarget(
     edge: q?.realEdge ?? c.edge,
     breakeven,
     consistency: c.consistency,
+    learnedWin: c.learnedWin ?? null,
   };
 }
 
@@ -740,6 +744,12 @@ function DecisionHero({
           <span class="ckm-label">Break-even</span>
           <b>{best ? `${Math.round(best.breakeven * 100)}%` : '—'}</b>
         </div>
+        {best && best.learnedWin != null && (
+          <div class="ckm">
+            <span class="ckm-label">Pattern</span>
+            <b>{Math.round(best.learnedWin * 100)}%</b>
+          </div>
+        )}
         <div class={`ckm ckm-edge${best && best.edge < 0 ? ' neg' : ''}`}>
           <span class="ckm-label">EDGE</span>
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
@@ -815,6 +825,48 @@ function BarrierPicker({ settings, showLabel = true }: { settings: Settings | nu
           {isConservative && <span class="barrier-safe">SAFE LOCK — OVER 0 / UNDER 9 ONLY</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+function PatternSplit({
+  settings,
+  onSet,
+}: {
+  settings: Settings | null;
+  onSet: (strategy: string, weight: number | null) => void;
+}): JSX.Element {
+  const strategies: { key: string; label: string }[] = [
+    { key: 'conservative', label: 'Safe' },
+    { key: 'martingale', label: 'Martingale' },
+    { key: 'boosted_martingale', label: 'Boosted' },
+    { key: 'chase', label: 'Chase' },
+  ];
+  const options: { value: number | null; label: string }[] = [
+    { value: null, label: 'Global' },
+    { value: 0, label: 'Off' },
+    { value: 0.5, label: 'Half' },
+    { value: 1, label: 'On' },
+  ];
+  const current = (key: string): number | null => (settings as unknown as Record<string, number | null>)[`pattern_weight_${key}`] ?? null;
+  return (
+    <div class="pattern-split">
+      {strategies.map((st) => (
+        <div class="pattern-split-row" key={st.key}>
+          <span class="pattern-split-label">{st.label}</span>
+          <div class="seg seg-sm">
+            {options.map((o) => (
+              <button
+                key={o.label}
+                class={`seg-btn${(current(st.key) ?? null) === o.value ? ' active' : ''}`}
+                onClick={() => onSet(st.key, o.value)}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -939,6 +991,26 @@ function BotPage(): JSX.Element {
           <div class="set-hint">
             Auto scans every barrier. Conservative is locked to Over 0 / Under 9.
           </div>
+        </div>
+
+        <div class="set-group">
+          <div class="set-label-top">Learned patterns</div>
+          <div class="seg">
+            {[0, 1].map((w) => (
+              <button
+                key={w}
+                class={`seg-btn${(s.settings?.pattern_weight ?? 0) > 0 ? (w === 1 ? ' active' : '') : w === 0 ? ' active' : ''}`}
+                onClick={() => void updateSettings({ pattern_weight: w })}
+              >
+                {w === 1 ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <div class="set-hint">
+            Blends confirmed next-digit patterns (pattern_stats) into signal edge. Global default for every strategy.
+          </div>
+          <PatternSplit settings={s.settings} onSet={(strategy, w) => void updateSettings({ [`pattern_weight_${strategy}`]: w })} />
+          <div class="set-hint">Per-strategy override — Global uses the default above. A/B: compare extreme spread and moderate aggressives with patterns off.</div>
         </div>
 
         <div class="set-group">
@@ -1304,6 +1376,7 @@ function LabCards({
                   disabled={busy}
                 >
                   {best === key && <span class="tl-badge">Best</span>}
+                  {run?.source === 'auto' && <span class="tl-badge auto">Auto</span>}
                   <span class="tl-mode-name">{MODE_META[mode].label}</span>
                   {run && run.trades > 0 ? (
                     <>
@@ -1392,6 +1465,12 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
   const [selected, setSelected] = useState<Set<string>>(new Set(ALL_CONFIG_KEYS));
   const runs = s.testRuns.filter((r) => r.kind === 'backtest').slice(0, 500);
 
+  useEffect(() => {
+    void loadAutoBacktestStatus();
+    const t = setInterval(() => void loadAutoBacktestStatus(), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   const toggle = (key: string) => {
     const next = new Set(selected);
     if (next.has(key)) next.delete(key);
@@ -1430,7 +1509,25 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
       <LabActive active={s.testlab?.kind === 'backtest' ? s.testlab : null} />
       <TlErr err={err} />
       <ConfigPicker selected={selected} onToggle={toggle} label="Configs" />
-      <div class="tl-note">Estimated payouts from recorded quote averages — not real Deriv prices.</div>
+      <div class="tl-note">Estimated payouts from recorded quote averages — not real Deriv prices. Learned patterns: {(() => {
+        const g = (s.settings?.pattern_weight ?? 0) > 0 ? 'global ON' : 'global OFF';
+        const parts = [
+          ((s.settings?.pattern_weight_conservative ?? null) != null) ? `safe=${s.settings?.pattern_weight_conservative}` : null,
+          ((s.settings?.pattern_weight_martingale ?? null) != null) ? `martingale=${s.settings?.pattern_weight_martingale}` : null,
+          ((s.settings?.pattern_weight_boosted_martingale ?? null) != null) ? `boosted=${s.settings?.pattern_weight_boosted_martingale}` : null,
+          ((s.settings?.pattern_weight_chase ?? null) != null) ? `chase=${s.settings?.pattern_weight_chase}` : null,
+        ].filter((x): x is string => x != null);
+        return parts.length ? `${g}·${parts.join(' · ')}` : g;
+      })()}</div>
+      {s.autoBacktest && (
+        <div class="tl-note auto">
+          Auto backtest: runs every {(s.autoBacktest.intervalMs / 3_600_000).toFixed(0)}h (pattern scan first)
+          {s.autoBacktest.lastRunAt > 0
+            ? ` · last ${new Date(s.autoBacktest.lastRunAt).toLocaleString()} · next ${new Date(s.autoBacktest.nextRunAt).toLocaleTimeString()}`
+            : ` · first run scheduled shortly after boot`}
+          · needs ≥{s.autoBacktest.minNewDigits.toLocaleString()} new ticks since last run
+        </div>
+      )}
       {runs.length === 0 && !busy && <div class="empty-hint">No backtest runs yet — run one to see every config side by side.</div>}
       <LabCards runs={runs} equity={s.testEquity} kind="backtest" busy={busy} />
     </>

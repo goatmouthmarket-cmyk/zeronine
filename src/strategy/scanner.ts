@@ -38,6 +38,7 @@ export interface BarrierFeatures {
   consistency: number;
   entropy: number;
   transitionCond: number;
+  learnedWin: number | null;
   estimatedWin: number;
 }
 
@@ -47,6 +48,18 @@ export interface MarketScan {
   samples: number;
   previousDigit: number | null;
   features: BarrierFeatures[];
+}
+
+/**
+ * Learned-pattern hook: given a previous digit, return the renormalized
+ * P(next digit) distribution confirmed by pattern_stats, or null when the
+ * market has no confirmed rows for that previous digit.
+ */
+export type PatternLift = (symbol: string, prev: number) => number[] | null;
+
+export interface PatternInput {
+  rowFor: PatternLift;
+  weight: number;
 }
 
 export function digitFreq(digits: number[]): number[] {
@@ -153,11 +166,19 @@ function clamp(p: number, lo: number, hi: number): number {
 // Exposed so the test lab can reproduce the exact signal math per barrier.
 export { theoreticalWin, windowFreq, momentumOf, consistencyOf, entropyOf, transitionCond };
 
-export function scanMarket(symbol: string, display: string, digits: number[]): MarketScan {
+export function scanMarket(
+  symbol: string,
+  display: string,
+  digits: number[],
+  pattern?: PatternInput | null,
+): MarketScan {
   const features: BarrierFeatures[] = [];
+  const prevDigit = digits.length ? Math.trunc(digits[digits.length - 1]) : -1;
+  const rowFor = pattern && pattern.weight > 0 ? pattern.rowFor : undefined;
   for (const direction of ['over', 'under'] as Direction[]) {
     for (const barrier of direction === 'over' ? [0, 1, 2, 3, 4, 5, 6, 7] : [9, 8, 7, 6, 5, 4, 3]) {
-      features.push(featureFor(digits, direction, barrier));
+      const learned = rowFor ? (prevDigit >= 0 && prevDigit <= 9 ? rowFor(symbol, prevDigit) ?? null : null) : null;
+      features.push(featureFor(digits, direction, barrier, learned != null ? { row: learned, weight: pattern?.weight ?? 0 } : null));
     }
   }
 
@@ -175,7 +196,12 @@ export function scanMarket(symbol: string, display: string, digits: number[]): M
  * Compute the full feature set for a single (direction, barrier) — the lightweight
  * path the test lab uses so a backtest can assess one barrier without scanning all.
  */
-export function featureFor(digits: number[], direction: Direction, barrier: number): BarrierFeatures {
+export function featureFor(
+  digits: number[],
+  direction: Direction,
+  barrier: number,
+  pattern?: { row: number[] | null; weight: number } | null,
+): BarrierFeatures {
   const wins: Record<number, number | null> = { 50: null, 100: null, 250: null, 500: null };
   const base = theoreticalWin(direction, barrier);
 
@@ -217,7 +243,15 @@ export function featureFor(digits: number[], direction: Direction, barrier: numb
 
   const tilt = momentum - base;
   const credible = tilt * consistency;
-  const transitionAdj = (transitionCondProb - base) * TRANSITION_WEIGHT;
+  let transitionAdj = (transitionCondProb - base) * TRANSITION_WEIGHT;
+  let learnedWin: number | null = null;
+  if (pattern && pattern.weight > 0 && pattern.row) {
+    const row = pattern.row;
+    const wins = winDigits(direction, barrier);
+    learnedWin = wins.reduce((s, d) => s + (row[d] ?? 0), 0);
+    const w = clamp(pattern.weight, 0, 1);
+    transitionAdj = ((1 - w) * transitionCondProb + w * learnedWin - base) * TRANSITION_WEIGHT;
+  }
   const estimatedWin = clamp(base + credible + transitionAdj, 0.02, 0.98);
 
   return {
@@ -230,6 +264,7 @@ export function featureFor(digits: number[], direction: Direction, barrier: numb
     consistency,
     entropy,
     transitionCond: transitionCondProb,
+    learnedWin,
     estimatedWin,
   };
 }

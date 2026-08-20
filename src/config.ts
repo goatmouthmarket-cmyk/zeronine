@@ -37,6 +37,8 @@ export interface AppConfig {
   coolOffMs: number;
   allowedMarkets: string[];
   tradeGapMs: number;
+  autoBacktestHours: number;
+  autoBacktestMinNewDigits: number;
 }
 
 function loadEnvFile(file: string): void {
@@ -107,6 +109,8 @@ export function loadConfig(): AppConfig {
       .map((s) => s.trim())
       .filter(Boolean),
     tradeGapMs: num('TRADE_GAP_MS', 1200),
+    autoBacktestHours: num('AUTO_BACKTEST_HOURS', 3),
+    autoBacktestMinNewDigits: num('AUTO_BACKTEST_MIN_NEW_DIGITS', 5000),
   };
 }
 

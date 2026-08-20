@@ -5,6 +5,9 @@ import type { DerivPrivateClient, ContractUpdate } from '../deriv/privateClient.
 import type { LadderOption, RecoveryDecision } from '../strategy/recovery.ts';
 import { planRecovery } from '../strategy/recovery.ts';
 import { pickSignal } from '../strategy/signal.ts';
+import { patternRowsByPrev } from '../db/store.ts';
+import { patternWeightForStrategy } from '../db/store.ts';
+import type { PatternInput } from '../strategy/scanner.ts';
 import { applyOutcome, buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { contractProfit } from '../strategy/pnl.ts';
 import type { Direction } from '../core/digitMath.ts';
@@ -26,6 +29,24 @@ import {
 } from '../db/store.ts';
 
 const HOLD = 'hold';
+
+/**
+ * Learned-pattern hook for the live scanner. Returns null (no-op, identical to
+ * pre-pattern behavior) until pattern_weight > 0, so enabling the setting is
+ * the one switch that turns learned next-digit patterns into signal bias. Rows
+ * are loaded from pattern_stats once per call and cached per market.
+ */
+function patternInput(): PatternInput | null {
+  const settings = getSettings();
+  const weight = patternWeightForStrategy(settings, settings.strategy_mode);
+  if (!(weight > 0)) return null;
+  const cache = new Map<string, Map<number, number[]> | null>();
+  const rowFor = (symbol: string, prev: number): number[] | null => {
+    if (!cache.has(symbol)) cache.set(symbol, patternRowsByPrev(symbol));
+    return cache.get(symbol)?.get(prev) ?? null;
+  };
+  return { rowFor, weight: Math.min(1, Math.max(0, weight)) };
+}
 
 interface QuotedOption {
   market: string;
@@ -295,6 +316,7 @@ export class Automation {
           .map((e) => e.digit),
       undefined,
       barrierAllowed(settings),
+      patternInput(),
     );
     this.emit({ type: 'signal', ts: Date.now(), signal, phase: this.phase });
     if (signal.holds) {

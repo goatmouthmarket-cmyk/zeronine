@@ -77,6 +77,7 @@ export function runRow(
 ): Omit<TestRunRow, 'id'> {
   return {
     kind,
+    source: 'manual',
     strategy_mode,
     bot_mode,
     base_stake: baseStake,

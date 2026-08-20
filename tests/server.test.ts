@@ -53,3 +53,15 @@ test('HTTP shell boots and serves health + settings', async () => {
 
   await app.close();
 });
+
+test('app_meta round-trips and digit fingerprint counts stored ticks', async () => {
+  const storeMod = await import('../src/db/store.ts');
+  assert.equal(storeMod.getMeta('backtest_last_run_at'), null, 'unset meta is null');
+  storeMod.setMeta('backtest_last_run_at', '1234');
+  assert.equal(storeMod.getMeta('backtest_last_run_at'), '1234');
+  storeMod.setMeta('backtest_last_run_at', '5678');
+  assert.equal(storeMod.getMeta('backtest_last_run_at'), '5678', 'upsert overwrites');
+  const before = storeMod.digitFingerprint();
+  storeMod.insertDigit('X', before + 1, 0, 5);
+  assert.ok(storeMod.digitFingerprint() > before, 'fingerprint grows with a new tick');
+});

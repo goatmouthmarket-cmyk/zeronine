@@ -24,6 +24,7 @@ import {
   clearSession,
   getAutomation as storeGetAutomation,
   getCalibration,
+  getMeta,
   getOpenTrade,
   getRecovery,
   getSession,
@@ -108,13 +109,22 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       'max_recovery_exposure',
       'max_drawdown_pct',
       'barrier_number',
+      'pattern_weight',
+      'pattern_weight_conservative',
+      'pattern_weight_martingale',
+      'pattern_weight_boosted_martingale',
+      'pattern_weight_chase',
     ];
     const patch: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body)) {
       if (k === 'barrier_preference' && typeof v === 'string') patch[k] = v;
       else if (k === 'strategy_mode' && typeof v === 'string') patch[k] = v;
       else if (k === 'bot_mode' && (v === 'rapid' || v === 'balanced' || v === 'strict')) patch[k] = v;
-      else if (numeric.includes(k) && typeof v === 'number' && Number.isFinite(v)) patch[k] = v;
+      else if (numeric.includes(k) && (typeof v === 'number') && Number.isFinite(v)) patch[k] = v;
+      else if (k === 'pattern_weight_conservative' || k === 'pattern_weight_martingale' || k === 'pattern_weight_boosted_martingale' || k === 'pattern_weight_chase') {
+        if (v === null) patch[k] = null;
+        else if (typeof v === 'number' && Number.isFinite(v)) patch[k] = v;
+      }
     }
     return updateSettings(patch);
   });
@@ -174,6 +184,18 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const kind = q.kind === 'backtest' || q.kind === 'paper' || q.kind === undefined ? q.kind : undefined;
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
     return { runs: kind ? listTestRuns(kind, limit) : listTestRuns(undefined, limit) };
+  });
+
+  app.get('/api/test/backtest/status', async () => {
+    const intervalMs = config.autoBacktestHours * 3_600_000;
+    const lastRunAt = Number(getMeta('backtest_last_run_at') ?? 0);
+    return {
+      intervalMs,
+      lastRunAt,
+      nextRunAt: lastRunAt > 0 ? lastRunAt + intervalMs : Date.now() + intervalMs,
+      lastFingerprint: Number(getMeta('backtest_last_fingerprint') ?? 0),
+      minNewDigits: config.autoBacktestMinNewDigits,
+    };
   });
 
   app.post('/api/patterns/scan', async (_req, reply) => {

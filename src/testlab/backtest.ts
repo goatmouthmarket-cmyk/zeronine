@@ -7,7 +7,7 @@ import { planRecovery } from '../strategy/recovery.ts';
 import type { LadderOption } from '../strategy/recovery.ts';
 import { nextRecovery } from '../strategy/risk.ts';
 import { config } from '../config.ts';
-import { digitHistory, getQuoteStats, insertTestRun, listMarkets, listTestRuns } from '../db/store.ts';
+import { digitHistory, getQuoteStats, getSettings, insertTestRun, listMarkets, listTestRuns, patternRowsByPrev, patternWeightForStrategy } from '../db/store.ts';
 import type { TestRunRow } from '../db/store.ts';
 import { computeMetrics, runRow, round2 } from './metrics.ts';
 import type { Aggregate } from './metrics.ts';
@@ -65,18 +65,21 @@ interface MarketData {
   sampled: Array<{ k: number; epoch: number; dt: BarrierEst[] }>;
 }
 
-function loadMarket(symbol: string, historyLimit: number, stride: number, warmup: number, allowed: Array<{ direction: Direction; barrier: number }>, ratioFor: (m: string, d: Direction, b: number) => number): MarketData | null {
+function loadMarket(symbol: string, historyLimit: number, stride: number, warmup: number, allowed: Array<{ direction: Direction; barrier: number }>, ratioFor: (m: string, d: Direction, b: number) => number, patternWeight: number): MarketData | null {
   const hist = digitHistory(symbol, historyLimit).filter((h) => h.digit >= 0 && h.digit <= 9);
   if (hist.length < warmup + 300) return null;
   const digits = hist.map((h) => h.digit);
   const epochs = hist.map((h) => h.epoch);
+  const patternMap = patternWeight > 0 ? patternRowsByPrev(symbol) : null;
   const sampled: MarketData['sampled'] = [];
 
   for (let k = warmup; k + 1 < digits.length; k += stride) {
     const buf = digits.slice(Math.max(0, k - 999), k + 1);
+    const prevDigit = buf.length ? Math.trunc(buf[buf.length - 1]) : -1;
+    const learned = patternMap && prevDigit >= 0 && prevDigit <= 9 ? patternMap.get(prevDigit) ?? null : null;
     const dt: BarrierEst[] = [];
     for (const a of allowed) {
-      const f: BarrierFeatures = featureFor(buf, a.direction, a.barrier);
+      const f: BarrierFeatures = featureFor(buf, a.direction, a.barrier, learned != null ? { row: learned, weight: patternWeight } : null);
       dt.push({
         direction: a.direction,
         barrier: a.barrier,
@@ -259,6 +262,7 @@ export interface BacktestOptions {
   baseStake?: number;
   target?: number;
   configs?: TestConfig[];
+  source?: 'manual' | 'auto';
   onProgress?: (p: BacktestProgress) => void;
 }
 
@@ -285,7 +289,13 @@ export async function runBacktest(opts: BacktestOptions = {}): Promise<BacktestO
     max_recovery_debt: 50,
     max_recovery_exposure: 100,
     max_drawdown_pct: 20,
+    pattern_weight: getSettings().pattern_weight,
+    pattern_weight_conservative: getSettings().pattern_weight_conservative,
+    pattern_weight_martingale: getSettings().pattern_weight_martingale,
+    pattern_weight_boosted_martingale: getSettings().pattern_weight_boosted_martingale,
+    pattern_weight_chase: getSettings().pattern_weight_chase,
   };
+  const weightForStrategy = (strategy: string): number => patternWeightForStrategy(settingsLike, strategy);
 
   opts.onProgress?.({ phase: 'preparing', configIndex: 0, totalConfigs: configKeys.length, message: 'Loading market history' });
   await sleep(0);
@@ -299,21 +309,28 @@ export async function runBacktest(opts: BacktestOptions = {}): Promise<BacktestO
   const ratioFor = (market: string, direction: Direction, barrier: number): number =>
     avgRatio.get(`${market}|${direction}|${barrier}`) ?? estimatePayoutRatio(direction, barrier);
 
-  const markets: MarketData[] = [];
-  for (const row of listMarkets()) {
-    const symbol = String(row.symbol);
-    const md = loadMarket(symbol, 20000, 8, 1000, BARR_KEYS, ratioFor);
-    if (md) markets.push(md);
-  }
+  const marketsByWeight = new Map<number, MarketData[]>();
+  const ensureMarkets = (weight: number): MarketData[] => {
+    let list = marketsByWeight.get(weight);
+    if (list) return list;
+    list = [];
+    for (const row of listMarkets()) {
+      const symbol = String(row.symbol);
+      const md = loadMarket(symbol, 20000, 8, 1000, BARR_KEYS, ratioFor, weight);
+      if (md) list.push(md);
+    }
+    marketsByWeight.set(weight, list);
+    return list;
+  };
 
   const runs: TestRunRow[] = [];
   const results: BacktestRunResult[] = [];
   for (let i = 0; i < configKeys.length; i++) {
     const cfg = configKeys[i];
     opts.onProgress?.({ phase: 'replaying', configIndex: i, totalConfigs: configKeys.length, message: `${cfg.strategyMode} · ${cfg.botMode}` });
-    const result = replayOne(cfg, markets, settingsLike, baseStake, target, startBalance);
+    const result = replayOne(cfg, ensureMarkets(weightForStrategy(cfg.strategyMode)), settingsLike, baseStake, target, startBalance);
     results.push(result);
-    const row = insertTestRun(runRow('backtest', cfg.strategyMode, cfg.botMode, baseStake, target, result.metrics, Date.now()));
+    const row = insertTestRun({ ...runRow('backtest', cfg.strategyMode, cfg.botMode, baseStake, target, result.metrics, Date.now()), source: opts.source ?? 'manual' });
     runs.push(row);
     await sleep(0); // let ws progress frames flush
   }

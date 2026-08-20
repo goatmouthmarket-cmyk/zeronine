@@ -67,6 +67,38 @@ export interface SettingsRow {
   max_recovery_debt: number;
   max_recovery_exposure: number;
   max_drawdown_pct: number;
+  pattern_weight: number;
+  pattern_weight_conservative: number | null;
+  pattern_weight_martingale: number | null;
+  pattern_weight_boosted_martingale: number | null;
+  pattern_weight_chase: number | null;
+}
+
+export type StrategyMode = 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
+
+/**
+ * Resolve the learned-pattern blend weight for one strategy: a per-strategy
+ * override wins, otherwise the global pattern_weight. 0 disables patterns.
+ */
+export function patternWeightForStrategy(
+  settings: Pick<
+    SettingsRow,
+    | 'pattern_weight'
+    | 'pattern_weight_conservative'
+    | 'pattern_weight_martingale'
+    | 'pattern_weight_boosted_martingale'
+    | 'pattern_weight_chase'
+  >,
+  strategy: string,
+): number {
+  const overrides: Record<string, number | null> = {
+    conservative: settings.pattern_weight_conservative,
+    martingale: settings.pattern_weight_martingale,
+    boosted_martingale: settings.pattern_weight_boosted_martingale,
+    chase: settings.pattern_weight_chase,
+  };
+  const v = overrides[strategy] ?? settings.pattern_weight ?? 0;
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
 }
 
 export interface AutomationRow {
@@ -113,6 +145,10 @@ function migrate(d: DatabaseSync): void {
       UNIQUE(market, epoch)
     );
     CREATE INDEX IF NOT EXISTS idx_digits_market_epoch ON digits(market, epoch DESC);
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       loginid TEXT,
@@ -238,7 +274,8 @@ function migrate(d: DatabaseSync): void {
       worst_streak INTEGER,
       final_balance REAL,
       started_at INTEGER,
-      finished_at INTEGER
+      finished_at INTEGER,
+      source TEXT NOT NULL DEFAULT 'manual'
     );
     CREATE INDEX IF NOT EXISTS idx_test_runs_kind ON test_runs(kind, id DESC);
     CREATE TABLE IF NOT EXISTS pattern_stats (
@@ -278,6 +315,11 @@ function migrate(d: DatabaseSync): void {
   if (!settingsCols.has('max_recovery_exposure')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_exposure REAL`);
   if (!settingsCols.has('max_drawdown_pct')) d.exec(`ALTER TABLE settings ADD COLUMN max_drawdown_pct REAL`);
   if (!settingsCols.has('bot_mode')) d.exec(`ALTER TABLE settings ADD COLUMN bot_mode TEXT DEFAULT 'balanced'`);
+  if (!settingsCols.has('pattern_weight')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight REAL NOT NULL DEFAULT 0`);
+  if (!settingsCols.has('pattern_weight_conservative')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight_conservative REAL`);
+  if (!settingsCols.has('pattern_weight_martingale')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight_martingale REAL`);
+  if (!settingsCols.has('pattern_weight_boosted_martingale')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight_boosted_martingale REAL`);
+  if (!settingsCols.has('pattern_weight_chase')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight_chase REAL`);
   void settingsCols;
 
   const recoveryCols = new Set(
@@ -295,6 +337,12 @@ function migrate(d: DatabaseSync): void {
   if (!automationCols.has('target_trades')) d.exec(`ALTER TABLE automation ADD COLUMN target_trades INTEGER DEFAULT 0`);
   if (!automationCols.has('trades_done')) d.exec(`ALTER TABLE automation ADD COLUMN trades_done INTEGER DEFAULT 0`);
   void automationCols;
+
+  const runCols = new Set(
+    (d.prepare(`PRAGMA table_info(test_runs)`).all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!runCols.has('source')) d.exec(`ALTER TABLE test_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`);
+  void runCols;
 }
 
 function seedDefaults(d: DatabaseSync): void {
@@ -345,6 +393,12 @@ export function getSettings(): SettingsRow {
       : barrier_preference === 'under'
         ? 9
         : 0;
+  const numOrNull = (k: string): number | null => {
+    const v = (row as Record<string, unknown>)[k];
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
   return {
     base_stake: Number(row.base_stake),
     max_stake: Number(row.max_stake),
@@ -363,6 +417,11 @@ export function getSettings(): SettingsRow {
     max_recovery_debt: Number(row.max_recovery_debt ?? 50),
     max_recovery_exposure: Number(row.max_recovery_exposure ?? 100),
     max_drawdown_pct: Number(row.max_drawdown_pct ?? 20),
+    pattern_weight: Number(row.pattern_weight ?? 0),
+    pattern_weight_conservative: numOrNull('pattern_weight_conservative'),
+    pattern_weight_martingale: numOrNull('pattern_weight_martingale'),
+    pattern_weight_boosted_martingale: numOrNull('pattern_weight_boosted_martingale'),
+    pattern_weight_chase: numOrNull('pattern_weight_chase'),
   };
 }
 
@@ -374,8 +433,7 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       `UPDATE settings SET base_stake=?, max_stake=?, martingale_steps=?, max_consecutive_losses=?,
        daily_loss_limit=?, min_edge=?, min_recovery_win=?, barrier_preference=?, barrier_number=?,
        strategy_mode=?, bot_mode=?,
-       strategy_multiplier=?, recovery_buffer=?, chase_amortize=?, max_recovery_debt=?,
-       max_recovery_exposure=?, max_drawdown_pct=? WHERE id=1`,
+       strategy_multiplier=?, recovery_buffer=?, chase_amortize=?, max_recovery_debt=?, max_recovery_exposure=?, max_drawdown_pct=?, pattern_weight=?, pattern_weight_conservative=?, pattern_weight_martingale=?, pattern_weight_boosted_martingale=?, pattern_weight_chase=? WHERE id=1`,
     )
     .run(
       next.base_stake,
@@ -395,6 +453,11 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       next.max_recovery_debt,
       next.max_recovery_exposure,
       next.max_drawdown_pct,
+      next.pattern_weight,
+      next.pattern_weight_conservative,
+      next.pattern_weight_martingale,
+      next.pattern_weight_boosted_martingale,
+      next.pattern_weight_chase,
     );
   return next;
 }
@@ -796,6 +859,7 @@ export function pruneDigits(maxRows = 200000): void {
 export interface TestRunRow {
   id: number;
   kind: 'backtest' | 'paper';
+  source: 'manual' | 'auto';
   strategy_mode: string;
   bot_mode: string;
   base_stake: number;
@@ -817,12 +881,13 @@ export interface TestRunRow {
 export function insertTestRun(r: Omit<TestRunRow, 'id'>): TestRunRow {
   const info = getDb()
     .prepare(
-      `INSERT INTO test_runs (kind, strategy_mode, bot_mode, base_stake, target, trades, wins, losses,
+      `INSERT INTO test_runs (kind, source, strategy_mode, bot_mode, base_stake, target, trades, wins, losses,
          net_pnl, win_rate, avg_stake, max_drawdown_pct, best_streak, worst_streak, final_balance, started_at, finished_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.kind,
+      r.source,
       r.strategy_mode,
       r.bot_mode,
       r.base_stake,
@@ -841,6 +906,23 @@ export function insertTestRun(r: Omit<TestRunRow, 'id'>): TestRunRow {
       r.finished_at,
     );
   return getDb().prepare('SELECT * FROM test_runs WHERE id = ?').get(Number(info.lastInsertRowid)) as unknown as TestRunRow;
+}
+
+export function getMeta(key: string): string | null {
+  const row = getDb().prepare('SELECT value FROM app_meta WHERE key = ?').get(key) as unknown as { value: string } | null;
+  return row?.value ?? null;
+}
+
+export function setMeta(key: string, value: string): void {
+  getDb()
+    .prepare('INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+    .run(key, value);
+}
+
+/** Monotonic fingerprint of stored tick history used to detect "enough new data". */
+export function digitFingerprint(): number {
+  const row = getDb().prepare('SELECT MAX(id) AS m FROM digits').get() as unknown as { m: number | null };
+  return Number(row.m ?? 0);
 }
 
 export function listTestRuns(kind?: string, limit = 200): TestRunRow[] {
@@ -889,6 +971,34 @@ export function listPatterns(): PatternRow[] {
   return getDb()
     .prepare('SELECT * FROM pattern_stats ORDER BY ABS(lift - 1) DESC LIMIT 500')
     .all() as unknown as PatternRow[];
+}
+
+/**
+ * Per prev-digit, the confirmed next-digit conditional frequencies from
+ * pattern_stats for one market. Rows are renomalized so each prev-digit is a
+ * full probability distribution over 0-9; missing next-digits keep a 0.1
+ * baseline. Returns null when the market has no confirmed rows.
+ */
+export function patternRowsByPrev(market: string): Map<number, number[]> | null {
+  const rows = getDb()
+    .prepare('SELECT prev_digit, next_digit, frequency FROM pattern_stats WHERE market = ? ORDER BY prev_digit')
+    .all(market) as unknown as Array<{ prev_digit: number; next_digit: number; frequency: number }>;
+  if (rows.length === 0) return null;
+  const map = new Map<number, number[]>();
+  for (const r of rows) {
+    let row = map.get(r.prev_digit);
+    if (!row) {
+      row = Array.from({ length: 10 }, () => 0.1);
+      map.set(r.prev_digit, row);
+    }
+    const f = Number(r.frequency);
+    if (Number.isFinite(f)) row[r.next_digit] = f;
+  }
+  for (const row of map.values()) {
+    const sum = row.reduce((a, b) => a + b, 0);
+    if (sum > 0) for (let i = 0; i < 10; i++) row[i] = row[i] / sum;
+  }
+  return map;
 }
 
 export function maxTradeId(): number {

@@ -2,7 +2,7 @@ import type { MarketRegistry, MarketSnapshot } from '../core/marketState.ts';
 import type { Direction } from '../core/digitMath.ts';
 import { breakevenWinRate, estimatePayoutRatio } from '../core/digitMath.ts';
 import { scanMarket } from './scanner.ts';
-import type { BarrierFeatures } from './scanner.ts';
+import type { BarrierFeatures, PatternInput } from './scanner.ts';
 
 export type DigitProvider = (symbol: string, count: number) => number[];
 
@@ -19,6 +19,7 @@ export interface SignalCandidate {
   momentum: number;
   shortLongDeviation: number;
   transitionProb: number;
+  learnedWin: number | null;
 }
 
 export interface SignalPick {
@@ -57,6 +58,7 @@ function toCandidate(
     momentum: f.momentum,
     shortLongDeviation: f.shortLongDeviation,
     transitionProb: f.transitionCond,
+    learnedWin: f.learnedWin,
   };
 }
 
@@ -79,12 +81,13 @@ export function pickSignal(
   digits: DigitProvider,
   maxCandidates = 5,
   allowed?: Array<{ direction: Direction; barrier: number }> | null,
+  pattern?: PatternInput | null,
 ): SignalPick {
   const all: SignalCandidate[] = [];
   for (const snap of registry.allSnapshots()) {
     if (!snap.fresh) continue;
     const history = digits(snap.symbol, 1000);
-    const scan = scanMarket(snap.symbol, snap.display, history.length ? history : snap.recentDigits);
+    const scan = scanMarket(snap.symbol, snap.display, history.length ? history : snap.recentDigits, pattern);
     for (const f of scan.features) {
       if (f.estimatedWin < minWin) continue;
       if (allowed && !allowed.some((a) => a.direction === f.direction && a.barrier === f.barrier)) continue;
