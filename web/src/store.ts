@@ -138,6 +138,67 @@ export interface ContractEvt {
   error?: string;
 }
 
+export interface TestRunRow {
+  id: number;
+  kind: 'backtest' | 'paper';
+  strategy_mode: string;
+  bot_mode: string;
+  base_stake: number;
+  target: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  net_pnl: number;
+  win_rate: number | null;
+  avg_stake: number | null;
+  max_drawdown_pct: number | null;
+  best_streak: number | null;
+  worst_streak: number | null;
+  final_balance: number | null;
+  started_at: number;
+  finished_at: number;
+}
+
+export interface PatternRow {
+  market: string;
+  prev_digit: number;
+  next_digit: number;
+  count: number;
+  frequency: number;
+  expected: number;
+  lift: number;
+  window: number;
+}
+
+export interface CalibrationBucket {
+  bucket: string;
+  lo: number;
+  hi: number;
+  n: number;
+  wins: number;
+  rate: number | null;
+}
+
+export interface CalibrationReport {
+  buckets: CalibrationBucket[];
+  total: number;
+  byBarrier: Array<{ market: string; direction: 'over' | 'under'; barrier: number; trades: number; wins: number; win_rate: number | null }>;
+  byStrategy: Array<{ strategy: string; mode: string; kind: string; trades: number; wins: number; win_rate: number | null }>;
+}
+
+export interface TestLabActive {
+  kind: 'backtest' | 'paper' | 'patterns';
+  phase: string;
+  configIndex?: number;
+  totalConfigs?: number;
+  config?: string;
+  tradesDone?: number;
+  tradesTarget?: number;
+  done?: number;
+  total?: number;
+  message: string;
+}
+
 export interface State {
   ws: 'connecting' | 'open' | 'closed';
   feed: FeedStatus | null;
@@ -156,6 +217,10 @@ export interface State {
   hold: { reason: string } | null;
   contract: ContractEvt | null;
   botCooldownUntil: number;
+  testlab: TestLabActive | null;
+  testRuns: TestRunRow[];
+  testEquity: Record<string, number[]>;
+  patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
 }
 
 const initial: State = {
@@ -176,6 +241,10 @@ const initial: State = {
   hold: null,
   contract: null,
   botCooldownUntil: 0,
+  testlab: null,
+  testRuns: [],
+  testEquity: {},
+  patterns: null,
 };
 
 let state: State = initial;
@@ -353,6 +422,23 @@ function applyEvent(evt: Record<string, unknown>): void {
     case 'recovery': {
       patch.recovery = evt.recovery as Recovery;
       if (evt.reset) patch.contract = null;
+      break;
+    }
+    case 'testlab': {
+      const kind = evt.kind as TestLabActive['kind'];
+      if (!kind) break;
+      patch.testlab = {
+        kind,
+        phase: String(evt.phase ?? 'running'),
+        configIndex: evt.configIndex !== undefined ? Number(evt.configIndex) : undefined,
+        totalConfigs: evt.totalConfigs !== undefined ? Number(evt.totalConfigs) : undefined,
+        config: evt.config ? String(evt.config) : undefined,
+        tradesDone: evt.tradesDone !== undefined ? Number(evt.tradesDone) : undefined,
+        tradesTarget: evt.tradesTarget !== undefined ? Number(evt.tradesTarget) : undefined,
+        done: evt.done !== undefined ? Number(evt.done) : undefined,
+        total: evt.total !== undefined ? Number(evt.total) : undefined,
+        message: String(evt.message ?? ''),
+      };
       break;
     }
     case 'error':
@@ -552,5 +638,76 @@ export async function refreshTrades(limit = 50): Promise<void> {
     if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, 50) });
   } catch {
     // best-effort refresh; stale list is fine
+  }
+}
+
+// ---- testlab actions ----
+
+export async function loadTestRuns(kind?: 'backtest' | 'paper'): Promise<TestRunRow[]> {
+  const qs = kind ? `?kind=${kind}` : '';
+  const res = await api<{ runs: TestRunRow[] }>(`/api/test/runs${qs}`);
+  const runs = Array.isArray(res.runs) ? res.runs : [];
+  set({
+    testRuns: kind ? [...runs, ...state.testRuns.filter((r) => r.kind !== kind)].sort((a, b) => b.id - a.id) : runs,
+  });
+  return runs;
+}
+
+export async function loadPatternsData(): Promise<void> {
+  try {
+    const res = await api<{ patterns: PatternRow[]; calibration: CalibrationReport }>('/api/patterns');
+    set({ patterns: { patterns: res.patterns ?? [], calibration: res.calibration ?? null } });
+  } catch {
+    // best-effort
+  }
+}
+
+export interface BacktestDetail {
+  runs: TestRunRow[];
+  results: Array<{ config: { strategyMode: string; botMode: string }; equity: number[] }>;
+}
+
+export async function runTestBacktest(opts?: { target?: number; configs?: string[] }): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (opts?.target !== undefined) body.target = opts.target;
+  if (opts?.configs?.length) body.configs = opts.configs;
+  const res = await api<{ ok: boolean } & BacktestDetail>('/api/test/backtest', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    const equity: Record<string, number[]> = {};
+    for (const r of res.results ?? []) {
+      equity[`backtest-${r.config.strategyMode}-${r.config.botMode}`] = r.equity;
+    }
+    set({
+      testRuns: [...(res.runs ?? []), ...state.testRuns.filter((r) => r.kind !== 'backtest')].sort((a, b) => b.id - a.id),
+      testEquity: { ...state.testEquity, ...equity },
+      testlab: null,
+    });
+  }
+}
+
+export async function runTestPaper(opts?: { tradesPerConfig?: number; configs?: string[] }): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (opts?.tradesPerConfig !== undefined) body.trades_per_config = opts.tradesPerConfig;
+  if (opts?.configs?.length) body.configs = opts.configs;
+  const res = await api<{ ok: boolean; result: { runs: TestRunRow[]; completed: number; failed: number } }>('/api/test/paper', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    set({ testRuns: [...(res.result?.runs ?? []), ...state.testRuns.filter((r) => r.kind !== 'paper')].sort((a, b) => b.id - a.id), testlab: null });
+  }
+}
+
+export async function runPatternScan(): Promise<void> {
+  const res = await api<{ ok: boolean; result: { inserted: number; confirmed: number; noise: number } }>('/api/patterns/scan', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+  if (res.ok) {
+    set({ testlab: null });
+    await loadPatternsData();
   }
 }

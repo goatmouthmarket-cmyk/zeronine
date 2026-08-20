@@ -150,67 +150,14 @@ function clamp(p: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, p));
 }
 
-export function scanMarket(symbol: string, display: string, digits: number[]): MarketScan {
-  const wins: Record<number, number | null> = { 50: null, 100: null, 250: null, 500: null };
+// Exposed so the test lab can reproduce the exact signal math per barrier.
+export { theoreticalWin, windowFreq, momentumOf, consistencyOf, entropyOf, transitionCond };
 
+export function scanMarket(symbol: string, display: string, digits: number[]): MarketScan {
   const features: BarrierFeatures[] = [];
   for (const direction of ['over', 'under'] as Direction[]) {
     for (const barrier of direction === 'over' ? [0, 1, 2, 3, 4, 5, 6, 7] : [9, 8, 7, 6, 5, 4, 3]) {
-      const base = theoreticalWin(direction, barrier);
-
-      const p = {
-        win25: 0,
-        win50: 0,
-        win100: 0,
-        win250: 0,
-        win500: 0,
-        win1000: 0,
-      };
-      for (const size of WINDOWS) {
-        const freq = windowFreq(digits, size);
-        const prob = freq ? barrierProb(freq, direction, barrier) : 0;
-        if (size === 25) p.win25 = prob;
-        if (size === 50) {
-          p.win50 = prob;
-          wins[50] = freq ? prob : null;
-        }
-        if (size === 100) {
-          p.win100 = prob;
-          wins[100] = freq ? prob : null;
-        }
-        if (size === 250) {
-          p.win250 = prob;
-          wins[250] = freq ? prob : null;
-        }
-        if (size === 500) {
-          p.win500 = prob;
-          wins[500] = freq ? prob : null;
-        }
-        if (size === 1000) p.win1000 = prob;
-      }
-
-      const momentum = momentumOf(wins);
-      const consistency = consistencyOf(digits, direction, barrier);
-      const entropy = entropyOf(digits);
-      const transitionCondProb = transitionCond(digits, direction, barrier);
-
-      const tilt = momentum - base;
-      const credible = tilt * consistency;
-      const transitionAdj = (transitionCondProb - base) * TRANSITION_WEIGHT;
-      const estimatedWin = clamp(base + credible + transitionAdj, 0.02, 0.98);
-
-      features.push({
-        direction,
-        barrier,
-        theoreticalWin: base,
-        ...p,
-        momentum,
-        shortLongDeviation: p.win50 - p.win500,
-        consistency,
-        entropy,
-        transitionCond: transitionCondProb,
-        estimatedWin,
-      });
+      features.push(featureFor(digits, direction, barrier));
     }
   }
 
@@ -221,6 +168,69 @@ export function scanMarket(symbol: string, display: string, digits: number[]): M
     samples: digits.length,
     previousDigit: last != null && last >= 0 && last <= 9 ? last : null,
     features,
+  };
+}
+
+/**
+ * Compute the full feature set for a single (direction, barrier) — the lightweight
+ * path the test lab uses so a backtest can assess one barrier without scanning all.
+ */
+export function featureFor(digits: number[], direction: Direction, barrier: number): BarrierFeatures {
+  const wins: Record<number, number | null> = { 50: null, 100: null, 250: null, 500: null };
+  const base = theoreticalWin(direction, barrier);
+
+  const p = {
+    win25: 0,
+    win50: 0,
+    win100: 0,
+    win250: 0,
+    win500: 0,
+    win1000: 0,
+  };
+  for (const size of WINDOWS) {
+    const freq = windowFreq(digits, size);
+    const prob = freq ? barrierProb(freq, direction, barrier) : 0;
+    if (size === 25) p.win25 = prob;
+    if (size === 50) {
+      p.win50 = prob;
+      wins[50] = freq ? prob : null;
+    }
+    if (size === 100) {
+      p.win100 = prob;
+      wins[100] = freq ? prob : null;
+    }
+    if (size === 250) {
+      p.win250 = prob;
+      wins[250] = freq ? prob : null;
+    }
+    if (size === 500) {
+      p.win500 = prob;
+      wins[500] = freq ? prob : null;
+    }
+    if (size === 1000) p.win1000 = prob;
+  }
+
+  const momentum = momentumOf(wins);
+  const consistency = consistencyOf(digits, direction, barrier);
+  const entropy = entropyOf(digits);
+  const transitionCondProb = transitionCond(digits, direction, barrier);
+
+  const tilt = momentum - base;
+  const credible = tilt * consistency;
+  const transitionAdj = (transitionCondProb - base) * TRANSITION_WEIGHT;
+  const estimatedWin = clamp(base + credible + transitionAdj, 0.02, 0.98);
+
+  return {
+    direction,
+    barrier,
+    theoreticalWin: base,
+    ...p,
+    momentum,
+    shortLongDeviation: p.win50 - p.win500,
+    consistency,
+    entropy,
+    transitionCond: transitionCondProb,
+    estimatedWin,
   };
 }
 

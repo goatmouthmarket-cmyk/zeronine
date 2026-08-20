@@ -104,15 +104,17 @@ export function riskCheck(params: {
  * - martingale / boosted_martingale: a win should clear the whole debt.
  * - chase: a win clears the amortized chunk and keeps hunting until debt is 0.
  */
-export function applyOutcome(
+/**
+ * Pure form of the recovery state transition so the test lab can replay
+ * strategies against historical data without touching the live recovery row.
+ */
+export function nextRecovery(
+  cur: { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number },
   won: boolean,
   profit: number,
-  settings: SettingsRow,
   balance?: number,
 ): { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number } {
-  const cur = getRecovery();
-  const peakBalance =
-    balance != null && balance > 0 ? Math.max(cur.peakBalance || balance, balance) : cur.peakBalance;
+  const peakBalance = balance != null && balance > 0 ? Math.max(cur.peakBalance || balance, balance) : cur.peakBalance;
 
   if (won) {
     const debt = cur.debt - Math.max(0, profit);
@@ -131,4 +133,14 @@ export function applyOutcome(
     cycleStake: cur.cycleStake + loss,
     peakBalance,
   };
+}
+
+export function applyOutcome(
+  won: boolean,
+  profit: number,
+  settings: SettingsRow,
+  balance?: number,
+): { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number } {
+  const cur = getRecovery();
+  return nextRecovery(cur, won, profit, balance);
 }

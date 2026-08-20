@@ -16,6 +16,10 @@ import {
 import type { TokenSet } from '../deriv/oauth.ts';
 import type { Direction } from '../core/digitMath.ts';
 import { contractProfit } from '../strategy/pnl.ts';
+import { runBacktest, TEST_MODES, TEST_STRATEGIES } from '../testlab/backtest.ts';
+import type { TestConfig } from '../testlab/backtest.ts';
+import { runPaperSweep } from '../testlab/paper.ts';
+import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import {
   clearSession,
   getAutomation as storeGetAutomation,
@@ -26,6 +30,7 @@ import {
   getSettings,
   insertTrade,
   listMarkets,
+  listTestRuns,
   listTrades,
   resolveTrade,
   setAutomation as storeSetAutomation,
@@ -121,6 +126,71 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.get('/api/calibration', async () => getCalibration());
+
+  app.post('/api/test/backtest', async (req, reply) => {
+    if (automation.isRunning()) {
+      reply.code(409);
+      return { error: 'stop the bot before running a backtest' };
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const options = {
+      baseStake: typeof body.base_stake === 'number' ? body.base_stake : undefined,
+      target: typeof body.target === 'number' ? body.target : undefined,
+      configs: Array.isArray(body.configs) ? (body.configs as string[]) : undefined,
+    };
+    try {
+      const out = await runBacktest({
+        ...options,
+        configs: options.configs ? parseTestConfigs(options.configs) : undefined,
+        onProgress: (p) => hub.emit({ type: 'testlab', ts: Date.now(), kind: 'backtest', ...p }),
+      });
+      return { ok: true, runs: out.runs, results: out.results };
+    } catch (err) {
+      reply.code(500);
+      return { error: String(err) };
+    }
+  });
+
+  app.post('/api/test/paper', async (req, reply) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const tradesPerConfig = typeof body.trades_per_config === 'number' ? body.trades_per_config : undefined;
+    const configs = Array.isArray(body.configs) ? (body.configs as string[]) : undefined;
+    try {
+      const result = await runPaperSweep(automation, hub, {
+        configs: configs ? parseTestConfigs(configs) : undefined,
+        tradesPerConfig,
+        onProgress: (p) => hub.emit({ type: 'testlab', ts: Date.now(), ...p }),
+      });
+      return { ok: true, result };
+    } catch (err) {
+      const code = err instanceof Error && (err as Error & { code?: string }).code;
+      reply.code(typeof code === 'string' ? (code === 'BOT_RUNNING' ? 409 : 403) : 500);
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  app.get('/api/test/runs', async (req) => {
+    const q = req.query as { kind?: string; limit?: string };
+    const kind = q.kind === 'backtest' || q.kind === 'paper' || q.kind === undefined ? q.kind : undefined;
+    const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
+    return { runs: kind ? listTestRuns(kind, limit) : listTestRuns(undefined, limit) };
+  });
+
+  app.post('/api/patterns/scan', async (_req, reply) => {
+    try {
+      const result = await scanPatterns((done, total, message) =>
+        hub.emit({ type: 'testlab', ts: Date.now(), kind: 'patterns', phase: 'scanning', done, total, message }),
+      );
+      return { ok: true, result };
+    } catch (err) {
+      reply.code(500);
+      return { error: String(err) };
+    }
+  });
+
+  app.get('/api/patterns', async () => {
+    return { patterns: listStoredPatterns(), calibration: buildCalibrationReport() };
+  });
 
   app.post('/api/auth/pat', async (req, reply) => {
     const body = req.body as { token?: string };
@@ -395,6 +465,17 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     resolveTrade(openTrade.id, 'timeout', 0, openTrade.contract_id || '');
     return { ok: true, message: `cleared stuck trade ${openTrade.id}` };
   });
+}
+
+function parseTestConfigs(entries: string[]): TestConfig[] {
+  const out: TestConfig[] = [];
+  for (const e of entries) {
+    const [strategyMode, botMode] = e.split(/[:-]/);
+    if (strategyMode && TEST_STRATEGIES.includes(strategyMode as (typeof TEST_STRATEGIES)[number]) && botMode) {
+      out.push({ strategyMode: strategyMode as (typeof TEST_STRATEGIES)[number], botMode: botMode as (typeof TEST_MODES)[number] });
+    }
+  }
+  return out;
 }
 
 function settleInBackground(client: DerivPrivateClient, hub: Hub, tradeId: number, contractId: string, stake: number, payout: number): void {

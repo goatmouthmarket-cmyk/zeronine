@@ -220,6 +220,41 @@ function migrate(d: DatabaseSync): void {
       target_trades INTEGER DEFAULT 0,
       trades_done INTEGER DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS test_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      strategy_mode TEXT NOT NULL,
+      bot_mode TEXT NOT NULL,
+      base_stake REAL NOT NULL DEFAULT 1,
+      target INTEGER NOT NULL DEFAULT 0,
+      trades INTEGER NOT NULL DEFAULT 0,
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      net_pnl REAL NOT NULL DEFAULT 0,
+      win_rate REAL,
+      avg_stake REAL,
+      max_drawdown_pct REAL,
+      best_streak INTEGER,
+      worst_streak INTEGER,
+      final_balance REAL,
+      started_at INTEGER,
+      finished_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_test_runs_kind ON test_runs(kind, id DESC);
+    CREATE TABLE IF NOT EXISTS pattern_stats (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      market TEXT NOT NULL,
+      prev_digit INTEGER NOT NULL,
+      next_digit INTEGER NOT NULL,
+      count INTEGER NOT NULL,
+      frequency REAL NOT NULL,
+      expected REAL NOT NULL,
+      lift REAL NOT NULL,
+      window INTEGER NOT NULL DEFAULT 5000,
+      scanned_at INTEGER,
+      UNIQUE(market, prev_digit, next_digit, window)
+    );
+    CREATE INDEX IF NOT EXISTS idx_pattern_stats_market ON pattern_stats(market);
   `);
 
   // Migration: add exit detail columns if missing
@@ -521,6 +556,30 @@ export function getCalibration(): { buckets: CalibrationBucket[]; total: number 
   return { buckets, total };
 }
 
+export interface BarrierCalibrationRow {
+  market: string;
+  direction: string;
+  barrier: number;
+  trades: number;
+  wins: number;
+  win_rate: number | null;
+}
+
+export function scannerStatsByBarrier(): BarrierCalibrationRow[] {
+  return getDb()
+    .prepare(
+      `SELECT market, direction, barrier,
+              COUNT(*) AS trades,
+              SUM(CASE WHEN result = 'won' THEN 1 ELSE 0 END) AS wins,
+              AVG(CASE WHEN result IN ('won','lost') THEN CASE WHEN result = 'won' THEN 1.0 ELSE 0.0 END END) AS win_rate
+       FROM scanner_logs
+       WHERE result IN ('won','lost')
+       GROUP BY market, direction, barrier
+       ORDER BY trades DESC`,
+    )
+    .all() as unknown as BarrierCalibrationRow[];
+}
+
 export function getQuoteStats(market?: string): Array<Record<string, unknown>> {
   const sql = market
     ? 'SELECT * FROM quote_stats WHERE market = ? ORDER BY barrier'
@@ -732,4 +791,120 @@ export function pruneDigits(maxRows = 200000): void {
   } catch {
     // best-effort retention
   }
+}
+
+export interface TestRunRow {
+  id: number;
+  kind: 'backtest' | 'paper';
+  strategy_mode: string;
+  bot_mode: string;
+  base_stake: number;
+  target: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  net_pnl: number;
+  win_rate: number | null;
+  avg_stake: number | null;
+  max_drawdown_pct: number | null;
+  best_streak: number | null;
+  worst_streak: number | null;
+  final_balance: number | null;
+  started_at: number;
+  finished_at: number;
+}
+
+export function insertTestRun(r: Omit<TestRunRow, 'id'>): TestRunRow {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO test_runs (kind, strategy_mode, bot_mode, base_stake, target, trades, wins, losses,
+         net_pnl, win_rate, avg_stake, max_drawdown_pct, best_streak, worst_streak, final_balance, started_at, finished_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      r.kind,
+      r.strategy_mode,
+      r.bot_mode,
+      r.base_stake,
+      r.target,
+      r.trades,
+      r.wins,
+      r.losses,
+      r.net_pnl,
+      r.win_rate,
+      r.avg_stake,
+      r.max_drawdown_pct,
+      r.best_streak,
+      r.worst_streak,
+      r.final_balance,
+      r.started_at,
+      r.finished_at,
+    );
+  return getDb().prepare('SELECT * FROM test_runs WHERE id = ?').get(Number(info.lastInsertRowid)) as unknown as TestRunRow;
+}
+
+export function listTestRuns(kind?: string, limit = 200): TestRunRow[] {
+  const rows = kind
+    ? getDb().prepare('SELECT * FROM test_runs WHERE kind = ? ORDER BY id DESC LIMIT ?').all(kind, limit)
+    : getDb().prepare('SELECT * FROM test_runs ORDER BY id DESC LIMIT ?').all(limit);
+  return rows as unknown as TestRunRow[];
+}
+
+export function latestTestRun(kind: string, strategy_mode: string, bot_mode: string): TestRunRow | null {
+  const row = getDb()
+    .prepare(
+      'SELECT * FROM test_runs WHERE kind = ? AND strategy_mode = ? AND bot_mode = ? ORDER BY id DESC LIMIT 1',
+    )
+    .get(kind, strategy_mode, bot_mode);
+  return row ? (row as unknown as TestRunRow) : null;
+}
+
+export interface PatternRow {
+  id: number;
+  market: string;
+  prev_digit: number;
+  next_digit: number;
+  count: number;
+  frequency: number;
+  expected: number;
+  lift: number;
+  window: number;
+  scanned_at: number;
+}
+
+export function replacePatterns(rows: Omit<PatternRow, 'id' | 'scanned_at'>[]): void {
+  const d = getDb();
+  d.prepare('DELETE FROM pattern_stats').run();
+  const ins = d.prepare(
+    `INSERT INTO pattern_stats (market, prev_digit, next_digit, count, frequency, expected, lift, window, scanned_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const now = Date.now();
+  for (const r of rows) {
+    ins.run(r.market, r.prev_digit, r.next_digit, r.count, r.frequency, r.expected, r.lift, r.window, now);
+  }
+}
+
+export function listPatterns(): PatternRow[] {
+  return getDb()
+    .prepare('SELECT * FROM pattern_stats ORDER BY ABS(lift - 1) DESC LIMIT 500')
+    .all() as unknown as PatternRow[];
+}
+
+export function maxTradeId(): number {
+  const row = getDb().prepare('SELECT MAX(id) AS m FROM trades').get() as unknown as { m: number | null };
+  return Number(row.m ?? 0);
+}
+
+export function tradesAfterId(id: number): TradeRow[] {
+  return getDb()
+    .prepare("SELECT * FROM trades WHERE id > ? AND status IN ('won','lost') ORDER BY id ASC")
+    .all(id) as unknown as TradeRow[];
+}
+
+export function digitHistory(market: string, limit: number): Array<{ epoch: number; digit: number }> {
+  return getDb()
+    .prepare('SELECT epoch, digit FROM digits WHERE market = ? AND digit IS NOT NULL ORDER BY id DESC LIMIT ?')
+    .all(market, limit)
+    .reverse() as unknown as Array<{ epoch: number; digit: number }>;
 }

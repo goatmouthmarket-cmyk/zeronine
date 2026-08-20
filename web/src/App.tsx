@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery } from './store';
+import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow } from './store';
 import {
   useStore,
   connectPat,
@@ -12,6 +12,11 @@ import {
   selectMarket,
   manualTrade,
   updateSettings,
+  loadTestRuns,
+  loadPatternsData,
+  runTestBacktest,
+  runTestPaper,
+  runPatternScan,
 } from './store';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
@@ -205,7 +210,7 @@ export function App(): JSX.Element {
             <HistoryPage />
           </div>
           <div class="view view-backtest">
-            <BacktestPage />
+            <TestLabPage />
           </div>
           <div class="view view-account">
             <AccountPage />
@@ -1118,18 +1123,590 @@ function Bar({ label, rate, count, tone }: { label: string; rate: number; count:
   );
 }
 
-/* ---------------- backtest ---------------- */
+/* ---------------- test lab ---------------- */
 
-function BacktestPage(): JSX.Element {
+const STRATEGY_KEYS = ['conservative', 'martingale', 'boosted_martingale', 'chase'] as const;
+const MODE_KEYS = ['rapid', 'balanced', 'strict'] as const;
+const ALL_CONFIG_KEYS: string[] = STRATEGY_KEYS.flatMap((s) => MODE_KEYS.map((m) => `${s}-${m}`));
+
+type LabTab = 'backtest' | 'paper' | 'compare' | 'patterns';
+
+function configKey(strategy: string, mode: string): string {
+  return `${strategy}-${mode}`;
+}
+
+function useCountUp(target: number, active = true): number {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    if (!active) {
+      setVal(target);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const dur = 750;
+    const step = (t: number) => {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(target * eased);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, active]);
+  return val;
+}
+
+function Sparkline({ points }: { points: number[] }): JSX.Element {
+  if (points.length < 2) return <div class="tl-spark tl-spark-empty">—</div>;
+  const w = 240;
+  const h = 60;
+  const pad = 5;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const stepX = (w - pad * 2) / (points.length - 1);
+  const coords = points.map(
+    (p, i) => `${(pad + i * stepX).toFixed(1)},${(h - pad - ((p - min) / range) * (h - pad * 2)).toFixed(1)}`,
+  );
+  const up = points[points.length - 1] >= points[0];
+  return (
+    <svg class={`tl-spark${up ? ' up' : ' down'}`} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <path d={`M${coords.join(' L')}`} class="tl-spark-line" pathLength={100} />
+    </svg>
+  );
+}
+
+function TlPnlBar({ pnl, scale }: { pnl: number; scale: number }): JSX.Element {
+  const mag = Math.min(100, (Math.abs(pnl) / Math.max(1, scale)) * 100);
+  return (
+    <div class="tl-bar-track">
+      <div
+        class={`tl-bar-fill ${pnl >= 0 ? 'up' : 'down'}`}
+        style={{ height: `${Math.max(4, mag)}%` }}
+      ></div>
+    </div>
+  );
+}
+
+function UseCountNum({ value, pct = false, money = false, currency = '$' }: { value: number | null; pct?: boolean; money?: boolean; currency?: string }): JSX.Element {
+  const v = useCountUp(value ?? 0, value !== null);
+  const text = pct
+    ? `${v.toFixed(1)}%`
+    : money
+      ? fmtSigned(v, currency)
+      : Math.round(v).toString();
+  const cls = money ? (value !== null && value > 0 ? ' up' : value !== null && value < 0 ? ' down' : '') : '';
+  return <span class={`tl-num${cls}`}>{text}</span>;
+}
+
+function LabActive({ active }: { active: TestLabActive | null }): JSX.Element | null {
+  if (!active) return null;
+  const label = active.kind === 'backtest' ? 'Backtest' : active.kind === 'paper' ? 'Paper sweep' : 'Pattern scan';
+  const idx = active.configIndex !== undefined ? active.configIndex + 1 : active.done !== undefined ? active.done : null;
+  const total = active.totalConfigs !== undefined ? active.totalConfigs : active.total;
+  return (
+    <div class="tl-active">
+      <span class="tl-active-pulse"></span>
+      <span class="tl-active-label">{label}</span>
+      <span class="tl-active-phase">{active.message}</span>
+      {idx != null && total != null && (
+        <span class="tl-active-count">
+          {idx}/{total}
+          {active.tradesTarget ? ` · trade ${active.tradesDone ?? 0}/${active.tradesTarget}` : ''}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function LabControls({
+  busy,
+  disabled,
+  onRun,
+  runLabel,
+  children,
+}: {
+  busy: boolean;
+  disabled: boolean;
+  onRun: () => void;
+  runLabel: string;
+  children?: JSX.Element;
+}): JSX.Element {
+  return (
+    <div class="tl-controls">
+      <div class="tl-subset">{children}</div>
+      <button class={`tl-run${busy ? ' busy' : ''}`} disabled={disabled || busy} onClick={onRun}>
+        {busy ? 'Running…' : runLabel}
+      </button>
+    </div>
+  );
+}
+
+function TlErr({ err }: { err: string }): JSX.Element | null {
+  if (!err) return null;
+  return <div class="tl-err">{err}</div>;
+}
+
+function useLatestRun(runs: TestRunRow[], kind: 'backtest' | 'paper', key: string): TestRunRow | null {
+  const [strategy, mode] = key.split('-');
+  const hit = runs.find((r) => r.kind === kind && r.strategy_mode === strategy && r.bot_mode === mode);
+  return hit ?? null;
+}
+
+function bestConfigKey(runs: TestRunRow[], kind: 'backtest' | 'paper'): string | null {
+  let best: TestRunRow | null = null;
+  for (const r of runs) {
+    if (r.kind !== kind || r.trades === 0) continue;
+    if (!best || r.net_pnl > best.net_pnl) best = r;
+  }
+  return best ? configKey(best.strategy_mode, best.bot_mode) : null;
+}
+
+function LabCards({
+  runs,
+  equity,
+  kind,
+  busy,
+  wide,
+}: {
+  runs: TestRunRow[];
+  equity: Record<string, number[]>;
+  kind: 'backtest' | 'paper';
+  busy: boolean;
+  wide?: boolean;
+}): JSX.Element {
+  const [open, setOpen] = useState<string | null>(null);
+  const best = bestConfigKey(runs, kind);
+
+  return (
+    <div class={`tl-cards${wide ? ' tl-cards--wide' : ''}`}>
+      {STRATEGY_KEYS.map((strategy, si) => (
+        <article class="tl-card" style={{ animationDelay: `${si * 70}ms` }}>
+          <div class="tl-card-head">
+            <span class="tl-card-name">{STRATEGY_META[strategy].label}</span>
+            <span class="tl-card-hint">{STRATEGY_META[strategy].hint}</span>
+          </div>
+          <div class="tl-modes">
+            {MODE_KEYS.map((mode) => {
+              const key = configKey(strategy, mode);
+              const run = useLatestRun(runs, kind, key);
+              const openKey = `${kind}-${key}`;
+              const expanded = open === openKey;
+              const pnl = run?.net_pnl ?? 0;
+              const wins = run?.wins ?? 0;
+              const loss = run?.losses ?? 0;
+              const scale = Math.max(1, ...runs.filter((r) => r.kind === kind).map((r) => Math.abs(r.net_pnl ?? 0)));
+              return (
+                <button
+                  class={`tl-mode${run && run.trades > 0 ? '' : ' empty'}${best === key ? ' best' : ''}${expanded ? ' open' : ''}`}
+                  onClick={() => setOpen(expanded ? null : openKey)}
+                  disabled={busy}
+                >
+                  {best === key && <span class="tl-badge">Best</span>}
+                  <span class="tl-mode-name">{MODE_META[mode].label}</span>
+                  {run && run.trades > 0 ? (
+                    <>
+                      <div class="tl-mode-nums">
+                        <span class="tl-mode-trades">{run.trades} trades</span>
+                        <span class={`tl-mode-pnl${pnl >= 0 ? ' up' : ' down'}`}>
+                          {fmtSigned(pnl, '$')}
+                        </span>
+                      </div>
+                      <div class="tl-cells">
+                        <span class="tl-cell">
+                          <span class="tl-cell-v"><UseCountNum value={run.win_rate} pct /></span>
+                          <span class="tl-cell-l">win</span>
+                        </span>
+                        <span class="tl-cell">
+                          <span class={`tl-cell-v${run.wins >= run.losses ? ' up' : ' down'}`}>{wins}W {loss}L</span>
+                          <span class="tl-cell-l">w/l</span>
+                        </span>
+                      </div>
+                      <div class="tl-wr">
+                        <div class="tl-wr-track">
+                          <div class="tl-wr-fill" style={{ width: `${Math.min(100, run.win_rate ?? 0)}%` }}></div>
+                        </div>
+                      </div>
+                      {expanded && (
+                        <div class="tl-mode-detail">
+                          <Sparkline points={equity[`${kind}-${key}`] ?? []} />
+                          <div class="tl-metrics">
+                            <span class="tl-minute"><b>{fmtSigned(run.net_pnl ?? 0, '$')}</b> pnl</span>
+                            <span class="tl-minute"><b>{run.max_drawdown_pct?.toFixed(1) ?? '—'}%</b> max dd</span>
+                            <span class="tl-minute"><b>{run.best_streak ?? 0}</b> win streak</span>
+                            <span class="tl-minute"><b>{run.worst_streak ?? 0}</b> loss streak</span>
+                            <span class="tl-minute"><b>{run.final_balance != null ? fmtMoney(run.final_balance, '$') : '—'}</b> end bal</span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <span class="tl-mode-empty">{busy ? 'running…' : 'no run yet — tap column header above to run'}</span>
+                  )}
+                  <TlPnlBar pnl={pnl} scale={scale} />
+                </button>
+              );
+            })}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ConfigPicker({
+  selected,
+  onToggle,
+  label,
+}: {
+  selected: Set<string>;
+  onToggle: (key: string) => void;
+  label: string;
+}): JSX.Element {
+  return (
+    <div class="tl-picker">
+      <span class="tl-picker-label">{label}</span>
+      <div class="tl-picker-grid">
+        {ALL_CONFIG_KEYS.map((key) => {
+          const [s, m] = key.split('-');
+          return (
+            <button
+              class={`tl-pick${selected.has(key) ? ' on' : ''}`}
+              onClick={() => onToggle(key)}
+            >
+              <span class={`tl-pick-s${selected.has(key) ? ' on' : ''}`}>{STRATEGY_META[s as Settings['strategy_mode']].label}</span>
+              <span class={`tl-pick-m${selected.has(key) ? ' on' : ''}`}>{MODE_META[m as Settings['bot_mode']].label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => void }): JSX.Element {
+  const s = useStore();
+  const [target, setTarget] = useState(200);
+  const [err, setErr] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set(ALL_CONFIG_KEYS));
+  const runs = s.testRuns.filter((r) => r.kind === 'backtest').slice(0, 500);
+
+  const toggle = (key: string) => {
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setSelected(next);
+  };
+
+  const run = async () => {
+    setErr('');
+    onBusy(true);
+    try {
+      await runTestBacktest({ target, configs: [...selected] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      onBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <LabControls busy={busy} disabled={false} onRun={run} runLabel="Run backtest">
+        <label class="tl-field">
+          <span class="tl-field-label">Target trades / config</span>
+          <input
+            class="tl-input"
+            type="number"
+            min={10}
+            max={200}
+            step={10}
+            value={target}
+            onInput={(e: any) => setTarget(Number(e.currentTarget.value) || 200)}
+          />
+        </label>
+      </LabControls>
+      <LabActive active={s.testlab?.kind === 'backtest' ? s.testlab : null} />
+      <TlErr err={err} />
+      <ConfigPicker selected={selected} onToggle={toggle} label="Configs" />
+      <div class="tl-note">Estimated payouts from recorded quote averages — not real Deriv prices.</div>
+      {runs.length === 0 && !busy && <div class="empty-hint">No backtest runs yet — run one to see every config side by side.</div>}
+      <LabCards runs={runs} equity={s.testEquity} kind="backtest" busy={busy} />
+    </>
+  );
+}
+
+function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => void }): JSX.Element {
+  const s = useStore();
+  const [n, setN] = useState(40);
+  const [err, setErr] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set(ALL_CONFIG_KEYS));
+  const runs = s.testRuns.filter((r) => r.kind === 'paper').slice(0, 500);
+  const demo = s.session?.mode === 'demo';
+
+  const toggle = (key: string) => {
+    const next = new Set(selected);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setSelected(next);
+  };
+
+  const liveEquity = (() => {
+    let bal = 0;
+    const out = [0];
+    for (const t of s.trades) {
+      bal += t.profit ?? 0;
+      out.push(bal);
+    }
+    return out;
+  })();
+
+  const run = async () => {
+    setErr('');
+    onBusy(true);
+    try {
+      await runTestPaper({ tradesPerConfig: n, configs: [...selected] });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      onBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <LabControls busy={busy} disabled={!demo} onRun={run} runLabel="Run paper sweep">
+        <label class="tl-field">
+          <span class="tl-field-label">Demo trades / config (10–200)</span>
+          <input
+            class="tl-input"
+            type="number"
+            min={10}
+            max={200}
+            step={5}
+            value={n}
+            onInput={(e: any) => setN(Math.max(1, Math.min(200, Number(e.currentTarget.value) || 40)))}
+          />
+        </label>
+      </LabControls>
+      {!demo && <div class="tl-err">Paper sweeps are demo-only — connect a demo account to run them.</div>}
+      <LabActive active={s.testlab?.kind === 'paper' ? s.testlab : null} />
+      <TlErr err={err} />
+      <ConfigPicker selected={selected} onToggle={toggle} label="Configs" />
+      {s.testlab?.kind === 'paper' && s.testlab.phase === 'running' && (
+        <div class="section tl-live">
+          <div class="section-head">
+            <span class="section-title">Live paper activity</span>
+          </div>
+          <Sparkline points={liveEquity} />
+          <div class="activity">
+            {s.trades.slice(0, 12).map((t) => (
+              <ActivityRow key={t.id} trade={t} />
+            ))}
+          </div>
+        </div>
+      )}
+      {runs.length === 0 && !busy && s.testlab?.kind !== 'paper' && <div class="empty-hint">No paper runs yet — run a sweep to compare live demo behaviour.</div>}
+      <LabCards runs={runs} equity={s.testEquity} kind="paper" busy={busy} />
+    </>
+  );
+}
+
+function CompareTab({ busy }: { busy: boolean }): JSX.Element {
+  const s = useStore();
+  const rows = ALL_CONFIG_KEYS.map((key) => {
+    const bt = useLatestRun(s.testRuns, 'backtest', key);
+    const pp = useLatestRun(s.testRuns, 'paper', key);
+    return { key, bt, pp };
+  });
+
+  return (
+    <>
+      <div class="tl-note">
+        A config only earns the <b>better</b> verdict when backtest and paper agree on direction — no cherry-picking a single method.
+      </div>
+      {s.testRuns.length === 0 && <div class="empty-hint">Run a backtest and a paper sweep to compare.</div>}
+      <div class="cmp-head">
+        <span>Config</span>
+        <span>Backtest</span>
+        <span>Paper</span>
+        <span>Verdict</span>
+      </div>
+      <div class="cmp-grid">
+        {rows.map(({ key, bt, pp }) => {
+          const [strategy, mode] = key.split('-');
+          const btSigned = bt && bt.trades > 0;
+          const ppSigned = pp && pp.trades > 0;
+          let verdict: { text: string; tone: string } | null = null;
+          if (btSigned && ppSigned) {
+            const agree = (bt!.net_pnl >= 0) === (pp!.net_pnl >= 0) && bt!.net_pnl !== 0 && pp!.net_pnl !== 0;
+            if (agree) {
+              const winner = bt!.net_pnl >= 0 ? 'gains' : 'draws down';
+              verdict = { text: `Agree · ${winner}`, tone: 'agree' };
+            } else {
+              verdict = { text: 'Disagree · needs more data', tone: 'disagree' };
+            }
+          } else if (btSigned && !ppSigned) {
+            verdict = { text: 'Backtest only', tone: 'partial' };
+          } else if (!btSigned && ppSigned) {
+            verdict = { text: 'Paper only', tone: 'partial' };
+          } else {
+            verdict = null;
+          }
+          return (
+            <div class="cmp-row" key={key}>
+              <span class="cmp-config">
+                <span class="cmp-strategy">{STRATEGY_META[strategy as Settings['strategy_mode']].label}</span>
+                <span class="cmp-mode">{MODE_META[mode as Settings['bot_mode']].label}</span>
+              </span>
+              <span class={`cmp-num${btSigned ? (bt!.net_pnl >= 0 ? ' up' : ' down') : ''}`}>
+                {btSigned ? fmtSigned(bt!.net_pnl, '$') : '—'}
+                {btSigned && <span class="cmp-sub">{bt!.trades} trades · {bt!.win_rate?.toFixed(0) ?? '—'}%</span>}
+              </span>
+              <span class={`cmp-num${ppSigned ? (pp!.net_pnl >= 0 ? ' up' : ' down') : ''}`}>
+                {ppSigned ? fmtSigned(pp!.net_pnl, '$') : '—'}
+                {ppSigned && <span class="cmp-sub">{pp!.trades} trades · {pp!.win_rate?.toFixed(0) ?? '—'}%</span>}
+              </span>
+              <span class={`cmp-verdict ${verdict?.tone ?? 'na'}`}>{verdict ? verdict.text : '—'}</span>
+            </div>
+          );
+        })}
+      </div>
+      {busy && <div class="empty-hint">Running…</div>}
+    </>
+  );
+}
+
+function PatternsTab({ busy }: { busy: boolean }): JSX.Element {
+  const s = useStore();
+  const data = s.patterns;
+  const patterns = data?.patterns ?? [];
+  const cal = data?.calibration;
+  const [scanBusy, setScanBusy] = useState(false);
+
+  const scan = async () => {
+    setScanBusy(true);
+    try {
+      await runPatternScan();
+    } finally {
+      setScanBusy(false);
+    }
+  };
+
+  const bars = [...patterns]
+    .sort((a, b) => Math.abs(b.lift - 1) - Math.abs(a.lift - 1))
+    .slice(0, 18);
+
+  return (
+    <>
+      <div class="tl-controls">
+        <div class="tl-note">
+          Confirmed transitions need ≥120 samples in the market's history and lift ≥1.30 (over) or ≤0.77 (under) in both the last 2k and 5k ticks.
+        </div>
+        <button class={`tl-run${scanBusy ? ' busy' : ''}`} disabled={scanBusy} onClick={scan}>
+          {scanBusy ? 'Scanning…' : 'Scan pattern-lift'}
+        </button>
+      </div>
+      <LabActive active={s.testlab?.kind === 'patterns' ? s.testlab : null} />
+      {patterns.length === 0 && !scanBusy && <div class="empty-hint">No confirmed transitions yet — scan the digit history.</div>}
+      {bars.length > 0 && (
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title">{bars.length} strongest transitions</span>
+          </div>
+          <div class="pat-list">
+            {bars.map((p) => {
+              const over = p.lift >= 1.3;
+              const width = Math.min(100, Math.abs(p.lift - 1) * 100 * 2.2);
+              return (
+                <div class="pat-row" key={`${p.market}-${p.prev_digit}-${p.next_digit}`}>
+                  <span class={`pat-dir ${over ? 'over' : 'under'}`}>{over ? 'O' : 'U'}</span>
+                  <span class="pat-label">
+                    {shortMarketName(p.market)} · {p.prev_digit}→{p.next_digit}
+                  </span>
+                  <span class={`pat-pct${over ? ' over' : ' under'}`}>
+                    {over ? '+' : ''}
+                    {((p.lift - 1) * 100).toFixed(0)}%
+                  </span>
+                  <div class="bar-track pat-track">
+                    <div class={`bar-fill ${over ? 'over' : 'under'}`} style={{ width: `${width}%` }}></div>
+                  </div>
+                  <span class="pat-n">n={p.count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {cal && cal.buckets.length > 0 && (
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title">Scanner calibration {cal.total > 0 ? `· ${cal.total} settled` : ''}</span>
+          </div>
+          {cal.buckets.map((b) => (
+            <Bar key={b.bucket} label={`est ${b.bucket}`} rate={((b.rate ?? 0) * 100)} count={b.n} tone={b.rate != null && b.rate >= (b.lo + b.hi) / 2 ? 'over' : 'under'} />
+          ))}
+        </div>
+      )}
+      {cal && cal.byStrategy.length > 0 && (
+        <div class="section">
+          <div class="section-head">
+            <span class="section-title">Actual win rate by config</span>
+          </div>
+          {cal.byStrategy.slice(0, 12).map((r) => (
+            <div class="pat-row" key={`${r.kind}-${r.strategy}-${r.mode}`}>
+              <span class={`pat-dir ${r.kind === 'paper' ? 'under' : 'over'}`}>{r.kind === 'paper' ? 'P' : 'B'}</span>
+              <span class="pat-label">{STRATEGY_META[r.strategy as Settings['strategy_mode']]?.label ?? r.strategy} · {MODE_META[r.mode as Settings['bot_mode']]?.label ?? r.mode}</span>
+              <span class={`pat-pct${r.win_rate != null && r.win_rate >= 35 ? ' over' : ''}`}>
+                {r.win_rate != null ? `${r.win_rate.toFixed(1)}%` : '—'}
+              </span>
+              <div class="bar-track pat-track">
+                <div class={`bar-fill ${r.win_rate != null && r.win_rate >= 35 ? 'over' : 'under'}`} style={{ width: `${Math.min(100, r.win_rate ?? 0)}%` }}></div>
+              </div>
+              <span class="pat-n">{r.trades} tr</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {busy && <div class="empty-hint">Waiting…</div>}
+    </>
+  );
+}
+
+function TestLabPage(): JSX.Element {
+  const s = useStore();
+  const [tab, setTab] = useState<LabTab>('backtest');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void loadTestRuns();
+  }, []);
+  useEffect(() => {
+    if (tab === 'patterns') void loadPatternsData();
+  }, [tab]);
+
   return (
     <>
       <header class="header">
-        <div class="page-title">Backtest</div>
-        <div class="subtitle">Replays recorded trades through a strategy</div>
+        <div class="page-title">Test Lab</div>
+        <div class="subtitle">Backtest the replay · sweep the demo · learn the patterns</div>
       </header>
-      <div class="section">
-        <div class="empty-hint">Backtest coming soon — run the bot to collect data.</div>
+      <div class="seg tl-tabs">
+        {(['backtest', 'paper', 'compare', 'patterns'] as LabTab[]).map((t) => (
+          <button
+            class={`seg-btn${tab === t ? ' active' : ''}`}
+            onClick={() => setTab(t)}
+            key={t}
+          >
+            {t[0].toUpperCase() + t.slice(1)}
+          </button>
+        ))}
       </div>
+      {tab === 'backtest' && <BacktestTab busy={busy} onBusy={setBusy} />}
+      {tab === 'paper' && <PaperTab busy={busy} onBusy={setBusy} />}
+      {tab === 'compare' && <CompareTab busy={busy} />}
+      {tab === 'patterns' && <PatternsTab busy={busy} />}
     </>
   );
 }
