@@ -2288,12 +2288,14 @@ button {
     /* when a sub-page is active, hide the home dashboard (header with nav stays) */
     .app[data-page="bot"] .view-home .dashboard,
     .app[data-page="history"] .view-home .dashboard,
+    .app[data-page="backtest"] .view-home .dashboard,
     .app[data-page="account"] .view-home .dashboard {
         display: none;
     }
 
     .desk-side .view-bot,
     .desk-side .view-history,
+    .desk-side .view-backtest,
     .desk-side .view-account {
         width: 100%;
         max-width: 920px;
