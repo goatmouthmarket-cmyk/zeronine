@@ -15,6 +15,7 @@ import {
   loadTestRuns,
   loadPatternsData,
   loadAutoBacktestStatus,
+  loadAutoPaperStatus,
   runTestBacktest,
   runTestPaper,
   runPatternScan,
@@ -1255,7 +1256,7 @@ function TlPnlBar({ pnl, scale }: { pnl: number; scale: number }): JSX.Element {
     <div class="tl-bar-track">
       <div
         class={`tl-bar-fill ${pnl >= 0 ? 'up' : 'down'}`}
-        style={{ height: `${Math.max(4, mag)}%` }}
+        style={{ width: `${Math.max(2, Math.round(mag))}%` }}
       ></div>
     </div>
   );
@@ -1415,7 +1416,7 @@ function LabCards({
                       )}
                     </>
                   ) : (
-                    <span class="tl-mode-empty">{busy ? 'running…' : 'no run yet — tap column header above to run'}</span>
+                    <span class="tl-mode-empty">{busy ? 'running…' : 'no run yet'}</span>
                   )}
                   <TlPnlBar pnl={pnl} scale={scale} />
                 </button>
@@ -1431,15 +1432,24 @@ function LabCards({
 function ConfigPicker({
   selected,
   onToggle,
-  label,
+  onToggleAll,
 }: {
   selected: Set<string>;
   onToggle: (key: string) => void;
-  label: string;
+  onToggleAll: (selectAll: boolean) => void;
 }): JSX.Element {
+  const all = selected.size === ALL_CONFIG_KEYS.length;
   return (
     <div class="tl-picker">
-      <span class="tl-picker-label">{label}</span>
+      <div class="tl-picker-head">
+        <span class="tl-picker-label">Configs</span>
+        <span class="tl-picker-count">
+          {selected.size}/{ALL_CONFIG_KEYS.length} selected
+        </span>
+        <button class={`tl-pickall${all ? ' on' : ''}`} onClick={() => onToggleAll(!all)}>
+          {all ? 'Clear' : 'All'}
+        </button>
+      </div>
       <div class="tl-picker-grid">
         {ALL_CONFIG_KEYS.map((key) => {
           const [s, m] = key.split('-');
@@ -1478,6 +1488,10 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
     setSelected(next);
   };
 
+  const toggleAll = (selectAll: boolean) => {
+    setSelected(selectAll ? new Set(ALL_CONFIG_KEYS) : new Set());
+  };
+
   const run = async () => {
     setErr('');
     onBusy(true);
@@ -1489,6 +1503,17 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
       onBusy(false);
     }
   };
+
+  const patternInfo = (() => {
+    const g = (s.settings?.pattern_weight ?? 0) > 0 ? 'global ON' : 'global OFF';
+    const parts = [
+      ((s.settings?.pattern_weight_conservative ?? null) != null) ? `safe=${s.settings?.pattern_weight_conservative}` : null,
+      ((s.settings?.pattern_weight_martingale ?? null) != null) ? `martingale=${s.settings?.pattern_weight_martingale}` : null,
+      ((s.settings?.pattern_weight_boosted_martingale ?? null) != null) ? `boosted=${s.settings?.pattern_weight_boosted_martingale}` : null,
+      ((s.settings?.pattern_weight_chase ?? null) != null) ? `chase=${s.settings?.pattern_weight_chase}` : null,
+    ].filter((x): x is string => x != null);
+    return parts.length ? `${g} · ${parts.join(' · ')}` : g;
+  })();
 
   return (
     <>
@@ -1508,26 +1533,26 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
       </LabControls>
       <LabActive active={s.testlab?.kind === 'backtest' ? s.testlab : null} />
       <TlErr err={err} />
-      <ConfigPicker selected={selected} onToggle={toggle} label="Configs" />
-      <div class="tl-note">Estimated payouts from recorded quote averages — not real Deriv prices. Learned patterns: {(() => {
-        const g = (s.settings?.pattern_weight ?? 0) > 0 ? 'global ON' : 'global OFF';
-        const parts = [
-          ((s.settings?.pattern_weight_conservative ?? null) != null) ? `safe=${s.settings?.pattern_weight_conservative}` : null,
-          ((s.settings?.pattern_weight_martingale ?? null) != null) ? `martingale=${s.settings?.pattern_weight_martingale}` : null,
-          ((s.settings?.pattern_weight_boosted_martingale ?? null) != null) ? `boosted=${s.settings?.pattern_weight_boosted_martingale}` : null,
-          ((s.settings?.pattern_weight_chase ?? null) != null) ? `chase=${s.settings?.pattern_weight_chase}` : null,
-        ].filter((x): x is string => x != null);
-        return parts.length ? `${g}·${parts.join(' · ')}` : g;
-      })()}</div>
-      {s.autoBacktest && (
-        <div class="tl-note auto">
-          Auto backtest: runs every {(s.autoBacktest.intervalMs / 3_600_000).toFixed(0)}h (pattern scan first)
-          {s.autoBacktest.lastRunAt > 0
-            ? ` · last ${new Date(s.autoBacktest.lastRunAt).toLocaleString()} · next ${new Date(s.autoBacktest.nextRunAt).toLocaleTimeString()}`
-            : ` · first run scheduled shortly after boot`}
-          · needs ≥{s.autoBacktest.minNewDigits.toLocaleString()} new ticks since last run
+      <div class="tl-statusbar">
+        <div class="tl-status">
+          <span class="tl-status-key">Patterns</span>
+          <span class="tl-status-val">{patternInfo}</span>
         </div>
-      )}
+        {s.autoBacktest && (
+          <div class="tl-status auto">
+            <span class="tl-status-key">Auto</span>
+            <span class="tl-status-val">
+              every {Math.round(s.autoBacktest.intervalMs / 3_600_000)}h
+              {s.autoBacktest.lastRunAt > 0
+                ? ` · last ${new Date(s.autoBacktest.lastRunAt).toLocaleString()} · next ${new Date(s.autoBacktest.nextRunAt).toLocaleTimeString()}`
+                : ` · first run scheduled shortly after boot`}
+              · needs ≥{s.autoBacktest.minNewDigits.toLocaleString()} new ticks
+            </span>
+          </div>
+        )}
+      </div>
+      <ConfigPicker selected={selected} onToggle={toggle} onToggleAll={toggleAll} />
+      <div class="tl-note">Estimated payouts from recorded quote averages — not real Deriv prices.</div>
       {runs.length === 0 && !busy && <div class="empty-hint">No backtest runs yet — run one to see every config side by side.</div>}
       <LabCards runs={runs} equity={s.testEquity} kind="backtest" busy={busy} />
     </>
@@ -1542,11 +1567,21 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
   const runs = s.testRuns.filter((r) => r.kind === 'paper').slice(0, 500);
   const demo = s.session?.mode === 'demo';
 
+  useEffect(() => {
+    void loadAutoPaperStatus();
+    const t = setInterval(() => void loadAutoPaperStatus(), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   const toggle = (key: string) => {
     const next = new Set(selected);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setSelected(next);
+  };
+
+  const toggleAll = (selectAll: boolean) => {
+    setSelected(selectAll ? new Set(ALL_CONFIG_KEYS) : new Set());
   };
 
   const liveEquity = (() => {
@@ -1588,9 +1623,17 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
         </label>
       </LabControls>
       {!demo && <div class="tl-err">Paper sweeps are demo-only — connect a demo account to run them.</div>}
+      {s.autoPaper && demo && (
+        <div class="tl-note auto">
+          Auto paper sweep: every {(s.autoPaper.intervalMs / 60_000).toFixed(0)}m on the demo tape
+          {s.autoPaper.lastRunAt > 0
+            ? ` · last ${new Date(s.autoPaper.lastRunAt).toLocaleString()} · next ${new Date(s.autoPaper.nextRunAt).toLocaleTimeString()}`
+            : ` · first sweep scheduled shortly after a demo session connects`}
+        </div>
+      )}
       <LabActive active={s.testlab?.kind === 'paper' ? s.testlab : null} />
       <TlErr err={err} />
-      <ConfigPicker selected={selected} onToggle={toggle} label="Configs" />
+      <ConfigPicker selected={selected} onToggle={toggle} onToggleAll={toggleAll} />
       {s.testlab?.kind === 'paper' && s.testlab.phase === 'running' && (
         <div class="section tl-live">
           <div class="section-head">

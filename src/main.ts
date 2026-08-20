@@ -23,7 +23,9 @@ import {
   updateSessionBalance,
 } from './db/store.ts';
 import { runBacktest } from './testlab/backtest.ts';
+import { runPaperSweep } from './testlab/paper.ts';
 import { scanPatterns } from './testlab/patterns.ts';
+import { tuneSettings } from './strategy/tuning.ts';
 
 async function main(): Promise<void> {
   getDb();
@@ -132,6 +134,7 @@ async function main(): Promise<void> {
       setMeta('backtest_last_fingerprint', String(fp));
       setMeta('backtest_last_run_at', String(Date.now()));
       console.info(`[auto-backtest] finished (history fingerprint ${fp})`);
+      runAutoTune();
     } catch (err) {
       console.warn(`[auto-backtest] failed: ${err}`);
     } finally {
@@ -143,12 +146,65 @@ async function main(): Promise<void> {
   const bootAutoBacktest = setTimeout(() => void runAutoBacktest(), 10_000);
   bootAutoBacktest.unref();
 
+  // Auto paper sweep: much more frequent than the backtest (env
+  // AUTO_PAPER_INTERVAL_MS, default 30m) so the demo tape is constantly
+  // re-evaluated. Always skips — never throws — when there is nothing safe to
+  // trade on: no demo session, the live bot is running, or the feed is down.
+  let autoPaperBusy = false;
+  const runAutoPaper = async (): Promise<void> => {
+    if (autoPaperBusy) return;
+    const session = getSession();
+    if (!session || session.mode !== 'demo') return;
+    if (automation.isRunning()) return;
+    if (!feed.status().connected) return;
+    autoPaperBusy = true;
+    try {
+      const lastRunAt = Number(getMeta('paper_last_run_at') ?? 0);
+      if (Date.now() - lastRunAt < config.autoPaperIntervalMs) return;
+      await runPaperSweep(automation, hub, {
+        tradesPerConfig: 40,
+        source: 'auto',
+        onProgress: (p) => hub.emit({ type: 'testlab', ts: Date.now(), source: 'auto', ...p }),
+      });
+      setMeta('paper_last_run_at', String(Date.now()));
+      console.info('[auto-paper] sweep finished');
+      runAutoTune();
+    } catch (err) {
+      console.warn(`[auto-paper] failed: ${err}`);
+    } finally {
+      autoPaperBusy = false;
+    }
+  };
+  const autoPaperTimer = setInterval(() => void runAutoPaper(), 60_000);
+  autoPaperTimer.unref();
+  const bootAutoPaper = setTimeout(() => void runAutoPaper(), 30_000);
+  bootAutoPaper.unref();
+
+  // Self-tuning: recompute the champion (backtest + paper must agree) after
+  // either automated source produces fresh runs. When the live bot is running
+  // the verdict is computed and stored for the dashboard — settings are only
+  // applied while the bot is idle so a run is never yanked mid-trade.
+  const runAutoTune = (): void => {
+    try {
+      const verdict = tuneSettings({ apply: !automation.isRunning() });
+      if (!verdict) return;
+      hub.emit({ type: 'tuning', ts: Date.now(), ...verdict });
+      console.info(
+        `[auto-tune] ${verdict.reason}${verdict.applied ? ` (applied min edge ${verdict.minEdge}, stake $${verdict.baseStake})` : ''}`,
+      );
+    } catch (err) {
+      console.warn(`[auto-tune] failed: ${err}`);
+    }
+  };
+
   const shutdown = async (signal: string): Promise<void> => {
     console.info(`[server] ${signal} — shutting down`);
     clearInterval(pruneTimer);
     clearInterval(reconnectTimer);
     clearInterval(autoBacktestTimer);
     clearTimeout(bootAutoBacktest);
+    clearInterval(autoPaperTimer);
+    clearTimeout(bootAutoPaper);
     automation.dispose();
     client.disconnect();
     feed.stop();

@@ -27,6 +27,7 @@ export interface PaperSweepOptions {
   configs?: TestConfig[];
   tradesPerConfig?: number;
   timeoutMs?: number;
+  source?: 'manual' | 'auto';
   onProgress?: (p: PaperSweepProgress) => void;
 }
 
@@ -115,7 +116,7 @@ export async function runPaperSweep(
 
       const trades = tradesAfterId(boundary).filter((t) => t.status === 'won' || t.status === 'lost');
       const metrics = computeMetrics(trades, startBalance);
-      const row = insertTestRun(runRow('paper', cfg.strategyMode, cfg.botMode, baseStake, tradesTarget, metrics, startedAt));
+      const row = insertTestRun({ ...runRow('paper', cfg.strategyMode, cfg.botMode, baseStake, tradesTarget, metrics, startedAt), source: opts.source ?? 'manual' });
       runs.push(row);
       completed += 1;
       progress(trades.length, `completed ${trades.length} trades for ${cfg.strategyMode} · ${cfg.botMode}`, 'done');

@@ -39,6 +39,10 @@ export interface AppConfig {
   tradeGapMs: number;
   autoBacktestHours: number;
   autoBacktestMinNewDigits: number;
+  autoPaperIntervalMs: number;
+  autoTuneEnabled: boolean;
+  autoTuneMinTrades: number;
+  autoTuneFreshnessMs: number;
 }
 
 function loadEnvFile(file: string): void {
@@ -111,6 +115,10 @@ export function loadConfig(): AppConfig {
     tradeGapMs: num('TRADE_GAP_MS', 1200),
     autoBacktestHours: num('AUTO_BACKTEST_HOURS', 3),
     autoBacktestMinNewDigits: num('AUTO_BACKTEST_MIN_NEW_DIGITS', 5000),
+    autoPaperIntervalMs: num('AUTO_PAPER_INTERVAL_MS', 30 * 60 * 1000),
+    autoTuneEnabled: process.env.AUTO_TUNE_ENABLED !== '0',
+    autoTuneMinTrades: num('AUTO_TUNE_MIN_TRADES', 20),
+    autoTuneFreshnessMs: num('AUTO_TUNE_FRESHNESS_MS', 48 * 60 * 60 * 1000),
   };
 }
 

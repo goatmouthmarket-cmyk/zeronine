@@ -198,6 +198,16 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     };
   });
 
+  app.get('/api/test/paper/status', async () => {
+    const intervalMs = config.autoPaperIntervalMs;
+    const lastRunAt = Number(getMeta('paper_last_run_at') ?? 0);
+    return {
+      intervalMs,
+      lastRunAt,
+      nextRunAt: lastRunAt > 0 ? lastRunAt + intervalMs : Date.now() + intervalMs,
+    };
+  });
+
   app.post('/api/patterns/scan', async (_req, reply) => {
     try {
       const result = await scanPatterns((done, total, message) =>

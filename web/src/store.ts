@@ -228,6 +228,7 @@ export interface State {
   testRuns: TestRunRow[];
   testEquity: Record<string, number[]>;
   autoBacktest: { intervalMs: number; lastRunAt: number; nextRunAt: number; lastFingerprint: number; minNewDigits: number } | null;
+  autoPaper: { intervalMs: number; lastRunAt: number; nextRunAt: number } | null;
   patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
 }
 
@@ -253,6 +254,7 @@ const initial: State = {
   testRuns: [],
   testEquity: {},
   autoBacktest: null,
+  autoPaper: null,
   patterns: null,
 };
 
@@ -545,6 +547,7 @@ export async function bootstrap(): Promise<void> {
     // best-effort state load; the ws stream will repopulate
   }
   void loadAutoBacktestStatus();
+  void loadAutoPaperStatus();
   connectWs();
 }
 
@@ -558,6 +561,15 @@ export async function loadAutoBacktestStatus(): Promise<void> {
       minNewDigits: number;
     }>('/api/test/backtest/status');
     set({ autoBacktest: res });
+  } catch {
+    // server may not support it yet on older builds - ignore
+  }
+}
+
+export async function loadAutoPaperStatus(): Promise<void> {
+  try {
+    const res = await api<{ intervalMs: number; lastRunAt: number; nextRunAt: number }>('/api/test/paper/status');
+    set({ autoPaper: res });
   } catch {
     // server may not support it yet on older builds - ignore
   }

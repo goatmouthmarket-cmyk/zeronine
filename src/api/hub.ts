@@ -15,6 +15,7 @@ export type HubEventType =
   | 'contract'
   | 'recovery'
   | 'testlab'
+  | 'tuning'
   | 'error';
 
 export interface AutomationEvent {
