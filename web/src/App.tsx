@@ -752,7 +752,7 @@ function DecisionHero({
         </div>
         <div class="ckm">
           <span class="ckm-label">Pattern</span>
-          <b>{best?.learnedWin != null ? `${Math.round(best.learnedWin * 100)}%` : 'â€”'}</b>
+          <b>{best?.learnedWin != null ? `${Math.round(best.learnedWin * 100)}%` : '--'}</b>
         </div>
         <div class={`ckm ckm-edge${best && best.edge < 0 ? ' neg' : ''}`}>
           <span class="ckm-label">EDGE</span>
