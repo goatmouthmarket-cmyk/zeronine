@@ -1576,6 +1576,21 @@ button {
     text-align: right;
 }
 
+.risk-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px 20px;
+    margin-top: 10px;
+}
+
+.bot-limit-value {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .seg {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

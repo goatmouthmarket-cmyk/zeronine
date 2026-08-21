@@ -884,6 +884,64 @@ function PatternSplit({
 
 /* ---------------- bot settings ---------------- */
 
+type BotLimitField =
+  | 'max_stake'
+  | 'daily_loss_limit'
+  | 'max_drawdown_pct'
+  | 'max_consecutive_losses'
+  | 'max_recovery_debt'
+  | 'max_recovery_exposure'
+  | 'min_edge'
+  | 'min_recovery_win';
+
+function BotLimitInput({
+  label,
+  field,
+  value,
+  min,
+  step,
+  suffix,
+  scale = 1,
+}: {
+  label: string;
+  field: BotLimitField;
+  value: number;
+  min: number;
+  step: number;
+  suffix?: string;
+  scale?: number;
+}): JSX.Element {
+  const [text, setText] = useState(String(value * scale));
+  useEffect(() => setText(String(value * scale)), [value, scale]);
+
+  const commit = () => {
+    const next = Number(text);
+    if (!Number.isFinite(next) || next < min) {
+      setText(String(value));
+      return;
+    }
+    void updateSettings({ [field]: next / scale } as Partial<Settings>);
+  };
+
+  return (
+    <div class="set-row">
+      <span class="set-label">{label}</span>
+      <label class="bot-limit-value">
+        <input
+          class="set-input inline"
+          type="number"
+          min={min}
+          step={step}
+          value={text}
+          onInput={(e) => setText((e.target as HTMLInputElement).value)}
+          onBlur={commit}
+        />
+        {suffix && <span>{suffix}</span>}
+      </label>
+    </div>
+  );
+}
+
 function BotPage(): JSX.Element {
   const s = useStore();
   const [stakeText, setStakeText] = useState(String(s.settings?.base_stake ?? 1));
@@ -1038,6 +1096,22 @@ function BotPage(): JSX.Element {
           </div>
           <div class="set-hint">0 = unlimited run</div>
         </div>
+
+        {s.settings && (
+          <div class="set-group">
+            <div class="set-label-top">Automation limits</div>
+            <div class="risk-grid">
+              <BotLimitInput label="Max stake" field="max_stake" value={s.settings.max_stake} min={0} step={0.1} suffix="$" />
+              <BotLimitInput label="Daily loss limit" field="daily_loss_limit" value={s.settings.daily_loss_limit} min={0} step={1} suffix="$" />
+              <BotLimitInput label="Max drawdown" field="max_drawdown_pct" value={s.settings.max_drawdown_pct} min={0} step={0.5} suffix="%" />
+              <BotLimitInput label="Consecutive losses" field="max_consecutive_losses" value={s.settings.max_consecutive_losses} min={1} step={1} />
+              <BotLimitInput label="Recovery debt cap" field="max_recovery_debt" value={s.settings.max_recovery_debt} min={0} step={1} suffix="$" />
+              <BotLimitInput label="Recovery exposure cap" field="max_recovery_exposure" value={s.settings.max_recovery_exposure} min={0} step={1} suffix="$" />
+              <BotLimitInput label="Minimum edge" field="min_edge" value={s.settings.min_edge} min={0} step={0.1} suffix="%" scale={100} />
+              <BotLimitInput label="Recovery win floor" field="min_recovery_win" value={s.settings.min_recovery_win} min={0} step={1} suffix="%" scale={100} />
+            </div>
+          </div>
+        )}
 
         {error && <div class="bot-error">{error}</div>}
 

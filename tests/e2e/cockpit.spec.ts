@@ -33,6 +33,11 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   expect(await selector.boundingBox()).toEqual(selectorBefore);
   expect(await startButton.boundingBox()).toEqual(startBefore);
 
+  await page.getByRole('button', { name: 'Bot', exact: true }).click();
+  await expect(page.getByText('Automation limits', { exact: true })).toBeVisible();
+  await expect(page.getByText('Daily loss limit', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+
   let startBody: unknown = null;
   await page.route('**/api/automation/start', async (route) => {
     startBody = route.request().postDataJSON();
