@@ -19,3 +19,7 @@
 - Tests use Node's built-in `node:test` in `tests/*.test.ts`; run `npm test` for server or domain changes.
 - Run `npm run typecheck` for `src` and `tests`, `npm run typecheck:web` for dashboard changes, and `npm run build:web` when touching frontend or build output.
 - `npm run verify` runs the complete typecheck, test, and dashboard-build suite.
+
+## Delivery
+
+- After each completed, verified edit set, commit it and push the current branch unless the user directs otherwise.
