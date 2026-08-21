@@ -6,8 +6,43 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
 
   await page.route('**/api/state', async (route) => {
     const response = await route.fetch();
-    const state = (await response.json()) as { automation?: Record<string, unknown> };
+    const state = (await response.json()) as {
+      automation?: Record<string, unknown>;
+      markets?: Array<Record<string, unknown>>;
+      trades?: Array<Record<string, unknown>>;
+      selected?: string | null;
+    };
     state.automation = { ...state.automation, running: false, phase: 'standby' };
+    const markets = state.markets?.length ? state.markets : [{
+      symbol: 'R_10',
+      display: 'Volatility 10',
+      lastQuote: 100,
+      lastEpoch: Math.floor(Date.now() / 1000),
+      lastDigit: 0,
+      fresh: true,
+      ticksPerMin: 16,
+      recentDigits: [],
+      dist: Array.from({ length: 10 }, () => 0),
+    }];
+    state.markets = markets.map((market, index) => ({
+      ...market,
+      recentQuotes: Array.from({ length: 16 }, (_, tick) => 100 + index + tick * 0.14),
+    }));
+    state.selected = String(state.markets[0].symbol);
+    state.trades = [
+      {
+        id: 9001,
+        ts: Date.now(),
+        market: String(state.markets?.[0]?.symbol ?? 'R_10'),
+        contract_type: 'DIGITOVER',
+        barrier: 0,
+        stake: 2,
+        payout: 3.8,
+        profit: 1.8,
+        status: 'won',
+        reason: 'test',
+      },
+    ];
     await route.fulfill({ response, json: state });
   });
   await page.routeWebSocket('**/ws', () => {});
@@ -15,6 +50,9 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   await expect(page.getByText('Pattern', { exact: true })).toBeVisible();
   const startButton = page.getByRole('button', { name: 'Start Bot' });
   await expect(startButton).toBeVisible();
+  await expect(page.locator('.market-pulse')).toBeVisible();
+  await expect(page.locator('.market-pulse svg')).toBeVisible();
+  await expect(page.locator('.activity-streak')).toContainText('1 STREAK');
   let resetRequested = false;
   await page.route('**/api/performance/reset', async (route) => {
     resetRequested = true;

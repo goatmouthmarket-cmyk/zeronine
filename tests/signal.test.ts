@@ -25,6 +25,18 @@ function pushingRegistry(digitPattern: number[]): { registry: MarketRegistry; di
   return { registry, digits };
 }
 
+test('market snapshots retain a bounded recent quote series for the dashboard chart', () => {
+  const registry = new MarketRegistry({ onTick: () => undefined });
+  registry.ensure('R_10');
+  const epoch = Math.floor(Date.now() / 1000);
+  for (let index = 0; index < 45; index++) registry.push('R_10', 100 + index, epoch + index, index % 10);
+
+  const snapshot = registry.snapshot('R_10');
+  assert.equal(snapshot.recentQuotes.length, 40);
+  assert.equal(snapshot.recentQuotes[0], 105);
+  assert.equal(snapshot.recentQuotes.at(-1), 144);
+});
+
 test('pickSignal holds (WAIT) when no market has a credible edge', () => {
   // Near-uniform digits: no barrier shows a regime tilt worth betting.
   const { registry, digits } = pushingRegistry([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);

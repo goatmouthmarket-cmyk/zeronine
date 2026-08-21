@@ -7,6 +7,7 @@ export interface MarketSnapshot {
   fresh: boolean;
   ticksPerMin: number;
   recentDigits: number[];
+  recentQuotes: number[];
   dist: number[];
 }
 
@@ -63,6 +64,7 @@ export class MarketRegistry {
       fresh,
       ticksPerMin: recentWindow.length,
       recentDigits: buf.slice(-20).map((t) => t.digit),
+      recentQuotes: buf.slice(-40).map((t) => t.quote),
       dist,
     };
   }

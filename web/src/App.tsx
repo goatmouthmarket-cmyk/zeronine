@@ -439,14 +439,9 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
       <div class="dashboard">
         <div class="dash-main">
           <section class="trade-card">
-            {currentStreak > 0 && (
-              <span class="card-streak streak-up" key={currentStreak}>
-                <Icon name="flame" size={13} strokeWidth={1.8} />
-                {currentStreak} STREAK
-              </span>
-            )}
             <DecisionHero
               markets={s.markets}
+              selectedMarket={market ?? null}
               candidates={heroCandidates}
               quotes={s.quotes}
               decision={decision}
@@ -497,6 +492,12 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
           <section class="section">
             <div class="section-head">
               <div class="section-title">Recent Activity</div>
+              {currentStreak > 0 && (
+                <span class="activity-streak streak-up" key={currentStreak}>
+                  <Icon name="flame" size={13} strokeWidth={1.8} />
+                  {currentStreak} STREAK
+                </span>
+              )}
               <button class="section-action" onClick={() => onNavigate('history')}>View All</button>
             </div>
             <div class="activity">
@@ -686,8 +687,60 @@ function resolveTarget(
   };
 }
 
+function MarketPulse({ market }: { market: Market | null }): JSX.Element {
+  const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
+  const first = quotes[0] ?? 0;
+  const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
+  const change = last - first;
+  const changePct = first > 0 ? (change / first) * 100 : 0;
+  const up = change >= 0;
+  const width = 260;
+  const height = 146;
+  const pad = 7;
+  const min = quotes.length ? Math.min(...quotes) : 0;
+  const range = quotes.length ? Math.max(...quotes) - min || 1 : 1;
+  const stepX = quotes.length > 1 ? (width - pad * 2) / (quotes.length - 1) : 0;
+  const line = quotes.map((quote, index) => {
+    const x = pad + index * stepX;
+    const y = height - pad - ((quote - min) / range) * (height - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const area = line.length ? `M${line.join(' L')} L${width - pad},${height - pad} L${pad},${height - pad} Z` : '';
+
+  return (
+    <aside class={`market-pulse${up ? ' up' : ' down'}`} aria-label="Selected market live quote chart">
+      <div class="market-pulse-head">
+        <span class="market-pulse-label">Live quote</span>
+        <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotes.length > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
+      </div>
+      <div class="market-pulse-chart">
+        {line.length > 1 ? (
+          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${shortMarketName(market?.display ?? 'market')} recent quote movement`}>
+            <defs>
+              <linearGradient id="market-pulse-fill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stopColor="currentColor" stopOpacity=".22" />
+                <stop offset="1" stopColor="currentColor" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path class="market-pulse-area" d={area} />
+            <path class="market-pulse-line" d={`M${line.join(' L')}`} />
+            <circle class="market-pulse-dot" cx={line[line.length - 1]?.split(',')[0]} cy={line[line.length - 1]?.split(',')[1]} r="3" />
+          </svg>
+        ) : (
+          <span class="market-pulse-empty">Awaiting ticks</span>
+        )}
+      </div>
+      <div class="market-pulse-foot">
+        <span>{shortMarketName(market?.display ?? 'Selected market')}</span>
+        <b>{last > 0 ? last.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}</b>
+      </div>
+    </aside>
+  );
+}
+
 function DecisionHero({
   markets,
+  selectedMarket,
   candidates,
   quotes,
   decision,
@@ -701,6 +754,7 @@ function DecisionHero({
   recovery,
 }: {
   markets: Market[];
+  selectedMarket: Market | null;
   candidates: SignalCandidate[];
   quotes: Record<string, QuoteEvt>;
   decision?: Decision;
@@ -762,6 +816,7 @@ function DecisionHero({
 
   return (
     <div class="cockpit">
+      <div class="cockpit-primary">
       <div class="cockpit-market">{bestLabel}</div>
 
       <div class="cockpit-pick">
@@ -794,6 +849,8 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
+      </div>
+      <MarketPulse market={selectedMarket} />
     </div>
   );
 }

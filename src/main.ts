@@ -49,6 +49,7 @@ async function main(): Promise<void> {
         digit: snap.lastDigit,
         fresh: snap.fresh,
         recentDigits: snap.recentDigits,
+        recentQuotes: snap.recentQuotes,
       });
     },
   });

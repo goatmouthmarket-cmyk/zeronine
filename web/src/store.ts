@@ -10,6 +10,7 @@ export interface Market {
   fresh: boolean;
   ticksPerMin: number;
   recentDigits: number[];
+  recentQuotes: number[];
   dist: number[];
   health?: MarketHealth;
   regime?: RegimeAssessment;
@@ -357,6 +358,7 @@ function applyEvent(evt: Record<string, unknown>): void {
         fresh: Boolean(evt.fresh),
         ticksPerMin: 0,
         recentDigits: (evt.recentDigits as number[]) ?? [],
+        recentQuotes: (evt.recentQuotes as number[]) ?? [],
         dist: [],
       };
       const idx = state.markets.findIndex((x) => x.symbol === symbol);
@@ -368,6 +370,7 @@ function applyEvent(evt: Record<string, unknown>): void {
           ...m,
           ticksPerMin: m.recentDigits.length >= 2 ? m.recentDigits.length : prev.ticksPerMin,
           recentDigits: m.recentDigits.length ? m.recentDigits : prev.recentDigits,
+          recentQuotes: m.recentQuotes.length ? m.recentQuotes : prev.recentQuotes,
         };
       } else {
         markets.push(m);
