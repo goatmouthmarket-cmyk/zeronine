@@ -432,6 +432,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               automation={automation}
               phase={s.automation?.phase}
               holdReason={automation && !decision ? (s.hold?.reason ?? null) : null}
+              stopReason={!automation ? (s.automation?.reason ?? null) : null}
               contract={s.contract}
               trades={s.trades}
               feedConnected={s.feed?.connected ?? false}
@@ -665,6 +666,7 @@ function DecisionHero({
   automation,
   phase,
   holdReason,
+  stopReason,
   contract,
   trades,
   feedConnected,
@@ -677,6 +679,7 @@ function DecisionHero({
   automation: boolean;
   phase?: string;
   holdReason: string | null;
+  stopReason: string | null;
   contract: ContractEvt | null;
   trades: TradeRow[];
   feedConnected: boolean;
@@ -685,7 +688,9 @@ function DecisionHero({
   const best = resolveTarget(candidates, quotes, decision);
 
   const status = !automation
-    ? { label: 'BOT IDLE', tone: 'idle' }
+    ? stopReason
+      ? { label: 'BOT STOPPED', tone: 'warn' }
+      : { label: 'BOT IDLE', tone: 'idle' }
     : decision
       ? { label: 'TRADE ACTIVE', tone: 'go' }
       : holdReason
@@ -705,6 +710,7 @@ function DecisionHero({
       return `Feed down — checking ${markets.length} cached markets, will resume betting when it reconnects`;
     }
     if (!automation) {
+      if (stopReason) return `Stopped - ${stopReason}.`;
       return `Idle — press START and I'll hunt ${markets.length} markets for an easy win`;
     }
     if (decision && best) {

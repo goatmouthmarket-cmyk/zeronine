@@ -141,6 +141,7 @@ export interface AutomationState {
   lastCompletedAt: number;
   runTarget?: number;
   runTrades?: number;
+  reason?: string;
 }
 
 export interface QuoteEvt {

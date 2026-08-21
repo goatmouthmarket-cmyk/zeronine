@@ -17,6 +17,7 @@ import { contractProfit } from '../strategy/pnl.ts';
 import type { Direction } from '../core/digitMath.ts';
 import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
+  getAutomation,
   getPendingTrades,
   getRecovery,
   getSession,
@@ -141,6 +142,7 @@ export class Automation {
 
   private runTarget = 0;
   private runTrades = 0;
+  private stopReason: string | null = null;
   private coolOffs = new Map<string, number>();
 
   constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub, memory = new DecisionMemory()) {
@@ -148,6 +150,8 @@ export class Automation {
     this.client = client;
     this.hub = hub;
     this.memory = memory;
+    const persistedReason = getAutomation().reason;
+    this.stopReason = persistedReason && persistedReason !== 'server shutdown' ? persistedReason : null;
     this.intelligence = new IntelligenceEngine(registry, (symbol, count) =>
       lastDigitEvents(symbol, count)
         .reverse()
@@ -166,6 +170,7 @@ export class Automation {
       lastCompletedAt: this.lastCompletedAt(),
       runTarget: this.runTarget,
       runTrades: this.runTrades,
+      reason: this.running ? undefined : this.stopReason ?? undefined,
     };
   }
 
@@ -196,6 +201,7 @@ export class Automation {
   start(opts: { maxTrades?: number } = {}): void {
     if (this.running) return;
     this.running = true;
+    this.stopReason = null;
     this.runTarget = Math.max(0, Math.floor(opts.maxTrades ?? 0) || 0);
     this.runTrades = 0;
     resetRecovery();
@@ -214,6 +220,7 @@ export class Automation {
   stop(reason = 'stopped'): void {
     if (!this.running) return;
     this.running = false;
+    this.stopReason = reason;
     this.phase = 'standby';
     setAutomation({ running: 0, stopped_at: Date.now(), reason, trades_done: this.runTrades });
     this.emit({ type: 'status', ts: Date.now(), state: this.state(), reason });
@@ -233,6 +240,7 @@ export class Automation {
   dispose(): void {
     this.disposed = true;
     this.running = false;
+    this.stopReason = 'server shutdown';
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     setAutomation({ running: 0, stopped_at: Date.now(), reason: 'server shutdown', trades_done: this.runTrades });
