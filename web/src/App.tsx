@@ -455,7 +455,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                   <span class="side-name">Under 9</span>
                   <span class="side-odds">{oddsText}</span>
                 </button>
-                {manualMsg && <div class="manual-msg">{manualMsg}</div>}
+                <div class="manual-msg" aria-live="polite">{manualMsg}</div>
               </div>
             )}
 

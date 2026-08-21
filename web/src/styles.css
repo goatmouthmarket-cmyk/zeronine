@@ -722,6 +722,7 @@ button {
 .side-selector {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-template-rows: minmax(64px, auto) 28px;
 
     margin-top: 14px;
 
@@ -791,13 +792,23 @@ button {
 
 .manual-msg {
     grid-column: 1 / -1;
+    grid-row: 2;
 
-    margin: 8px 10px 2px;
+    min-width: 0;
+    margin: 0 10px;
 
     font-size: 11.5px;
     font-weight: 650;
     color: var(--purple-light);
     text-align: center;
+    align-self: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.manual-msg:empty {
+    visibility: hidden;
 }
 
 .manual-msg.error {

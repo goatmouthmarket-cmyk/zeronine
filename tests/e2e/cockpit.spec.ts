@@ -8,7 +8,23 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   await expect(page.getByText('Pattern', { exact: true })).toBeVisible();
   const startButton = page.getByRole('button', { name: 'Start Bot' });
   await expect(startButton).toBeVisible();
-  await expect(page.locator('.cockpit-metrics .ckm')).toHaveCount(4);
+  const metrics = page.locator('.cockpit-metrics .ckm');
+  await expect(metrics).toHaveCount(4);
+
+  const metricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));
+  expect(metricBounds[0].bottom).toBeLessThanOrEqual(metricBounds[2].top);
+  expect(metricBounds[1].bottom).toBeLessThanOrEqual(metricBounds[3].top);
+
+  await page.route('**/api/trade/manual', async (route) => {
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, trade: {} }) });
+  });
+  const selector = page.locator('.side-selector');
+  const selectorBefore = await selector.boundingBox();
+  const startBefore = await startButton.boundingBox();
+  await page.getByRole('button', { name: 'Under 9', exact: true }).click();
+  await expect(page.getByText(/Under 9 placed @/)).toBeVisible();
+  expect(await selector.boundingBox()).toEqual(selectorBefore);
+  expect(await startButton.boundingBox()).toEqual(startBefore);
 
   let startBody: unknown = null;
   await page.route('**/api/automation/start', async (route) => {
