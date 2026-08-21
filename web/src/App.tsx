@@ -327,6 +327,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const oddsText = odds ? odds.toFixed(2) : '—';
 
   const candidates = s.signal?.signal.candidates ?? [];
+  const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
 
   const currentStreak = (() => {
     let streak = 0;
@@ -425,7 +426,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             )}
             <DecisionHero
               markets={s.markets}
-              candidates={candidates}
+              candidates={heroCandidates}
               quotes={s.quotes}
               decision={decision}
               automation={automation}

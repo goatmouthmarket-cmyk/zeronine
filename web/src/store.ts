@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'preact/compat';
+import { SignalStabilizer } from './signalStability';
 
 export interface Market {
   symbol: string;
@@ -233,6 +234,7 @@ export interface State {
   trades: TradeRow[];
   selected: string | null;
   signal: { signal: SignalPick; phase: string } | null;
+  displaySignal: SignalPick | null;
   quotes: Record<string, QuoteEvt>;
   quote: QuoteEvt | null;
   digits: Record<string, number[]>;
@@ -259,6 +261,7 @@ const initial: State = {
   trades: [],
   selected: null,
   signal: null,
+  displaySignal: null,
   quotes: {},
   quote: null,
   digits: {},
@@ -275,6 +278,7 @@ const initial: State = {
 };
 
 let state: State = initial;
+const signalStabilizer = new SignalStabilizer<SignalCandidate>();
 const listeners = new Set<() => void>();
 
 function set(patch: Partial<State>): void {
@@ -378,22 +382,21 @@ function applyEvent(evt: Record<string, unknown>): void {
     case 'status':
       patch.automation = evt.state as AutomationState;
       if (evt.state && (evt.state as AutomationState).running === false) {
-        patch.signal = null;
-        patch.quotes = {};
         patch.decision = null;
-        patch.hold = null;
       }
       break;
     case 'signal': {
       const raw = evt.signal as Partial<SignalPick> | null | undefined;
+      const signal: SignalPick = {
+        candidates: Array.isArray(raw?.candidates) ? (raw.candidates as SignalCandidate[]) : [],
+        holds: Boolean(raw?.holds),
+        reason: String(raw?.reason ?? ''),
+      };
       patch.signal = {
-        signal: {
-          candidates: Array.isArray(raw?.candidates) ? (raw.candidates as SignalCandidate[]) : [],
-          holds: Boolean(raw?.holds),
-          reason: String(raw?.reason ?? ''),
-        },
+        signal,
         phase: String(evt.phase ?? ''),
       };
+      patch.displaySignal = signalStabilizer.update(signal);
       patch.quotes = {};
       patch.hold = null;
       break;
@@ -553,6 +556,7 @@ window.addEventListener('pageshow', (ev) => {
 
 export async function bootstrap(): Promise<void> {
   try {
+    signalStabilizer.reset();
     const s = (await api('/api/state')) as State;
     set({
       feed: s.feed,
@@ -620,7 +624,8 @@ export async function oauthStart(): Promise<string> {
 
 export async function logout(): Promise<void> {
   await api('/api/auth/logout', { method: 'POST' });
-  set({ session: null, automation: null, signal: null, quotes: {}, decision: null, hold: null, contract: null });
+  signalStabilizer.reset();
+  set({ session: null, automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null });
 }
 
 export async function startAutomation(opts?: {
@@ -646,7 +651,7 @@ export async function startAutomation(opts?: {
 
 export async function stopAutomation(): Promise<void> {
   const res = await api<{ state: AutomationState }>('/api/automation/stop', { method: 'POST' });
-  set({ automation: res.state, signal: null, quotes: {}, decision: null, hold: null });
+  set({ automation: res.state, decision: null });
 }
 
 export async function arm(): Promise<void> {
