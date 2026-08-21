@@ -2307,9 +2307,7 @@ button {
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
-        overflow-x: hidden;
-        overflow-y: auto;
-        overscroll-behavior: contain;
+        overflow: hidden;
     }
 
     .view-home .trade-card,
@@ -2407,7 +2405,10 @@ button {
     }
 
     .view-home .dash-main .cockpit {
+        grid-template-rows: 14px 36px 20px 50px 112px;
+        row-gap: 6px;
         min-height: 0;
+        padding: 10px 0;
     }
 
     .view-home .dash-main,
@@ -2419,8 +2420,7 @@ button {
         margin-top: 0;
     }
 
-    .dash-side .section,
-    .trade-card {
+    .dash-side .section {
         padding: 16px;
     }
 }

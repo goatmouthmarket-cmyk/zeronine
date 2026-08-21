@@ -18,6 +18,17 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   const metrics = page.locator('.cockpit-metrics .ckm');
   await expect(metrics).toHaveCount(4);
 
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1280, height: 667 }]) {
+    await page.setViewportSize(viewport);
+    const tradeCard = page.locator('.view-home .dash-main .trade-card');
+    await expect(tradeCard).toBeVisible();
+    const overflow = await tradeCard.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(overflow.scrollHeight).toBeLessThanOrEqual(overflow.clientHeight);
+  }
+
   const metricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));
   expect(metricBounds[0].bottom).toBeLessThanOrEqual(metricBounds[2].top);
   expect(metricBounds[1].bottom).toBeLessThanOrEqual(metricBounds[3].top);
