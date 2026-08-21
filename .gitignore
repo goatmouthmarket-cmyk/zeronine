@@ -1,4 +1,5 @@
 node_modules/
+test-results/
 node-v24.18.0-win-x64/
 .env
 data/
