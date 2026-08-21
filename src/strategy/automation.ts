@@ -311,10 +311,8 @@ export class Automation {
     const rec = getRecovery();
     const ctx = buildRecoveryContext(settings);
 
-    // Betting-only guards. In watch mode (bot stopped) these would trip on a
-    // burnt daily limit and spin forever, so they only apply once trading.
+    // The peak-drawdown rail only applies while the bot is actively trading.
     if (this.running) {
-      // Daily loss guard
       const guard = riskCheck({
         stake: settings.max_stake,
         settings,
@@ -324,7 +322,7 @@ export class Automation {
         tradeGapMs: 0,
         now: Date.now(),
       });
-      if (!guard.ok && (guard.reason.includes('daily loss') || guard.reason.includes('drawdown'))) {
+      if (!guard.ok && guard.reason.includes('drawdown')) {
         this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
         this.stop(guard.reason);
         return 0;

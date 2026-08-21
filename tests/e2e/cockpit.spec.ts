@@ -59,7 +59,8 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
 
   await page.getByRole('button', { name: 'Bot', exact: true }).click();
   await expect(page.getByText('Automation limits', { exact: true })).toBeVisible();
-  await expect(page.getByText('Daily loss limit', { exact: true })).toBeVisible();
+  await expect(page.getByText('Max drawdown', { exact: true })).toBeVisible();
+  await expect(page.getByText('Daily loss limit', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Home', exact: true }).click();
 
   let startBody: unknown = null;

@@ -53,7 +53,6 @@ export interface Settings {
   max_stake: number;
   martingale_steps: number;
   max_consecutive_losses: number;
-  daily_loss_limit: number;
   min_edge: number;
   min_recovery_win: number;
   barrier_preference: string;

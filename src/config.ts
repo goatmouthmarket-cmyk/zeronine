@@ -20,7 +20,6 @@ export interface AppConfig {
   maxStake: number;
   martingaleSteps: number;
   maxConsecutiveLosses: number;
-  dailyLossLimit: number;
   minEdge: number;
   minRecoveryWinRate: number;
   barrierPreference: string;
@@ -93,7 +92,6 @@ export function loadConfig(): AppConfig {
     maxStake: num('MAX_STAKE', 25),
     martingaleSteps: num('MARTINGALE_STEPS', 5),
     maxConsecutiveLosses: num('MAX_CONSECUTIVE_LOSSES', 10),
-    dailyLossLimit: num('DAILY_LOSS_LIMIT', 100),
     minEdge: num('MIN_EDGE', 0.01),
     minRecoveryWinRate: num('MIN_RECOVERY_WIN_RATE', 0.3),
     barrierPreference: process.env.BARRIER_PREFERENCE || 'auto',

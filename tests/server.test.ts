@@ -39,6 +39,7 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.equal(state.statusCode, 200);
   const stateBody = state.json();
   assert.equal(typeof stateBody.settings, 'object');
+  assert.equal('daily_loss_limit' in stateBody.settings, false);
   assert.ok(Array.isArray(stateBody.markets ?? []));
   assert.ok(Array.isArray(stateBody.intelligence ?? []));
 

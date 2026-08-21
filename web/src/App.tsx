@@ -888,7 +888,6 @@ function PatternSplit({
 
 type BotLimitField =
   | 'max_stake'
-  | 'daily_loss_limit'
   | 'max_drawdown_pct'
   | 'max_consecutive_losses'
   | 'max_recovery_debt'
@@ -1104,7 +1103,6 @@ function BotPage(): JSX.Element {
             <div class="set-label-top">Automation limits</div>
             <div class="risk-grid">
               <BotLimitInput label="Max stake" field="max_stake" value={s.settings.max_stake} min={0} step={0.1} suffix="$" />
-              <BotLimitInput label="Daily loss limit" field="daily_loss_limit" value={s.settings.daily_loss_limit} min={0} step={1} suffix="$" />
               <BotLimitInput label="Max drawdown" field="max_drawdown_pct" value={s.settings.max_drawdown_pct} min={0} step={0.5} suffix="%" />
               <BotLimitInput label="Consecutive losses" field="max_consecutive_losses" value={s.settings.max_consecutive_losses} min={1} step={1} />
               <BotLimitInput label="Recovery debt cap" field="max_recovery_debt" value={s.settings.max_recovery_debt} min={0} step={1} suffix="$" />

@@ -54,7 +54,6 @@ export interface SettingsRow {
   max_stake: number;
   martingale_steps: number;
   max_consecutive_losses: number;
-  daily_loss_limit: number;
   min_edge: number;
   min_recovery_win: number;
   barrier_preference: string;
@@ -251,7 +250,6 @@ function migrate(d: DatabaseSync): void {
       max_stake REAL,
       martingale_steps INTEGER,
       max_consecutive_losses INTEGER,
-      daily_loss_limit REAL,
       min_edge REAL,
       min_recovery_win REAL,
       barrier_preference TEXT,
@@ -369,11 +367,11 @@ function seedDefaults(d: DatabaseSync): void {
 INSERT OR IGNORE INTO recovery_state (id, mode, streak, lost, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at)
       VALUES (1, 'base', 0, 0, 0, 0, 0, 0, 0, 0);
     INSERT OR IGNORE INTO settings (id, base_stake, max_stake, martingale_steps,
-      max_consecutive_losses, daily_loss_limit, min_edge, min_recovery_win, barrier_preference,
+      max_consecutive_losses, min_edge, min_recovery_win, barrier_preference,
       barrier_number, strategy_mode, bot_mode, strategy_multiplier, recovery_buffer, chase_amortize,
       max_recovery_debt, max_recovery_exposure, max_drawdown_pct)
       VALUES (1, ${config.baseStake}, ${config.maxStake}, ${config.martingaleSteps},
-        ${config.maxConsecutiveLosses}, ${config.dailyLossLimit}, ${config.minEdge},
+        ${config.maxConsecutiveLosses}, ${config.minEdge},
         ${config.minRecoveryWinRate}, '${config.barrierPreference}', ${config.barrierNumber},
         '${config.strategyMode}', '${config.botMode}',
         ${config.strategyMultiplier}, ${config.recoveryBuffer}, ${config.chaseAmortize},
@@ -423,7 +421,6 @@ export function getSettings(): SettingsRow {
     max_stake: Number(row.max_stake),
     martingale_steps: Number(row.martingale_steps),
     max_consecutive_losses: Number(row.max_consecutive_losses),
-    daily_loss_limit: Number(row.daily_loss_limit),
     min_edge: Number(row.min_edge),
     min_recovery_win: Number(row.min_recovery_win),
     barrier_preference,
@@ -450,7 +447,7 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
   getDb()
     .prepare(
       `UPDATE settings SET base_stake=?, max_stake=?, martingale_steps=?, max_consecutive_losses=?,
-       daily_loss_limit=?, min_edge=?, min_recovery_win=?, barrier_preference=?, barrier_number=?,
+       min_edge=?, min_recovery_win=?, barrier_preference=?, barrier_number=?,
        strategy_mode=?, bot_mode=?,
        strategy_multiplier=?, recovery_buffer=?, chase_amortize=?, max_recovery_debt=?, max_recovery_exposure=?, max_drawdown_pct=?, pattern_weight=?, pattern_weight_conservative=?, pattern_weight_martingale=?, pattern_weight_boosted_martingale=?, pattern_weight_chase=? WHERE id=1`,
     )
@@ -459,7 +456,6 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       next.max_stake,
       next.martingale_steps,
       next.max_consecutive_losses,
-      next.daily_loss_limit,
       next.min_edge,
       next.min_recovery_win,
       next.barrier_preference,
@@ -848,18 +844,6 @@ export function listTrades(limit = 50): TradeRow[] {
     .all(limit) as unknown as TradeRow[];
 }
 
-export function tradesSince(ts: number): TradeRow[] {
-  return getDb()
-    .prepare('SELECT * FROM trades WHERE ts >= ? AND status IN (\'won\', \'lost\')')
-    .all(ts) as unknown as TradeRow[];
-}
-
-export function runningPnlToday(): number {
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const rows = tradesSince(startOfDay.getTime());
-  return rows.reduce((sum, t) => sum + (t.profit || 0), 0);
-}
 
 export function lastDigitEvents(market: string, limit: number): Array<{ epoch: number; quote: number; digit: number }> {
   return getDb()

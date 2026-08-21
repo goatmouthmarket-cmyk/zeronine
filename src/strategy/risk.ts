@@ -1,4 +1,4 @@
-import { runningPnlToday, getOpenTrade, getRecovery } from '../db/store.ts';
+import { getOpenTrade, getRecovery } from '../db/store.ts';
 import type { SettingsRow } from '../db/store.ts';
 import type { RecoveryContext, StrategyMode } from '../strategy/recovery.ts';
 import { config } from '../config.ts';
@@ -52,11 +52,6 @@ export function riskCheck(params: {
 
   if (!Number.isFinite(stake) || stake <= 0) return { ok: false, reason: 'invalid stake' };
   if (balance > 0 && stake > balance * 0.9) return { ok: false, reason: 'insufficient balance' };
-
-  const dailyLoss = runningPnlToday();
-  if (dailyLoss - stake < -settings.daily_loss_limit) {
-    return { ok: false, reason: `daily loss limit would be breached (pnl ${dailyLoss.toFixed(2)})` };
-  }
 
   // Peak-drawdown rail: once the account drops maxDrawdownPct below its peak,
   // no further trades are permitted until a manual reset of the run.

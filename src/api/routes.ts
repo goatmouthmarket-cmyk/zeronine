@@ -100,7 +100,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const numeric = [
       'base_stake',
       'max_stake',
-      'daily_loss_limit',
       'min_edge',
       'min_recovery_win',
       'martingale_steps',

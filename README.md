@@ -10,7 +10,7 @@ Runs on **Node 24** (native TypeScript type-stripping, built-in `node:sqlite`) �
 - Per trade it picks the market + direction/barrier with the best edge (`estimated win rate − breakeven`).
 - **Base bet**: the configured preference (default `over 1`, ~80% win) at `base_stake`.
 - On a loss, **recovery mode** scans live quotes and escalates the barrier (e.g. `over 1 → 3 → 5 → 7`) at the lowest stake that wins back everything in one trade — win, and it reverts to base. Martingale (doubling) is the fallback if no good quote is found.
-- Risk gates: max stake, balance floor, daily-loss limit, single open contract, minimum trade gap, consecutive-loss pause.
+- Risk gates: max stake, balance floor, peak drawdown, single open contract, minimum trade gap, consecutive-loss pause.
 
 ## Quickstart (local)
 
@@ -37,7 +37,7 @@ npm run web:dev      # terminal 2: Vite on :5173 (proxies /api and /ws to :8010)
    - Sessions use the OTP socket flow on `api.derivws.com` (`GET /accounts`, `POST /accounts/{id}/otp`) — it works even where `ws.deriv.com` is unreachable.
 3. **Manual trade**: pick market/direction/barrier/stake → *Buy*.
 4. **Auto Sniper**: *START* to run the strongest-market loop. On a **real** account you must *ARM 10min* first (recovery requires a 10-minute arm, demo does not).
-5. *Settings*: stake caps, daily loss limit, martingale depth, edge thresholds.
+5. *Settings*: stake caps, drawdown limits, martingale depth, edge thresholds.
 
 ## Endpoints
 
