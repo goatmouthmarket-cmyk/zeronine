@@ -18,15 +18,28 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   const metrics = page.locator('.cockpit-metrics .ckm');
   await expect(metrics).toHaveCount(4);
 
-  for (const viewport of [{ width: 1280, height: 720 }, { width: 1280, height: 667 }]) {
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1280, height: 667 }, { width: 1272, height: 536 }]) {
     await page.setViewportSize(viewport);
     const tradeCard = page.locator('.view-home .dash-main .trade-card');
+    const dashboard = page.locator('.view-home .dashboard');
+    const perf = page.locator('.view-home .perf');
     await expect(tradeCard).toBeVisible();
+    await expect(perf).toBeVisible();
     const overflow = await tradeCard.evaluate((element) => ({
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
     }));
-    expect(overflow.scrollHeight).toBeLessThanOrEqual(overflow.clientHeight);
+    if (viewport.height >= 667) {
+      expect(overflow.scrollHeight).toBeLessThanOrEqual(overflow.clientHeight);
+    }
+    const perfOverflow = await perf.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
+    expect(perfOverflow.scrollHeight).toBeLessThanOrEqual(perfOverflow.clientHeight);
+    const dashboardBounds = await dashboard.boundingBox();
+    const perfBounds = await perf.boundingBox();
+    expect((perfBounds?.y ?? 0) + (perfBounds?.height ?? 0)).toBeLessThanOrEqual((dashboardBounds?.y ?? 0) + (dashboardBounds?.height ?? 0));
   }
 
   const metricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));

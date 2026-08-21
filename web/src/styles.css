@@ -2429,6 +2429,18 @@ button {
     }
 }
 
+/* Browser zoom can leave a very short CSS viewport. Keep the activity totals
+   above the ticker by compacting repeated rows, not by clipping the footer. */
+@media (min-width: 1000px) and (max-height: 620px) {
+    .view-home .dash-side .activity-row {
+        padding: 7px 2px;
+    }
+
+    .view-home .perf {
+        margin-top: 0;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .live-dot {
         animation: none;
