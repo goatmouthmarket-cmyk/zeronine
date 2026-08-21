@@ -452,6 +452,7 @@ export class Automation {
       const now = Date.now();
       const ladderSrc = conservative ? quotes.filter((o) => !this.cooled(o, now)) : quotes;
       const ladder: LadderOption[] = ladderSrc.map((o) => ({
+        market: o.market,
         direction: o.direction,
         barrier: o.barrier,
         estWin: o.estWin,
@@ -482,7 +483,7 @@ export class Automation {
       }
       decision = {
         ...base,
-        market: quotes.find((o) => o.direction === base.direction && o.barrier === base.barrier)?.market ?? top?.market ?? '',
+        market: base.market ?? top?.market ?? '',
       };
     } else {
       // Base bet: default modes only trade a candidate with a real positive

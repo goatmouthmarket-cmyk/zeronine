@@ -1,6 +1,7 @@
 import type { Direction } from '../core/digitMath.ts';
 
 export interface LadderOption {
+  market?: string;
   direction: Direction;
   barrier: number;
   estWin: number;
@@ -13,6 +14,7 @@ export type StrategyMode = 'conservative' | 'martingale' | 'boosted_martingale' 
 export type RecoveryReason = 'base' | 'martingale' | 'boosted_martingale' | 'chase' | 'conservative';
 
 export interface RecoveryDecision {
+  market?: string;
   stake: number;
   direction: Direction;
   barrier: number;
@@ -80,6 +82,7 @@ export function planRecovery(
     ladder.find((o) => o.direction === preference.direction && o.barrier === preference.barrier) ?? ladder[0];
 
   const baseBet: RecoveryDecision = {
+    market: preferred?.market,
     stake: ctx.baseStake,
     direction: preferred?.direction ?? 'over',
     barrier: preferred?.barrier ?? 1,
@@ -145,6 +148,7 @@ export function planRecovery(
   }
 
   return {
+    market: best.o.market,
     stake: best.stake,
     direction: best.o.direction,
     barrier: best.o.barrier,
