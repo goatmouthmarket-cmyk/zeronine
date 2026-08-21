@@ -4,7 +4,14 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
 
-  await page.goto('/', { waitUntil: 'networkidle' });
+  await page.route('**/api/state', async (route) => {
+    const response = await route.fetch();
+    const state = (await response.json()) as { automation?: Record<string, unknown> };
+    state.automation = { ...state.automation, running: false, phase: 'standby' };
+    await route.fulfill({ response, json: state });
+  });
+  await page.routeWebSocket('**/ws', () => {});
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Pattern', { exact: true })).toBeVisible();
   const startButton = page.getByRole('button', { name: 'Start Bot' });
   await expect(startButton).toBeVisible();
@@ -21,7 +28,7 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   const selector = page.locator('.side-selector');
   const selectorBefore = await selector.boundingBox();
   const startBefore = await startButton.boundingBox();
-  await page.getByRole('button', { name: 'Under 9', exact: true }).click();
+  await page.locator('.side-btn.under').click();
   await expect(page.getByText(/Under 9 placed @/)).toBeVisible();
   expect(await selector.boundingBox()).toEqual(selectorBefore);
   expect(await startButton.boundingBox()).toEqual(startBefore);
