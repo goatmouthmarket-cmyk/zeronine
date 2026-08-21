@@ -439,29 +439,31 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               recovery={s.recovery}
             />
 
-            {!automation && !decision && (
-              <div class="side-selector">
-                <button
-                  class={`side-btn over${activeDirection === 'over' ? ' active' : ''}`}
-                  disabled={!market || manualBusy}
-                  onClick={() => placeManual('over')}
-                >
-                  <span class="side-name">Over 0</span>
-                  <span class="side-odds">{oddsText}</span>
-                </button>
-                <button
-                  class={`side-btn under${activeDirection === 'under' ? ' active' : ''}`}
-                  disabled={!market || manualBusy}
-                  onClick={() => placeManual('under')}
-                >
-                  <span class="side-name">Under 9</span>
-                  <span class="side-odds">{oddsText}</span>
-                </button>
-                <div class="manual-msg" aria-live="polite">{manualMsg}</div>
-              </div>
-            )}
+            <div class="manual-slot">
+              {!automation && !decision && (
+                <div class="side-selector">
+                  <button
+                    class={`side-btn over${activeDirection === 'over' ? ' active' : ''}`}
+                    disabled={!market || manualBusy}
+                    onClick={() => placeManual('over')}
+                  >
+                    <span class="side-name">Over 0</span>
+                    <span class="side-odds">{oddsText}</span>
+                  </button>
+                  <button
+                    class={`side-btn under${activeDirection === 'under' ? ' active' : ''}`}
+                    disabled={!market || manualBusy}
+                    onClick={() => placeManual('under')}
+                  >
+                    <span class="side-name">Under 9</span>
+                    <span class="side-odds">{oddsText}</span>
+                  </button>
+                  <div class="manual-msg" aria-live="polite">{manualMsg}</div>
+                </div>
+              )}
+            </div>
 
-            {startError && <div class="bot-error">{startError}</div>}
+            <div class="bot-feedback" aria-live="polite">{startError && <div class="bot-error">{startError}</div>}</div>
 
             <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />

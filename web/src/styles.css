@@ -256,14 +256,7 @@ button {
 .trade-card {
     position: relative;
 
-    background:
-        linear-gradient(180deg, rgba(139,92,246,.04), transparent 20%),
-        var(--surface);
-
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-
-    padding: 20px;
+    padding: 0;
 
     overflow: hidden;
 }
@@ -381,15 +374,15 @@ button {
 
 .cockpit {
     margin-top: 14px;
-
     width: 100%;
     min-width: 0;
 
-    padding: 16px;
-
-    border-radius: 14px;
-    border: 1px solid #262835;
-    background: rgba(255,255,255,.02);
+    display: grid;
+    grid-template-rows: 16px 40px 20px 64px 120px;
+    row-gap: 8px;
+    min-height: 308px;
+    padding: 16px 0;
+    overflow: hidden;
 }
 
 /* Fluid hero: key numerals and grids scale with the viewport so the card
@@ -423,8 +416,6 @@ button {
 }
 
 .cockpit-market {
-    margin-top: 12px;
-
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .04em;
@@ -433,11 +424,10 @@ button {
 }
 
 .cockpit-pick {
-    margin-top: 2px;
-
     display: flex;
     align-items: baseline;
     gap: 14px;
+    min-width: 0;
 }
 
 .cockpit-side {
@@ -459,11 +449,10 @@ button {
 }
 
 .cockpit-status {
-    margin-top: 10px;
-
     display: flex;
     align-items: center;
     gap: 7px;
+    min-width: 0;
 
     font-size: 11px;
     font-weight: 800;
@@ -472,6 +461,7 @@ button {
 }
 
 .cockpit-status-dot {
+    flex: 0 0 auto;
     width: 6px;
     height: 6px;
     border-radius: 50%;
@@ -509,23 +499,19 @@ button {
 }
 
 .cockpit-metrics {
-    margin-top: 14px;
-
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, 56px);
     gap: 8px;
 }
 
 .ckm {
-    padding: 9px 10px;
+    padding: 7px 0;
 
     display: flex;
     flex-direction: column;
     gap: 4px;
 
-    border-radius: 9px;
-    border: 1px solid #23252f;
-    background: rgba(255,255,255,.015);
 }
 
 .ckm-label {
@@ -543,16 +529,8 @@ button {
     font-variant-numeric: tabular-nums;
 }
 
-.ckm-edge {
-    border-color: rgba(19,217,120,.28);
-}
-
 .ckm-edge b {
     color: #13d978;
-}
-
-.ckm-edge.neg {
-    border-color: rgba(255,82,99,.3);
 }
 
 .ckm-edge.neg b {
@@ -560,14 +538,15 @@ button {
 }
 
 .cockpit-note {
-    margin-top: 10px;
-
     font-size: 11.5px;
     font-weight: 600;
     line-height: 1.45;
     letter-spacing: .01em;
     color: var(--muted-2);
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
 }
 
 .cockpit-note b {
@@ -723,14 +702,17 @@ button {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: minmax(64px, auto) 28px;
-
-    margin-top: 14px;
-
     background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-
     overflow: hidden;
+}
+
+.manual-slot {
+    min-height: 92px;
+    margin-top: 14px;
+}
+
+.bot-feedback {
+    min-height: 48px;
 }
 
 .side-btn {
@@ -878,7 +860,7 @@ button {
 }
 
 .bot-error {
-    margin-top: 10px;
+    margin: 0;
 
     font-size: 12px;
     color: var(--red);
@@ -1023,6 +1005,17 @@ button {
     border-radius: var(--radius-lg);
 
     padding: 18px;
+}
+
+.view-home .section,
+.view-home .perf {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.view-home .section {
+    padding: 18px 0;
 }
 
 .section-head {
@@ -2319,6 +2312,14 @@ button {
         overscroll-behavior: contain;
     }
 
+    .view-home .trade-card,
+    .view-home .dashboard .section,
+    .view-home .perf {
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
     /* non-chart sections keep natural size; only the cockpit absorbs slack */
     .view-home .dash-main .trade-card > :not(.cockpit) {
         flex: 0 0 auto;
@@ -2332,12 +2333,7 @@ button {
     }
 
     .view-home .dash-main .cockpit {
-        flex: 1 1 auto;
-        min-height: 120px;
-
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
+        flex: 0 0 auto;
     }
 
     /* desktop: recent activity then win/loss stats, in document order */
