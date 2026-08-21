@@ -22,4 +22,4 @@
 
 ## Delivery
 
-- After each edit, commit it and push the current branch unless the user directs otherwise.
+- After each completed task, commit the verified changes and push the current branch unless the user directs otherwise.
