@@ -1,8 +1,9 @@
 import type { MarketRegistry, MarketSnapshot } from '../core/marketState.ts';
 import type { Direction } from '../core/digitMath.ts';
 import { breakevenWinRate, estimatePayoutRatio } from '../core/digitMath.ts';
-import { scanMarket } from './scanner.ts';
 import type { BarrierFeatures, PatternInput } from './scanner.ts';
+import { IntelligenceEngine } from '../intelligence/engine.ts';
+import type { IntelligenceSnapshot } from '../intelligence/engine.ts';
 
 export type DigitProvider = (symbol: string, count: number) => number[];
 
@@ -83,15 +84,27 @@ export function pickSignal(
   allowed?: Array<{ direction: Direction; barrier: number }> | null,
   pattern?: PatternInput | null,
 ): SignalPick {
+  const intelligence = new IntelligenceEngine(registry, digits).snapshot(pattern);
+  return pickSignalFromSnapshot(intelligence, minWin, minEdge, maxCandidates, allowed);
+}
+
+/**
+ * Rank candidates from the shared calculation pass. New intelligence modules
+ * must consume this snapshot instead of rerunning scanner windows themselves.
+ */
+export function pickSignalFromSnapshot(
+  intelligence: IntelligenceSnapshot,
+  minWin: number,
+  minEdge: number,
+  maxCandidates = 5,
+  allowed?: Array<{ direction: Direction; barrier: number }> | null,
+): SignalPick {
   const all: SignalCandidate[] = [];
-  for (const snap of registry.allSnapshots()) {
-    if (!snap.fresh) continue;
-    const history = digits(snap.symbol, 1000);
-    const scan = scanMarket(snap.symbol, snap.display, history.length ? history : snap.recentDigits, pattern);
+  for (const { scan } of intelligence.markets.values()) {
     for (const f of scan.features) {
       if (f.estimatedWin < minWin) continue;
       if (allowed && !allowed.some((a) => a.direction === f.direction && a.barrier === f.barrier)) continue;
-      all.push(toCandidate(snap.symbol, snap.display, f));
+      all.push(toCandidate(scan.symbol, scan.display, f));
     }
   }
   if (all.length === 0) {

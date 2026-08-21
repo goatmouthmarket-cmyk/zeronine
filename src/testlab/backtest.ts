@@ -1,11 +1,22 @@
 import type { Direction } from '../core/digitMath.ts';
 import { breakevenWinRate, estimatePayoutRatio, winDigits } from '../core/digitMath.ts';
-import type { BarrierFeatures } from '../strategy/scanner.ts';
-import { featureFor } from '../strategy/scanner.ts';
+import { scanMarket } from '../strategy/scanner.ts';
+import type { MarketScan } from '../strategy/scanner.ts';
 import type { RecoveryContext } from '../strategy/recovery.ts';
 import { planRecovery } from '../strategy/recovery.ts';
 import type { LadderOption } from '../strategy/recovery.ts';
 import { nextRecovery } from '../strategy/risk.ts';
+import { assessMarketHealth } from '../intelligence/health.ts';
+import { assessRegime } from '../intelligence/regime.ts';
+import type { IntelligenceSnapshot, MarketIntelligence } from '../intelligence/engine.ts';
+import { allocateCapital } from '../intelligence/capitalAllocation.ts';
+import {
+  evaluateRecoveryObservation,
+  startRecoveryObservation,
+  transitionRecoveryObservation,
+} from '../intelligence/recoveryObservation.ts';
+import type { RecoveryObservationState } from '../intelligence/recoveryObservation.ts';
+import { pickSignalFromSnapshot } from '../strategy/signal.ts';
 import { config } from '../config.ts';
 import { digitHistory, getQuoteStats, getSettings, insertTestRun, listMarkets, listTestRuns, patternRowsByPrev, patternWeightForStrategy } from '../db/store.ts';
 import type { TestRunRow } from '../db/store.ts';
@@ -52,42 +63,52 @@ function modeGates(botMode: TestConfig['botMode'], minEdgeSetting: number): { mi
   }
 }
 
-interface BarrierEst {
-  direction: Direction;
-  barrier: number;
-  estWin: number;
-  ratio: number;
-}
-
-interface MarketData {
+export interface MarketData {
   symbol: string;
   digits: number[];
-  sampled: Array<{ k: number; epoch: number; dt: BarrierEst[] }>;
+  sampled: ReplaySample[];
 }
 
-function loadMarket(symbol: string, historyLimit: number, stride: number, warmup: number, allowed: Array<{ direction: Direction; barrier: number }>, ratioFor: (m: string, d: Direction, b: number) => number, patternWeight: number): MarketData | null {
+export interface ReplaySample {
+  k: number;
+  epoch: number;
+  settleEpoch: number;
+  scan: MarketScan;
+}
+
+/** A decision point formed strictly from ticks known through `epoch`. */
+export interface ChronologicalReplayEvent {
+  market: string;
+  k: number;
+  epoch: number;
+  settleEpoch: number;
+  scan: MarketScan;
+}
+
+/** Stable, globally ordered decision timeline shared by every replay config. */
+export function chronologicalReplayEvents(markets: MarketData[]): ChronologicalReplayEvent[] {
+  return markets
+    .flatMap((market) => market.sampled.map((sample) => ({ market: market.symbol, ...sample })))
+    .sort((a, b) => a.epoch - b.epoch || a.market.localeCompare(b.market) || a.k - b.k);
+}
+
+function loadMarket(symbol: string, historyLimit: number, stride: number, warmup: number, patternWeight: number): MarketData | null {
   const hist = digitHistory(symbol, historyLimit).filter((h) => h.digit >= 0 && h.digit <= 9);
   if (hist.length < warmup + 300) return null;
   const digits = hist.map((h) => h.digit);
   const epochs = hist.map((h) => h.epoch);
   const patternMap = patternWeight > 0 ? patternRowsByPrev(symbol) : null;
-  const sampled: MarketData['sampled'] = [];
+  const sampled: ReplaySample[] = [];
 
   for (let k = warmup; k + 1 < digits.length; k += stride) {
     const buf = digits.slice(Math.max(0, k - 999), k + 1);
-    const prevDigit = buf.length ? Math.trunc(buf[buf.length - 1]) : -1;
-    const learned = patternMap && prevDigit >= 0 && prevDigit <= 9 ? patternMap.get(prevDigit) ?? null : null;
-    const dt: BarrierEst[] = [];
-    for (const a of allowed) {
-      const f: BarrierFeatures = featureFor(buf, a.direction, a.barrier, learned != null ? { row: learned, weight: patternWeight } : null);
-      dt.push({
-        direction: a.direction,
-        barrier: a.barrier,
-        estWin: f.estimatedWin,
-        ratio: ratioFor(symbol, a.direction, a.barrier),
-      });
-    }
-    sampled.push({ k, epoch: epochs[k + 1], dt });
+    // `buf` ends at k. The settlement digit k + 1 is deliberately excluded
+    // from the scanner, so no feature can observe the result it will be scored
+    // against below.
+    const scan = scanMarket(symbol, symbol, buf, patternMap
+      ? { rowFor: (_market, previous) => patternMap.get(previous) ?? null, weight: patternWeight }
+      : null);
+    sampled.push({ k, epoch: epochs[k], settleEpoch: epochs[k + 1], scan });
   }
   if (sampled.length === 0) return null;
   return { symbol, digits, sampled };
@@ -139,6 +160,26 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 const BARR_KEYS: { direction: Direction; barrier: number }[] = allowedBarriers('martingale');
 
+interface PendingReplayContract {
+  market: string;
+  settleEpoch: number;
+  outcomeDigit: number;
+  direction: Direction;
+  barrier: number;
+  stake: number;
+  ratio: number;
+  epoch: number;
+}
+
+function replayRiskAllowed(st: ReplayState, settings: Parameters<typeof replayOne>[2], stake: number): boolean {
+  if (!(stake > 0) || stake > st.balance * 0.9) return false;
+  if (st.streak + 1 > settings.max_consecutive_losses) return false;
+  if (settings.max_drawdown_pct > 0 && st.peakBalance > 0
+    && (st.peakBalance - st.balance) / st.peakBalance >= settings.max_drawdown_pct / 100) return false;
+  if (st.debt > 0.005 && (st.cycleStake + stake > settings.max_recovery_exposure || st.debt >= settings.max_recovery_debt)) return false;
+  return true;
+}
+
 function replayOne(
   cfg: TestConfig,
   markets: MarketData[],
@@ -157,12 +198,10 @@ function replayOne(
   baseStake: number,
   target: number,
   startBalance: number,
+  ratioFor: (market: string, direction: Direction, barrier: number) => number,
 ): BacktestRunResult {
   const gates = modeGates(cfg.botMode, settingsLike.min_edge);
   const allowed = allowedBarriers(cfg.strategyMode);
-  const allowedKey = (d: Direction, b: number): string => `${d}|${b}`;
-  const allowedSet = new Set(allowed.map((a) => allowedKey(a.direction, a.barrier)));
-  const dtAllowed = (c: BarrierEst): boolean => allowedSet.has(allowedKey(c.direction, c.barrier));
   let st: ReplayState = {
     mode: 'base',
     streak: 0,
@@ -174,29 +213,108 @@ function replayOne(
   };
   const trades: BacktestTrade[] = [];
   const equity = [startBalance];
+  const currentMarkets = new Map<string, MarketIntelligence>();
+  const currentSamples = new Map<string, ReplaySample>();
+  let observation: RecoveryObservationState | undefined;
+  let pending: PendingReplayContract | undefined;
 
-  for (const m of markets) {
+  const settle = (contract: PendingReplayContract): void => {
+    const won = winDigits(contract.direction, contract.barrier).includes(contract.outcomeDigit);
+    const profit = won ? round2(contract.stake * (contract.ratio - 1)) : -round2(contract.stake);
+    const balance = round2(st.balance + profit);
+    const before = st;
+    st = { ...nextRecovery(st, won, profit, balance), balance };
+    if (won) {
+      if (observation) observation = transitionRecoveryObservation(observation, { type: 'recovery_won' });
+    } else {
+      const loss = { direction: contract.direction, barrier: contract.barrier, digit: contract.outcomeDigit };
+      observation = before.debt > 0.005 && observation
+        ? transitionRecoveryObservation(observation, { type: 'recovery_lost', loss })
+        : startRecoveryObservation(contract.market, loss);
+    }
+    trades.push({
+      market: contract.market,
+      epoch: contract.epoch,
+      direction: contract.direction,
+      barrier: contract.barrier,
+      stake: contract.stake,
+      ratio: contract.ratio,
+      won,
+      profit,
+    });
+    equity.push(st.balance);
+  };
+
+  for (const event of chronologicalReplayEvents(markets)) {
     if (trades.length >= target) break;
-    for (const s of m.sampled) {
+    let settledThisCycle = false;
+    if (pending && pending.settleEpoch <= event.epoch) {
+      settle(pending);
+      pending = undefined;
+      settledThisCycle = true;
       if (trades.length >= target) break;
-      const outcomeDigit = m.digits[s.k + 1];
-      if (!Number.isInteger(outcomeDigit) || outcomeDigit < 0 || outcomeDigit > 9) continue;
+    }
 
-      let decision: { direction: Direction; barrier: number; stake: number; ratio: number } | null = null;
+    const previous = currentMarkets.get(event.market);
+    currentMarkets.set(event.market, {
+      scan: event.scan,
+      health: assessMarketHealth(event.scan, previous?.health),
+      regime: assessRegime(event.scan, previous?.regime, event.epoch * 1000),
+    });
+    currentSamples.set(event.market, { k: event.k, epoch: event.epoch, settleEpoch: event.settleEpoch, scan: event.scan });
+    const intelligence: IntelligenceSnapshot = { at: event.epoch * 1000, markets: new Map(currentMarkets) };
 
-      if (st.debt <= 0.005) {
-        let best: { direction: Direction; barrier: number; stake: number; ratio: number; score: number } | null = null;
-        for (const c of s.dt) {
-          if (!dtAllowed(c)) continue;
-          const edge = c.estWin - breakevenWinRate(1, c.ratio);
-          if (c.estWin < gates.minWin) continue;
-          if (edge < gates.minEdge || !(c.ratio > 1)) continue;
-          if (!best || edge > best.score) {
-            best = { direction: c.direction, barrier: c.barrier, stake: baseStake, ratio: c.ratio, score: edge };
-          }
-        }
-        if (best) decision = best;
-      } else {
+    if (observation && observation.market === event.market) {
+      observation = transitionRecoveryObservation(observation, { type: 'tick' });
+    }
+    // A live contract prevents a second order. Also do not immediately reuse a
+    // settlement tick as a new signal; its digit was not knowable at entry.
+    if (pending || settledThisCycle) continue;
+
+    const conservative = cfg.strategyMode === 'conservative';
+    const signal = pickSignalFromSnapshot(
+      intelligence,
+      conservative ? 0 : gates.minWin,
+      conservative ? -1 : gates.minEdge,
+      20,
+      allowed,
+    );
+    if (signal.holds || signal.candidates.length === 0) continue;
+
+    const quotes = signal.candidates.map((candidate) => {
+      const ratio = ratioFor(candidate.market, candidate.direction, candidate.barrier);
+      return { ...candidate, ratio, realEdge: candidate.estWin - breakevenWinRate(1, ratio), realEV: candidate.estWin * ratio - 1 };
+    }).filter((quote) => quote.ratio > 1);
+    if (quotes.length === 0) continue;
+
+    let decision: { market: string; direction: Direction; barrier: number; stake: number; ratio: number; estWin: number } | undefined;
+    let deceptionScore: number | undefined;
+    if (st.debt <= 0.005) {
+      const eligible = conservative
+        ? quotes.filter((quote) => quote.estWin >= Math.max(gates.minWin, config.minExtremeWin))
+          .sort((a, b) => b.estWin - a.estWin || b.realEV - a.realEV)
+        : quotes.filter((quote) => quote.estWin >= gates.minWin && quote.realEdge >= gates.minEdge)
+          .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
+      const best = eligible[0];
+      if (best) decision = { ...best, stake: baseStake };
+    } else {
+      const recoveryMarket = observation?.market ?? event.market;
+      const observed = evaluateRecoveryObservation({
+        market: recoveryMarket,
+        intelligence,
+        recovery: { debt: st.debt, streak: st.streak },
+        ticksSinceLoss: observation?.observedTicks ?? 0,
+        recoveryFailures: observation?.recoveryFailures,
+        lastLoss: observation?.lastLoss,
+      });
+      deceptionScore = observed.deceptionScore;
+      if (observed.action === 'observe') continue;
+      if (observed.action === 'switch_market' && observed.switchMarket && observation) {
+        observation = transitionRecoveryObservation(observation, { type: 'switch_market', market: observed.switchMarket });
+      }
+      const selectedMarket = observed.action === 'switch_market' ? observed.switchMarket : recoveryMarket;
+      const ladderQuotes = quotes.filter((quote) => quote.market === selectedMarket);
+      if (ladderQuotes.length === 0) continue;
         const ctx: RecoveryContext = {
           mode: st.mode,
           streak: st.streak,
@@ -218,41 +336,53 @@ function replayOne(
           maxRecoveryExposure: settingsLike.max_recovery_exposure,
           maxDrawdownPct: settingsLike.max_drawdown_pct,
         };
-        const ladder: LadderOption[] = s.dt.filter(dtAllowed).map((c) => ({
-          direction: c.direction,
-          barrier: c.barrier,
-          estWin: c.estWin,
+        const ladder: LadderOption[] = ladderQuotes.map((quote) => ({
+          direction: quote.direction,
+          barrier: quote.barrier,
+          estWin: quote.estWin,
           ask: 1,
-          payout: c.ratio,
+          payout: quote.ratio,
         }));
-        if (ladder.length === 0) continue;
         const d = planRecovery(ladder, ctx, ladder[0]);
         if (d.holds || !(d.stake > 0)) continue;
         const ratio = d.payout && d.payout > 1 ? d.payout : 1;
         if (!(ratio > 1)) continue;
-        decision = { direction: d.direction, barrier: d.barrier, stake: round2(d.stake), ratio };
-      }
-
-      if (!decision) continue;
-      const stake = round2(decision.stake);
-      if (!(stake > 0) || !(decision.ratio > 1)) continue;
-      const won = winDigits(decision.direction, decision.barrier).includes(outcomeDigit);
-      const profit = won ? round2(stake * (decision.ratio - 1)) : -round2(stake);
-      const balance = round2(st.balance + profit);
-      st = { ...nextRecovery(st, won, profit, balance), balance };
-      trades.push({
-        market: m.symbol,
-        epoch: s.epoch,
-        direction: decision.direction,
-        barrier: decision.barrier,
-        stake,
-        ratio: decision.ratio,
-        won,
-        profit,
-      });
-      equity.push(st.balance);
+        const selected = ladderQuotes.find((quote) => quote.direction === d.direction && quote.barrier === d.barrier);
+        if (selected) decision = { ...selected, stake: d.stake, ratio };
     }
+
+    if (!decision) continue;
+    const market = intelligence.markets.get(decision.market);
+    const drawdownPct = st.peakBalance > 0 ? ((st.peakBalance - st.balance) / st.peakBalance) * 100 : 0;
+    const allocation = allocateCapital({
+      proposedStake: decision.stake,
+      balance: st.balance,
+      health: market?.health,
+      regime: market?.regime,
+      deceptionScore,
+      recovery: { streak: st.streak },
+      drawdownPct,
+    });
+    const stake = round2(allocation.stake);
+    if (!replayRiskAllowed(st, settingsLike, stake)) continue;
+    const marketData = markets.find((candidate) => candidate.symbol === decision.market);
+    const decisionSample = currentSamples.get(decision.market);
+    const outcomeDigit = marketData && decisionSample ? marketData.digits[decisionSample.k + 1] : undefined;
+    if (!marketData || !decisionSample || typeof outcomeDigit !== 'number' || !Number.isInteger(outcomeDigit) || outcomeDigit < 0 || outcomeDigit > 9) continue;
+    const settledDigit = outcomeDigit;
+    pending = {
+      market: decision.market,
+      settleEpoch: decisionSample.settleEpoch,
+      outcomeDigit: settledDigit,
+      direction: decision.direction,
+      barrier: decision.barrier,
+      stake,
+      ratio: decision.ratio,
+      epoch: event.epoch,
+    };
   }
+
+  if (pending && trades.length < target) settle(pending);
 
   const metrics = computeMetrics(trades, startBalance);
   return { config: cfg, baseStake, startBalance, trades, metrics, equity };
@@ -316,7 +446,7 @@ export async function runBacktest(opts: BacktestOptions = {}): Promise<BacktestO
     list = [];
     for (const row of listMarkets()) {
       const symbol = String(row.symbol);
-      const md = loadMarket(symbol, 20000, 8, 1000, BARR_KEYS, ratioFor, weight);
+      const md = loadMarket(symbol, 20000, 8, 1000, weight);
       if (md) list.push(md);
     }
     marketsByWeight.set(weight, list);
@@ -328,7 +458,7 @@ export async function runBacktest(opts: BacktestOptions = {}): Promise<BacktestO
   for (let i = 0; i < configKeys.length; i++) {
     const cfg = configKeys[i];
     opts.onProgress?.({ phase: 'replaying', configIndex: i, totalConfigs: configKeys.length, message: `${cfg.strategyMode} · ${cfg.botMode}` });
-    const result = replayOne(cfg, ensureMarkets(weightForStrategy(cfg.strategyMode)), settingsLike, baseStake, target, startBalance);
+    const result = replayOne(cfg, ensureMarkets(weightForStrategy(cfg.strategyMode)), settingsLike, baseStake, target, startBalance, ratioFor);
     results.push(result);
     const row = insertTestRun({ ...runRow('backtest', cfg.strategyMode, cfg.botMode, baseStake, target, result.metrics, Date.now()), source: opts.source ?? 'manual' });
     runs.push(row);

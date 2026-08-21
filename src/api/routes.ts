@@ -20,6 +20,7 @@ import { runBacktest, TEST_MODES, TEST_STRATEGIES } from '../testlab/backtest.ts
 import type { TestConfig } from '../testlab/backtest.ts';
 import { runPaperSweep } from '../testlab/paper.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
+import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
 import {
   clearSession,
   getAutomation as storeGetAutomation,
@@ -31,6 +32,7 @@ import {
   getSettings,
   insertTrade,
   listMarkets,
+  listDecisionEvents,
   listTestRuns,
   listTrades,
   resolveTrade,
@@ -82,6 +84,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       recovery: getRecovery(),
       settings: getSettings(),
       automation: automation.state(),
+      intelligence: automation.marketIntelligence(),
       trades: listTrades(20),
     };
   });
@@ -184,6 +187,13 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const kind = q.kind === 'backtest' || q.kind === 'paper' || q.kind === undefined ? q.kind : undefined;
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
     return { runs: kind ? listTestRuns(kind, limit) : listTestRuns(undefined, limit) };
+  });
+
+  app.get('/api/test/evidence', async (req) => {
+    const q = req.query as { limit?: string };
+    const limit = Math.min(1000, Math.max(1, Number(q.limit) || 500));
+    const events = listDecisionEvents(limit);
+    return { evidence: buildDecisionEvidenceReport(events) };
   });
 
   app.get('/api/test/backtest/status', async () => {

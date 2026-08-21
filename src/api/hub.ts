@@ -6,6 +6,7 @@ export type HubEventType =
   | 'hello'
   | 'status'
   | 'signal'
+  | 'intelligence'
   | 'quote'
   | 'quote_error'
   | 'decision'

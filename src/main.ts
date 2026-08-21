@@ -11,6 +11,7 @@ import { MarketRegistry } from './core/marketState.ts';
 import { DerivPublicFeed } from './deriv/publicFeed.ts';
 import { DerivPrivateClient } from './deriv/privateClient.ts';
 import { Automation } from './strategy/automation.ts';
+import { DecisionMemory } from './intelligence/decisionMemory.ts';
 import {
   digitFingerprint,
   getDb,
@@ -33,9 +34,11 @@ async function main(): Promise<void> {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
 
   const hub = new Hub();
+  const decisionMemory = new DecisionMemory();
   const registry = new MarketRegistry({
     onTick: (snap) => {
       insertDigit(snap.symbol, snap.lastEpoch, snap.lastQuote, snap.lastDigit);
+      decisionMemory.onTick(snap.symbol, snap.lastDigit);
       hub.emit({
         type: 'tick',
         ts: Date.now(),
@@ -59,7 +62,7 @@ async function main(): Promise<void> {
   client.onBalance = (balance) => hub.emit({ type: 'balance', ts: Date.now(), balance });
   client.onDisconnect = () => hub.emit({ type: 'session', ts: Date.now(), session: null, reason: 'disconnected' });
 
-  const automation = new Automation(registry, client, hub);
+  const automation = new Automation(registry, client, hub, decisionMemory);
 
   registerApi(app, { registry, feed, client, hub, automation });
   await registerWs(app, hub, registry);

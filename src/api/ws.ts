@@ -12,9 +12,11 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
 
   let lastSignal: unknown = null;
   let lastHold: unknown = null;
+  let lastIntelligence: unknown = null;
   hub.on((evt) => {
     if (evt.type === 'signal') lastSignal = evt;
     if (evt.type === 'hold') lastHold = evt;
+    if (evt.type === 'intelligence') lastIntelligence = evt;
   });
 
   app.get('/ws', { websocket: true }, (socket: WebSocket) => {
@@ -27,6 +29,7 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     );
     if (lastSignal) socket.send(JSON.stringify(lastSignal));
     if (lastHold) socket.send(JSON.stringify(lastHold));
+    if (lastIntelligence) socket.send(JSON.stringify(lastIntelligence));
 
     let lastTickSent = 0;
     let pendingTick: unknown = null;

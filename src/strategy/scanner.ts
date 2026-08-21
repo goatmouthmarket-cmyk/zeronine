@@ -50,6 +50,16 @@ export interface MarketScan {
   features: BarrierFeatures[];
 }
 
+/** Raw market facts shared by all barrier feature calculations in one scan. */
+export interface MarketPrecompute {
+  digits: number[];
+  windows: Map<number, number[] | null>;
+  blocks: number[][];
+  entropy: number;
+  transitionRows: number[];
+  transitionCounts: number[][];
+}
+
 /**
  * Learned-pattern hook: given a previous digit, return the renormalized
  * P(next digit) distribution confirmed by pattern_stats, or null when the
@@ -163,6 +173,61 @@ function clamp(p: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, p));
 }
 
+/** Build barrier-independent rolling facts once per market scan. */
+export function precomputeMarket(digits: number[]): MarketPrecompute {
+  const windows = new Map<number, number[] | null>();
+  for (const size of WINDOWS) windows.set(size, windowFreq(digits, size));
+
+  const blocks: number[][] = [];
+  if (digits.length >= BLOCK_SIZE * 4) {
+    for (let block = 0; block < 4; block++) {
+      const start = digits.length - 100 + block * BLOCK_SIZE;
+      blocks.push(digitFreq(digits.slice(start, start + BLOCK_SIZE)));
+    }
+  }
+
+  const entropyFreq = windowFreq(digits, Math.min(100, digits.length)) ?? EMPTY_FREQ;
+  let h = 0;
+  for (const p of entropyFreq) if (p > 0) h -= p * Math.log2(p);
+
+  const transitionCounts: number[][] = Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => 0));
+  const transitionRows: number[] = Array.from({ length: 10 }, () => 0);
+  const start = Math.max(1, digits.length - 500);
+  for (let i = start; i < digits.length; i++) {
+    const prev = Math.trunc(digits[i - 1]);
+    const next = Math.trunc(digits[i]);
+    if (prev < 0 || prev > 9 || next < 0 || next > 9) continue;
+    transitionRows[prev] += 1;
+    transitionCounts[prev][next] += 1;
+  }
+  return { digits, windows, blocks, entropy: h / Math.log2(10), transitionRows, transitionCounts };
+}
+
+function consistencyFromPrecompute(precompute: MarketPrecompute, direction: Direction, barrier: number): number {
+  if (precompute.digits.length < BLOCK_SIZE * 4) {
+    return precompute.digits.length >= BLOCK_SIZE * 2 ? 0.6 : 0.4;
+  }
+  const blocks = precompute.blocks.map((freq) => barrierProb(freq, direction, barrier) / BLOCK_SIZE);
+  const mean = blocks.reduce((a, b) => a + b, 0) / blocks.length;
+  const variance = blocks.reduce((a, b) => a + (b - mean) * (b - mean), 0) / blocks.length;
+  return Math.max(0, Math.min(1, 1 - Math.sqrt(variance) / 0.5));
+}
+
+function transitionFromPrecompute(precompute: MarketPrecompute, direction: Direction, barrier: number): number {
+  const wins = new Set(winDigits(direction, barrier));
+  let cond = 0;
+  let rows = 0;
+  for (let prev = 0; prev < 10; prev++) {
+    const total = precompute.transitionRows[prev];
+    if (total === 0) continue;
+    let winsFrom = 0;
+    for (let next = 0; next < 10; next++) if (wins.has(next)) winsFrom += precompute.transitionCounts[prev][next];
+    cond += winsFrom / total;
+    rows += 1;
+  }
+  return rows === 0 ? theoreticalWin(direction, barrier) : cond / rows;
+}
+
 // Exposed so the test lab can reproduce the exact signal math per barrier.
 export { theoreticalWin, windowFreq, momentumOf, consistencyOf, entropyOf, transitionCond };
 
@@ -173,12 +238,13 @@ export function scanMarket(
   pattern?: PatternInput | null,
 ): MarketScan {
   const features: BarrierFeatures[] = [];
+  const precompute = precomputeMarket(digits);
   const prevDigit = digits.length ? Math.trunc(digits[digits.length - 1]) : -1;
   const rowFor = pattern && pattern.weight > 0 ? pattern.rowFor : undefined;
   for (const direction of ['over', 'under'] as Direction[]) {
     for (const barrier of direction === 'over' ? [0, 1, 2, 3, 4, 5, 6, 7] : [9, 8, 7, 6, 5, 4, 3]) {
       const learned = rowFor ? (prevDigit >= 0 && prevDigit <= 9 ? rowFor(symbol, prevDigit) ?? null : null) : null;
-      features.push(featureFor(digits, direction, barrier, learned != null ? { row: learned, weight: pattern?.weight ?? 0 } : null));
+      features.push(featureFromPrecompute(precompute, direction, barrier, learned != null ? { row: learned, weight: pattern?.weight ?? 0 } : null));
     }
   }
 
@@ -202,6 +268,16 @@ export function featureFor(
   barrier: number,
   pattern?: { row: number[] | null; weight: number } | null,
 ): BarrierFeatures {
+  return featureFromPrecompute(precomputeMarket(digits), direction, barrier, pattern);
+}
+
+/** Derive one barrier from facts calculated by precomputeMarket. */
+export function featureFromPrecompute(
+  precompute: MarketPrecompute,
+  direction: Direction,
+  barrier: number,
+  pattern?: { row: number[] | null; weight: number } | null,
+): BarrierFeatures {
   const wins: Record<number, number | null> = { 50: null, 100: null, 250: null, 500: null };
   const base = theoreticalWin(direction, barrier);
 
@@ -214,7 +290,7 @@ export function featureFor(
     win1000: 0,
   };
   for (const size of WINDOWS) {
-    const freq = windowFreq(digits, size);
+    const freq = precompute.windows.get(size) ?? null;
     const prob = freq ? barrierProb(freq, direction, barrier) : 0;
     if (size === 25) p.win25 = prob;
     if (size === 50) {
@@ -237,9 +313,9 @@ export function featureFor(
   }
 
   const momentum = momentumOf(wins);
-  const consistency = consistencyOf(digits, direction, barrier);
-  const entropy = entropyOf(digits);
-  const transitionCondProb = transitionCond(digits, direction, barrier);
+  const consistency = consistencyFromPrecompute(precompute, direction, barrier);
+  const entropy = precompute.entropy;
+  const transitionCondProb = transitionFromPrecompute(precompute, direction, barrier);
 
   const tilt = momentum - base;
   const credible = tilt * consistency;

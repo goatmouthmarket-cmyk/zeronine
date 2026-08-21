@@ -40,6 +40,15 @@ test('HTTP shell boots and serves health + settings', async () => {
   const stateBody = state.json();
   assert.equal(typeof stateBody.settings, 'object');
   assert.ok(Array.isArray(stateBody.markets ?? []));
+  assert.ok(Array.isArray(stateBody.intelligence ?? []));
+
+  const evidence = await app.inject({ method: 'GET', url: '/api/test/evidence?limit=10' });
+  assert.equal(evidence.statusCode, 200);
+  const evidenceBody = evidence.json();
+  assert.equal(typeof evidenceBody.evidence, 'object');
+  assert.ok(Array.isArray(evidenceBody.evidence.by_health));
+  assert.ok(Array.isArray(evidenceBody.evidence.by_regime));
+  assert.ok(Array.isArray(evidenceBody.evidence.by_action));
 
   const put = await app.inject({
     method: 'PUT',

@@ -226,6 +226,25 @@ function migrate(d: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_scanner_trade ON scanner_logs(trade_id);
     CREATE INDEX IF NOT EXISTS idx_scanner_ts ON scanner_logs(ts DESC);
+    CREATE TABLE IF NOT EXISTS decision_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      market TEXT NOT NULL,
+      direction TEXT,
+      barrier INTEGER,
+      action TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      est_win REAL,
+      health_score REAL,
+      regime TEXT,
+      deception_score REAL,
+      requested_stake REAL,
+      outcome TEXT,
+      resolved_at INTEGER,
+      expires_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_decision_events_market_pending ON decision_events(market, outcome, expires_at);
+    CREATE INDEX IF NOT EXISTS idx_decision_events_action_market_ts ON decision_events(action, market, ts DESC);
     CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       base_stake REAL,
@@ -1017,4 +1036,68 @@ export function digitHistory(market: string, limit: number): Array<{ epoch: numb
     .prepare('SELECT epoch, digit FROM digits WHERE market = ? AND digit IS NOT NULL ORDER BY id DESC LIMIT ?')
     .all(market, limit)
     .reverse() as unknown as Array<{ epoch: number; digit: number }>;
+}
+
+export type DecisionAction = 'trade' | 'wait' | 'skip' | 'observe' | 'recover' | 'switch';
+
+export interface DecisionEventInput {
+  ts: number;
+  market: string;
+  direction?: string;
+  barrier?: number;
+  action: DecisionAction;
+  reason: string;
+  est_win?: number;
+  health_score?: number;
+  regime?: string;
+  deception_score?: number;
+  requested_stake?: number;
+  expires_at?: number;
+}
+
+export interface DecisionEventRow extends DecisionEventInput {
+  id: number;
+  outcome: 'won' | 'lost' | 'expired' | null;
+  resolved_at: number | null;
+}
+
+export function insertDecisionEvent(event: DecisionEventInput): number {
+  const info = getDb()
+    .prepare(
+      `INSERT INTO decision_events (ts, market, direction, barrier, action, reason, est_win, health_score,
+        regime, deception_score, requested_stake, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      event.ts,
+      event.market,
+      event.direction ?? null,
+      event.barrier ?? null,
+      event.action,
+      event.reason,
+      event.est_win ?? null,
+      event.health_score ?? null,
+      event.regime ?? null,
+      event.deception_score ?? null,
+      event.requested_stake ?? null,
+      event.expires_at ?? null,
+    );
+  return Number(info.lastInsertRowid);
+}
+
+export function resolveDecisionEvent(id: number, outcome: 'won' | 'lost' | 'expired', resolvedAt = Date.now()): void {
+  getDb()
+    .prepare(`UPDATE decision_events SET outcome=?, resolved_at=? WHERE id=? AND outcome IS NULL`)
+    .run(outcome, resolvedAt, id);
+}
+
+export function pruneDecisionEvents(maxRows = 10000, now = Date.now()): void {
+  getDb().prepare(`UPDATE decision_events SET outcome='expired', resolved_at=? WHERE outcome IS NULL AND expires_at IS NOT NULL AND expires_at < ?`).run(now, now);
+  getDb().prepare(`DELETE FROM decision_events WHERE id NOT IN (SELECT id FROM decision_events ORDER BY id DESC LIMIT ?)`).run(maxRows);
+}
+
+export function listDecisionEvents(limit = 100): DecisionEventRow[] {
+  return getDb()
+    .prepare(`SELECT * FROM decision_events ORDER BY id DESC LIMIT ?`)
+    .all(Math.max(1, Math.min(1000, limit))) as unknown as DecisionEventRow[];
 }

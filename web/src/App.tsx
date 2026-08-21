@@ -526,6 +526,11 @@ function TickerItem({ market, active }: { market: Market; active: boolean }): JS
       <span class={`tick-pred${pred ? ` ${pred.direction}` : ' none'}`}>
         {pred ? `${pred.direction === 'over' ? 'O' : 'U'}${Math.round(pred.estWin * 100)}%` : '—'}
       </span>
+      {market.health && market.regime && (
+        <span class={`tick-health ${market.health.label}`} title={market.health.reasons.join('; ')}>
+          {market.health.score} {market.regime.regime.replace('_', ' ')}
+        </span>
+      )}
       <span class={`tick-pl${profit >= 0 ? ' pos' : ' neg'}`}>
         {trades.length ? fmtSigned(profit, '$') : '·'}
       </span>

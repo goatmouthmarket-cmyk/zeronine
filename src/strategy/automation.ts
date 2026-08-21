@@ -4,7 +4,11 @@ import type { MarketRegistry } from '../core/marketState.ts';
 import type { DerivPrivateClient, ContractUpdate } from '../deriv/privateClient.ts';
 import type { LadderOption, RecoveryDecision } from '../strategy/recovery.ts';
 import { planRecovery } from '../strategy/recovery.ts';
-import { pickSignal } from '../strategy/signal.ts';
+import { pickSignalFromSnapshot } from '../strategy/signal.ts';
+import { IntelligenceEngine } from '../intelligence/engine.ts';
+import type { IntelligenceSnapshot } from '../intelligence/engine.ts';
+import { DecisionMemory } from '../intelligence/decisionMemory.ts';
+import { allocateCapital } from '../intelligence/capitalAllocation.ts';
 import { patternRowsByPrev } from '../db/store.ts';
 import { patternWeightForStrategy } from '../db/store.ts';
 import type { PatternInput } from '../strategy/scanner.ts';
@@ -130,15 +134,24 @@ export class Automation {
   private registry: MarketRegistry;
   private client: DerivPrivateClient;
   private hub: Hub;
+  private intelligence: IntelligenceEngine;
+  private latestIntelligence: IntelligenceSnapshot | null = null;
+  private memory: DecisionMemory;
 
   private runTarget = 0;
   private runTrades = 0;
   private coolOffs = new Map<string, number>();
 
-  constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub) {
+  constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub, memory = new DecisionMemory()) {
     this.registry = registry;
     this.client = client;
     this.hub = hub;
+    this.memory = memory;
+    this.intelligence = new IntelligenceEngine(registry, (symbol, count) =>
+      lastDigitEvents(symbol, count)
+        .reverse()
+        .map((e) => e.digit),
+    );
   }
 
   isRunning(): boolean {
@@ -153,6 +166,11 @@ export class Automation {
       runTarget: this.runTarget,
       runTrades: this.runTrades,
     };
+  }
+
+  marketIntelligence(): Array<{ symbol: string; health: unknown; regime: unknown }> {
+    if (!this.latestIntelligence) return [];
+    return [...this.latestIntelligence.markets.entries()].map(([symbol, value]) => ({ symbol, health: value.health, regime: value.regime }));
   }
 
   private lastCompletedAt(): number {
@@ -306,20 +324,34 @@ export class Automation {
     // $stake bet. That's the whole point of the profile.
     const scanMinWin = conservative ? 0 : minWin;
     const scanMinEdge = conservative ? -1 : minEdge;
-    const signal = pickSignal(
-      this.registry,
+    const intelligence = this.intelligence.snapshot(patternInput());
+    this.latestIntelligence = intelligence;
+    this.emit({ type: 'intelligence', ts: intelligence.at, markets: this.marketIntelligence() });
+    const signal = pickSignalFromSnapshot(
+      intelligence,
       scanMinWin,
       scanMinEdge,
-      (symbol, count) =>
-        lastDigitEvents(symbol, count)
-          .reverse()
-          .map((e) => e.digit),
       undefined,
       barrierAllowed(settings),
-      patternInput(),
     );
     this.emit({ type: 'signal', ts: Date.now(), signal, phase: this.phase });
     if (signal.holds) {
+      const candidate = signal.candidates[0];
+      const market = candidate ? intelligence.markets.get(candidate.market) : undefined;
+      if (candidate && market) {
+        this.memory.remember({
+          ts: Date.now(),
+          action: 'wait',
+          reason: signal.reason,
+          market: candidate.market,
+          direction: candidate.direction,
+          barrier: candidate.barrier,
+          est_win: candidate.estWin,
+          health_score: market.health.score,
+          regime: market.regime.regime,
+          counterfactual: true,
+        });
+      }
       this.emit({ type: HOLD, ts: Date.now(), reason: signal.reason });
       this.phase = 'waiting-edge';
       return 1500; // WAIT is a valid outcome: no obligation to trade every scan
@@ -499,6 +531,25 @@ export class Automation {
       cycleStake: rec.cycleStake,
     });
 
+    const marketIntelligence = intelligence.markets.get(decision.market);
+    const drawdownPct = ctx.peakBalance > 0 && session.balance > 0
+      ? ((ctx.peakBalance - session.balance) / ctx.peakBalance) * 100
+      : 0;
+    const allocation = allocateCapital({
+      proposedStake: decision.stake,
+      balance: session.balance,
+      maxStake: settings.max_stake,
+      health: marketIntelligence?.health,
+      regime: marketIntelligence?.regime,
+      recovery: { streak: ctx.streak },
+      drawdownPct,
+    });
+    if (!(allocation.stake > 0)) {
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'capital allocation produced no executable stake' });
+      return 900;
+    }
+    decision = { ...decision, stake: allocation.stake };
+
     const gate = riskCheck({
       stake: decision.stake,
       settings,
@@ -509,6 +560,20 @@ export class Automation {
       now: Date.now(),
     });
     if (!gate.ok) {
+      const market = intelligence.markets.get(decision.market);
+      this.memory.remember({
+        ts: Date.now(),
+        action: 'skip',
+        reason: gate.reason,
+        market: decision.market,
+        direction: decision.direction,
+        barrier: decision.barrier,
+        est_win: decision.estWin,
+        health_score: market?.health.score,
+        regime: market?.regime.regime,
+        requested_stake: decision.stake,
+        counterfactual: true,
+      });
       this.emit({ type: HOLD, ts: Date.now(), reason: gate.reason });
       if (gate.reason.includes('drawdown')) this.stop(gate.reason);
       return 900;
@@ -532,6 +597,19 @@ export class Automation {
     });
 
     this.phase = 'buying';
+    const market = intelligence.markets.get(decision.market);
+    this.memory.remember({
+      ts: Date.now(),
+      action: 'trade',
+      reason: decision.reason,
+      market: decision.market,
+      direction: decision.direction,
+      barrier: decision.barrier,
+      est_win: decision.estWin,
+      health_score: market?.health.score,
+      regime: market?.regime.regime,
+      requested_stake: decision.stake,
+    });
     const trade = insertTrade({
       ts: Date.now(),
       market: decision.market,

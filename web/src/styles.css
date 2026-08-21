@@ -1176,6 +1176,19 @@ button {
     font-weight: 500;
 }
 
+.tick-health {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: capitalize;
+    white-space: nowrap;
+    color: var(--muted);
+}
+
+.tick-health.excellent { color: var(--green); }
+.tick-health.healthy { color: var(--purple-light); }
+.tick-health.weak { color: #f59e0b; }
+.tick-health.avoid { color: var(--red); }
+
 .tick-pl {
     font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     font-size: 11px;

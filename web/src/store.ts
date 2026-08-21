@@ -10,6 +10,22 @@ export interface Market {
   ticksPerMin: number;
   recentDigits: number[];
   dist: number[];
+  health?: MarketHealth;
+  regime?: RegimeAssessment;
+}
+
+export interface MarketHealth {
+  score: number;
+  label: 'excellent' | 'healthy' | 'weak' | 'avoid';
+  trend: 'improving' | 'stable' | 'deteriorating';
+  reasons: string[];
+}
+
+export interface RegimeAssessment {
+  regime: 'stable' | 'favorable' | 'transitioning' | 'volatile' | 'loss_cluster' | 'uncertain';
+  confidence: number;
+  since: number;
+  reasons: string[];
 }
 
 export interface SessionInfo {
@@ -380,6 +396,18 @@ function applyEvent(evt: Record<string, unknown>): void {
       };
       patch.quotes = {};
       patch.hold = null;
+      break;
+    }
+    case 'intelligence': {
+      const assessments = new Map(
+        ((evt.markets as Array<{ symbol?: string; health?: MarketHealth; regime?: RegimeAssessment }>) ?? [])
+          .filter((item) => item.symbol)
+          .map((item) => [String(item.symbol), item]),
+      );
+      patch.markets = state.markets.map((market) => {
+        const assessment = assessments.get(market.symbol);
+        return assessment ? { ...market, health: assessment.health, regime: assessment.regime } : market;
+      });
       break;
     }
     case 'quote': {
