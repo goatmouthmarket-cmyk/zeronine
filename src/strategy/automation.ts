@@ -317,6 +317,7 @@ export class Automation {
     }
 
     this.phase = 'scanning';
+    this.emit({ type: 'status', ts: Date.now(), state: this.state() });
     const conservative = settings.strategy_mode === 'conservative';
     const { minWin, minEdge } = modeGates(settings);
     // Conservative is about the safe favorites (Over 0 / Under 9): the payout
