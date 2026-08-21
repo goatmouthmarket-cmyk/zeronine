@@ -750,12 +750,10 @@ function DecisionHero({
           <span class="ckm-label">Break-even</span>
           <b>{best ? `${Math.round(best.breakeven * 100)}%` : '—'}</b>
         </div>
-        {best && best.learnedWin != null && (
-          <div class="ckm">
-            <span class="ckm-label">Pattern</span>
-            <b>{Math.round(best.learnedWin * 100)}%</b>
-          </div>
-        )}
+        <div class="ckm">
+          <span class="ckm-label">Pattern</span>
+          <b>{best?.learnedWin != null ? `${Math.round(best.learnedWin * 100)}%` : 'â€”'}</b>
+        </div>
         <div class={`ckm ckm-edge${best && best.edge < 0 ? ' neg' : ''}`}>
           <span class="ckm-label">EDGE</span>
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
