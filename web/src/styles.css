@@ -2411,6 +2411,10 @@ button {
         padding: 10px 0;
     }
 
+    .view-home .dash-main .bot-control {
+        margin-top: 6px;
+    }
+
     .view-home .dash-main,
     .view-home .dash-side {
         row-gap: 12px;
