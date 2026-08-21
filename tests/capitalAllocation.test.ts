@@ -39,11 +39,16 @@ test('loss streaks and drawdown stack only as reductions', () => {
 });
 
 test('explicit stake and balance allocation caps can only lower exposure', () => {
-  const allocation = allocateCapital({ proposedStake: 50, balance: 100, maxStake: 12 });
-  assert.equal(allocation.stake, 2, 'the default allocation cap is 2% of balance');
+  const allocation = allocateCapital({ proposedStake: 50, balance: 100, maxStake: 12, maxBalanceFraction: 0.02 });
+  assert.equal(allocation.stake, 2);
   assert.ok(allocation.stake <= 12);
   assert.ok(allocation.stake <= allocation.requestedStake);
   assert.deepEqual(allocation.reasons, ['max stake cap', 'balance allocation cap']);
+});
+
+test('a recovery proposal is not silently capped by balance fraction defaults', () => {
+  const allocation = allocateCapital({ proposedStake: 15, balance: 100, maxStake: 25 });
+  assert.equal(allocation.stake, 15);
 });
 
 test('recovery target is preserved while the executable stake can be reduced', () => {
@@ -54,7 +59,7 @@ test('recovery target is preserved while the executable stake can be reduced', (
     recovery: { streak: 3 },
   });
   assert.equal(allocation.requestedStake, 52.5);
-  assert.equal(allocation.stake, 20, 'the planner proposal is not rewritten or increased');
+  assert.equal(allocation.stake, 36.75, 'only explicit caps and contextual reductions apply');
   assert.ok(allocation.stake < allocation.requestedStake);
 });
 

@@ -34,8 +34,6 @@ export interface CapitalAllocation {
   reasons: string[];
 }
 
-const DEFAULT_MAX_BALANCE_FRACTION = 0.02;
-
 function clamp(value: number, low: number, high: number): number {
   return Math.max(low, Math.min(high, value));
 }
@@ -115,10 +113,8 @@ export function allocateCapital(input: CapitalAllocationInput): CapitalAllocatio
     reasons.push('max stake cap');
   }
 
-  if (input.balance != null && Number.isFinite(input.balance) && input.balance > 0) {
-    const fraction = input.maxBalanceFraction == null
-      ? DEFAULT_MAX_BALANCE_FRACTION
-      : clamp(input.maxBalanceFraction, 0, 1);
+  if (input.balance != null && Number.isFinite(input.balance) && input.balance > 0 && input.maxBalanceFraction != null) {
+    const fraction = clamp(input.maxBalanceFraction, 0, 1);
     const balanceCap = input.balance * fraction;
     if (stake > balanceCap) {
       stake = balanceCap;
