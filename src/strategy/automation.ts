@@ -128,6 +128,7 @@ export class Automation {
   private running = false;
   private disposed = false;
   private timer: NodeJS.Timeout | null = null;
+  private cycling = false;
   private busiest = 0;
   private phase = 'idle';
 
@@ -252,6 +253,11 @@ export class Automation {
 
   private async loop(): Promise<void> {
     if (this.disposed) return;
+    if (this.cycling) {
+      this.schedule(100);
+      return;
+    }
+    this.cycling = true;
     let delay = 600;
     try {
       const result = await this.cycle();
@@ -260,6 +266,7 @@ export class Automation {
       this.emit({ type: 'error', ts: Date.now(), message: String(err) });
       delay = 1200;
     } finally {
+      this.cycling = false;
       this.schedule(delay);
     }
   }
@@ -597,6 +604,12 @@ export class Automation {
       durationUnit: 't',
       symbol: decision.market,
     });
+
+    // A stop can arrive while the final quote request is in flight.
+    if (!this.running) {
+      this.phase = 'standby';
+      return 900;
+    }
 
     this.phase = 'buying';
     const market = intelligence.markets.get(decision.market);
