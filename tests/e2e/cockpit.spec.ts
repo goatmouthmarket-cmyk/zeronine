@@ -15,6 +15,14 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   await expect(page.getByText('Pattern', { exact: true })).toBeVisible();
   const startButton = page.getByRole('button', { name: 'Start Bot' });
   await expect(startButton).toBeVisible();
+  let resetRequested = false;
+  await page.route('**/api/performance/reset', async (route) => {
+    resetRequested = true;
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: Date.now() }) });
+  });
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Reset dashboard performance' }).click();
+  await expect.poll(() => resetRequested).toBe(true);
   const metrics = page.locator('.cockpit-metrics .ckm');
   await expect(metrics).toHaveCount(4);
 
@@ -73,5 +81,6 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   });
   await startButton.click();
   await expect.poll(() => startBody).toEqual(expect.objectContaining({ strategy_mode: expect.any(String), base_stake: expect.any(Number) }));
+  await expect(page.locator('.bot-control.running')).toBeVisible();
   expect(errors).toEqual([]);
 });

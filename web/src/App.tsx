@@ -11,6 +11,7 @@ import {
   arm,
   selectMarket,
   manualTrade,
+  resetPerformance,
   updateSettings,
   loadTestRuns,
   loadPatternsData,
@@ -136,6 +137,12 @@ const ICON_PATHS: Record<string, JSX.Element> = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  rotateCcw: (
+    <>
+      <path d="M4 7v5h5" />
+      <path d="M5.5 16.5A8 8 0 1 0 5 12" />
+    </>
+  ),
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   arrowUpRight: <path d="M7 17 17 7M8.5 7H17v8.5" />,
   arrowUp: <path d="M12 19V5m0 0-5.5 5.5M12 5l5.5 5.5" />,
@@ -305,16 +312,20 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const [startError, setStartError] = useState('');
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
+  const [resettingPerformance, setResettingPerformance] = useState(false);
   const cooldownLeft = useBotCooldown();
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
   const automation = s.automation?.running ?? false;
   const decision = automation ? s.decision?.decision : undefined;
 
-  const winCount = s.trades.filter((t) => t.status === 'won').length;
-  const lossCount = s.trades.filter((t) => t.status === 'lost').length;
-  const pushCount = s.trades.filter((t) => t.status === 'push' || t.status === 'expired' || t.status === 'timeout').length;
-  const profit = s.trades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
+  const fallbackPerformance = {
+    wins: s.trades.filter((t) => t.status === 'won').length,
+    losses: s.trades.filter((t) => t.status === 'lost').length,
+    pushes: s.trades.filter((t) => t.status === 'push' || t.status === 'expired' || t.status === 'timeout').length,
+    profit: s.trades.reduce((acc, t) => acc + (t.profit ?? 0), 0),
+  };
+  const performance = s.performance ?? fallbackPerformance;
 
   const activeDirection = decision?.direction ?? (s.settings?.barrier_preference === 'under' ? 'under' : 'over');
   const activeSide = decision ? sideLabel(decision.direction, decision.barrier) : activeDirection === 'under' ? 'Under 9' : 'Over 0';
@@ -371,6 +382,16 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
       setManualMsg(e instanceof Error ? e.message : String(e));
     } finally {
       setManualBusy(false);
+    }
+  };
+
+  const resetPerformanceTotals = async () => {
+    if (resettingPerformance || !window.confirm('Reset dashboard performance totals? Trade history will be kept.')) return;
+    setResettingPerformance(true);
+    try {
+      await resetPerformance();
+    } finally {
+      setResettingPerformance(false);
     }
   };
 
@@ -488,20 +509,25 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
 
           <section class="perf">
             <div class="perf-cell win">
-              <div class="perf-value">{winCount}</div>
+              <div class="perf-value">{performance.wins}</div>
               <div class="perf-label">Wins</div>
             </div>
             <div class="perf-cell loss">
-              <div class="perf-value">{lossCount}</div>
+              <div class="perf-value">{performance.losses}</div>
               <div class="perf-label">Losses</div>
             </div>
             <div class="perf-cell push">
-              <div class="perf-value">{pushCount}</div>
+              <div class="perf-value">{performance.pushes}</div>
               <div class="perf-label">Pushes</div>
             </div>
-            <div class={`perf-cell profit${profit >= 0 ? '' : ' negative'}`}>
-              <div class="perf-value">{fmtSigned(profit, s.session?.currency)}</div>
-              <div class="perf-label">Profit</div>
+            <div class={`perf-cell profit${performance.profit >= 0 ? '' : ' negative'}`}>
+              <div class="perf-value">{fmtSigned(performance.profit, s.session?.currency)}</div>
+              <div class="perf-profit-meta">
+                <div class="perf-label">Profit</div>
+                <button class="perf-reset" type="button" disabled={resettingPerformance} onClick={() => void resetPerformanceTotals()} title="Reset dashboard performance" aria-label="Reset dashboard performance">
+                  <Icon name="rotateCcw" size={11} strokeWidth={2} />
+                </button>
+              </div>
             </div>
           </section>
         </div>

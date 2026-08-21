@@ -40,6 +40,7 @@ test('HTTP shell boots and serves health + settings', async () => {
   const stateBody = state.json();
   assert.equal(typeof stateBody.settings, 'object');
   assert.equal('daily_loss_limit' in stateBody.settings, false);
+  assert.deepEqual(stateBody.performance, { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 });
   assert.ok(Array.isArray(stateBody.markets ?? []));
   assert.ok(Array.isArray(stateBody.intelligence ?? []));
 
@@ -60,6 +61,10 @@ test('HTTP shell boots and serves health + settings', async () => {
   const settings = put.json();
   assert.equal(settings.base_stake, 2);
   assert.equal(settings.max_stake, 40);
+
+  const reset = await app.inject({ method: 'POST', url: '/api/performance/reset' });
+  assert.equal(reset.statusCode, 200);
+  assert.deepEqual(reset.json().profit, 0);
 
   await app.close();
 });

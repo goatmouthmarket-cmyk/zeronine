@@ -38,6 +38,14 @@ export interface TradeRow {
   exit_digit?: number;
 }
 
+export interface PerformanceSummary {
+  wins: number;
+  losses: number;
+  pushes: number;
+  profit: number;
+  reset_at: number;
+}
+
 export interface RecoveryState {
   mode: 'base' | 'recovering';
   streak: number;
@@ -179,6 +187,14 @@ function migrate(d: DatabaseSync): void {
       resolved_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades(ts DESC);
+    CREATE TABLE IF NOT EXISTS performance_baseline (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      pushes INTEGER NOT NULL DEFAULT 0,
+      profit REAL NOT NULL DEFAULT 0,
+      reset_at INTEGER NOT NULL DEFAULT 0
+    );
     CREATE TABLE IF NOT EXISTS recovery_state (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       mode TEXT DEFAULT 'base',
@@ -366,6 +382,8 @@ function seedDefaults(d: DatabaseSync): void {
   d.exec(`
 INSERT OR IGNORE INTO recovery_state (id, mode, streak, lost, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at)
       VALUES (1, 'base', 0, 0, 0, 0, 0, 0, 0, 0);
+    INSERT OR IGNORE INTO performance_baseline (id, wins, losses, pushes, profit, reset_at)
+      VALUES (1, 0, 0, 0, 0, 0);
     INSERT OR IGNORE INTO settings (id, base_stake, max_stake, martingale_steps,
       max_consecutive_losses, min_edge, min_recovery_win, barrier_preference,
       barrier_number, strategy_mode, bot_mode, strategy_multiplier, recovery_buffer, chase_amortize,
@@ -842,6 +860,55 @@ export function listTrades(limit = 50): TradeRow[] {
   return getDb()
     .prepare('SELECT * FROM trades ORDER BY id DESC LIMIT ?')
     .all(limit) as unknown as TradeRow[];
+}
+
+interface PerformanceTotals {
+  wins: number;
+  losses: number;
+  pushes: number;
+  profit: number;
+}
+
+function getPerformanceTotals(): PerformanceTotals {
+  const row = getDb()
+    .prepare(
+      `SELECT
+        COALESCE(SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END), 0) AS wins,
+        COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
+        COALESCE(SUM(CASE WHEN status IN ('push', 'expired', 'timeout') THEN 1 ELSE 0 END), 0) AS pushes,
+        COALESCE(SUM(CASE WHEN status IN ('won', 'lost', 'push', 'expired', 'timeout') THEN profit ELSE 0 END), 0) AS profit
+       FROM trades`,
+    )
+    .get() as unknown as PerformanceTotals;
+  return {
+    wins: Number(row.wins) || 0,
+    losses: Number(row.losses) || 0,
+    pushes: Number(row.pushes) || 0,
+    profit: Number(row.profit) || 0,
+  };
+}
+
+export function getPerformanceSummary(): PerformanceSummary {
+  const totals = getPerformanceTotals();
+  const baseline = getDb()
+    .prepare('SELECT wins, losses, pushes, profit, reset_at FROM performance_baseline WHERE id = 1')
+    .get() as unknown as PerformanceSummary;
+  return {
+    wins: Math.max(0, totals.wins - Number(baseline.wins || 0)),
+    losses: Math.max(0, totals.losses - Number(baseline.losses || 0)),
+    pushes: Math.max(0, totals.pushes - Number(baseline.pushes || 0)),
+    profit: totals.profit - Number(baseline.profit || 0),
+    reset_at: Number(baseline.reset_at || 0),
+  };
+}
+
+export function resetPerformanceSummary(): PerformanceSummary {
+  const totals = getPerformanceTotals();
+  const resetAt = Date.now();
+  getDb()
+    .prepare('UPDATE performance_baseline SET wins=?, losses=?, pushes=?, profit=?, reset_at=? WHERE id=1')
+    .run(totals.wins, totals.losses, totals.pushes, totals.profit, resetAt);
+  return { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: resetAt };
 }
 
 

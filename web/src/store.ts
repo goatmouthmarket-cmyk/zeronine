@@ -95,6 +95,14 @@ export interface TradeRow {
   exit_digit?: number;
 }
 
+export interface PerformanceSummary {
+  wins: number;
+  losses: number;
+  pushes: number;
+  profit: number;
+  reset_at: number;
+}
+
 export interface FeedStatus {
   connected: boolean;
   markets?: number;
@@ -232,6 +240,7 @@ export interface State {
   settings: Settings | null;
   automation: AutomationState | null;
   trades: TradeRow[];
+  performance: PerformanceSummary | null;
   selected: string | null;
   signal: { signal: SignalPick; phase: string } | null;
   displaySignal: SignalPick | null;
@@ -259,6 +268,7 @@ const initial: State = {
   settings: null,
   automation: null,
   trades: [],
+  performance: null,
   selected: null,
   signal: null,
   displaySignal: null,
@@ -566,6 +576,7 @@ export async function bootstrap(): Promise<void> {
       settings: s.settings,
       automation: s.automation,
       trades: s.trades,
+      performance: s.performance,
       digits: (() => {
         const out: Record<string, number[]> = {};
         for (const m of s.markets) {
@@ -704,11 +715,16 @@ export async function clearStuckTrade(): Promise<void> {
 
 export async function refreshTrades(limit = 50): Promise<void> {
   try {
-    const res = await api<{ trades: TradeRow[] }>(`/api/history?limit=${limit}`);
-    if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, 50) });
+    const res = await api<{ trades: TradeRow[]; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
+    if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, 50), performance: res.performance ?? state.performance });
   } catch {
     // best-effort refresh; stale list is fine
   }
+}
+
+export async function resetPerformance(): Promise<void> {
+  const performance = await api<PerformanceSummary>('/api/performance/reset', { method: 'POST' });
+  set({ performance });
 }
 
 // ---- testlab actions ----

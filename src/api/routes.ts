@@ -27,6 +27,7 @@ import {
   getCalibration,
   getMeta,
   getOpenTrade,
+  getPerformanceSummary,
   getRecovery,
   getSession,
   getSettings,
@@ -36,6 +37,7 @@ import {
   listTestRuns,
   listTrades,
   resolveTrade,
+  resetPerformanceSummary,
   setAutomation as storeSetAutomation,
   setSession,
   updateSettings,
@@ -86,6 +88,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       automation: automation.state(),
       intelligence: automation.marketIntelligence(),
       trades: listTrades(20),
+      performance: getPerformanceSummary(),
     };
   });
 
@@ -134,8 +137,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   app.get('/api/history', async (req) => {
     const q = req.query as { limit?: string };
     const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
-    return { trades: listTrades(limit) };
+    return { trades: listTrades(limit), performance: getPerformanceSummary() };
   });
+
+  app.get('/api/performance', async () => getPerformanceSummary());
+
+  app.post('/api/performance/reset', async () => resetPerformanceSummary());
 
   app.get('/api/calibration', async () => getCalibration());
 

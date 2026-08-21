@@ -728,7 +728,7 @@ button {
 
     cursor: pointer;
 
-    transition: background .18s ease;
+    transition: background .18s ease, transform .18s ease, filter .18s ease;
 }
 
 .side-btn.over {
@@ -761,6 +761,18 @@ button {
 
 .side-btn.under.active {
     background: rgba(255,77,145,.1);
+}
+
+.side-btn.over:not(:disabled):hover {
+    background: rgba(139,92,246,.08);
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+}
+
+.side-btn.under:not(:disabled):hover {
+    background: rgba(255,77,145,.07);
+    filter: brightness(1.08);
+    transform: translateY(-1px);
 }
 
 .side-btn:active:not(:disabled) {
@@ -903,6 +915,10 @@ button {
     flex: 0 0 auto;
 }
 
+.bot-control:not(.running):not(:disabled) svg {
+    animation: bot-play-motion 1.8s ease-in-out infinite;
+}
+
 .bot-control:hover {
     transform: translateY(-1px);
     filter: brightness(1.08);
@@ -914,7 +930,29 @@ button {
 }
 
 .bot-control.running {
-    background: linear-gradient(90deg, #6d3bd5, #6931ce, #5e2aba);
+    background: linear-gradient(90deg, #b62d43, #dc4058, #b92b42);
+    box-shadow: 0 9px 30px rgba(220,64,88,.26);
+    animation: bot-stop-swell 1.8s ease-in-out infinite;
+}
+
+.bot-control.running:hover {
+    box-shadow: 0 13px 38px rgba(220,64,88,.36);
+}
+
+.bot-control.running:active {
+    animation: none;
+    transform: scale(.992);
+}
+
+@keyframes bot-play-motion {
+    0%, 100% { transform: translateX(0) scale(1); }
+    45% { transform: translateX(2px) scale(1.08); }
+    60% { transform: translateX(1px) scale(1.03); }
+}
+
+@keyframes bot-stop-swell {
+    0%, 100% { transform: scale(1); box-shadow: 0 9px 30px rgba(220,64,88,.26); }
+    50% { transform: scale(1.012); box-shadow: 0 13px 38px rgba(220,64,88,.42); }
 }
 
 .bot-control:disabled {
@@ -1005,6 +1043,43 @@ button {
     border-radius: var(--radius-lg);
 
     padding: 18px;
+}
+
+.perf-profit-meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    margin-top: 4px;
+}
+
+.perf-profit-meta .perf-label {
+    margin-top: 0;
+}
+
+.perf-reset {
+    width: 14px;
+    height: 14px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color .16s ease, background .16s ease, transform .16s ease;
+}
+
+.perf-reset:hover {
+    color: var(--purple-light);
+    background: rgba(139,92,246,.13);
+    transform: rotate(-24deg);
+}
+
+.perf-reset:focus-visible {
+    outline: 1px solid var(--purple-light);
+    outline-offset: 2px;
 }
 
 .view-home .section,
@@ -2439,6 +2514,11 @@ button {
     .view-home .perf {
         margin-top: 0;
     }
+
+    .view-home .perf-cell {
+        padding-top: 11px;
+        padding-bottom: 11px;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2452,6 +2532,11 @@ button {
     }
 
     .cockpit-status-dot {
+        animation: none;
+    }
+
+    .bot-control,
+    .bot-control svg {
         animation: none;
     }
 
