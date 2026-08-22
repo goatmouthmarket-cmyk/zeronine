@@ -7,6 +7,7 @@ import type { TestConfig } from './backtest.ts';
 
 export interface PaperAutomation {
   isRunning(): boolean;
+  isOperatorStopped?(): boolean;
   start(opts: { maxTrades?: number }): void;
   stop(reason?: string): void;
   state(): Record<string, unknown>;
@@ -42,12 +43,23 @@ const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-async function waitForStop(automation: PaperAutomation, timeoutMs: number, onTick: () => void): Promise<void> {
+function cancelledError(): Error & { code: string } {
+  return Object.assign(new Error('cancelled by operator stop'), { code: 'CANCELLED' });
+}
+
+async function waitForStop(
+  automation: PaperAutomation,
+  timeoutMs: number,
+  onTick: () => void,
+  cancelled: () => boolean,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (automation.isRunning() && Date.now() < deadline) {
+    if (cancelled()) throw cancelledError();
     onTick();
     await sleep(1500);
   }
+  if (cancelled()) throw cancelledError();
   if (automation.isRunning()) throw new Error('timed out waiting for the sweep run to finish');
 }
 
@@ -85,6 +97,13 @@ export async function runPaperSweep(
   let failed = 0;
 
   for (let i = 0; i < configs.length; i++) {
+    if (automation.isOperatorStopped?.()) {
+      emit(hub, {
+        kind: 'paper', phase: 'failed', configIndex: i, totalConfigs: configs.length, config: configs[i],
+        tradesDone: 0, tradesTarget, message: 'cancelled by operator stop',
+      });
+      break;
+    }
     const cfg = configs[i];
     const snapshot = getSettings();
     if (automation.isRunning()) {
@@ -111,8 +130,12 @@ export async function runPaperSweep(
 
     try {
       automation.start({ maxTrades: tradesTarget });
+      if (!automation.isRunning()) {
+        if (automation.isOperatorStopped?.()) throw cancelledError();
+        throw new Error('automation did not start');
+      }
       tick();
-      await waitForStop(automation, timeoutMs, tick);
+      await waitForStop(automation, timeoutMs, tick, () => automation.isOperatorStopped?.() ?? false);
 
       const trades = tradesAfterId(boundary).filter((t) => t.status === 'won' || t.status === 'lost');
       const metrics = computeMetrics(trades, startBalance);
@@ -122,7 +145,9 @@ export async function runPaperSweep(
       progress(trades.length, `completed ${trades.length} trades for ${cfg.strategyMode} · ${cfg.botMode}`, 'done');
     } catch (err) {
       failed += 1;
-      progress(0, `failed: ${err instanceof Error ? err.message : String(err)}`, 'failed');
+      const cancelled = (err as { code?: string })?.code === 'CANCELLED';
+      progress(0, cancelled ? 'cancelled by operator stop' : `failed: ${err instanceof Error ? err.message : String(err)}`, 'failed');
+      if (cancelled) break;
     } finally {
       automation.stop('sweep: next config');
       updateSettings({ strategy_mode: snapshot.strategy_mode, bot_mode: snapshot.bot_mode });

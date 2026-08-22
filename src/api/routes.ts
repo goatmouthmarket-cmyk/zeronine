@@ -481,6 +481,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         ? Math.floor(body.max_trades)
         : 0;
 
+    // Only an explicit operator start may clear a prior Stop latch. Background
+    // paper sweeps use the same Automation instance and must remain blocked.
+    automation.acknowledgeUserStart();
     automation.start({ maxTrades });
     return { ok: true, state: automation.state() };
   });

@@ -66,6 +66,19 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.equal(reset.statusCode, 200);
   assert.deepEqual(reset.json().profit, 0);
 
+  automation.start({ maxTrades: 1 });
+  assert.equal(automation.isRunning(), true);
+  automation.stop('user stop');
+  assert.equal(automation.isRunning(), false);
+  assert.equal(automation.isOperatorStopped(), true);
+  automation.start({ maxTrades: 1 });
+  assert.equal(automation.isRunning(), false, 'a background caller cannot restart an operator-stopped bot');
+  automation.acknowledgeUserStart();
+  automation.start({ maxTrades: 1 });
+  assert.equal(automation.isRunning(), true, 'only an explicit user start clears the stop latch');
+  automation.stop('user stop');
+  automation.dispose();
+
   await app.close();
 });
 

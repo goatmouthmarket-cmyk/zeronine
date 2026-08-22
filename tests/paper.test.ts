@@ -118,4 +118,37 @@ test('paper sweep', async (t) => {
     assert.equal(after.strategy_mode, before.strategy_mode, 'strategy_mode restored');
     assert.equal(after.bot_mode, before.bot_mode, 'bot_mode restored');
   });
+
+  await t.test('operator stop cancels a sweep before it can start another config', async () => {
+    setSession('demo');
+    const hub = new hubMod.Hub();
+    const mock = {
+      running: false,
+      operatorStopped: false,
+      started: 0,
+      state: () => ({ runTrades: 0, running: mock.running }),
+      isRunning: () => mock.running,
+      isOperatorStopped: () => mock.operatorStopped,
+      start: () => {
+        mock.started += 1;
+        mock.operatorStopped = true;
+        mock.running = false;
+      },
+      stop: () => {
+        mock.running = false;
+      },
+    };
+
+    const result = await paperMod.runPaperSweep(mock, hub, {
+      configs: [
+        { strategyMode: 'conservative', botMode: 'rapid' },
+        { strategyMode: 'chase', botMode: 'strict' },
+      ],
+      tradesPerConfig: 2,
+    });
+
+    assert.equal(mock.started, 1, 'the next sweep config must not restart the bot');
+    assert.equal(result.completed, 0);
+    assert.equal(result.failed, 1);
+  });
 });

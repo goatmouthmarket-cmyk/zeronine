@@ -132,6 +132,10 @@ export class Automation {
   private cycling = false;
   private busiest = 0;
   private phase = 'idle';
+  // Every explicit start/stop invalidates prior async work. A quote can finish
+  // after a button click, so `running` alone cannot prove it owns the run.
+  private runEpoch = 0;
+  private operatorStopped = false;
 
   private registry: MarketRegistry;
   private client: DerivPrivateClient;
@@ -152,6 +156,7 @@ export class Automation {
     this.memory = memory;
     const persistedReason = getAutomation().reason;
     this.stopReason = persistedReason && persistedReason !== 'server shutdown' ? persistedReason : null;
+    this.operatorStopped = persistedReason === 'user stop' || persistedReason === 'emergency stop';
     this.intelligence = new IntelligenceEngine(registry, (symbol, count) =>
       lastDigitEvents(symbol, count)
         .reverse()
@@ -161,6 +166,14 @@ export class Automation {
 
   isRunning(): boolean {
     return this.running;
+  }
+
+  isOperatorStopped(): boolean {
+    return this.operatorStopped;
+  }
+
+  acknowledgeUserStart(): void {
+    this.operatorStopped = false;
   }
 
   state(): Record<string, unknown> {
@@ -199,7 +212,8 @@ export class Automation {
   }
 
   start(opts: { maxTrades?: number } = {}): void {
-    if (this.running) return;
+    if (this.running || this.operatorStopped) return;
+    this.runEpoch += 1;
     this.running = true;
     this.stopReason = null;
     this.runTarget = Math.max(0, Math.floor(opts.maxTrades ?? 0) || 0);
@@ -218,12 +232,24 @@ export class Automation {
   }
 
   stop(reason = 'stopped'): void {
-    if (!this.running) return;
+    this.runEpoch += 1;
+    const explicitOperatorStop = reason === 'user stop' || reason === 'emergency stop';
+    if (explicitOperatorStop) this.operatorStopped = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (!this.running) {
+      this.phase = 'standby';
+      if (explicitOperatorStop || !this.stopReason) this.stopReason = reason;
+      this.emit({ type: 'status', ts: Date.now(), state: this.state(), reason: this.stopReason });
+      return;
+    }
     this.running = false;
     this.stopReason = reason;
     this.phase = 'standby';
     setAutomation({ running: 0, stopped_at: Date.now(), reason, trades_done: this.runTrades });
     this.emit({ type: 'status', ts: Date.now(), state: this.state(), reason });
+    // Keep manual-bet signals fresh, but the scheduled pass is read-only.
+    this.schedule(50);
   }
 
   /**
@@ -239,6 +265,7 @@ export class Automation {
 
   dispose(): void {
     this.disposed = true;
+    this.runEpoch += 1;
     this.running = false;
     this.stopReason = 'server shutdown';
     if (this.timer) clearTimeout(this.timer);
@@ -266,21 +293,26 @@ export class Automation {
       return;
     }
     this.cycling = true;
+    const cycleEpoch = this.runEpoch;
+    const startedRunning = this.running;
     let delay = 600;
     try {
-      const result = await this.cycle();
+      const result = await this.cycle(cycleEpoch, startedRunning);
       if (result && Number.isFinite(result)) delay = result;
     } catch (err) {
       this.emit({ type: 'error', ts: Date.now(), message: String(err) });
       delay = 1200;
     } finally {
       this.cycling = false;
-      this.schedule(delay);
+      // A newer start/stop owns the next timer. A stale completion must never
+      // delay or revive that newer state.
+      if (cycleEpoch === this.runEpoch) this.schedule(delay);
     }
   }
 
-  private async cycle(): Promise<number> {
+  private async cycle(cycleEpoch: number, startedRunning: boolean): Promise<number> {
     this.busiest = Date.now();
+    const canBuy = (): boolean => startedRunning && this.running && cycleEpoch === this.runEpoch;
     const settings = getSettings();
 
     if (!this.client.isConnected) {
@@ -312,7 +344,7 @@ export class Automation {
     const ctx = buildRecoveryContext(settings);
 
     // The peak-drawdown rail only applies while the bot is actively trading.
-    if (this.running) {
+    if (canBuy()) {
       const guard = riskCheck({
         stake: settings.max_stake,
         settings,
@@ -424,8 +456,8 @@ export class Automation {
 
     // Watch mode: bot is stopped but we still surface fresh signals so the
     // hero always has a target for manual bets. Nothing is ever purchased here.
-    if (!this.running) {
-      this.phase = 'standby';
+    if (!canBuy()) {
+      if (!this.running) this.phase = 'standby';
       return 1500;
     }
 
@@ -532,8 +564,8 @@ export class Automation {
     // Re-check the run state after the async quoting phase: the user may have
     // stopped the bot mid-span, and we must not broadcast (or buy) a bet once
     // we're no longer meant to trade.
-    if (!this.running) {
-      this.phase = 'standby';
+    if (!canBuy()) {
+      if (!this.running) this.phase = 'standby';
       return 1500;
     }
     this.emit({
@@ -595,8 +627,8 @@ export class Automation {
     }
 
     // Final gate before spending money — a stop can race this far in.
-    if (!this.running) {
-      this.phase = 'standby';
+    if (!canBuy()) {
+      if (!this.running) this.phase = 'standby';
       return 900;
     }
 
@@ -612,8 +644,8 @@ export class Automation {
     });
 
     // A stop can arrive while the final quote request is in flight.
-    if (!this.running) {
-      this.phase = 'standby';
+    if (!canBuy()) {
+      if (!this.running) this.phase = 'standby';
       return 900;
     }
 
@@ -714,13 +746,15 @@ export class Automation {
 
     this.phase = 'settled';
 
-    this.runTrades += 1;
-    setAutomation({ trades_done: this.runTrades });
-    this.emit({ type: 'status', ts: Date.now(), state: this.state() });
-    if (this.runTarget > 0 && this.runTrades >= this.runTarget) {
-      resetRecovery();
-      this.emit({ type: 'recovery', ts: Date.now(), recovery: getRecovery(), reset: true });
-      this.stop(`target of ${this.runTarget} trades completed`);
+    if (canBuy()) {
+      this.runTrades += 1;
+      setAutomation({ trades_done: this.runTrades });
+      this.emit({ type: 'status', ts: Date.now(), state: this.state() });
+      if (this.runTarget > 0 && this.runTrades >= this.runTarget) {
+        resetRecovery();
+        this.emit({ type: 'recovery', ts: Date.now(), recovery: getRecovery(), reset: true });
+        this.stop(`target of ${this.runTarget} trades completed`);
+      }
     }
 
     return config.tradeGapMs;

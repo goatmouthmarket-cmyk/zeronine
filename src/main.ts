@@ -160,6 +160,7 @@ async function main(): Promise<void> {
     const session = getSession();
     if (!session || session.mode !== 'demo') return;
     if (automation.isRunning()) return;
+    if (automation.isOperatorStopped()) return;
     if (!feed.status().connected) return;
     autoPaperBusy = true;
     try {
