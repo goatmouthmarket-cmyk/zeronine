@@ -233,6 +233,8 @@ export interface TestLabActive {
 }
 
 export interface State {
+  publicDashboard?: boolean;
+  owner?: boolean;
   ws: 'connecting' | 'open' | 'closed';
   feed: FeedStatus | null;
   markets: Market[];
@@ -570,7 +572,7 @@ window.addEventListener('pageshow', (ev) => {
 export async function bootstrap(): Promise<void> {
   try {
     signalStabilizer.reset();
-    const s = (await api('/api/state')) as State;
+    const s = (await api('/api/state')) as State & { public_dashboard?: boolean; owner?: boolean };
     set({
       feed: s.feed,
       markets: s.markets,
@@ -580,6 +582,8 @@ export async function bootstrap(): Promise<void> {
       automation: s.automation,
       trades: s.trades,
       performance: s.performance,
+      publicDashboard: Boolean(s.public_dashboard),
+      owner: Boolean(s.owner),
       digits: (() => {
         const out: Record<string, number[]> = {};
         for (const m of s.markets) {
@@ -666,6 +670,11 @@ export async function startAutomation(opts?: {
 export async function stopAutomation(): Promise<void> {
   const res = await api<{ state: AutomationState }>('/api/automation/stop', { method: 'POST' });
   set({ automation: res.state, decision: null });
+}
+
+export async function unlockDashboard(token: string): Promise<void> {
+  await api('/api/auth/owner', { method: 'POST', body: JSON.stringify({ token }) });
+  await bootstrap();
 }
 
 export async function arm(): Promise<void> {

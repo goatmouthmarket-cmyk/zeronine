@@ -3,9 +3,11 @@ import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
 import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
+import { isOwner } from './access.ts';
 
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
+const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning']);
 
 export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
   await app.register(websocket, { options: { maxPayload: 8192 } });
@@ -19,7 +21,8 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     if (evt.type === 'intelligence') lastIntelligence = evt;
   });
 
-  app.get('/ws', { websocket: true }, (socket: WebSocket) => {
+  app.get('/ws', { websocket: true }, (socket: WebSocket, req) => {
+    const owner = isOwner(req);
     socket.send(
       JSON.stringify({
         type: 'hello',
@@ -28,7 +31,7 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       }),
     );
     if (lastSignal) socket.send(JSON.stringify(lastSignal));
-    if (lastHold) socket.send(JSON.stringify(lastHold));
+    if (owner && lastHold) socket.send(JSON.stringify(lastHold));
     if (lastIntelligence) socket.send(JSON.stringify(lastIntelligence));
 
     let lastTickSent = 0;
@@ -46,6 +49,7 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
 
     const unsubscribe = hub.on((evt) => {
       if (socket.readyState !== socket.OPEN) return;
+      if (!owner && !PUBLIC_EVENTS.has(evt.type)) return;
 
       if (evt.type === 'tick') {
         const now = Date.now();

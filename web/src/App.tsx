@@ -4,6 +4,7 @@ import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, C
 import {
   useStore,
   connectPat,
+  unlockDashboard,
   oauthStart,
   logout,
   startAutomation,
@@ -208,8 +209,6 @@ export function App(): JSX.Element {
     if (page === 'history') void refreshTrades(200);
   }, [page]);
 
-  if (!s.session) return <ConnectView />;
-
   return (
     <>
       <main class="app" data-page={page}>
@@ -236,15 +235,16 @@ export function App(): JSX.Element {
   );
 }
 
-function ConnectView(): JSX.Element {
+function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element {
   const s = useStore();
   const [token, setToken] = useState('');
+  const [ownerToken, setOwnerToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [oauthBusy, setOauthBusy] = useState(false);
 
-  return (
-    <main class="app app--page">
+  const content = (
+    <>
       <div class="header">
         <div class="brand">
           <div class="logo">
@@ -259,6 +259,36 @@ function ConnectView(): JSX.Element {
       </div>
 
       <div class="connect-card">
+        {s.publicDashboard && !s.owner && (
+          <>
+            <div class="connect-title">Dashboard access</div>
+            <input
+              class="connect-input"
+              type="password"
+              placeholder="Dashboard owner token"
+              value={ownerToken}
+              onInput={(e: any) => setOwnerToken(e.currentTarget.value)}
+            />
+            <button
+              class="connect-btn"
+              disabled={busy || !ownerToken.trim()}
+              onClick={async () => {
+                setBusy(true);
+                setError('');
+                try {
+                  await unlockDashboard(ownerToken.trim());
+                } catch (e) {
+                  setError(String(e));
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? 'Unlocking...' : 'Unlock dashboard'}
+            </button>
+            <div class="connect-divider">or</div>
+          </>
+        )}
         <div class="connect-title">API Token</div>
         <input
           class="connect-input"
@@ -306,8 +336,9 @@ function ConnectView(): JSX.Element {
         <div class="connect-hint">Demo account • API token only</div>
         {s.ws === 'closed' && <div class="connect-err">Feed disconnected – reconnecting…</div>}
       </div>
-    </main>
+    </>
   );
+  return embedded ? <div class="connect-embedded">{content}</div> : <main class="app app--page">{content}</main>;
 }
 
 /* ---------------- home ---------------- */
@@ -322,6 +353,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
   const automation = s.automation?.running ?? false;
+  const guest = !s.session;
   const decision = automation ? s.decision?.decision : undefined;
 
   const fallbackPerformance = {
@@ -356,6 +388,10 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
 
   const toggleBot = async () => {
     setStartError('');
+    if (guest) {
+      onNavigate('account');
+      return;
+    }
     if (automation) {
       try {
         await stopAutomation();
@@ -375,7 +411,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   };
 
   const placeManual = async (direction: 'over' | 'under') => {
-    if (!market || manualBusy) return;
+    if (guest || !market || manualBusy) return;
     setManualBusy(true);
     setManualMsg('');
     try {
@@ -465,7 +501,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                 <div class="side-selector">
                   <button
                     class={`side-btn over${activeDirection === 'over' ? ' active' : ''}`}
-                    disabled={!market || manualBusy}
+                    disabled={guest || !market || manualBusy}
                     onClick={() => placeManual('over')}
                   >
                     <span class="side-name">Over 0</span>
@@ -473,7 +509,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                   </button>
                   <button
                     class={`side-btn under${activeDirection === 'under' ? ' active' : ''}`}
-                    disabled={!market || manualBusy}
+                    disabled={guest || !market || manualBusy}
                     onClick={() => placeManual('under')}
                   >
                     <span class="side-name">Under 9</span>
@@ -486,9 +522,9 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
 
             <div class="bot-feedback" aria-live="polite">{startError && <div class="bot-error">{startError}</div>}</div>
 
-            <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0} onClick={() => void toggleBot()}>
+            <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0 && !guest} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
-              <span>{automation ? 'Stop Bot' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
+              <span>{automation ? 'Stop Bot' : guest ? 'Connect Deriv to trade' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
             </button>
           </section>
         </div>
@@ -1041,6 +1077,21 @@ function BotPage(): JSX.Element {
   const cooldownLeft = useBotCooldown();
   const automation = s.automation?.running ?? false;
 
+  if (!s.session) {
+    return (
+      <>
+        <header class="header"><div class="page-title">Bot Settings</div><div class="subtitle">Read-only while exploring the public dashboard</div></header>
+        <div class="section">
+          <Detail label="Strategy" value={s.settings?.strategy_mode ?? 'conservative'} />
+          <Detail label="Mode" value={s.settings?.bot_mode ?? 'balanced'} />
+          <Detail label="Base stake" value={fmtMoney(s.settings?.base_stake ?? 0, '$')} />
+          <Detail label="Minimum edge" value={`${((s.settings?.min_edge ?? 0) * 100).toFixed(1)}%`} />
+        </div>
+        <div class="empty-hint">Connect a Deriv account from Account to change settings or place trades.</div>
+      </>
+    );
+  }
+
   const persistStake = (v: string) => {
     setStakeText(v);
     const n = Number(v);
@@ -1219,6 +1270,10 @@ type Filter = 'all' | 'wins' | 'losses' | 'over' | 'under';
 function HistoryPage(): JSX.Element {
   const s = useStore();
   const [filter, setFilter] = useState<Filter>('all');
+
+  if (!s.session) {
+    return <><header class="header"><div class="page-title">History</div></header><div class="empty-hint">Connect your Deriv account to view its private trade history.</div></>;
+  }
 
   const trades = s.trades;
   const wins = trades.filter((t) => t.status === 'won').length;
@@ -1647,6 +1702,7 @@ function ConfigPicker({
 
 function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => void }): JSX.Element {
   const s = useStore();
+  const guest = !s.session;
   const [target, setTarget] = useState(200);
   const [err, setErr] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set(ALL_CONFIG_KEYS));
@@ -1694,7 +1750,7 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
 
   return (
     <>
-      <LabControls busy={busy} disabled={false} onRun={run} runLabel="Run backtest">
+      <LabControls busy={busy} disabled={guest} onRun={run} runLabel={guest ? 'Connect to run backtest' : 'Run backtest'}>
         <label class="tl-field">
           <span class="tl-field-label">Target trades / config</span>
           <input
@@ -1704,6 +1760,7 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
             max={200}
             step={10}
             value={target}
+            disabled={guest}
             onInput={(e: any) => setTarget(Number(e.currentTarget.value) || 200)}
           />
         </label>
@@ -1743,6 +1800,7 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
   const [selected, setSelected] = useState<Set<string>>(new Set(ALL_CONFIG_KEYS));
   const runs = s.testRuns.filter((r) => r.kind === 'paper').slice(0, 500);
   const demo = s.session?.mode === 'demo';
+  const guest = !s.session;
 
   useEffect(() => {
     void loadAutoPaperStatus();
@@ -1785,7 +1843,7 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
 
   return (
     <>
-      <LabControls busy={busy} disabled={!demo} onRun={run} runLabel="Run paper sweep">
+      <LabControls busy={busy} disabled={!demo || guest} onRun={run} runLabel={guest ? 'Connect to run paper sweep' : 'Run paper sweep'}>
         <label class="tl-field">
           <span class="tl-field-label">Demo trades / config (10–200)</span>
           <input
@@ -1795,6 +1853,7 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
             max={200}
             step={5}
             value={n}
+            disabled={guest}
             onInput={(e: any) => setN(Math.max(1, Math.min(200, Number(e.currentTarget.value) || 40)))}
           />
         </label>
@@ -1901,6 +1960,7 @@ function PatternsTab({ busy }: { busy: boolean }): JSX.Element {
   const patterns = data?.patterns ?? [];
   const cal = data?.calibration;
   const [scanBusy, setScanBusy] = useState(false);
+  const guest = !s.session;
 
   const scan = async () => {
     setScanBusy(true);
@@ -1921,7 +1981,7 @@ function PatternsTab({ busy }: { busy: boolean }): JSX.Element {
         <div class="tl-note">
           Confirmed transitions need ≥120 samples in the market's history and lift ≥1.30 (over) or ≤0.77 (under) in both the last 2k and 5k ticks.
         </div>
-        <button class={`tl-run${scanBusy ? ' busy' : ''}`} disabled={scanBusy} onClick={scan}>
+        <button class={`tl-run${scanBusy ? ' busy' : ''}`} disabled={scanBusy || guest} onClick={scan}>
           {scanBusy ? 'Scanning…' : 'Scan pattern-lift'}
         </button>
       </div>
@@ -2033,6 +2093,7 @@ function TestLabPage(): JSX.Element {
 function AccountPage(): JSX.Element {
   const s = useStore();
   const session = s.session;
+  if (!session) return <ConnectView embedded />;
   return (
     <>
       <header class="header">

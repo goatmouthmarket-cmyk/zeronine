@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import fastifyStatic from '@fastify/static';
+import fastifyCookie from '@fastify/cookie';
 import { config } from './config.ts';
 import { resolveStoredToken } from './deriv/oauth.ts';
 import { Hub } from './api/hub.ts';
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
   getDb();
 
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
+  await app.register(fastifyCookie, { secret: config.sessionSecret });
 
   const hub = new Hub();
   const decisionMemory = new DecisionMemory();

@@ -16,6 +16,7 @@ export interface AppConfig {
   oauthAuthUrl: string;
   oauthTokenUrl: string;
   sessionSecret: string;
+  dashboardAdminToken: string;
   baseStake: number;
   maxStake: number;
   martingaleSteps: number;
@@ -88,6 +89,10 @@ export function loadConfig(): AppConfig {
     oauthAuthUrl: process.env.DERIV_OAUTH_AUTH_URL || 'https://auth.deriv.com/oauth2/auth',
     oauthTokenUrl: process.env.DERIV_OAUTH_TOKEN_URL || 'https://auth.deriv.com/oauth2/token',
     sessionSecret: process.env.SESSION_SECRET || 'dev-insecure-secret',
+    // When set, browsers must unlock with this value before they can view or
+    // control the connected Deriv account. Public market intelligence remains
+    // available without it.
+    dashboardAdminToken: process.env.DASHBOARD_ADMIN_TOKEN || '',
     baseStake: num('BASE_STAKE', 1),
     maxStake: num('MAX_STAKE', 25),
     martingaleSteps: num('MARTINGALE_STEPS', 5),

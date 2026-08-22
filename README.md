@@ -58,6 +58,7 @@ npm run web:dev      # terminal 2: Vite on :5173 (proxies /api and /ws to :8010)
 
 - `railway.toml` builds `npm ci` + `web/dist`, starts `node src/main.ts`, health-checks `/health`, and mounts a persistent volume at `/data` (`DATA_DIR=/data` keeps trades/digits across redeploys).
 - Set env in Railway: `DERIV_PAT` (or OAuth vars `DERIV_OAUTH_CLIENT_ID`/`SECRET`/`REDIRECT_URI`), `SESSION_SECRET`, stake/risk overrides. `PORT` is provided automatically.
+- To run a public read-only dashboard, set a strong `DASHBOARD_ADMIN_TOKEN`. Visitors can inspect the live market feed plus global backtest, paper, pattern, calibration, and decision-evidence data, while the connected Deriv account, its history, recovery state, and all trade controls require the owner token.
 - Real-account automation still requires a 10-minute arm per session.
 
 ## Verify

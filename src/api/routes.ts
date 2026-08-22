@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.ts';
+import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
 import type { Hub } from './hub.ts';
@@ -70,12 +71,26 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return rows.map((r) => ({ ...r, live: bySymbol.get(String(r.symbol)) ?? null }));
   });
 
-  app.get('/api/state', async () => {
+  app.post('/api/auth/owner', async (req, reply) => {
+    if (!publicDashboardEnabled()) return { ok: true };
+    const token = (req.body as { token?: string } | undefined)?.token ?? '';
+    if (token !== config.dashboardAdminToken) {
+      reply.code(401);
+      return { error: 'invalid dashboard access token' };
+    }
+    grantOwner(reply);
+    return { ok: true };
+  });
+
+  app.get('/api/state', async (req) => {
+    const owner = isOwner(req);
     const session = getSession();
     return {
       feed: feed.status(),
       markets: registry.allSnapshots(),
-      session: session
+      public_dashboard: publicDashboardEnabled(),
+      owner,
+      session: owner && session
         ? {
             loginid: session.loginid,
             balance: session.balance,
@@ -84,18 +99,21 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
             auth_kind: session.auth_kind,
           }
         : null,
-      recovery: getRecovery(),
+      recovery: owner ? getRecovery() : null,
       settings: getSettings(),
-      automation: automation.state(),
+      automation: owner
+        ? automation.state()
+        : { ...automation.state(), running: false, phase: 'guest', reason: 'Connect Deriv to trade' },
       intelligence: automation.marketIntelligence(),
-      trades: listTrades(20),
-      performance: getPerformanceSummary(),
+      trades: owner ? listTrades(20) : [],
+      performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
     };
   });
 
   app.get('/api/settings', async () => getSettings());
 
   app.put('/api/settings', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const body = req.body as Record<string, unknown>;
     if (!body || typeof body !== 'object') {
       reply.code(400);
@@ -136,18 +154,25 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.get('/api/history', async (req) => {
+    if (!isOwner(req)) return { trades: [], performance: { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 } };
     const q = req.query as { limit?: string };
     const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
     return { trades: listTrades(limit), performance: getPerformanceSummary() };
   });
 
-  app.get('/api/performance', async () => getPerformanceSummary());
+  app.get('/api/performance', async (req) =>
+    isOwner(req) ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
+  );
 
-  app.post('/api/performance/reset', async () => resetPerformanceSummary());
+  app.post('/api/performance/reset', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    return resetPerformanceSummary();
+  });
 
   app.get('/api/calibration', async () => getCalibration());
 
   app.post('/api/test/backtest', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     if (automation.isRunning()) {
       reply.code(409);
       return { error: 'stop the bot before running a backtest' };
@@ -172,6 +197,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.post('/api/test/paper', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const tradesPerConfig = typeof body.trades_per_config === 'number' ? body.trades_per_config : undefined;
     const configs = Array.isArray(body.configs) ? (body.configs as string[]) : undefined;
@@ -225,7 +251,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     };
   });
 
-  app.post('/api/patterns/scan', async (_req, reply) => {
+  app.post('/api/patterns/scan', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     try {
       const result = await scanPatterns((done, total, message) =>
         hub.emit({ type: 'testlab', ts: Date.now(), kind: 'patterns', phase: 'scanning', done, total, message }),
@@ -242,6 +269,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.post('/api/auth/pat', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const body = req.body as { token?: string };
     const token = body?.token?.trim();
     if (!token) {
@@ -270,7 +298,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
-  app.get('/api/auth/oauth/start', async () => {
+  app.get('/api/auth/oauth/start', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const { verifier, challenge } = newPkce();
     const state = crypto.randomUUID();
     oauthPending.set(state, { verifier, created: Date.now() });
@@ -278,6 +307,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.get('/api/auth/oauth/callback', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const q = (req.query ?? {}) as Record<string, string | string[]>;
     const str = (k: string): string | undefined => {
       const v = q[k];
@@ -340,7 +370,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
-  app.post('/api/auth/reconnect', async (_req, reply) => {
+  app.post('/api/auth/reconnect', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const session = getSession();
     if (!session) {
       reply.code(401);
@@ -356,7 +387,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
-  app.post('/api/auth/logout', async () => {
+  app.post('/api/auth/logout', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     automation.stop('logged out');
     client.disconnect();
     clearSession();
@@ -364,6 +396,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.post('/api/trade/manual', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const session = getSession();
     if (!session) {
       reply.code(401);
@@ -448,6 +481,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.post('/api/automation/start', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const session = getSession();
     if (!session) {
       reply.code(401);
@@ -491,7 +525,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return { ok: true, state: automation.state() };
   });
 
-  app.post('/api/automation/arm', async (_req, reply) => {
+  app.post('/api/automation/arm', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const session = getSession();
     if (!session) {
       reply.code(401);
@@ -501,17 +536,20 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return { ok: true, armed_until: storeGetAutomation().armed_until };
   });
 
-  app.post('/api/automation/stop', async () => {
+  app.post('/api/automation/stop', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     automation.stop('user stop');
     return { ok: true, state: automation.state() };
   });
 
-  app.post('/api/automation/emergency-stop', async () => {
+  app.post('/api/automation/emergency-stop', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     automation.stop('emergency stop');
     return { ok: true };
   });
 
-  app.post('/api/trade/clear-stuck', async () => {
+  app.post('/api/trade/clear-stuck', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const openTrade = getOpenTrade();
     if (!openTrade) {
       return { ok: true, message: 'no stuck trade found' };
