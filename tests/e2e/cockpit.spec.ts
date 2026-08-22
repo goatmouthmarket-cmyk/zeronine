@@ -11,8 +11,10 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
       markets?: Array<Record<string, unknown>>;
       trades?: Array<Record<string, unknown>>;
       selected?: string | null;
+      session?: Record<string, unknown> | null;
     };
     state.automation = { ...state.automation, running: false, phase: 'standby' };
+    state.session = { loginid: 'CR_TEST', balance: 100, currency: 'USD', mode: 'demo' };
     const markets = state.markets?.length ? state.markets : [{
       symbol: 'R_10',
       display: 'Volatility 10',
@@ -63,6 +65,17 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   await expect.poll(() => resetRequested).toBe(true);
   const metrics = page.locator('.cockpit-metrics .ckm');
   await expect(metrics).toHaveCount(4);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.market-pulse')).toBeVisible();
+  await expect(page.locator('.market-pulse svg')).toBeVisible();
+  const mobileCockpit = page.locator('.cockpit');
+  const mobilePulse = page.locator('.market-pulse');
+  const mobileCockpitBox = await mobileCockpit.boundingBox();
+  const mobilePulseBox = await mobilePulse.boundingBox();
+  expect((mobilePulseBox?.y ?? 0) + (mobilePulseBox?.height ?? 0)).toBeLessThanOrEqual(
+    (mobileCockpitBox?.y ?? 0) + (mobileCockpitBox?.height ?? 0),
+  );
 
   for (const viewport of [{ width: 1280, height: 720 }, { width: 1280, height: 667 }, { width: 1272, height: 536 }]) {
     await page.setViewportSize(viewport);

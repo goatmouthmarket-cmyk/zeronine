@@ -478,10 +478,52 @@ button {
 @media (max-width: 619.98px) {
     .cockpit {
         grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto 54px;
+        row-gap: 8px;
+        min-height: 0;
+    }
+
+    .cockpit-primary {
+        grid-template-rows: 14px 38px 20px 48px 120px;
+        row-gap: 6px;
     }
 
     .market-pulse {
-        display: none;
+        display: grid;
+        grid-template-columns: minmax(48px, auto) minmax(0, 1fr) minmax(56px, auto);
+        grid-template-rows: 1fr;
+        align-items: center;
+        column-gap: 9px;
+        min-height: 54px;
+    }
+
+    .market-pulse-head,
+    .market-pulse-foot {
+        height: 100%;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        gap: 3px;
+    }
+
+    .market-pulse-foot {
+        align-items: flex-end;
+        text-align: right;
+    }
+
+    .market-pulse-chart {
+        height: 42px;
+        margin: 0;
+    }
+
+    .market-pulse-label,
+    .market-pulse-foot span {
+        font-size: 8px;
+    }
+
+    .market-pulse-change,
+    .market-pulse-foot b {
+        font-size: 10px;
     }
 }
 
