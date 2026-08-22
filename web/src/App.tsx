@@ -25,6 +25,17 @@ import {
 } from './store';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
+type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
+type ActivityDetail = { type: 'trade'; trade: TradeRow } | { type: 'run'; run: TestRunRow };
+
+function sourceForTrade(trade: TradeRow): ActivitySource {
+  if (trade.origin === 'manual' || trade.reason === 'manual') return 'manual';
+  return trade.origin === 'paper' ? 'paper' : 'bot';
+}
+
+function sourceLabel(source: ActivitySource): string {
+  return source === 'backtest' ? 'Backtest' : source === 'paper' ? 'Paper' : source === 'manual' ? 'Manual' : 'Bot';
+}
 
 const CURRENCY_SYMBOL: Record<string, string> = {
   USD: '$',
@@ -150,6 +161,7 @@ const ICON_PATHS: Record<string, JSX.Element> = {
   arrowUp: <path d="M12 19V5m0 0-5.5 5.5M12 5l5.5 5.5" />,
   arrowDown: <path d="M12 5v14m0 0 5.5-5.5M12 19 6.5 13.5" />,
   dots: <path d="M6 12h.01M12 12h.01M18 12h.01" />,
+  x: <path d="M6 6l12 12M18 6 6 18" />,
   crosshair: (
     <>
       <circle cx="12" cy="12" r="7" />
@@ -353,6 +365,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
   const [resettingPerformance, setResettingPerformance] = useState(false);
+  const [activityDetail, setActivityDetail] = useState<ActivityDetail | null>(null);
   const cooldownLeft = useBotCooldown();
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
@@ -389,6 +402,15 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     }
     return streak;
   })();
+
+  useEffect(() => {
+    void loadTestRuns();
+  }, []);
+
+  const recentItems = [
+    ...s.trades.map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade })),
+    ...s.testRuns.map((run) => ({ type: 'run' as const, ts: run.finished_at || run.started_at, run })),
+  ].sort((a, b) => b.ts - a.ts).slice(0, 5);
 
   const toggleBot = async () => {
     setStartError('');
@@ -547,8 +569,10 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             </div>
             <div class="activity">
               {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
-              {s.trades.slice(0, 5).map((t) => (
-                <ActivityRow key={t.id} trade={t} />
+              {recentItems.map((item) => item.type === 'trade' ? (
+                <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
+              ) : (
+                <ActivityRunRow key={`run-${item.run.id}`} run={item.run} onOpen={() => setActivityDetail({ type: 'run', run: item.run })} />
               ))}
             </div>
           </section>
@@ -578,6 +602,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
           </section>
         </div>
       </div>
+      {activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
     </>
   );
 }
@@ -614,7 +639,7 @@ function TickerItem({ market, active }: { market: Market; active: boolean }): JS
   );
 }
 
-function ActivityRow({ trade }: { trade: TradeRow }): JSX.Element {
+function ActivityRow({ trade, onOpen }: { trade: TradeRow; onOpen?: () => void }): JSX.Element {
   const win = trade.status === 'won';
   const loss = trade.status === 'lost';
   const exp = trade.status === 'expired' || trade.status === 'timeout';
@@ -627,14 +652,22 @@ function ActivityRow({ trade }: { trade: TradeRow }): JSX.Element {
   const tone = win ? 'win' : loss ? 'loss' : 'push';
   const time = new Date(trade.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const resultText = win ? 'Won' : loss ? 'Lost' : exp ? 'Push' : err ? 'Error' : 'Open';
+  const source = sourceForTrade(trade);
 
   return (
-    <div class={`activity-row${pend ? ' pending' : ''}`}>
+    <div
+      class={`activity-row${onOpen ? ' activity-open' : ''}${pend ? ' pending' : ''}`}
+      onClick={onOpen}
+      onKeyDown={(event) => { if (onOpen && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen(); } }}
+      role={onOpen ? 'button' : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+    >
       <div class={`activity-digit ${tone}${pend ? ' pending' : ''}`}>{digit}</div>
       <div class="activity-main">
         <div class="activity-betline">
           <span class="activity-bet">{label}</span>
           <span class="activity-stake">${(trade.stake ?? 0).toFixed(2)}</span>
+          <span class={`activity-source ${source}`}>{sourceLabel(source)}</span>
         </div>
         <div class={`activity-result ${tone}`}>
           {pend && <span class="live-dot"></span>}
@@ -648,6 +681,99 @@ function ActivityRow({ trade }: { trade: TradeRow }): JSX.Element {
           {pend || exp || err ? '—' : fmtSigned(pnl, '$')}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ActivityRunRow({ run, onOpen }: { run: TestRunRow; onOpen: () => void }): JSX.Element {
+  const source: ActivitySource = run.kind === 'backtest' ? 'backtest' : 'paper';
+  const pnl = run.net_pnl ?? 0;
+  const tone = pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'push';
+  const time = new Date(run.finished_at || run.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return (
+    <button type="button" class="activity-row activity-open" onClick={onOpen}>
+      <div class={`activity-digit ${tone}`}>{source === 'backtest' ? 'B' : 'P'}</div>
+      <div class="activity-main">
+        <div class="activity-betline">
+          <span class="activity-bet">{source === 'backtest' ? 'Strategy replay' : 'Paper sweep'}</span>
+          <span class={`activity-source ${source}`}>{sourceLabel(source)}</span>
+        </div>
+        <div class={`activity-result ${tone}`}>
+          <span class="activity-outcome">{run.wins}/{run.trades} wins</span>
+          <span class="activity-meta">{time}</span>
+        </div>
+      </div>
+      <div class="activity-pnl"><div class={pnl > 0 ? 'pnl-win' : pnl < 0 ? 'pnl-loss' : 'pnl-zero'}>{fmtSigned(pnl, '$')}</div></div>
+    </button>
+  );
+}
+
+function DetailSparkline({ values }: { values: number[] }): JSX.Element {
+  const points = values.filter(Number.isFinite);
+  if (points.length < 2) return <div class="detail-chart-empty">No recorded path</div>;
+  const width = 360;
+  const height = 112;
+  const pad = 9;
+  const low = Math.min(...points);
+  const high = Math.max(...points);
+  const range = high - low || 1;
+  const path = points.map((value, index) => {
+    const x = pad + ((width - pad * 2) * index) / (points.length - 1);
+    const y = height - pad - ((value - low) / range) * (height - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const up = points.at(-1)! >= points[0];
+  return <svg class={`detail-chart ${up ? 'up' : 'down'}`} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Trade price path"><path d={`M${path.join(' L')}`} /></svg>;
+}
+
+function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: ActivityDetail; markets: Market[]; equity: Record<string, number[]>; onClose: () => void }): JSX.Element {
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [onClose]);
+
+  const trade = detail.type === 'trade' ? detail.trade : null;
+  const run = detail.type === 'run' ? detail.run : null;
+  const source = trade ? sourceForTrade(trade) : (run?.kind === 'backtest' ? 'backtest' : 'paper');
+  const market = trade ? markets.find((item) => item.symbol === trade.market) : null;
+  const exactPath = trade?.entry_spot != null && trade.exit_spot != null;
+  const path = trade ? (exactPath ? [trade.entry_spot!, trade.exit_spot!] : market?.recentQuotes ?? []) : equity[`${run?.kind}-${run?.strategy_mode}-${run?.bot_mode}`] ?? [0, run?.net_pnl ?? 0];
+  const title = trade ? `${trade.contract_type === 'DIGITOVER' ? 'Over' : 'Under'} ${trade.barrier}` : run?.kind === 'backtest' ? 'Backtest run' : 'Paper sweep';
+
+  return (
+    <div class="detail-backdrop" role="presentation" onClick={onClose}>
+      <section class="activity-detail" role="dialog" aria-modal="true" aria-label={`${title} details`} onClick={(event) => event.stopPropagation()}>
+        <div class="detail-head">
+          <div><span class={`activity-source ${source}`}>{sourceLabel(source)}</span><h2>{title}</h2></div>
+          <button class="detail-close" type="button" onClick={onClose} aria-label="Close trade details"><Icon name="x" size={18} /></button>
+        </div>
+        <div class="detail-chart-wrap">
+          <div class="detail-chart-label">{trade ? exactPath ? 'Entry to exit' : 'Current market context' : 'Run equity'}</div>
+          <DetailSparkline values={path} />
+        </div>
+        {trade ? (
+          <div class="detail-grid">
+            <Detail label="Market" value={shortMarketName(market?.display ?? trade.market)} />
+            <Detail label="Stake" value={fmtMoney(trade.stake, '$')} />
+            <Detail label="Payout" value={fmtMoney(trade.payout, '$')} />
+            <Detail label="Estimated win" value={`${(trade.est_win * 100).toFixed(1)}%`} />
+            <Detail label="Entry" value={trade.entry_spot != null ? String(trade.entry_spot) : '--'} />
+            <Detail label="Exit" value={trade.exit_spot != null ? String(trade.exit_spot) : '--'} />
+            <Detail label="Reason" value={trade.reason || '--'} />
+            <Detail label="Result" value={trade.status} color={trade.status === 'won' ? 'green' : trade.status === 'lost' ? 'red' : undefined} />
+          </div>
+        ) : run ? (
+          <div class="detail-grid">
+            <Detail label="Strategy" value={run.strategy_mode.replace('_', ' ')} />
+            <Detail label="Mode" value={run.bot_mode} />
+            <Detail label="Trades" value={String(run.trades)} />
+            <Detail label="Win rate" value={run.win_rate != null ? `${run.win_rate.toFixed(1)}%` : '--'} />
+            <Detail label="Net PnL" value={fmtSigned(run.net_pnl, '$')} color={run.net_pnl >= 0 ? 'green' : 'red'} />
+            <Detail label="Drawdown" value={run.max_drawdown_pct != null ? `${run.max_drawdown_pct.toFixed(1)}%` : '--'} />
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }

@@ -72,6 +72,12 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   await expect(page.locator('.market-pulse')).toBeVisible();
   await expect(page.locator('.market-pulse svg')).toBeVisible();
   await expect(page.locator('.activity-streak')).toContainText('1 STREAK');
+  const liveActivity = page.locator('.activity-open').filter({ hasText: 'Over 0' }).first();
+  await expect(liveActivity.locator('.activity-source.bot')).toHaveText('Bot');
+  await liveActivity.click();
+  await expect(page.getByRole('dialog', { name: 'Over 0 details' })).toBeVisible();
+  await expect(page.getByText('Current market context', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close trade details' }).click();
   let resetRequested = false;
   await page.route('**/api/performance/reset', async (route) => {
     resetRequested = true;

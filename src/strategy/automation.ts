@@ -150,6 +150,7 @@ export class Automation {
   private runTrades = 0;
   private stopReason: string | null = null;
   private coolOffs = new Map<string, number>();
+  private runOrigin: 'bot' | 'paper' = 'bot';
 
   constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub, memory = new DecisionMemory()) {
     this.registry = registry;
@@ -213,13 +214,14 @@ export class Automation {
     this.coolOffs.set(coolKey({ market, direction, barrier }), Date.now() + config.coolOffMs);
   }
 
-  start(opts: { maxTrades?: number } = {}): void {
+  start(opts: { maxTrades?: number; origin?: 'bot' | 'paper' } = {}): void {
     if (this.running || this.operatorStopped) return;
     this.runEpoch += 1;
     this.running = true;
     this.stopReason = null;
     this.runTarget = Math.max(0, Math.floor(opts.maxTrades ?? 0) || 0);
     this.runTrades = 0;
+    this.runOrigin = opts.origin ?? 'bot';
     resetRecovery();
     setAutomation({
       running: 1,
@@ -684,6 +686,7 @@ export class Automation {
       contract_id: '',
       purchase_id: `auto-${tradeSequence()}`,
       reason: decision.reason,
+      origin: this.runOrigin,
     });
 
     // Calibration snapshot: remember the scanner state at the buy instant so we

@@ -8,7 +8,7 @@ import type { TestConfig } from './backtest.ts';
 export interface PaperAutomation {
   isRunning(): boolean;
   isOperatorStopped?(): boolean;
-  start(opts: { maxTrades?: number }): void;
+  start(opts: { maxTrades?: number; origin?: 'bot' | 'paper' }): void;
   stop(reason?: string): void;
   state(): Record<string, unknown>;
 }
@@ -129,7 +129,7 @@ export async function runPaperSweep(
       progress(Number(automation.state().runTrades ?? 0), `${cfg.strategyMode} · ${cfg.botMode} · ${i + 1}/${configs.length}`, 'running');
 
     try {
-      automation.start({ maxTrades: tradesTarget });
+      automation.start({ maxTrades: tradesTarget, origin: 'paper' });
       if (!automation.isRunning()) {
         if (automation.isOperatorStopped?.()) throw cancelledError();
         throw new Error('automation did not start');

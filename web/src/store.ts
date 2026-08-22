@@ -90,6 +90,7 @@ export interface TradeRow {
   contract_id: string;
   purchase_id: string;
   reason: string;
+  origin?: 'manual' | 'bot' | 'paper';
   resolved_at: number;
   entry_spot?: number;
   exit_spot?: number;

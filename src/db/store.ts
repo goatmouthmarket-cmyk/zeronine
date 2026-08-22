@@ -33,6 +33,7 @@ export interface TradeRow {
   contract_id: string;
   purchase_id: string;
   reason: string;
+  origin?: 'manual' | 'bot' | 'paper';
   resolved_at: number;
   entry_spot?: number;
   exit_spot?: number;
@@ -189,6 +190,7 @@ function migrate(d: DatabaseSync): void {
       contract_id TEXT,
       purchase_id TEXT,
       reason TEXT,
+      origin TEXT NOT NULL DEFAULT 'bot',
       resolved_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades(ts DESC);
@@ -359,6 +361,7 @@ function migrate(d: DatabaseSync): void {
   if (!cols.has('exit_spot')) d.exec(`ALTER TABLE trades ADD COLUMN exit_spot REAL`);
   if (!cols.has('exit_digit')) d.exec(`ALTER TABLE trades ADD COLUMN exit_digit INTEGER`);
   if (!cols.has('account_id')) d.exec(`ALTER TABLE trades ADD COLUMN account_id TEXT NOT NULL DEFAULT '__legacy__'`);
+  if (!cols.has('origin')) d.exec(`ALTER TABLE trades ADD COLUMN origin TEXT NOT NULL DEFAULT 'bot'`);
   d.exec(`UPDATE trades SET account_id = '${LEGACY_ACCOUNT_ID}' WHERE account_id IS NULL OR account_id = ''`);
   d.exec(`CREATE INDEX IF NOT EXISTS idx_trades_account_id ON trades(account_id, id DESC)`);
   void cols;
@@ -850,8 +853,8 @@ export function insertTrade(t: Omit<TradeRow, 'id' | 'resolved_at'> & { resolved
   const info = getDb()
     .prepare(
       `INSERT INTO trades (account_id, ts, market, contract_type, barrier, duration, duration_unit, stake,
-        ask_price, payout, est_win, profit, status, contract_id, purchase_id, reason, resolved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ask_price, payout, est_win, profit, status, contract_id, purchase_id, reason, origin, resolved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       accountId,
@@ -870,6 +873,7 @@ export function insertTrade(t: Omit<TradeRow, 'id' | 'resolved_at'> & { resolved
       t.contract_id,
       t.purchase_id,
       t.reason,
+      t.origin ?? (t.reason === 'manual' ? 'manual' : 'bot'),
       t.resolved_at ?? null,
     );
   return getDb()

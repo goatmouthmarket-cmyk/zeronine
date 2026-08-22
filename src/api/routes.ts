@@ -466,6 +466,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         contract_id: '',
         purchase_id: `manual-${Date.now()}`,
         reason: 'manual',
+        origin: 'manual',
       });
       const bought = await client.placeBuy(quote.id, quote.askPrice);
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
