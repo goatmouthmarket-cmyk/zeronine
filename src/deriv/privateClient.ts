@@ -289,13 +289,14 @@ export class DerivPrivateClient {
     };
   }
 
-  async placeBuy(proposalId: string, price: number): Promise<{ contractId: string; payout: number; purchaseTime: number }> {
+  async placeBuy(proposalId: string, price: number): Promise<{ contractId: string; payout: number; buyPrice: number; purchaseTime: number }> {
     const msg = (await this.request(buy(proposalId, price, 0), 'buy', 12000)) as any;
     const b = msg?.buy;
     if (!b?.contract_id) throw new Error('buy rejected');
     return {
       contractId: String(b.contract_id),
       payout: Number(b.payout ?? 0),
+      buyPrice: Number(b.buy_price ?? price),
       purchaseTime: Number(b.purchase_time ?? Math.floor(Date.now() / 1000)),
     };
   }

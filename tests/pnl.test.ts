@@ -24,3 +24,8 @@ test('guards against missing or non-finite inputs', () => {
   assert.equal(contractProfit(true, 2.5, 0), 0);
   assert.equal(contractProfit(false, 2.5, undefined as unknown as number), -2.5);
 });
+
+test('prefers settled buy and sell values when Deriv provides them', () => {
+  assert.equal(contractProfit(true, 10, 18.5, { buyPrice: 10.2, sellPrice: 18.9 }), 8.7);
+  assert.equal(contractProfit(false, 10, 18.5, { buyPrice: 10.2, sellPrice: 0 }), -10.2);
+});

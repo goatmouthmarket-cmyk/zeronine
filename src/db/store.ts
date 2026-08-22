@@ -856,6 +856,12 @@ export function resolveTrade(
   updateScannerLogResult(id, status, profit);
 }
 
+export function markTradePurchased(id: number, contractId: string, stake: number, payout: number): void {
+  getDb()
+    .prepare('UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=? WHERE id=?')
+    .run(contractId, stake, stake, payout, id);
+}
+
 export function listTrades(limit = 50): TradeRow[] {
   return getDb()
     .prepare('SELECT * FROM trades ORDER BY id DESC LIMIT ?')

@@ -719,7 +719,7 @@ export async function clearStuckTrade(): Promise<void> {
 export async function refreshTrades(limit = 50): Promise<void> {
   try {
     const res = await api<{ trades: TradeRow[]; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
-    if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, 50), performance: res.performance ?? state.performance });
+    if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, limit), performance: res.performance ?? state.performance });
   } catch {
     // best-effort refresh; stale list is fine
   }

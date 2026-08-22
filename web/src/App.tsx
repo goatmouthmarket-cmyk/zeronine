@@ -20,6 +20,7 @@ import {
   runTestBacktest,
   runTestPaper,
   runPatternScan,
+  refreshTrades,
 } from './store';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
@@ -202,6 +203,10 @@ function Icon({
 export function App(): JSX.Element {
   const s = useStore();
   const [page, setPage] = useState<Page>('home');
+
+  useEffect(() => {
+    if (page === 'history') void refreshTrades(200);
+  }, [page]);
 
   if (!s.session) return <ConnectView />;
 
@@ -1229,17 +1234,22 @@ function HistoryPage(): JSX.Element {
   const ordered = [...trades].reverse();
   let best = 0;
   let worst = 0;
-  let run = 0;
+  let winRun = 0;
+  let lossRun = 0;
   for (const t of ordered) {
     if (t.status === 'won') {
-      run += 1;
-      best = Math.max(best, run);
+      winRun += 1;
+      lossRun = 0;
+      best = Math.max(best, winRun);
     } else if (t.status === 'lost') {
-      worst = Math.max(worst, run);
-      run = 0;
+      lossRun += 1;
+      winRun = 0;
+      worst = Math.max(worst, lossRun);
+    } else {
+      winRun = 0;
+      lossRun = 0;
     }
   }
-  worst = Math.max(worst, run === 0 ? 0 : 0);
 
   const over = trades.filter((t) => t.contract_type === 'DIGITOVER');
   const under = trades.filter((t) => t.contract_type === 'DIGITUNDER');

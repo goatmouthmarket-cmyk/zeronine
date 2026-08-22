@@ -109,6 +109,15 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   await expect(page.getByText('Daily loss limit', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Home', exact: true }).click();
 
+  let fullHistoryRequested = false;
+  await page.route('**/api/history?limit=200', async (route) => {
+    fullHistoryRequested = true;
+    await route.continue();
+  });
+  await page.getByRole('button', { name: 'History', exact: true }).click();
+  await expect.poll(() => fullHistoryRequested).toBe(true);
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
+
   let startBody: unknown = null;
   await page.route('**/api/automation/start', async (route) => {
     startBody = route.request().postDataJSON();

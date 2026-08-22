@@ -36,6 +36,7 @@ import {
   listDecisionEvents,
   listTestRuns,
   listTrades,
+  markTradePurchased,
   resolveTrade,
   resetPerformanceSummary,
   setAutomation as storeSetAutomation,
@@ -434,9 +435,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         reason: 'manual',
       });
       const bought = await client.placeBuy(quote.id, quote.askPrice);
-      resolveTrade(trade.id, 'pending', 0, bought.contractId);
+      const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
+      const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
+      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout);
       hub.emit({ type: 'trade', ts: Date.now(), trade, manual: true });
-      settleInBackground(client, hub, trade.id, bought.contractId, stake, quote.payout);
+      settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout);
       return { ok: true, trade: { id: trade.id, contractId: bought.contractId, ask: quote.askPrice, payout: quote.payout } };
     } catch (err) {
       reply.code(502);
@@ -536,7 +539,7 @@ function settleInBackground(client: DerivPrivateClient, hub: Hub, tradeId: numbe
       if (outcome.settled) {
         const won = outcome.status === 'won';
         const status = won ? ('won' as const) : ('lost' as const);
-        const profit = contractProfit(won, stake, payout);
+        const profit = contractProfit(won, stake, payout, outcome);
         resolveTrade(
           tradeId,
           status,
@@ -546,12 +549,10 @@ function settleInBackground(client: DerivPrivateClient, hub: Hub, tradeId: numbe
         );
         hub.emit({ type: 'contract', ts: Date.now(), contractId, result: status, profit, update: outcome });
       } else {
-        resolveTrade(tradeId, 'expired', 0, contractId);
-        hub.emit({ type: 'contract', ts: Date.now(), contractId, result: 'expired' });
+        hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement' });
       }
     })
     .catch((err) => {
-      resolveTrade(tradeId, 'error', 0, contractId);
-      hub.emit({ type: 'contract', ts: Date.now(), contractId, result: 'error', error: String(err) });
+      hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement', error: String(err) });
     });
 }

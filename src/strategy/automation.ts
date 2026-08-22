@@ -26,6 +26,7 @@ import {
   insertTrade,
   lastDigitEvents,
   listTrades,
+  markTradePurchased,
   recordQuote,
   resetRecovery,
   resolveTrade,
@@ -327,9 +328,9 @@ export class Automation {
       return 1200;
     }
 
-    // Auto-unstick stale pending bets (leftover after a restart, a failed buy,
-    // or a settlement that never came back). Reconcile each one so the loop can
-    // never stall forever waiting on an open contract.
+    // Reconcile pending bets left by a restart or delayed settlement. A real
+    // contract remains pending until Deriv gives a terminal result; recording a
+    // timeout as zero PnL would corrupt both history and recovery debt.
     const pending = getPendingTrades();
     if (pending.length > 0) {
       await this.reconcilePending(pending);
@@ -709,7 +710,9 @@ export class Automation {
     this.emit({ type: 'trade', ts: Date.now(), trade });
 
     const bought = await this.client.placeBuy(finalQuote.id, finalQuote.askPrice);
-    resolveTrade(trade.id, 'pending', 0, bought.contractId);
+    const actualStake = bought.buyPrice > 0 ? bought.buyPrice : finalQuote.askPrice > 0 ? finalQuote.askPrice : decision.stake;
+    const actualPayout = bought.payout > 0 ? bought.payout : finalQuote.payout;
+    markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout);
     this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, phase: 'purchased' });
 
     this.phase = 'settling';
@@ -720,7 +723,7 @@ export class Automation {
     if (outcome.settled) {
       const won = outcome.status === 'won';
       const status: TradeRow['status'] = won ? 'won' : 'lost';
-      const profit = contractProfit(won, decision.stake, bought.payout);
+      const profit = contractProfit(won, actualStake, actualPayout, outcome);
       const exitDetails = {
         entrySpot: outcome.entrySpot,
         exitSpot: outcome.exitSpot,
@@ -761,30 +764,15 @@ export class Automation {
   }
 
   /**
-   * Automatically resolve any stale 'pending' trades so the bot never gets
-   * stuck. Bets with no contract id never reached Deriv and are expired
-   * immediately; the rest are queried (with a hard timeout) and settled with
-   * their real outcome when reachable, otherwise expired.
+   * Reconcile pending contracts with Deriv. Bets with no contract id never
+   * reached Deriv and become errors; real contracts remain pending until the
+   * provider supplies a terminal outcome.
    */
   private async reconcilePending(pending: TradeRow[]): Promise<void> {
-    const now = Date.now();
     for (const t of pending) {
-      // Auto-void any bet still open after a minute - it can never settle now.
-      if (now - t.ts > 60_000) {
-        resolveTrade(t.id, 'expired', 0, t.contract_id);
-        this.emit({
-          type: 'contract',
-          ts: Date.now(),
-          contractId: t.contract_id,
-          result: 'expired',
-          reconciled: true,
-          voided: true,
-        });
-        continue;
-      }
       if (!t.contract_id) {
-        resolveTrade(t.id, 'expired', 0, t.contract_id);
-        this.emit({ type: 'contract', ts: Date.now(), contractId: '', result: 'expired', reconciled: true });
+        resolveTrade(t.id, 'error', 0, t.contract_id);
+        this.emit({ type: 'contract', ts: Date.now(), contractId: '', result: 'error', reconciled: true });
         continue;
       }
       try {
@@ -792,12 +780,21 @@ export class Automation {
         if (outcome.settled) {
           const won = outcome.status === 'won';
           const status: TradeRow['status'] = won ? 'won' : 'lost';
-          const profit = contractProfit(won, t.stake ?? 0, t.payout ?? 0);
+          const profit = contractProfit(won, t.stake ?? 0, t.payout ?? 0, outcome);
           resolveTrade(t.id, status, profit, t.contract_id, {
             entrySpot: outcome.entrySpot,
             exitSpot: outcome.exitSpot,
             exitDigit: outcome.exitDigit,
           });
+          if (t.purchase_id.startsWith('auto-')) {
+            const settings = getSettings();
+            if (!won && settings.strategy_mode === 'conservative') {
+              this.markLoss(t.market, t.contract_type === 'DIGITOVER' ? 'over' : 'under', t.barrier);
+            }
+            const next = applyOutcome(won, profit, settings, getSession()?.balance);
+            saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery().last_win_epoch, updated_at: Date.now() });
+            this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won, reconciled: true });
+          }
           this.emit({
             type: 'contract',
             ts: Date.now(),
@@ -808,12 +805,10 @@ export class Automation {
             reconciled: true,
           });
         } else {
-          resolveTrade(t.id, 'expired', 0, t.contract_id);
-          this.emit({ type: 'contract', ts: Date.now(), contractId: t.contract_id, result: 'expired', reconciled: true });
+          this.emit({ type: 'contract', ts: Date.now(), contractId: t.contract_id, phase: 'awaiting settlement', reconciled: true });
         }
       } catch (err) {
         this.emit({ type: 'error', ts: Date.now(), message: `reconcile ${t.contract_id}: ${String(err)}` });
-        resolveTrade(t.id, 'expired', 0, t.contract_id);
       }
     }
   }
