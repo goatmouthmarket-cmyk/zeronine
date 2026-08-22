@@ -180,6 +180,21 @@ button {
     background: var(--pink);
 }
 
+/* The wordmark stays still; only the header mark responds to hover. */
+.header .brand:not(.connect-brand) .logo {
+    transition: transform .24s cubic-bezier(.22, 1, .36, 1), filter .24s ease;
+}
+
+.header .brand:not(.connect-brand) .logo:hover {
+    transform: translateY(-2px) rotate(-5deg) scale(1.08);
+    filter: drop-shadow(0 5px 10px rgba(139, 92, 246, .28));
+}
+
+.header .brand:not(.connect-brand) .logo:hover .logo-zero,
+.header .brand:not(.connect-brand) .logo:hover .logo-nine {
+    animation: logo-mark-breathe .65s ease-in-out infinite alternate;
+}
+
 .brand-title {
     font-size: 28px;
     letter-spacing: -1.3px;
@@ -2043,14 +2058,85 @@ button {
    CONNECT SCREEN
 ========================================================= */
 
+.app--page {
+    display: grid;
+    place-items: center;
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+}
+
+.connect-embedded,
+.app--page > * {
+    width: min(100%, 480px);
+}
+
+.connect-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 18px 4px 24px;
+    animation: connect-enter .5s cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.connect-brand {
+    margin-bottom: 28px;
+}
+
+.connect-brand .logo {
+    transform: scale(1.1);
+    animation: logo-drift 3.8s ease-in-out infinite;
+}
+
+.connect-kicker {
+    margin-bottom: 10px;
+    color: var(--purple-light);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.connect-hero h1 {
+    max-width: 390px;
+    font-size: clamp(28px, 8vw, 40px);
+    line-height: 1.08;
+    letter-spacing: 0;
+}
+
+.connect-hero p {
+    max-width: 410px;
+    margin-top: 13px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.connect-hero-pulse {
+    display: flex;
+    align-items: end;
+    gap: 5px;
+    height: 26px;
+    margin-top: 22px;
+}
+
+.connect-hero-pulse span {
+    width: 4px;
+    border-radius: 99px;
+    background: var(--purple);
+    animation: connect-pulse 1.4s ease-in-out infinite;
+}
+
+.connect-hero-pulse span:nth-child(1) { height: 11px; animation-delay: .1s; }
+.connect-hero-pulse span:nth-child(2) { height: 24px; background: var(--pink); animation-delay: .25s; }
+.connect-hero-pulse span:nth-child(3) { height: 15px; animation-delay: .4s; }
+
 .connect-card {
-    margin-top: 10px;
+    margin-top: 0;
 
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
 
     padding: 22px;
+    animation: connect-enter .5s .08s cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .connect-title {
@@ -2098,11 +2184,13 @@ button {
 
     cursor: pointer;
 
-    transition: opacity .2s ease;
+    transition: transform .18s ease, box-shadow .18s ease, opacity .18s ease;
 }
 
 .connect-btn:hover:not(:disabled) {
-    opacity: .94;
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: 0 9px 20px rgba(124, 58, 237, .24);
 }
 
 .connect-btn:disabled {
@@ -2115,6 +2203,11 @@ button {
     border: 1px solid var(--border-strong);
 
     color: var(--text);
+}
+
+.connect-btn--oauth:hover:not(:disabled) {
+    background: var(--surface-3);
+    box-shadow: none;
 }
 
 .connect-err {
@@ -2150,6 +2243,37 @@ button {
     flex: 1;
     height: 1px;
     background: var(--border);
+}
+
+@keyframes logo-mark-breathe {
+    from { transform: translateY(0); }
+    to { transform: translateY(-1px); }
+}
+
+@keyframes logo-drift {
+    0%, 100% { transform: scale(1.1) translateY(0); }
+    50% { transform: scale(1.1) translateY(-3px); }
+}
+
+@keyframes connect-enter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes connect-pulse {
+    0%, 100% { transform: scaleY(.55); opacity: .5; }
+    50% { transform: scaleY(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .connect-hero,
+    .connect-card,
+    .connect-brand .logo,
+    .connect-hero-pulse span,
+    .header .brand:not(.connect-brand) .logo:hover .logo-zero,
+    .header .brand:not(.connect-brand) .logo:hover .logo-nine {
+        animation: none;
+    }
 }
 
 /* =========================================================
@@ -2647,6 +2771,13 @@ button {
     .dash-side .section {
         padding: 16px;
     }
+}
+
+.connect-copy {
+    margin: -3px 0 13px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
 }
 
 /* Browser zoom can leave a very short CSS viewport. Keep the activity totals

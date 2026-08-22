@@ -1,5 +1,22 @@
 import { expect, test } from '@playwright/test';
 
+test('guest account page presents the branded connection view and favicon', async ({ page }) => {
+  await page.route('**/api/state', async (route) => {
+    const response = await route.fetch();
+    const state = await response.json();
+    state.session = null;
+    state.public_dashboard = true;
+    state.owner = false;
+    await route.fulfill({ response, json: state });
+  });
+  await page.routeWebSocket('**/ws', () => {});
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'See the signal. Trade when you are ready.' })).toBeVisible();
+  await expect(page.getByText('Connect Deriv', { exact: true })).toBeVisible();
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/favicon.svg');
+});
+
 test('cockpit is stable and Start Bot sends the automation request', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

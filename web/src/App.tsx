@@ -245,8 +245,8 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
 
   const content = (
     <>
-      <div class="header">
-        <div class="brand">
+      <div class="connect-hero">
+        <div class="brand connect-brand">
           <div class="logo">
             <span class="logo-zero"></span>
             <span class="logo-nine"></span>
@@ -255,13 +255,16 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
             <span class="zero">Zero</span><span class="nine">Nine</span>
           </div>
         </div>
-        <div class="subtitle">Connect your Deriv account to start the bot</div>
+        <div class="connect-kicker">ZeroNine trading workspace</div>
+        <h1>See the signal. Trade when you are ready.</h1>
+        <p>Explore live market intelligence and shared research first. Connect Deriv only when you want to place a trade.</p>
+        <div class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></div>
       </div>
 
       <div class="connect-card">
         {s.publicDashboard && !s.owner && (
           <>
-            <div class="connect-title">Dashboard access</div>
+          <div class="connect-title">Owner access</div>
             <input
               class="connect-input"
               type="password"
@@ -289,7 +292,8 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
             <div class="connect-divider">or</div>
           </>
         )}
-        <div class="connect-title">API Token</div>
+        <div class="connect-title">Connect Deriv</div>
+        <div class="connect-copy">Use a demo token to activate manual trading and the bot.</div>
         <input
           class="connect-input"
           type="password"
