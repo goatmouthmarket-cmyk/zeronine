@@ -17,6 +17,7 @@ export interface SessionRow {
 
 export interface TradeRow {
   id: number;
+  account_id?: string;
   ts: number;
   market: string;
   contract_type: 'DIGITOVER' | 'DIGITUNDER';
@@ -45,6 +46,9 @@ export interface PerformanceSummary {
   profit: number;
   reset_at: number;
 }
+
+const LEGACY_ACCOUNT_ID = '__legacy__';
+const LOCAL_ACCOUNT_ID = '__local__';
 
 export interface RecoveryState {
   mode: 'base' | 'recovering';
@@ -169,6 +173,7 @@ function migrate(d: DatabaseSync): void {
     );
     CREATE TABLE IF NOT EXISTS trades (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id TEXT NOT NULL DEFAULT '__legacy__',
       ts INTEGER,
       market TEXT,
       contract_type TEXT,
@@ -189,6 +194,14 @@ function migrate(d: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades(ts DESC);
     CREATE TABLE IF NOT EXISTS performance_baseline (
       id INTEGER PRIMARY KEY CHECK (id = 1),
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      pushes INTEGER NOT NULL DEFAULT 0,
+      profit REAL NOT NULL DEFAULT 0,
+      reset_at INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS account_performance_baselines (
+      account_id TEXT PRIMARY KEY,
       wins INTEGER NOT NULL DEFAULT 0,
       losses INTEGER NOT NULL DEFAULT 0,
       pushes INTEGER NOT NULL DEFAULT 0,
@@ -257,6 +270,17 @@ function migrate(d: DatabaseSync): void {
       outcome TEXT,
       resolved_at INTEGER,
       expires_at INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS account_recovery_state (
+      account_id TEXT PRIMARY KEY,
+      mode TEXT DEFAULT 'base',
+      streak INTEGER DEFAULT 0,
+      debt REAL DEFAULT 0,
+      attempts INTEGER DEFAULT 0,
+      cycle_stake REAL DEFAULT 0,
+      peak_balance REAL DEFAULT 0,
+      last_win_epoch INTEGER DEFAULT 0,
+      updated_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_decision_events_market_pending ON decision_events(market, outcome, expires_at);
     CREATE INDEX IF NOT EXISTS idx_decision_events_action_market_ts ON decision_events(action, market, ts DESC);
@@ -334,6 +358,9 @@ function migrate(d: DatabaseSync): void {
   if (!cols.has('entry_spot')) d.exec(`ALTER TABLE trades ADD COLUMN entry_spot REAL`);
   if (!cols.has('exit_spot')) d.exec(`ALTER TABLE trades ADD COLUMN exit_spot REAL`);
   if (!cols.has('exit_digit')) d.exec(`ALTER TABLE trades ADD COLUMN exit_digit INTEGER`);
+  if (!cols.has('account_id')) d.exec(`ALTER TABLE trades ADD COLUMN account_id TEXT NOT NULL DEFAULT '__legacy__'`);
+  d.exec(`UPDATE trades SET account_id = '${LEGACY_ACCOUNT_ID}' WHERE account_id IS NULL OR account_id = ''`);
+  d.exec(`CREATE INDEX IF NOT EXISTS idx_trades_account_id ON trades(account_id, id DESC)`);
   void cols;
 
   const settingsCols = new Set(
@@ -376,6 +403,18 @@ function migrate(d: DatabaseSync): void {
   );
   if (!runCols.has('source')) d.exec(`ALTER TABLE test_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`);
   void runCols;
+
+  // Earlier versions kept one global baseline and recovery row. Preserve it
+  // explicitly as legacy data rather than attributing it to whichever account
+  // happens to log in after this migration.
+  d.exec(`
+    INSERT OR IGNORE INTO account_performance_baselines (account_id, wins, losses, pushes, profit, reset_at)
+    SELECT '${LEGACY_ACCOUNT_ID}', wins, losses, pushes, profit, reset_at FROM performance_baseline WHERE id = 1;
+    INSERT OR IGNORE INTO account_recovery_state
+      (account_id, mode, streak, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at)
+    SELECT '${LEGACY_ACCOUNT_ID}', mode, streak, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at
+      FROM recovery_state WHERE id = 1;
+  `);
 }
 
 function seedDefaults(d: DatabaseSync): void {
@@ -495,8 +534,33 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
   return next;
 }
 
-export function getRecovery(): RecoveryState {
-  const row = getDb().prepare('SELECT * FROM recovery_state WHERE id = 1').get() as unknown as Record<string, unknown>;
+export function accountIdForLogin(loginid: string | null | undefined): string {
+  return loginid ? `deriv:${loginid}` : LOCAL_ACCOUNT_ID;
+}
+
+function currentAccountId(): string {
+  return accountIdForLogin(getSession()?.loginid);
+}
+
+function ensureAccountState(accountId = currentAccountId()): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT OR IGNORE INTO account_recovery_state
+      (account_id, mode, streak, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at)
+     VALUES (?, 'base', 0, 0, 0, 0, 0, 0, 0)`,
+  ).run(accountId);
+  db.prepare(
+    `INSERT OR IGNORE INTO account_performance_baselines
+      (account_id, wins, losses, pushes, profit, reset_at)
+     VALUES (?, 0, 0, 0, 0, 0)`,
+  ).run(accountId);
+}
+
+export function getRecovery(accountId = currentAccountId()): RecoveryState {
+  ensureAccountState(accountId);
+  const row = getDb()
+    .prepare('SELECT * FROM account_recovery_state WHERE account_id = ?')
+    .get(accountId) as unknown as Record<string, unknown>;
   return {
     mode: row.mode as RecoveryState['mode'],
     streak: Number(row.streak),
@@ -509,25 +573,28 @@ export function getRecovery(): RecoveryState {
   };
 }
 
-export function saveRecovery(r: RecoveryState): void {
+export function saveRecovery(r: RecoveryState, accountId = currentAccountId()): void {
+  ensureAccountState(accountId);
   getDb()
     .prepare(
-      'UPDATE recovery_state SET mode=?, streak=?, debt=?, attempts=?, cycle_stake=?, peak_balance=?, last_win_epoch=?, updated_at=? WHERE id=1',
+      `UPDATE account_recovery_state
+       SET mode=?, streak=?, debt=?, attempts=?, cycle_stake=?, peak_balance=?, last_win_epoch=?, updated_at=?
+       WHERE account_id=?`,
     )
-    .run(r.mode, r.streak, r.debt, r.attempts, r.cycleStake, r.peakBalance, r.last_win_epoch, Date.now());
+    .run(r.mode, r.streak, r.debt, r.attempts, r.cycleStake, r.peakBalance, r.last_win_epoch, Date.now(), accountId);
 }
 
-export function resetRecovery(): void {
+export function resetRecovery(accountId = currentAccountId()): void {
   saveRecovery({
     mode: 'base',
     streak: 0,
     debt: 0,
     attempts: 0,
     cycleStake: 0,
-    peakBalance: getRecovery().peakBalance,
+    peakBalance: getRecovery(accountId).peakBalance,
     last_win_epoch: Date.now(),
     updated_at: Date.now(),
-  });
+  }, accountId);
 }
 
 export function recordQuote(
@@ -779,13 +846,15 @@ export function digitDistribution(market: string, limit: number): Array<{ digit:
 }
 
 export function insertTrade(t: Omit<TradeRow, 'id' | 'resolved_at'> & { resolved_at?: number }): TradeRow {
+  const accountId = currentAccountId();
   const info = getDb()
     .prepare(
-      `INSERT INTO trades (ts, market, contract_type, barrier, duration, duration_unit, stake,
+      `INSERT INTO trades (account_id, ts, market, contract_type, barrier, duration, duration_unit, stake,
         ask_price, payout, est_win, profit, status, contract_id, purchase_id, reason, resolved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
+      accountId,
       t.ts,
       t.market,
       t.contract_type,
@@ -808,27 +877,27 @@ export function insertTrade(t: Omit<TradeRow, 'id' | 'resolved_at'> & { resolved
     .get(Number(info.lastInsertRowid)) as unknown as TradeRow;
 }
 
-export function getTrade(id: number): TradeRow | null {
-  const row = getDb().prepare('SELECT * FROM trades WHERE id = ?').get(id);
+export function getTrade(id: number, accountId = currentAccountId()): TradeRow | null {
+  const row = getDb().prepare('SELECT * FROM trades WHERE id = ? AND account_id = ?').get(id, accountId);
   return row ? (row as unknown as TradeRow) : null;
 }
 
-export function getTradeByContractId(contractId: string): TradeRow | null {
-  const row = getDb().prepare('SELECT * FROM trades WHERE contract_id = ?').get(contractId);
+export function getTradeByContractId(contractId: string, accountId = currentAccountId()): TradeRow | null {
+  const row = getDb().prepare('SELECT * FROM trades WHERE contract_id = ? AND account_id = ?').get(contractId, accountId);
   return row ? (row as unknown as TradeRow) : null;
 }
 
-export function getOpenTrade(): TradeRow | null {
+export function getOpenTrade(accountId = currentAccountId()): TradeRow | null {
   const row = getDb()
-    .prepare("SELECT * FROM trades WHERE status = 'pending' ORDER BY id DESC LIMIT 1")
-    .get();
+    .prepare("SELECT * FROM trades WHERE account_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1")
+    .get(accountId);
   return row ? (row as unknown as TradeRow) : null;
 }
 
-export function getPendingTrades(): TradeRow[] {
+export function getPendingTrades(accountId = currentAccountId()): TradeRow[] {
   return getDb()
-    .prepare("SELECT * FROM trades WHERE status = 'pending' ORDER BY id ASC")
-    .all() as unknown as TradeRow[];
+    .prepare("SELECT * FROM trades WHERE account_id = ? AND status = 'pending' ORDER BY id ASC")
+    .all(accountId) as unknown as TradeRow[];
 }
 
 export function resolveTrade(
@@ -837,11 +906,12 @@ export function resolveTrade(
   profit: number,
   contractId: string,
   extra?: { entrySpot?: number; exitSpot?: number; exitDigit?: number },
+  accountId = currentAccountId(),
 ): void {
   getDb()
     .prepare(
       `UPDATE trades SET status=?, profit=?, contract_id=?, resolved_at=?,
-        entry_spot=?, exit_spot=?, exit_digit=?  WHERE id=?`,
+        entry_spot=?, exit_spot=?, exit_digit=? WHERE id=? AND account_id=?`,
     )
     .run(
       status,
@@ -852,20 +922,21 @@ export function resolveTrade(
       extra?.exitSpot ?? null,
       extra?.exitDigit ?? null,
       id,
+      accountId,
     );
   updateScannerLogResult(id, status, profit);
 }
 
-export function markTradePurchased(id: number, contractId: string, stake: number, payout: number): void {
+export function markTradePurchased(id: number, contractId: string, stake: number, payout: number, accountId = currentAccountId()): void {
   getDb()
-    .prepare('UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=? WHERE id=?')
-    .run(contractId, stake, stake, payout, id);
+    .prepare('UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=? WHERE id=? AND account_id=?')
+    .run(contractId, stake, stake, payout, id, accountId);
 }
 
-export function listTrades(limit = 50): TradeRow[] {
+export function listTrades(limit = 50, accountId = currentAccountId()): TradeRow[] {
   return getDb()
-    .prepare('SELECT * FROM trades ORDER BY id DESC LIMIT ?')
-    .all(limit) as unknown as TradeRow[];
+    .prepare('SELECT * FROM trades WHERE account_id = ? ORDER BY id DESC LIMIT ?')
+    .all(accountId, limit) as unknown as TradeRow[];
 }
 
 interface PerformanceTotals {
@@ -875,7 +946,7 @@ interface PerformanceTotals {
   profit: number;
 }
 
-function getPerformanceTotals(): PerformanceTotals {
+function getPerformanceTotals(accountId = currentAccountId()): PerformanceTotals {
   const row = getDb()
     .prepare(
       `SELECT
@@ -883,9 +954,9 @@ function getPerformanceTotals(): PerformanceTotals {
         COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
         COALESCE(SUM(CASE WHEN status IN ('push', 'expired', 'timeout') THEN 1 ELSE 0 END), 0) AS pushes,
         COALESCE(SUM(CASE WHEN status IN ('won', 'lost', 'push', 'expired', 'timeout') THEN profit ELSE 0 END), 0) AS profit
-       FROM trades`,
+       FROM trades WHERE account_id = ?`,
     )
-    .get() as unknown as PerformanceTotals;
+    .get(accountId) as unknown as PerformanceTotals;
   return {
     wins: Number(row.wins) || 0,
     losses: Number(row.losses) || 0,
@@ -894,11 +965,12 @@ function getPerformanceTotals(): PerformanceTotals {
   };
 }
 
-export function getPerformanceSummary(): PerformanceSummary {
-  const totals = getPerformanceTotals();
+export function getPerformanceSummary(accountId = currentAccountId()): PerformanceSummary {
+  ensureAccountState(accountId);
+  const totals = getPerformanceTotals(accountId);
   const baseline = getDb()
-    .prepare('SELECT wins, losses, pushes, profit, reset_at FROM performance_baseline WHERE id = 1')
-    .get() as unknown as PerformanceSummary;
+    .prepare('SELECT wins, losses, pushes, profit, reset_at FROM account_performance_baselines WHERE account_id = ?')
+    .get(accountId) as unknown as PerformanceSummary;
   return {
     wins: Math.max(0, totals.wins - Number(baseline.wins || 0)),
     losses: Math.max(0, totals.losses - Number(baseline.losses || 0)),
@@ -908,12 +980,13 @@ export function getPerformanceSummary(): PerformanceSummary {
   };
 }
 
-export function resetPerformanceSummary(): PerformanceSummary {
-  const totals = getPerformanceTotals();
+export function resetPerformanceSummary(accountId = currentAccountId()): PerformanceSummary {
+  ensureAccountState(accountId);
+  const totals = getPerformanceTotals(accountId);
   const resetAt = Date.now();
   getDb()
-    .prepare('UPDATE performance_baseline SET wins=?, losses=?, pushes=?, profit=?, reset_at=? WHERE id=1')
-    .run(totals.wins, totals.losses, totals.pushes, totals.profit, resetAt);
+    .prepare('UPDATE account_performance_baselines SET wins=?, losses=?, pushes=?, profit=?, reset_at=? WHERE account_id=?')
+    .run(totals.wins, totals.losses, totals.pushes, totals.profit, resetAt, accountId);
   return { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: resetAt };
 }
 
@@ -1077,15 +1150,15 @@ export function patternRowsByPrev(market: string): Map<number, number[]> | null 
   return map;
 }
 
-export function maxTradeId(): number {
-  const row = getDb().prepare('SELECT MAX(id) AS m FROM trades').get() as unknown as { m: number | null };
+export function maxTradeId(accountId = currentAccountId()): number {
+  const row = getDb().prepare('SELECT MAX(id) AS m FROM trades WHERE account_id = ?').get(accountId) as unknown as { m: number | null };
   return Number(row.m ?? 0);
 }
 
-export function tradesAfterId(id: number): TradeRow[] {
+export function tradesAfterId(id: number, accountId = currentAccountId()): TradeRow[] {
   return getDb()
-    .prepare("SELECT * FROM trades WHERE id > ? AND status IN ('won','lost') ORDER BY id ASC")
-    .all(id) as unknown as TradeRow[];
+    .prepare("SELECT * FROM trades WHERE account_id = ? AND id > ? AND status IN ('won','lost') ORDER BY id ASC")
+    .all(accountId, id) as unknown as TradeRow[];
 }
 
 export function digitHistory(market: string, limit: number): Array<{ epoch: number; digit: number }> {

@@ -8,8 +8,8 @@ export interface RiskCheck {
   reason: string;
 }
 
-export function buildRecoveryContext(settings: SettingsRow): RecoveryContext {
-  const rec = getRecovery();
+export function buildRecoveryContext(settings: SettingsRow, accountId?: string): RecoveryContext {
+  const rec = getRecovery(accountId);
   const strategy: StrategyMode =
     settings.strategy_mode === 'martingale' ||
     settings.strategy_mode === 'boosted_martingale' ||
@@ -47,6 +47,7 @@ export function riskCheck(params: {
   lastTradeAt: number;
   tradeGapMs: number;
   now: number;
+  accountId?: string;
 }): RiskCheck {
   const { stake, settings, balance, context, lastTradeAt, tradeGapMs } = params;
 
@@ -79,7 +80,7 @@ export function riskCheck(params: {
     }
   }
 
-  const open = getOpenTrade();
+  const open = getOpenTrade(params.accountId);
   if (open) return { ok: false, reason: `open contract still settling (${open.status})` };
 
   if (tradeGapMs > 0 && lastTradeAt > 0 && params.now - lastTradeAt < tradeGapMs) {
@@ -135,7 +136,8 @@ export function applyOutcome(
   profit: number,
   settings: SettingsRow,
   balance?: number,
+  accountId?: string,
 ): { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number } {
-  const cur = getRecovery();
+  const cur = getRecovery(accountId);
   return nextRecovery(cur, won, profit, balance);
 }

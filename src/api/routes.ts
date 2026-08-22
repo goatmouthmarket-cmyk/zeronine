@@ -437,9 +437,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const bought = await client.placeBuy(quote.id, quote.askPrice);
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
-      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout);
+      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
       hub.emit({ type: 'trade', ts: Date.now(), trade, manual: true });
-      settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout);
+      settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
       return { ok: true, trade: { id: trade.id, contractId: bought.contractId, ask: quote.askPrice, payout: quote.payout } };
     } catch (err) {
       reply.code(502);
@@ -532,7 +532,15 @@ function parseTestConfigs(entries: string[]): TestConfig[] {
   return out;
 }
 
-function settleInBackground(client: DerivPrivateClient, hub: Hub, tradeId: number, contractId: string, stake: number, payout: number): void {
+function settleInBackground(
+  client: DerivPrivateClient,
+  hub: Hub,
+  tradeId: number,
+  contractId: string,
+  stake: number,
+  payout: number,
+  accountId?: string,
+): void {
   void client
     .settleContract(contractId, (u) => hub.emit({ type: 'contract', ts: Date.now(), contractId: u.contractId, update: u, manual: true }))
     .then((outcome) => {
@@ -546,6 +554,7 @@ function settleInBackground(client: DerivPrivateClient, hub: Hub, tradeId: numbe
           profit,
           contractId,
           { entrySpot: outcome.entrySpot, exitSpot: outcome.exitSpot, exitDigit: outcome.exitDigit },
+          accountId,
         );
         hub.emit({ type: 'contract', ts: Date.now(), contractId, result: status, profit, update: outcome });
       } else {

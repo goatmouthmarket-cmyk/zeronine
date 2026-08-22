@@ -17,6 +17,7 @@ import { contractProfit } from '../strategy/pnl.ts';
 import type { Direction } from '../core/digitMath.ts';
 import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
+  accountIdForLogin,
   getAutomation,
   getPendingTrades,
   getRecovery,
@@ -193,8 +194,8 @@ export class Automation {
     return [...this.latestIntelligence.markets.entries()].map(([symbol, value]) => ({ symbol, health: value.health, regime: value.regime }));
   }
 
-  private lastCompletedAt(): number {
-    const trades = listTrades(1);
+  private lastCompletedAt(accountId?: string): number {
+    const trades = listTrades(1, accountId);
     return trades.length ? trades[0].ts : 0;
   }
 
@@ -327,22 +328,23 @@ export class Automation {
       this.emit({ type: HOLD, ts: Date.now(), reason: 'no session' });
       return 1200;
     }
+    const accountId = accountIdForLogin(session.loginid);
 
     // Reconcile pending bets left by a restart or delayed settlement. A real
     // contract remains pending until Deriv gives a terminal result; recording a
     // timeout as zero PnL would corrupt both history and recovery debt.
-    const pending = getPendingTrades();
+    const pending = getPendingTrades(accountId);
     if (pending.length > 0) {
       await this.reconcilePending(pending);
-      if (getPendingTrades().length > 0) {
+      if (getPendingTrades(accountId).length > 0) {
         this.emit({ type: HOLD, ts: Date.now(), reason: 'waiting open contract to settle' });
         this.phase = 'waiting-settlement';
         return 350;
       }
     }
 
-    const rec = getRecovery();
-    const ctx = buildRecoveryContext(settings);
+    const rec = getRecovery(accountId);
+    const ctx = buildRecoveryContext(settings, accountId);
 
     // The peak-drawdown rail only applies while the bot is actively trading.
     if (canBuy()) {
@@ -354,6 +356,7 @@ export class Automation {
         lastTradeAt: 0,
         tradeGapMs: 0,
         now: Date.now(),
+        accountId,
       });
       if (!guard.ok && guard.reason.includes('drawdown')) {
         this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
@@ -603,9 +606,10 @@ export class Automation {
       settings,
       balance: session.balance,
       context: ctx,
-      lastTradeAt: this.lastCompletedAt(),
+      lastTradeAt: this.lastCompletedAt(accountId),
       tradeGapMs: config.tradeGapMs,
       now: Date.now(),
+      accountId,
     });
     if (!gate.ok) {
       const market = intelligence.markets.get(decision.market);
@@ -712,7 +716,7 @@ export class Automation {
     const bought = await this.client.placeBuy(finalQuote.id, finalQuote.askPrice);
     const actualStake = bought.buyPrice > 0 ? bought.buyPrice : finalQuote.askPrice > 0 ? finalQuote.askPrice : decision.stake;
     const actualPayout = bought.payout > 0 ? bought.payout : finalQuote.payout;
-    markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout);
+    markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, accountId);
     this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, phase: 'purchased' });
 
     this.phase = 'settling';
@@ -729,10 +733,10 @@ export class Automation {
         exitSpot: outcome.exitSpot,
         exitDigit: outcome.exitDigit,
       };
-      resolveTrade(trade.id, status, profit, bought.contractId, exitDetails);
+      resolveTrade(trade.id, status, profit, bought.contractId, exitDetails, accountId);
       if (!won && conservative) this.markLoss(decision.market, decision.direction, decision.barrier);
-      const next = applyOutcome(won, profit, settings, session.balance);
-      saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery().last_win_epoch, updated_at: Date.now() });
+      const next = applyOutcome(won, profit, settings, session.balance, accountId);
+      saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery(accountId).last_win_epoch, updated_at: Date.now() }, accountId);
       this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won });
       this.emit({
         type: 'contract',
@@ -743,7 +747,7 @@ export class Automation {
         profit,
       });
     } else {
-      resolveTrade(trade.id, 'expired', 0, bought.contractId);
+      resolveTrade(trade.id, 'expired', 0, bought.contractId, undefined, accountId);
       this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, result: 'expired' });
     }
 
@@ -771,7 +775,7 @@ export class Automation {
   private async reconcilePending(pending: TradeRow[]): Promise<void> {
     for (const t of pending) {
       if (!t.contract_id) {
-        resolveTrade(t.id, 'error', 0, t.contract_id);
+        resolveTrade(t.id, 'error', 0, t.contract_id, undefined, t.account_id);
         this.emit({ type: 'contract', ts: Date.now(), contractId: '', result: 'error', reconciled: true });
         continue;
       }
@@ -785,14 +789,15 @@ export class Automation {
             entrySpot: outcome.entrySpot,
             exitSpot: outcome.exitSpot,
             exitDigit: outcome.exitDigit,
-          });
+          }, t.account_id);
           if (t.purchase_id.startsWith('auto-')) {
             const settings = getSettings();
             if (!won && settings.strategy_mode === 'conservative') {
               this.markLoss(t.market, t.contract_type === 'DIGITOVER' ? 'over' : 'under', t.barrier);
             }
-            const next = applyOutcome(won, profit, settings, getSession()?.balance);
-            saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery().last_win_epoch, updated_at: Date.now() });
+            const accountId = t.account_id;
+            const next = applyOutcome(won, profit, settings, getSession()?.balance, accountId);
+            saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery(accountId).last_win_epoch, updated_at: Date.now() }, accountId);
             this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won, reconciled: true });
           }
           this.emit({
