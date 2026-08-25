@@ -11,9 +11,9 @@ export interface SignalEnvelope<C extends SignalIdentity> {
   reason: string;
 }
 
-const MIN_EDGE_IMPROVEMENT = 0.015;
-const REQUIRED_CHALLENGER_SCANS = 3;
-const EMPTY_SIGNAL_GRACE_MS = 7_500;
+const MIN_EDGE_IMPROVEMENT = 0.03;
+const REQUIRED_CHALLENGER_SCANS = 6;
+const EMPTY_SIGNAL_GRACE_MS = 15_000;
 
 function keyOf(candidate: SignalIdentity): string {
   return `${candidate.market}|${candidate.direction}|${candidate.barrier}`;

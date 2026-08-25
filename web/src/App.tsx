@@ -969,7 +969,19 @@ function InlineMarketChooser({
   onMarket: (symbol: string) => void;
   onClose: () => void;
 }): JSX.Element {
-  const ranked = rankMarketsForSetup(markets, candidates, direction, barrier);
+  const calculateRanking = () => rankMarketsForSetup(markets, candidates, direction, barrier);
+  const [rankedSymbols, setRankedSymbols] = useState<string[]>(() => calculateRanking().map((market) => market.symbol));
+  useEffect(() => {
+    setRankedSymbols(calculateRanking().map((market) => market.symbol));
+  }, [direction, barrier]);
+  useEffect(() => {
+    if (rankedSymbols.length === 0 && markets.length > 0) {
+      setRankedSymbols(calculateRanking().map((market) => market.symbol));
+    }
+  }, [markets.length, rankedSymbols.length]);
+  const ranked = rankedSymbols
+    .map((symbol) => markets.find((market) => market.symbol === symbol))
+    .filter((market): market is Market => Boolean(market));
   const exact = selectedMarket ? exactCandidateForSetup(candidates, selectedMarket.symbol, direction, barrier) ?? null : null;
   const selectedConfidence = selectedMarket ? exact?.estWin ?? confidenceForSetup(selectedMarket, direction, barrier) : null;
   const min = direction === 'over' ? 0 : 1;
@@ -981,7 +993,9 @@ function InlineMarketChooser({
     onBarrier(next, Math.max(nextMin, Math.min(nextMax, barrier)));
   };
   const useStrongest = () => {
-    if (ranked[0]) onMarket(ranked[0].symbol);
+    const refreshed = calculateRanking();
+    setRankedSymbols(refreshed.map((market) => market.symbol));
+    if (refreshed[0]) onMarket(refreshed[0].symbol);
   };
 
   return (
@@ -1216,7 +1230,19 @@ function DecisionHero({
   // Manual mode stays pinned to the operator's chosen market. Automation may
   // scan broadly until it emits a decision, after which the decision itself
   // locks this display to the market that will actually be purchased.
-  const best = resolveTarget(candidates, quotes, decision, !automation ? selectedMarket?.symbol : null);
+  const scannerBest = resolveTarget(candidates, quotes, decision, !automation ? selectedMarket?.symbol : null);
+  const manualBarrier = manualDirection === 'over' ? manualOverBarrier : manualUnderBarrier;
+  const manualConfidence = selectedMarket ? confidenceForSetup(selectedMarket, manualDirection, manualBarrier) : 0;
+  const best = scannerBest ?? (!automation && selectedMarket ? {
+    market: selectedMarket.symbol,
+    direction: manualDirection,
+    barrier: manualBarrier,
+    estWin: manualConfidence,
+    edge: 0,
+    breakeven: manualDirection === 'over' ? (9 - manualBarrier) / 10 : manualBarrier / 10,
+    consistency: 0.5,
+    learnedWin: null,
+  } : null);
 
   const status = !automation
     ? stopReason
