@@ -985,6 +985,11 @@ function InlineMarketChooser({
     const nextMax = next === 'over' ? 8 : 9;
     onBarrier(next, Math.max(nextMin, Math.min(nextMax, barrier)));
   };
+  const useStrongestForBarrier = () => {
+    const refreshed = calculateRanking();
+    setRankedSymbols(refreshed.map((market) => market.symbol));
+    if (refreshed[0]) onMarket(refreshed[0].symbol);
+  };
   const useStrongest = () => {
     const strongest = strongestManualSetup(markets, candidates);
     if (!strongest) return;
@@ -1029,7 +1034,10 @@ function InlineMarketChooser({
       <div class="inline-confidence">
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
         <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
-        <button type="button" onClick={useStrongest} disabled={!ranked.length}>Use strongest setup</button>
+        <div class="inline-confidence-actions">
+          <button type="button" onClick={useStrongestForBarrier} disabled={!ranked.length}>Best for {direction === 'over' ? 'Over' : 'Under'} {barrier}</button>
+          <button type="button" class="secondary" onClick={useStrongest} disabled={!ranked.length}>Best overall</button>
+        </div>
       </div>
       <p>Use the existing buttons below to place this setup.</p>
     </section>

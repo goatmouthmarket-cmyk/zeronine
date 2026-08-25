@@ -122,6 +122,12 @@
   cursor: pointer;
 }
 .inline-confidence button:disabled { opacity: .4; cursor: default; }
+.inline-confidence > .inline-confidence-actions { display: flex; gap: 5px; }
+.inline-confidence-actions button.secondary {
+  border-color: rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  color: var(--muted);
+}
 .inline-market-chooser > p { margin: 0; color: var(--muted); font-size: 8px; text-align: center; }
 
 @keyframes inline-chooser-in { from { opacity: 0; transform: scale(.985); } }
@@ -142,9 +148,11 @@
   .inline-direction button { width: 42px; height: 20px; font-size: 8px; }
   .inline-barrier { grid-row: 2; grid-column: 1; grid-template-columns: auto 22px 36px 22px; }
   .inline-barrier button, .inline-barrier input { height: 20px; font-size: 9px; }
-  .inline-confidence { grid-row: 2; grid-column: 2; grid-template-columns: auto auto; }
+  .inline-confidence { grid-row: 2; grid-column: 2; grid-template-columns: auto; }
   .inline-confidence > div { display: none; }
+  .inline-confidence > .inline-confidence-actions { display: flex; }
   .inline-confidence button { height: 20px; padding: 0 6px; font-size: 7px; }
+  .inline-confidence-actions { gap: 3px; }
   .inline-market-chooser > p { display: none; }
 }
 
