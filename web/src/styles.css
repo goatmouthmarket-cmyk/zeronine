@@ -3851,11 +3851,69 @@ button.activity-row {
 }
 
 @media (max-width: 640px) {
-    .tl-picker-grid { grid-template-columns: repeat(2, 1fr); }
-    .cmp-head { display: none; }
-    .cmp-row { grid-template-columns: 1.4fr 1fr 1fr; }
-    .cmp-row .cmp-verdict { grid-column: 1 / -1; }
-    .pat-row { grid-template-columns: 22px 1fr auto .9fr auto; }
+    .tl-tabs .seg-btn {
+        font-size: 11px;
+        padding: 8px 2px;
+    }
+
+    /* toolbar stacks: field full width, run button full width below */
+    .tl-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .tl-controls .tl-field {
+        width: 100%;
+    }
+
+    .tl-controls .tl-input {
+        width: 100%;
+    }
+
+    .tl-controls .tl-run {
+        width: 100%;
+    }
+
+    /* strategy card head stacks so the hint never crowds the name */
+    .tl-card-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+
+    .tl-card-hint {
+        max-width: none;
+        text-align: left;
+    }
+
+    /* one mode card per row on phones; the 3-up grid clips the W/L cells */
+    .tl-modes {
+        grid-template-columns: 1fr;
+    }
+
+    .tl-picker-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .tl-mode-empty {
+        padding: 2px 0;
+    }
+
+    .cmp-head {
+        display: none;
+    }
+
+    .cmp-row {
+        grid-template-columns: 1.4fr 1fr 1fr;
+    }
+
+    .cmp-row .cmp-verdict {
+        grid-column: 1 / -1;
+    }
+
+    .pat-row {
+        grid-template-columns: 22px 1fr auto .9fr auto;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
