@@ -430,6 +430,29 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(401);
       return { error: 'not connected' };
     }
+    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number };
+    const market = body.market;
+    const direction = body.direction;
+    const barrier = Number(body.barrier);
+    const stake = Number(body.stake);
+    if (!market || (direction !== 'over' && direction !== 'under') || !Number.isFinite(barrier) || !Number.isFinite(stake)) {
+      reply.code(400);
+      return { error: 'market/direction/barrier/stake required' };
+    }
+    const validBarrier = Number.isInteger(barrier)
+      && (direction === 'over' ? barrier >= 0 && barrier <= 8 : barrier >= 1 && barrier <= 9);
+    if (!validBarrier) {
+      reply.code(400);
+      return { error: direction === 'over' ? 'over barrier must be an integer from 0 to 8' : 'under barrier must be an integer from 1 to 9' };
+    }
+    if (!(stake > 0)) {
+      reply.code(400);
+      return { error: 'stake must be greater than zero' };
+    }
+    if (!registry.has(market)) {
+      reply.code(400);
+      return { error: `unknown market ${market}` };
+    }
     
     // Auto-reconnect if socket is down
     if (!client.isConnected) {
@@ -442,19 +465,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       }
     }
     
-    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number };
-    const market = body.market;
-    const direction = body.direction;
-    const barrier = Number(body.barrier);
-    const stake = Number(body.stake);
-    if (!market || (direction !== 'over' && direction !== 'under') || !Number.isFinite(barrier) || !Number.isFinite(stake)) {
-      reply.code(400);
-      return { error: 'market/direction/barrier/stake required' };
-    }
-    if (!registry.has(market)) {
-      reply.code(400);
-      return { error: `unknown market ${market}` };
-    }
     // Check for stale pending trades and clear them
     const openTrade = getOpenTrade();
     if (openTrade) {

@@ -27,6 +27,7 @@ import {
   stopPaperSimulation,
   resetPaperSimulation,
 } from './store';
+import './marketChooser.css';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -371,6 +372,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const [manualError, setManualError] = useState(false);
   const [resettingPerformance, setResettingPerformance] = useState(false);
   const [activityDetail, setActivityDetail] = useState<ActivityDetail | null>(null);
+  const [marketChooserOpen, setMarketChooserOpen] = useState(false);
   const cooldownLeft = useBotCooldown();
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
@@ -441,19 +443,25 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     }
   };
 
-  const placeManual = async (direction: 'over' | 'under') => {
-    if (guest || !market || manualBusy) return;
+  const placeManual = async (
+    direction: 'over' | 'under',
+    barrier = direction === 'under' ? 9 : 0,
+    marketSymbol = market?.symbol,
+  ): Promise<boolean> => {
+    if (guest || !marketSymbol || manualBusy) return false;
     setManualBusy(true);
     setManualMsg('');
     setManualError(false);
     try {
       const stake = s.settings?.base_stake ?? 1;
-      const barrier = direction === 'under' ? 9 : 0;
-      await manualTrade({ market: market.symbol, direction, barrier, stake });
-      setManualMsg(`${direction === 'under' ? 'Under' : 'Over'} ${barrier} placed @ ${stake}`);
+      await manualTrade({ market: marketSymbol, direction, barrier, stake });
+      const label = shortMarketName(s.markets.find((item) => item.symbol === marketSymbol)?.display ?? marketSymbol);
+      setManualMsg(`${label} · ${direction === 'under' ? 'Under' : 'Over'} ${barrier} placed @ ${stake}`);
+      return true;
     } catch (e) {
       setManualError(true);
       setManualMsg(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setManualBusy(false);
     }
@@ -527,6 +535,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               trades={s.trades}
               feedConnected={s.feed?.connected ?? false}
               recovery={s.recovery}
+              onChooseMarket={() => setMarketChooserOpen(true)}
             />
 
             <div class="manual-slot">
@@ -608,6 +617,22 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
         </div>
       </div>
       {activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
+      {marketChooserOpen && (
+        <MarketConfidenceChooser
+          markets={s.markets}
+          candidates={heroCandidates}
+          selectedMarket={market?.symbol ?? null}
+          stake={s.settings?.base_stake ?? 1}
+          busy={manualBusy}
+          guest={guest}
+          onClose={() => {
+            setMarketChooserOpen(false);
+            requestAnimationFrame(() => document.getElementById('market-pulse-trigger')?.focus());
+          }}
+          onSelect={selectMarket}
+          onPlace={placeManual}
+        />
+      )}
     </>
   );
 }
@@ -863,7 +888,7 @@ function resolveTarget(
   };
 }
 
-function MarketPulse({ market }: { market: Market | null }): JSX.Element {
+function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: () => void }): JSX.Element {
   const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
   const first = quotes[0] ?? 0;
   const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
@@ -884,7 +909,7 @@ function MarketPulse({ market }: { market: Market | null }): JSX.Element {
   const area = line.length ? `M${line.join(' L')} L${width - pad},${height - pad} L${pad},${height - pad} Z` : '';
 
   return (
-    <aside class={`market-pulse${up ? ' up' : ' down'}`} aria-label="Selected market live quote chart">
+    <button id="market-pulse-trigger" type="button" class={`market-pulse${up ? ' up' : ' down'}`} aria-label="Choose a market and manual barrier from the live quote chart" onClick={onChoose}>
       <div class="market-pulse-head">
         <span class="market-pulse-label">Live quote</span>
         <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotes.length > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
@@ -910,7 +935,150 @@ function MarketPulse({ market }: { market: Market | null }): JSX.Element {
         <span>{shortMarketName(market?.display ?? 'Selected market')}</span>
         <b>{last > 0 ? last.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}</b>
       </div>
-    </aside>
+    </button>
+  );
+}
+
+function MarketConfidenceChooser({
+  markets,
+  candidates,
+  selectedMarket,
+  stake,
+  busy,
+  guest,
+  onClose,
+  onSelect,
+  onPlace,
+}: {
+  markets: Market[];
+  candidates: SignalCandidate[];
+  selectedMarket: string | null;
+  stake: number;
+  busy: boolean;
+  guest: boolean;
+  onClose: () => void;
+  onSelect: (symbol: string) => void;
+  onPlace: (direction: 'over' | 'under', barrier: number, market: string) => Promise<boolean>;
+}): JSX.Element {
+  const strongest = [...candidates].sort((a, b) => b.estWin - a.estWin || b.edge - a.edge)[0] ?? null;
+  const initialCandidate = candidates.find((candidate) => candidate.market === selectedMarket) ?? strongest;
+  const [marketSymbol, setMarketSymbol] = useState(selectedMarket ?? strongest?.market ?? markets[0]?.symbol ?? '');
+  const [direction, setDirection] = useState<'over' | 'under'>(initialCandidate?.direction ?? 'over');
+  const [barrier, setBarrier] = useState(initialCandidate?.barrier ?? 0);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
+  const bestByMarket = new Map<string, SignalCandidate>();
+  for (const candidate of candidates) {
+    const current = bestByMarket.get(candidate.market);
+    if (!current || candidate.estWin > current.estWin || (candidate.estWin === current.estWin && candidate.edge > current.edge)) {
+      bestByMarket.set(candidate.market, candidate);
+    }
+  }
+  const ranked = [...markets].sort((a, b) => {
+    const aCandidate = bestByMarket.get(a.symbol);
+    const bCandidate = bestByMarket.get(b.symbol);
+    return (bCandidate?.estWin ?? -1) - (aCandidate?.estWin ?? -1)
+      || (bCandidate?.edge ?? -1) - (aCandidate?.edge ?? -1)
+      || (b.health?.score ?? 0) - (a.health?.score ?? 0);
+  });
+  const selected = markets.find((market) => market.symbol === marketSymbol) ?? null;
+  const recommendation = bestByMarket.get(marketSymbol) ?? null;
+  const exactRecommendation = recommendation?.direction === direction && recommendation.barrier === barrier ? recommendation : null;
+  const ratio = exactRecommendation?.estPayout ?? 0;
+  const breakeven = ratio > 0 ? 1 / ratio : null;
+
+  const chooseMarket = (symbol: string) => {
+    setMarketSymbol(symbol);
+    onSelect(symbol);
+    const recommended = bestByMarket.get(symbol);
+    if (recommended) {
+      setDirection(recommended.direction);
+      setBarrier(recommended.barrier);
+    }
+  };
+  const chooseDirection = (next: 'over' | 'under') => {
+    setDirection(next);
+    setBarrier((current) => next === 'over' ? Math.max(0, Math.min(8, current)) : Math.max(1, Math.min(9, current || 9)));
+  };
+  const useStrongest = () => {
+    if (!strongest) return;
+    chooseMarket(strongest.market);
+    setDirection(strongest.direction);
+    setBarrier(strongest.barrier);
+  };
+  const place = async () => {
+    setError('');
+    const valid = Number.isInteger(barrier) && (direction === 'over' ? barrier >= 0 && barrier <= 8 : barrier >= 1 && barrier <= 9);
+    if (!valid) {
+      setError(direction === 'over' ? 'Over barrier must be from 0 to 8.' : 'Under barrier must be from 1 to 9.');
+      return;
+    }
+    if (await onPlace(direction, barrier, marketSymbol)) onClose();
+    else setError('The order was not placed. Check the account message and try again.');
+  };
+
+  return (
+    <div class="market-chooser-backdrop" role="presentation" onClick={onClose}>
+      <section class="market-chooser" role="dialog" aria-modal="true" aria-labelledby="market-chooser-title" onClick={(event) => event.stopPropagation()}>
+        <header class="market-chooser-head">
+          <div>
+            <span class="market-chooser-kicker">Manual setup</span>
+            <h2 id="market-chooser-title">Choose the strongest market</h2>
+            <p>Selecting a setup never places a trade.</p>
+          </div>
+          <button type="button" class="market-chooser-close" onClick={onClose} aria-label="Close market chooser">×</button>
+        </header>
+
+        <div class="market-rank" aria-label="Markets ranked by confidence">
+          {ranked.map((market, index) => {
+            const candidate = bestByMarket.get(market.symbol);
+            return (
+              <button type="button" class={`market-rank-row${market.symbol === marketSymbol ? ' selected' : ''}`} onClick={() => chooseMarket(market.symbol)} key={market.symbol}>
+                <span class="market-rank-number">{String(index + 1).padStart(2, '0')}</span>
+                <span class="market-rank-name"><b>{shortMarketName(market.display)}</b><small>{market.regime?.regime.replace('_', ' ') ?? 'scanning'}</small></span>
+                <span class="market-rank-call">{candidate ? sideLabel(candidate.direction, candidate.barrier) : 'No signal'}</span>
+                <span class="market-rank-confidence">{candidate ? `${Math.round(candidate.estWin * 100)}%` : '—'}</span>
+                <span class={`market-rank-health ${market.health?.label ?? 'weak'}`}>{market.health?.score ?? 0}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div class="manual-builder">
+          <div class="manual-builder-title">
+            <div><span>Selected market</span><b>{shortMarketName(selected?.display ?? marketSymbol)}</b></div>
+            <button type="button" onClick={useStrongest} disabled={!strongest}>Use strongest setup</button>
+          </div>
+          <div class="manual-direction" role="group" aria-label="Contract direction">
+            <button type="button" class={direction === 'over' ? 'active over' : ''} onClick={() => chooseDirection('over')}>Over</button>
+            <button type="button" class={direction === 'under' ? 'active under' : ''} onClick={() => chooseDirection('under')}>Under</button>
+          </div>
+          <label class="manual-barrier">
+            <span>Barrier <small>{direction === 'over' ? '0–8' : '1–9'}</small></span>
+            <input type="number" inputMode="numeric" min={direction === 'over' ? 0 : 1} max={direction === 'over' ? 8 : 9} step={1} value={barrier} onInput={(event) => setBarrier(Number((event.currentTarget as HTMLInputElement).value))} />
+          </label>
+          <div class="manual-readout">
+            <div><span>Model confidence</span><b>{exactRecommendation ? `${(exactRecommendation.estWin * 100).toFixed(1)}%` : 'Custom setup'}</b></div>
+            <div><span>Break-even</span><b>{breakeven != null ? `${(breakeven * 100).toFixed(1)}%` : 'Awaiting quote'}</b></div>
+            <div><span>Estimated edge</span><b class={exactRecommendation && exactRecommendation.edge >= 0 ? 'positive' : ''}>{exactRecommendation ? `${exactRecommendation.edge >= 0 ? '+' : ''}${(exactRecommendation.edge * 100).toFixed(1)}%` : '—'}</b></div>
+            <div><span>Stake</span><b>{fmtMoney(stake)}</b></div>
+          </div>
+          {!exactRecommendation && <p class="manual-custom-note">This custom barrier has no current model score. Deriv will provide the live quote before purchase.</p>}
+          {error && <div class="manual-builder-error" role="alert">{error}</div>}
+          <button type="button" class="manual-place" disabled={guest || busy || !marketSymbol} onClick={() => void place()}>
+            {guest ? 'Connect Deriv to place bet' : busy ? 'Placing…' : `Place ${sideLabel(direction, barrier)} on ${shortMarketName(selected?.display ?? marketSymbol)}`}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -928,6 +1096,7 @@ function DecisionHero({
   trades,
   feedConnected,
   recovery,
+  onChooseMarket,
 }: {
   markets: Market[];
   selectedMarket: Market | null;
@@ -942,6 +1111,7 @@ function DecisionHero({
   trades: TradeRow[];
   feedConnected: boolean;
   recovery: Recovery | null;
+  onChooseMarket: () => void;
 }): JSX.Element {
   const best = resolveTarget(candidates, quotes, decision);
 
@@ -1026,7 +1196,7 @@ function DecisionHero({
         </div>
       </div>
       </div>
-      <MarketPulse market={selectedMarket} />
+      <MarketPulse market={selectedMarket} onChoose={onChooseMarket} />
     </div>
   );
 }

@@ -70,6 +70,19 @@ test('public dashboard exposes global market data but protects the connected acc
   assert.equal(ownerLedger.json().entries.length, 1);
   assert.equal(ownerLedger.json().entries[0].book, 'account');
 
+  const invalidOver = await app.inject({
+    method: 'POST', url: '/api/trade/manual', headers: { cookie: cookieHeader },
+    payload: { market: 'R_10', direction: 'over', barrier: 9, stake: 1 },
+  });
+  assert.equal(invalidOver.statusCode, 400);
+  assert.match(invalidOver.json().error, /0 to 8/);
+  const invalidUnder = await app.inject({
+    method: 'POST', url: '/api/trade/manual', headers: { cookie: cookieHeader },
+    payload: { market: 'R_10', direction: 'under', barrier: 0, stake: 1 },
+  });
+  assert.equal(invalidUnder.statusCode, 400);
+  assert.match(invalidUnder.json().error, /1 to 9/);
+
   const startPaper = await app.inject({ method: 'POST', url: '/api/paper/start', headers: { cookie: cookieHeader } });
   assert.equal(startPaper.statusCode, 200);
   assert.equal(startPaper.json().state.phase, 'running');

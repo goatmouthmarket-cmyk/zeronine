@@ -128,9 +128,23 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   expect(metricBounds[0].bottom).toBeLessThanOrEqual(metricBounds[2].top);
   expect(metricBounds[1].bottom).toBeLessThanOrEqual(metricBounds[3].top);
 
+  let manualBody: Record<string, unknown> | null = null;
   await page.route('**/api/trade/manual', async (route) => {
+    manualBody = route.request().postDataJSON() as Record<string, unknown>;
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, trade: {} }) });
   });
+  await page.getByRole('button', { name: 'Choose a market and manual barrier from the live quote chart' }).click();
+  const chooser = page.getByRole('dialog', { name: 'Choose the strongest market' });
+  await expect(chooser).toBeVisible();
+  await chooser.locator('.market-rank-row').first().click();
+  expect(manualBody).toBeNull();
+  await chooser.getByRole('button', { name: 'Under', exact: true }).click();
+  await chooser.locator('.manual-barrier input').fill('7');
+  await chooser.locator('.manual-place').click();
+  await expect.poll(() => manualBody).toEqual(expect.objectContaining({ direction: 'under', barrier: 7 }));
+  await expect(chooser).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Choose a market and manual barrier from the live quote chart' })).toBeFocused();
+
   const selector = page.locator('.side-selector');
   const selectorBefore = await selector.boundingBox();
   const startBefore = await startButton.boundingBox();
