@@ -28,6 +28,7 @@ import {
   resetPaperSimulation,
 } from './store';
 import './marketChooser.css';
+import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup } from './manualMarketRanking';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -856,6 +857,7 @@ function resolveTarget(
   candidates: SignalCandidate[],
   quotes: Record<string, QuoteEvt>,
   decision?: Decision,
+  preferredMarket?: string | null,
 ): HeroTarget | null {
   const key = (m: string, d: string, b: number) => `${m}|${d}|${b}`;
   if (decision) {
@@ -876,7 +878,9 @@ function resolveTarget(
       learnedWin: matched?.learnedWin ?? null,
     };
   }
-  const c = candidates[0];
+  const c = preferredMarket
+    ? candidates.find((candidate) => candidate.market === preferredMarket)
+    : candidates[0];
   if (!c) return null;
   const q = quotes[key(c.market, c.direction, c.barrier)];
   const ratio = q?.ask && q?.payout ? q.payout / q.ask : c.estPayout;
@@ -965,22 +969,9 @@ function InlineMarketChooser({
   onMarket: (symbol: string) => void;
   onClose: () => void;
 }): JSX.Element {
-  const bestByMarket = new Map<string, SignalCandidate>();
-  for (const candidate of candidates) {
-    const current = bestByMarket.get(candidate.market);
-    if (!current || candidate.estWin > current.estWin || (candidate.estWin === current.estWin && candidate.edge > current.edge)) {
-      bestByMarket.set(candidate.market, candidate);
-    }
-  }
-  const ranked = [...markets].sort((a, b) => {
-    const ac = bestByMarket.get(a.symbol);
-    const bc = bestByMarket.get(b.symbol);
-    return (bc?.estWin ?? -1) - (ac?.estWin ?? -1)
-      || (bc?.edge ?? -1) - (ac?.edge ?? -1)
-      || (b.health?.score ?? 0) - (a.health?.score ?? 0);
-  });
-  const recommendation = selectedMarket ? bestByMarket.get(selectedMarket.symbol) ?? null : null;
-  const exact = recommendation?.direction === direction && recommendation.barrier === barrier ? recommendation : null;
+  const ranked = rankMarketsForSetup(markets, candidates, direction, barrier);
+  const exact = selectedMarket ? exactCandidateForSetup(candidates, selectedMarket.symbol, direction, barrier) ?? null : null;
+  const selectedConfidence = selectedMarket ? exact?.estWin ?? confidenceForSetup(selectedMarket, direction, barrier) : null;
   const min = direction === 'over' ? 0 : 1;
   const max = direction === 'over' ? 8 : 9;
   const setDirection = (next: 'over' | 'under') => {
@@ -990,11 +981,7 @@ function InlineMarketChooser({
     onBarrier(next, Math.max(nextMin, Math.min(nextMax, barrier)));
   };
   const useStrongest = () => {
-    const strongest = ranked.map((market) => bestByMarket.get(market.symbol)).find(Boolean);
-    if (!strongest) return;
-    onMarket(strongest.market);
-    onDirection(strongest.direction);
-    onBarrier(strongest.direction, strongest.barrier);
+    if (ranked[0]) onMarket(ranked[0].symbol);
   };
 
   return (
@@ -1008,15 +995,11 @@ function InlineMarketChooser({
         <select value={selectedMarket?.symbol ?? ''} onChange={(event) => {
           const symbol = (event.currentTarget as HTMLSelectElement).value;
           onMarket(symbol);
-          const recommended = bestByMarket.get(symbol);
-          if (recommended) {
-            onDirection(recommended.direction);
-            onBarrier(recommended.direction, recommended.barrier);
-          }
         }}>
           {ranked.map((market, index) => {
-            const candidate = bestByMarket.get(market.symbol);
-            return <option value={market.symbol} key={market.symbol}>{index + 1}. {shortMarketName(market.display)}{candidate ? ` · ${Math.round(candidate.estWin * 100)}%` : ''}</option>;
+            const candidate = exactCandidateForSetup(candidates, market.symbol, direction, barrier);
+            const confidence = candidate?.estWin ?? confidenceForSetup(market, direction, barrier);
+            return <option value={market.symbol} key={market.symbol}>{index + 1}. {shortMarketName(market.display)} · {Math.round(confidence * 100)}%</option>;
           })}
         </select>
       </label>
@@ -1031,9 +1014,9 @@ function InlineMarketChooser({
         <button type="button" onClick={() => onBarrier(direction, Math.min(max, barrier + 1))} aria-label="Increase barrier">+</button>
       </div>
       <div class="inline-confidence">
-        <div><span>Confidence</span><b>{exact ? `${(exact.estWin * 100).toFixed(1)}%` : 'Custom'}</b></div>
+        <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
         <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
-        <button type="button" onClick={useStrongest} disabled={!candidates.length}>Use strongest</button>
+        <button type="button" onClick={useStrongest} disabled={!ranked.length}>Use strongest</button>
       </div>
       <p>Use the existing buttons below to place this setup.</p>
     </section>
@@ -1230,7 +1213,10 @@ function DecisionHero({
   onManualBarrier: (direction: 'over' | 'under', barrier: number) => void;
   onManualMarket: (symbol: string) => void;
 }): JSX.Element {
-  const best = resolveTarget(candidates, quotes, decision);
+  // Manual mode stays pinned to the operator's chosen market. Automation may
+  // scan broadly until it emits a decision, after which the decision itself
+  // locks this display to the market that will actually be purchased.
+  const best = resolveTarget(candidates, quotes, decision, !automation ? selectedMarket?.symbol : null);
 
   const status = !automation
     ? stopReason

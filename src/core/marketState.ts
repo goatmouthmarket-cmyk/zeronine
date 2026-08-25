@@ -63,7 +63,7 @@ export class MarketRegistry {
       lastDigit: last?.digit ?? -1,
       fresh,
       ticksPerMin: recentWindow.length,
-      recentDigits: buf.slice(-20).map((t) => t.digit),
+      recentDigits: buf.slice(-60).map((t) => t.digit),
       recentQuotes: buf.slice(-40).map((t) => t.quote),
       dist,
     };
