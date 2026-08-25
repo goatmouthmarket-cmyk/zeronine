@@ -13,6 +13,7 @@
 - When changing settings, update the typed settings row, SQLite schema/default and migration handling in `src/db/store.ts`, API validation and routes, config and environment defaults where appropriate, and dashboard state and UI as needed.
 - Keep browser API and WebSocket contract changes aligned across `src/api/`, server event emitters, and `web/src/store.ts` and `web/src/App.tsx`.
 - Keep sensitive tokens encrypted through the existing session and crypto flow; never log or return PATs or OAuth tokens.
+- Keep virtual-paper outcomes explicitly separate from Deriv account balances, risk, recovery, stake sizing, and execution. They may be retained only as clearly-labelled research evidence unless an explicit, validated calibration contract is added.
 
 ## Validation
 
