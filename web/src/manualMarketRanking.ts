@@ -14,6 +14,13 @@ export interface ManualSignalCandidate {
   edge: number;
 }
 
+export interface ManualSetup {
+  market: string;
+  direction: ManualDirection;
+  barrier: number;
+  confidence: number;
+}
+
 export function confidenceForSetup(market: ManualMarket, direction: ManualDirection, barrier: number): number {
   const digits = market.recentDigits.filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
   const theoretical = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
@@ -46,4 +53,38 @@ export function rankMarketsForSetup<M extends ManualMarket>(
       || (bc?.edge ?? -1) - (ac?.edge ?? -1)
       || (b.health?.score ?? 0) - (a.health?.score ?? 0);
   });
+}
+
+export function strongestManualSetup(
+  markets: ManualMarket[],
+  candidates: ManualSignalCandidate[],
+): ManualSetup | null {
+  const symbols = new Set(markets.map((market) => market.symbol));
+  const candidate = [...candidates]
+    .filter((item) => symbols.has(item.market))
+    .sort((a, b) => b.estWin - a.estWin || b.edge - a.edge)[0];
+  if (candidate) {
+    return {
+      market: candidate.market,
+      direction: candidate.direction,
+      barrier: candidate.barrier,
+      confidence: candidate.estWin,
+    };
+  }
+
+  let strongest: ManualSetup | null = null;
+  for (const market of markets) {
+    for (const direction of ['over', 'under'] as const) {
+      const barriers = direction === 'over'
+        ? [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      for (const candidateBarrier of barriers) {
+        const confidence = confidenceForSetup(market, direction, candidateBarrier);
+        if (!strongest || confidence > strongest.confidence) {
+          strongest = { market: market.symbol, direction, barrier: candidateBarrier, confidence };
+        }
+      }
+    }
+  }
+  return strongest;
 }

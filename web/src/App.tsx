@@ -28,7 +28,7 @@ import {
   resetPaperSimulation,
 } from './store';
 import './marketChooser.css';
-import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup } from './manualMarketRanking';
+import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup } from './manualMarketRanking';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -986,9 +986,15 @@ function InlineMarketChooser({
     onBarrier(next, Math.max(nextMin, Math.min(nextMax, barrier)));
   };
   const useStrongest = () => {
-    const refreshed = calculateRanking();
-    setRankedSymbols(refreshed.map((market) => market.symbol));
-    if (refreshed[0]) onMarket(refreshed[0].symbol);
+    const strongest = strongestManualSetup(markets, candidates);
+    if (!strongest) return;
+    onDirection(strongest.direction);
+    onBarrier(strongest.direction, strongest.barrier);
+    onMarket(strongest.market);
+    setRankedSymbols(
+      rankMarketsForSetup(markets, candidates, strongest.direction, strongest.barrier)
+        .map((market) => market.symbol),
+    );
   };
 
   return (
@@ -1023,7 +1029,7 @@ function InlineMarketChooser({
       <div class="inline-confidence">
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
         <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
-        <button type="button" onClick={useStrongest} disabled={!ranked.length}>Use strongest</button>
+        <button type="button" onClick={useStrongest} disabled={!ranked.length}>Use strongest setup</button>
       </div>
       <p>Use the existing buttons below to place this setup.</p>
     </section>
