@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { confidenceForSetup, rankMarketsForSetup, strongestManualSetup } from '../web/src/manualMarketRanking.ts';
+import { confidenceForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier } from '../web/src/manualMarketRanking.ts';
 import type { ManualMarket, ManualSignalCandidate } from '../web/src/manualMarketRanking.ts';
 
 function market(symbol: string, digits: number[]): ManualMarket {
@@ -27,6 +27,16 @@ test('strongest setup selects market, direction, and barrier together', () => {
   assert.deepEqual(strongestManualSetup(markets, candidates), {
     market: 'B', direction: 'under', barrier: 3, confidence: 0.84,
   });
+});
+
+test('strongest setup for a barrier chooses direction and market but preserves barrier', () => {
+  const markets = [market('HIGH', [9, 8, 7, 9]), market('LOW', [0, 1, 2, 0])];
+  const setup = strongestManualSetupForBarrier(markets, [], 4);
+  assert.deepEqual(setup, {
+    market: 'HIGH', direction: 'over', barrier: 4, confidence: confidenceForSetup(markets[0]!, 'over', 4),
+  });
+  assert.equal(strongestManualSetupForBarrier(markets, [], 0)?.direction, 'over');
+  assert.equal(strongestManualSetupForBarrier(markets, [], 9)?.direction, 'under');
 });
 
 test('an exact scanner candidate outranks empirical fallback for the same barrier', () => {

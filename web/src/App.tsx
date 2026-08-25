@@ -28,7 +28,7 @@ import {
   resetPaperSimulation,
 } from './store';
 import './marketChooser.css';
-import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup } from './manualMarketRanking';
+import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier } from './manualMarketRanking';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -377,7 +377,13 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const [manualDirection, setManualDirection] = useState<'over' | 'under'>('over');
   const [manualOverBarrier, setManualOverBarrier] = useState(0);
   const [manualUnderBarrier, setManualUnderBarrier] = useState(9);
+  const [manualStakeText, setManualStakeText] = useState('');
   const cooldownLeft = useBotCooldown();
+  const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
+
+  useEffect(() => {
+    setManualStakeText((current) => current || String(s.settings?.base_stake ?? 1));
+  }, [s.settings?.base_stake]);
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
   const automation = s.automation?.running ?? false;
@@ -463,7 +469,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     setManualMsg('');
     setManualError(false);
     try {
-      const stake = s.settings?.base_stake ?? 1;
+      const stake = manualStake;
       await manualTrade({ market: marketSymbol, direction, barrier, stake });
       const label = shortMarketName(s.markets.find((item) => item.symbol === marketSymbol)?.display ?? marketSymbol);
       setManualMsg(`${label} · ${direction === 'under' ? 'Under' : 'Over'} ${barrier} placed @ ${stake}`);
@@ -551,6 +557,8 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               manualDirection={manualDirection}
               manualOverBarrier={manualOverBarrier}
               manualUnderBarrier={manualUnderBarrier}
+              manualStake={manualStakeText}
+              onManualStake={setManualStakeText}
               onManualDirection={setManualDirection}
               onManualBarrier={(direction, barrier) => direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier)}
               onManualMarket={selectMarket}
@@ -565,7 +573,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                     onClick={() => void placeManual('over', manualOverBarrier)}
                   >
                     <span class="side-name">Over {manualOverBarrier}</span>
-                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(s.settings?.base_stake ?? 1, s.session?.currency)}</span>
+                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(manualStake, s.session?.currency)}</span>
                   </button>
                   <button
                     class={`side-btn under${manualDirection === 'under' ? ' active' : ''}`}
@@ -573,7 +581,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                     onClick={() => void placeManual('under', manualUnderBarrier)}
                   >
                     <span class="side-name">Under {manualUnderBarrier}</span>
-                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(s.settings?.base_stake ?? 1, s.session?.currency)}</span>
+                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(manualStake, s.session?.currency)}</span>
                   </button>
                   <div class={`manual-msg${manualError ? ' error' : ''}`} aria-live="polite">{manualMsg}</div>
                 </div>
@@ -947,9 +955,11 @@ function InlineMarketChooser({
   selectedMarket,
   direction,
   barrier,
+  stake,
   onDirection,
   onBarrier,
   onMarket,
+  onStake,
   onClose,
 }: {
   markets: Market[];
@@ -957,9 +967,11 @@ function InlineMarketChooser({
   selectedMarket: Market | null;
   direction: 'over' | 'under';
   barrier: number;
+  stake: string;
   onDirection: (direction: 'over' | 'under') => void;
   onBarrier: (direction: 'over' | 'under', barrier: number) => void;
   onMarket: (symbol: string) => void;
+  onStake: (stake: string) => void;
   onClose: () => void;
 }): JSX.Element {
   const calculateRanking = () => rankMarketsForSetup(markets, candidates, direction, barrier);
@@ -986,9 +998,15 @@ function InlineMarketChooser({
     onBarrier(next, Math.max(nextMin, Math.min(nextMax, barrier)));
   };
   const useStrongestForBarrier = () => {
-    const refreshed = calculateRanking();
-    setRankedSymbols(refreshed.map((market) => market.symbol));
-    if (refreshed[0]) onMarket(refreshed[0].symbol);
+    const strongest = strongestManualSetupForBarrier(markets, candidates, barrier);
+    if (!strongest) return;
+    onDirection(strongest.direction);
+    onBarrier(strongest.direction, barrier);
+    onMarket(strongest.market);
+    setRankedSymbols(
+      rankMarketsForSetup(markets, candidates, strongest.direction, barrier)
+        .map((market) => market.symbol),
+    );
   };
   const useStrongest = () => {
     const strongest = strongestManualSetup(markets, candidates);
@@ -1031,11 +1049,15 @@ function InlineMarketChooser({
         <input type="number" inputMode="numeric" min={min} max={max} step={1} value={barrier} onInput={(event) => onBarrier(direction, Math.max(min, Math.min(max, Number((event.currentTarget as HTMLInputElement).value))))} />
         <button type="button" onClick={() => onBarrier(direction, Math.min(max, barrier + 1))} aria-label="Increase barrier">+</button>
       </div>
+      <label class="inline-stake">
+        <span>Amount</span>
+        <input type="number" inputMode="decimal" min="0.1" step="0.1" value={stake} onInput={(event) => onStake((event.currentTarget as HTMLInputElement).value)} />
+      </label>
       <div class="inline-confidence">
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
         <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
         <div class="inline-confidence-actions">
-          <button type="button" onClick={useStrongestForBarrier} disabled={!ranked.length}>Best for {direction === 'over' ? 'Over' : 'Under'} {barrier}</button>
+          <button type="button" onClick={useStrongestForBarrier} disabled={!ranked.length}>Best for barrier {barrier}</button>
           <button type="button" class="secondary" onClick={useStrongest} disabled={!ranked.length}>Best overall</button>
         </div>
       </div>
@@ -1207,9 +1229,11 @@ function DecisionHero({
   manualDirection,
   manualOverBarrier,
   manualUnderBarrier,
+  manualStake,
   onManualDirection,
   onManualBarrier,
   onManualMarket,
+  onManualStake,
 }: {
   markets: Market[];
   selectedMarket: Market | null;
@@ -1230,9 +1254,11 @@ function DecisionHero({
   manualDirection: 'over' | 'under';
   manualOverBarrier: number;
   manualUnderBarrier: number;
+  manualStake: string;
   onManualDirection: (direction: 'over' | 'under') => void;
   onManualBarrier: (direction: 'over' | 'under', barrier: number) => void;
   onManualMarket: (symbol: string) => void;
+  onManualStake: (stake: string) => void;
 }): JSX.Element {
   // Manual mode stays pinned to the operator's chosen market. Automation may
   // scan broadly until it emits a decision, after which the decision itself
@@ -1339,9 +1365,11 @@ function DecisionHero({
           selectedMarket={selectedMarket}
           direction={manualDirection}
           barrier={manualDirection === 'over' ? manualOverBarrier : manualUnderBarrier}
+          stake={manualStake}
           onDirection={onManualDirection}
           onBarrier={onManualBarrier}
           onMarket={onManualMarket}
+          onStake={onManualStake}
           onClose={onCloseMarketChooser}
         />
       ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} />}

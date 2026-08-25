@@ -88,3 +88,32 @@ export function strongestManualSetup(
   }
   return strongest;
 }
+
+export function strongestManualSetupForBarrier(
+  markets: ManualMarket[],
+  candidates: ManualSignalCandidate[],
+  barrier: number,
+): ManualSetup | null {
+  const directions: ManualDirection[] = [
+    ...(barrier >= 0 && barrier <= 8 ? ['over' as const] : []),
+    ...(barrier >= 1 && barrier <= 9 ? ['under' as const] : []),
+  ];
+  const symbols = new Set(markets.map((market) => market.symbol));
+  const candidate = [...candidates]
+    .filter((item) => symbols.has(item.market) && item.barrier === barrier && directions.includes(item.direction))
+    .sort((a, b) => b.estWin - a.estWin || b.edge - a.edge)[0];
+  if (candidate) {
+    return { market: candidate.market, direction: candidate.direction, barrier, confidence: candidate.estWin };
+  }
+
+  let strongest: ManualSetup | null = null;
+  for (const market of markets) {
+    for (const direction of directions) {
+      const confidence = confidenceForSetup(market, direction, barrier);
+      if (!strongest || confidence > strongest.confidence) {
+        strongest = { market: market.symbol, direction, barrier, confidence };
+      }
+    }
+  }
+  return strongest;
+}

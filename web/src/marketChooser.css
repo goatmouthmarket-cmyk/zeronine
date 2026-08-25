@@ -64,7 +64,8 @@
 
 .inline-market-select { display: grid; gap: 4px; min-width: 0; }
 .inline-market-select select,
-.inline-barrier input {
+.inline-barrier input,
+.inline-stake input {
   width: 100%;
   min-width: 0;
   height: 34px;
@@ -77,6 +78,9 @@
   font-weight: 750;
 }
 .inline-market-select select { padding: 0 9px; }
+.inline-stake { display: grid; grid-template-columns: 1fr 112px; align-items: center; gap: 6px; }
+.inline-stake span { color: var(--muted); font-size: 8px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.inline-stake input { height: 32px; padding: 0 8px; text-align: right; }
 
 .inline-direction { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .inline-direction button {
@@ -135,9 +139,9 @@
 @media (max-width: 619.98px) {
   .inline-market-chooser {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto auto;
     gap: 5px 8px;
-    height: 54px;
+    height: 78px;
     padding: 5px 7px;
   }
   .inline-chooser-head { display: none; }
@@ -146,9 +150,11 @@
   .inline-market-select select { height: 20px; font-size: 8px; }
   .inline-direction { grid-row: 1; grid-column: 2; }
   .inline-direction button { width: 42px; height: 20px; font-size: 8px; }
-  .inline-barrier { grid-row: 2; grid-column: 1; grid-template-columns: auto 22px 36px 22px; }
+  .inline-stake { grid-row: 2; grid-column: 1; grid-template-columns: auto 80px; }
+  .inline-stake input { height: 20px; font-size: 9px; }
+  .inline-barrier { grid-row: 3; grid-column: 1; grid-template-columns: auto 22px 36px 22px; }
   .inline-barrier button, .inline-barrier input { height: 20px; font-size: 9px; }
-  .inline-confidence { grid-row: 2; grid-column: 2; grid-template-columns: auto; }
+  .inline-confidence { grid-row: 2 / 4; grid-column: 2; grid-template-columns: auto; align-self: center; }
   .inline-confidence > div { display: none; }
   .inline-confidence > .inline-confidence-actions { display: flex; }
   .inline-confidence button { height: 20px; padding: 0 6px; font-size: 7px; }
