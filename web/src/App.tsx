@@ -367,6 +367,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const [startError, setStartError] = useState('');
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
+  const [manualError, setManualError] = useState(false);
   const [resettingPerformance, setResettingPerformance] = useState(false);
   const [activityDetail, setActivityDetail] = useState<ActivityDetail | null>(null);
   const cooldownLeft = useBotCooldown();
@@ -443,12 +444,14 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     if (guest || !market || manualBusy) return;
     setManualBusy(true);
     setManualMsg('');
+    setManualError(false);
     try {
       const stake = s.settings?.base_stake ?? 1;
       const barrier = direction === 'under' ? 9 : 0;
       await manualTrade({ market: market.symbol, direction, barrier, stake });
       setManualMsg(`${direction === 'under' ? 'Under' : 'Over'} ${barrier} placed @ ${stake}`);
     } catch (e) {
+      setManualError(true);
       setManualMsg(e instanceof Error ? e.message : String(e));
     } finally {
       setManualBusy(false);
@@ -544,7 +547,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                     <span class="side-name">Under 9</span>
                     <span class="side-odds">{oddsText}</span>
                   </button>
-                  <div class="manual-msg" aria-live="polite">{manualMsg}</div>
+                  <div class={`manual-msg${manualError ? ' error' : ''}`} aria-live="polite">{manualMsg}</div>
                 </div>
               )}
             </div>

@@ -462,6 +462,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       }
     }
     
+    let recordedTrade: ReturnType<typeof insertTrade> | null = null;
     try {
       const quote = await client.getQuote({
         direction,
@@ -472,7 +473,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         durationUnit: 't',
         symbol: market,
       });
-      const trade = insertTrade({
+      // Keep this row out of reconciliation until Deriv confirms a contract
+      // id. The always-on watch loop must not turn a valid in-flight manual
+      // buy into an error between proposal and purchase.
+      const trade = recordedTrade = insertTrade({
         ts: Date.now(),
         market,
         contract_type: direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
@@ -484,7 +488,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         payout: quote.payout,
         est_win: 0,
         profit: 0,
-        status: 'pending',
+        status: 'purchasing',
         contract_id: '',
         purchase_id: `manual-${Date.now()}`,
         reason: 'manual',
@@ -498,6 +502,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
       return { ok: true, trade: { id: trade.id, contractId: bought.contractId, ask: quote.askPrice, payout: quote.payout } };
     } catch (err) {
+      if (recordedTrade) {
+        resolveTrade(recordedTrade.id, 'error', 0, recordedTrade.contract_id || '', undefined, recordedTrade.account_id);
+      }
+      console.warn(`[manual] order failed: ${String(err)}`);
       reply.code(502);
       return { error: String(err) };
     }

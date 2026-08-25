@@ -86,7 +86,7 @@ export interface TradeRow {
   payout: number;
   est_win: number;
   profit: number;
-  status: 'pending' | 'won' | 'lost' | 'push' | 'expired' | 'timeout' | 'error';
+  status: 'purchasing' | 'pending' | 'won' | 'lost' | 'push' | 'expired' | 'timeout' | 'error';
   contract_id: string;
   purchase_id: string;
   reason: string;

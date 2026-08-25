@@ -31,7 +31,7 @@ export interface TradeRow {
   payout: number;
   est_win: number;
   profit: number;
-  status: 'pending' | 'won' | 'lost' | 'push' | 'expired' | 'timeout' | 'error';
+  status: 'purchasing' | 'pending' | 'won' | 'lost' | 'push' | 'expired' | 'timeout' | 'error';
   contract_id: string;
   purchase_id: string;
   reason: string;
@@ -1005,7 +1005,7 @@ export function insertTrade(t: Omit<TradeRow, 'id' | 'resolved_at'> & { resolved
   const row = getDb()
     .prepare('SELECT * FROM trades WHERE id = ?')
     .get(Number(info.lastInsertRowid)) as unknown as TradeRow;
-  appendAccountLedgerEntry(row, 'requested');
+  appendAccountLedgerEntrySafely(row, 'requested');
   return row;
 }
 
@@ -1021,7 +1021,7 @@ export function getTradeByContractId(contractId: string, accountId = currentAcco
 
 export function getOpenTrade(accountId = currentAccountId()): TradeRow | null {
   const row = getDb()
-    .prepare("SELECT * FROM trades WHERE account_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1")
+    .prepare("SELECT * FROM trades WHERE account_id = ? AND status IN ('purchasing', 'pending') ORDER BY id DESC LIMIT 1")
     .get(accountId);
   return row ? (row as unknown as TradeRow) : null;
 }
@@ -1044,7 +1044,7 @@ export function resolveTrade(
   if (!before) return;
   // Settlement callbacks can be replayed after reconnect. Preserve the first
   // terminal result so both the trade row and immutable ledger stay aligned.
-  if (before.status !== 'pending') return;
+  if (before.status !== 'pending' && before.status !== 'purchasing') return;
   getDb()
     .prepare(
       `UPDATE trades SET status=?, profit=?, contract_id=?, resolved_at=?,
@@ -1062,7 +1062,7 @@ export function resolveTrade(
       accountId,
     );
   const settled = getTrade(id, accountId);
-  if (settled) appendAccountLedgerEntry(settled, 'settled');
+  if (settled) appendAccountLedgerEntrySafely(settled, 'settled');
   updateScannerLogResult(id, status, profit);
 }
 
@@ -1070,11 +1070,11 @@ export function markTradePurchased(id: number, contractId: string, stake: number
   const before = getTrade(id, accountId);
   if (!before) return;
   getDb()
-    .prepare('UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=? WHERE id=? AND account_id=?')
+    .prepare("UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=?, status='pending' WHERE id=? AND account_id=?")
     .run(contractId, stake, stake, payout, id, accountId);
   if (!before.contract_id && contractId) {
     const purchased = getTrade(id, accountId);
-    if (purchased) appendAccountLedgerEntry(purchased, 'purchased');
+    if (purchased) appendAccountLedgerEntrySafely(purchased, 'purchased');
   }
 }
 
@@ -1123,6 +1123,19 @@ function appendAccountLedgerEntry(
       trade.exit_digit ?? null,
     );
   return getDb().prepare('SELECT * FROM trade_ledger WHERE entry_key = ?').get(`account:${trade.id}:${event}`) as unknown as LedgerEntryRow;
+}
+
+/** Audit persistence must never block a Deriv order or settlement. */
+function appendAccountLedgerEntrySafely(
+  trade: TradeRow,
+  event: Extract<LedgerEntryRow['event'], 'requested' | 'purchased' | 'settled'>,
+): LedgerEntryRow | null {
+  try {
+    return appendAccountLedgerEntry(trade, event);
+  } catch (err) {
+    console.warn(`[ledger] failed to record account ${event} for trade ${trade.id}: ${String(err)}`);
+    return null;
+  }
 }
 
 /**
