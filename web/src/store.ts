@@ -411,7 +411,7 @@ function applyEvent(evt: Record<string, unknown>): void {
       const markets = (evt.markets as Market[]) ?? [];
       patch.markets = markets;
       patch.digits = seedDigits(markets);
-      if (!patch.selected && markets.length) patch.selected = markets[0]?.symbol ?? null;
+      if (!state.selected && markets.length) patch.selected = markets[0]?.symbol ?? null;
       break;
     }
     case 'feed':
@@ -446,7 +446,9 @@ function applyEvent(evt: Record<string, unknown>): void {
         markets.push(m);
       }
       patch.markets = markets;
-      if (!patch.selected) patch.selected = symbol;
+      // A tick must never replace the market explicitly selected by the
+      // operator. Only seed a selection while the store has none.
+      if (!state.selected) patch.selected = symbol;
       const nd = m.lastDigit;
       const hist = state.digits[symbol] ?? [];
       if (nd >= 0 && m.recentDigits.length && hist.length === 0) {
