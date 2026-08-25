@@ -1592,6 +1592,20 @@ button.activity-row {
     opacity: .9;
 }
 
+.activity-feed {
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 10.5px;
+}
+
+.activity-row.pending .activity-feed {
+    color: var(--purple-light);
+}
+
+.activity-row.pending .activity-meta {
+    display: none;
+}
+
 .activity-meta {
     opacity: .7;
 }

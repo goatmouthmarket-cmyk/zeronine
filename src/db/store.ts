@@ -1059,7 +1059,7 @@ export function resolveTrade(
   getDb()
     .prepare(
       `UPDATE trades SET status=?, profit=?, contract_id=?, resolved_at=?,
-        entry_spot=?, exit_spot=?, exit_digit=? WHERE id=? AND account_id=?`,
+        entry_spot=COALESCE(?, entry_spot), exit_spot=?, exit_digit=? WHERE id=? AND account_id=?`,
     )
     .run(
       status,
@@ -1077,12 +1077,19 @@ export function resolveTrade(
   updateScannerLogResult(id, status, profit);
 }
 
-export function markTradePurchased(id: number, contractId: string, stake: number, payout: number, accountId = currentAccountId()): void {
+export function markTradePurchased(
+  id: number,
+  contractId: string,
+  stake: number,
+  payout: number,
+  accountId = currentAccountId(),
+  entrySpot?: number,
+): void {
   const before = getTrade(id, accountId);
   if (!before) return;
   getDb()
-    .prepare("UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=?, status='pending' WHERE id=? AND account_id=?")
-    .run(contractId, stake, stake, payout, id, accountId);
+    .prepare("UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=?, status='pending', entry_spot=COALESCE(entry_spot, ?) WHERE id=? AND account_id=?")
+    .run(contractId, stake, stake, payout, typeof entrySpot === 'number' && Number.isFinite(entrySpot) ? entrySpot : null, id, accountId);
   if (!before.contract_id && contractId) {
     const purchased = getTrade(id, accountId);
     if (purchased) appendAccountLedgerEntrySafely(purchased, 'purchased');

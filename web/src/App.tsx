@@ -432,8 +432,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     const timer = window.setInterval(() => void refreshTrades(), 1_500);
     return () => window.clearInterval(timer);
   }, [active, hasOpenTrade]);
-  const marketNames = useMemo(
-    () => new Map(s.markets.map((item) => [item.symbol, item.display])),
+  const marketsBySymbol = useMemo(
+    () => new Map(s.markets.map((item) => [item.symbol, item])),
     [s.markets],
   );
   const openMarketChooser = useCallback(() => setMarketChooserOpen(true), []);
@@ -616,7 +616,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             <div class="activity">
               {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
               {recentItems.map((item) => (
-                <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} marketName={marketNames.get(item.trade.market)} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
+                <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} market={marketsBySymbol.get(item.trade.market)} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
               ))}
             </div>
           </section>
@@ -680,15 +680,22 @@ const TickerItem = memo(function TickerItem({ market, active, prediction: pred, 
   );
 });
 
-function ActivityRow({ trade, marketName, onOpen }: { trade: TradeRow; marketName?: string; onOpen?: () => void }): JSX.Element {
+function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Market; onOpen?: () => void }): JSX.Element {
   const win = trade.status === 'won';
   const loss = trade.status === 'lost';
   const exp = trade.status === 'expired' || trade.status === 'timeout';
   const err = trade.status === 'error';
-  const pend = trade.status === 'pending';
+  const pend = trade.status === 'pending' || trade.status === 'purchasing';
   const label = trade.contract_type === 'DIGITOVER' ? `Over ${trade.barrier}` : `Under ${trade.barrier}`;
   const pnl = trade.profit ?? 0;
-  const digit = trade.exit_digit != null && trade.exit_digit >= 0 ? trade.exit_digit : '–';
+  const liveDigit = market?.lastDigit != null && market.lastDigit >= 0 ? market.lastDigit : null;
+  const digit = trade.exit_digit != null && trade.exit_digit >= 0 ? trade.exit_digit : pend && liveDigit != null ? liveDigit : '–';
+  const formatSpot = (value?: number | null) => value != null && Number.isFinite(value)
+    ? value.toLocaleString(undefined, { maximumFractionDigits: 5 })
+    : '--';
+  const feedText = pend
+    ? `Entry ${formatSpot(trade.entry_spot)} → Live ${formatSpot(market?.lastQuote)}${liveDigit != null ? ` · digit ${liveDigit}` : ''}`
+    : `Entry ${formatSpot(trade.entry_spot)} → Exit ${formatSpot(trade.exit_spot)}${trade.exit_digit != null ? ` · digit ${trade.exit_digit}` : ''}`;
 
   const tone = win ? 'win' : loss ? 'loss' : 'push';
   const time = new Date(trade.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -706,14 +713,14 @@ function ActivityRow({ trade, marketName, onOpen }: { trade: TradeRow; marketNam
       <div class={`activity-digit ${tone}${pend ? ' pending' : ''}`}>{digit}</div>
       <div class="activity-main">
         <div class="activity-betline">
-          <span class="activity-bet">{shortMarketName(marketName ?? trade.market)} · {label}</span>
+          <span class="activity-bet">{shortMarketName(market?.display ?? trade.market)} · {label}</span>
           <span class="activity-stake">Entry ${(trade.stake ?? 0).toFixed(2)}</span>
           <span class={`activity-source ${source}`}>{sourceLabel(source)}</span>
         </div>
         <div class={`activity-result ${tone}`}>
           {pend && <span class="live-dot"></span>}
           <span class="activity-outcome">{resultText}</span>
-          {digit !== '–' && <span class="activity-exit">· exit {digit}</span>}
+          <span class="activity-feed"> · {feedText}</span>
           <span class="activity-meta">· {time}</span>
         </div>
       </div>
@@ -1905,7 +1912,7 @@ function HistoryPage(): JSX.Element {
       <div class="section activity">
         {filtered.length === 0 && <div class="empty-hint">No trades yet</div>}
         {filtered.map((t) => (
-          <ActivityRow key={t.id} trade={t} marketName={s.markets.find((market) => market.symbol === t.market)?.display} />
+          <ActivityRow key={t.id} trade={t} market={s.markets.find((market) => market.symbol === t.market)} />
         ))}
       </div>
 

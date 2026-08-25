@@ -724,7 +724,7 @@ export class Automation {
     const bought = await this.client.placeBuy(finalQuote.id, finalQuote.askPrice);
     const actualStake = bought.buyPrice > 0 ? bought.buyPrice : finalQuote.askPrice > 0 ? finalQuote.askPrice : decision.stake;
     const actualPayout = bought.payout > 0 ? bought.payout : finalQuote.payout;
-    markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, accountId);
+    markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, accountId, this.registry.snapshot(decision.market).lastQuote);
     this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, phase: 'purchased' });
 
     this.phase = 'settling';
