@@ -395,13 +395,6 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const activeDirection = decision?.direction ?? (s.settings?.barrier_preference === 'under' ? 'under' : 'over');
   const activeSide = decision ? sideLabel(decision.direction, decision.barrier) : activeDirection === 'under' ? 'Under 9' : 'Over 0';
 
-  const odds = (() => {
-    if (s.quote?.ask && s.quote?.payout) return s.quote.payout / s.quote.ask;
-    if (decision) return (decision.estWin + decision.stake) / decision.stake;
-    return null;
-  })();
-  const oddsText = odds ? odds.toFixed(2) : '—';
-
   const candidates = s.signal?.signal.candidates ?? [];
   const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
   const tickerPredictions = useMemo(() => new Map(
@@ -572,7 +565,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                     onClick={() => void placeManual('over', manualOverBarrier)}
                   >
                     <span class="side-name">Over {manualOverBarrier}</span>
-                    <span class="side-odds">{oddsText}</span>
+                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(s.settings?.base_stake ?? 1, s.session?.currency)}</span>
                   </button>
                   <button
                     class={`side-btn under${manualDirection === 'under' ? ' active' : ''}`}
@@ -580,7 +573,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
                     onClick={() => void placeManual('under', manualUnderBarrier)}
                   >
                     <span class="side-name">Under {manualUnderBarrier}</span>
-                    <span class="side-odds">{oddsText}</span>
+                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(s.settings?.base_stake ?? 1, s.session?.currency)}</span>
                   </button>
                   <div class={`manual-msg${manualError ? ' error' : ''}`} aria-live="polite">{manualMsg}</div>
                 </div>
@@ -611,7 +604,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             <div class="activity">
               {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
               {recentItems.map((item) => (
-                <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
+                <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} marketName={s.markets.find((market) => market.symbol === item.trade.market)?.display} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
               ))}
             </div>
           </section>
@@ -675,7 +668,7 @@ function TickerItem({ market, active, prediction: pred, performance }: { market:
   );
 }
 
-function ActivityRow({ trade, onOpen }: { trade: TradeRow; onOpen?: () => void }): JSX.Element {
+function ActivityRow({ trade, marketName, onOpen }: { trade: TradeRow; marketName?: string; onOpen?: () => void }): JSX.Element {
   const win = trade.status === 'won';
   const loss = trade.status === 'lost';
   const exp = trade.status === 'expired' || trade.status === 'timeout';
@@ -701,8 +694,8 @@ function ActivityRow({ trade, onOpen }: { trade: TradeRow; onOpen?: () => void }
       <div class={`activity-digit ${tone}${pend ? ' pending' : ''}`}>{digit}</div>
       <div class="activity-main">
         <div class="activity-betline">
-          <span class="activity-bet">{label}</span>
-          <span class="activity-stake">${(trade.stake ?? 0).toFixed(2)}</span>
+          <span class="activity-bet">{shortMarketName(marketName ?? trade.market)} · {label}</span>
+          <span class="activity-stake">Entry ${(trade.stake ?? 0).toFixed(2)}</span>
           <span class={`activity-source ${source}`}>{sourceLabel(source)}</span>
         </div>
         <div class={`activity-result ${tone}`}>
@@ -791,10 +784,10 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
         {trade ? (
           <div class="detail-grid">
             <Detail label="Market" value={shortMarketName(market?.display ?? trade.market)} />
-            <Detail label="Stake" value={fmtMoney(trade.stake, '$')} />
+            <Detail label="Entry amount" value={fmtMoney(trade.stake, '$')} />
             <Detail label="Payout" value={fmtMoney(trade.payout, '$')} />
             <Detail label="Estimated win" value={`${(trade.est_win * 100).toFixed(1)}%`} />
-            <Detail label="Entry" value={trade.entry_spot != null ? String(trade.entry_spot) : '--'} />
+            <Detail label="Entry spot" value={trade.entry_spot != null ? String(trade.entry_spot) : '--'} />
             <Detail label="Exit" value={trade.exit_spot != null ? String(trade.exit_spot) : '--'} />
             <Detail label="Reason" value={trade.reason || '--'} />
             <Detail label="Result" value={trade.status} color={trade.status === 'won' ? 'green' : trade.status === 'lost' ? 'red' : undefined} />
@@ -1856,7 +1849,7 @@ function HistoryPage(): JSX.Element {
       <div class="section activity">
         {filtered.length === 0 && <div class="empty-hint">No trades yet</div>}
         {filtered.map((t) => (
-          <ActivityRow key={t.id} trade={t} />
+          <ActivityRow key={t.id} trade={t} marketName={s.markets.find((market) => market.symbol === t.market)?.display} />
         ))}
       </div>
 
