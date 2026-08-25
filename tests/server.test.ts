@@ -9,7 +9,7 @@ process.env.DATA_DIR = tmp;
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
 
 test('HTTP shell boots and serves health + settings', async () => {
-  const [{ default: Fastify }, hubMod, marketMod, feedMod, clientMod, autoMod, routesMod] =
+  const [{ default: Fastify }, hubMod, marketMod, feedMod, clientMod, autoMod, paperMod, routesMod] =
     await Promise.all([
       import('fastify'),
       import('../src/api/hub.ts'),
@@ -17,6 +17,7 @@ test('HTTP shell boots and serves health + settings', async () => {
       import('../src/deriv/publicFeed.ts'),
       import('../src/deriv/privateClient.ts'),
       import('../src/strategy/automation.ts'),
+      import('../src/simulation/paperSimulator.ts'),
       import('../src/api/routes.ts'),
     ]);
 
@@ -26,8 +27,9 @@ test('HTTP shell boots and serves health + settings', async () => {
   const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
   const client = new clientMod.DerivPrivateClient();
   const automation = new autoMod.Automation(registry, client, hub);
+  const paperSimulator = new paperMod.PaperSimulator();
 
-  routesMod.registerApi(app, { registry, feed, client, hub, automation });
+  routesMod.registerApi(app, { registry, feed, client, hub, automation, paperSimulator });
 
   const health = await app.inject({ method: 'GET', url: '/health' });
   assert.equal(health.statusCode, 200);
@@ -43,6 +45,7 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.deepEqual(stateBody.performance, { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 });
   assert.ok(Array.isArray(stateBody.markets ?? []));
   assert.ok(Array.isArray(stateBody.intelligence ?? []));
+  assert.equal(stateBody.paperSimulation.phase, 'idle');
 
   const evidence = await app.inject({ method: 'GET', url: '/api/test/evidence?limit=10' });
   assert.equal(evidence.statusCode, 200);

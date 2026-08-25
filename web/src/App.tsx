@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow } from './store';
+import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import {
   useStore,
   connectPat,
@@ -17,11 +18,12 @@ import {
   loadTestRuns,
   loadPatternsData,
   loadAutoBacktestStatus,
-  loadAutoPaperStatus,
   runTestBacktest,
-  runTestPaper,
   runPatternScan,
   refreshTrades,
+  startPaperSimulation,
+  stopPaperSimulation,
+  resetPaperSimulation,
 } from './store';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
@@ -1925,45 +1927,42 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
 
 function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => void }): JSX.Element {
   const s = useStore();
-  const [n, setN] = useState(40);
   const [err, setErr] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set(ALL_CONFIG_KEYS));
   const runs = s.testRuns.filter((r) => r.kind === 'paper').slice(0, 500);
-  const demo = s.session?.mode === 'demo';
-  const guest = !s.session;
-
-  useEffect(() => {
-    void loadAutoPaperStatus();
-    const t = setInterval(() => void loadAutoPaperStatus(), 60_000);
-    return () => clearInterval(t);
-  }, []);
-
-  const toggle = (key: string) => {
-    const next = new Set(selected);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setSelected(next);
-  };
-
-  const toggleAll = (selectAll: boolean) => {
-    setSelected(selectAll ? new Set(ALL_CONFIG_KEYS) : new Set());
-  };
-
-  const liveEquity = (() => {
-    let bal = 0;
-    const out = [0];
-    for (const t of s.trades) {
-      bal += t.profit ?? 0;
-      out.push(bal);
-    }
-    return out;
-  })();
+  const owner = Boolean(s.owner);
+  const paperSimulation = s.paperSimulation;
+  const paperContract = paperSimulation?.openContract ?? paperSimulation?.lastSettled ?? null;
+  const selectedMarket = s.markets.find((market) => market.symbol === paperContract?.market)
+    ?? s.markets.find((market) => market.symbol === s.selected)
+    ?? s.markets[0]
+    ?? null;
+  const scannerCandidate = s.displaySignal?.candidates.find((pick) => pick.market === selectedMarket?.symbol) ?? s.displaySignal?.candidates[0] ?? null;
+  const candidate = paperContract
+    ? { direction: paperContract.direction, barrier: paperContract.barrier, estWin: paperContract.estWin ?? 0 }
+    : scannerCandidate;
+  const paperStagePhase: PaperSimulationPhase = paperSimulation?.openContract
+    ? 'open'
+    : paperSimulation?.lastSettled && (paperSimulation.phase === 'completed' || paperSimulation.phase === 'stopped')
+      ? 'settled'
+      : paperSimulation?.phase === 'running'
+        ? candidate
+          ? 'signal-locked'
+          : 'scanning'
+        : candidate
+          ? 'signal-locked'
+          : s.feed?.connected
+            ? 'scanning'
+            : 'idle';
+  const paperEquity = paperSimulation
+    ? paperSimulation.equity
+    : [];
 
   const run = async () => {
     setErr('');
     onBusy(true);
     try {
-      await runTestPaper({ tradesPerConfig: n, configs: [...selected] });
+      if (paperSimulation?.phase === 'running') await stopPaperSimulation();
+      else await startPaperSimulation();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1973,47 +1972,41 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
 
   return (
     <>
-      <LabControls busy={busy} disabled={!demo || guest} onRun={run} runLabel={guest ? 'Connect to run paper sweep' : 'Run paper sweep'}>
-        <label class="tl-field">
-          <span class="tl-field-label">Demo trades / config (10–200)</span>
-          <input
-            class="tl-input"
-            type="number"
-            min={10}
-            max={200}
-            step={5}
-            value={n}
-            disabled={guest}
-            onInput={(e: any) => setN(Math.max(1, Math.min(200, Number(e.currentTarget.value) || 40)))}
-          />
-        </label>
-      </LabControls>
-      {!demo && <div class="tl-err">Paper sweeps are demo-only — connect a demo account to run them.</div>}
-      {s.autoPaper && demo && (
-        <div class="tl-note auto">
-          Auto paper sweep: every {(s.autoPaper.intervalMs / 60_000).toFixed(0)}m on the demo tape
-          {s.autoPaper.lastRunAt > 0
-            ? ` · last ${new Date(s.autoPaper.lastRunAt).toLocaleString()} · next ${new Date(s.autoPaper.nextRunAt).toLocaleTimeString()}`
-            : ` · first sweep scheduled shortly after a demo session connects`}
-        </div>
-      )}
-      <LabActive active={s.testlab?.kind === 'paper' ? s.testlab : null} />
+      <LabControls
+        busy={busy}
+        disabled={!owner}
+        onRun={run}
+        runLabel={!owner ? 'Unlock dashboard to run simulation' : paperSimulation?.phase === 'running' ? 'Stop paper simulation' : 'Start paper simulation'}
+      />
+      <PaperSimulationStage
+        market={selectedMarket}
+        candidate={candidate}
+        phase={paperStagePhase}
+        equity={paperEquity}
+        latestContract={paperSimulation?.lastSettled ?? null}
+        virtualBalance={paperSimulation?.balance ?? null}
+      />
+      <div class="paper-sim-summary">
+        <span>Uses public market ticks and a virtual ledger. No Deriv balance, quote, or purchase request is used.</span>
+        {paperSimulation && <span>{paperSimulation.totalTrades} virtual trades · {paperSimulation.wins}W {paperSimulation.losses}L</span>}
+        <button
+          class="paper-sim-reset"
+          type="button"
+          disabled={!owner || busy || paperSimulation?.phase === 'running'}
+          onClick={() => {
+            setErr('');
+            onBusy(true);
+            void resetPaperSimulation()
+              .catch((error) => setErr(error instanceof Error ? error.message : String(error)))
+              .finally(() => onBusy(false));
+          }}
+        >
+          Reset virtual balance
+        </button>
+      </div>
+      {!owner && <div class="tl-note">Simulation controls belong to the dashboard owner. You can still watch the public tick, signal, and virtual-contract stage above.</div>}
       <TlErr err={err} />
-      <ConfigPicker selected={selected} onToggle={toggle} onToggleAll={toggleAll} />
-      {s.testlab?.kind === 'paper' && s.testlab.phase === 'running' && (
-        <div class="section tl-live">
-          <div class="section-head">
-            <span class="section-title">Live paper activity</span>
-          </div>
-          <Sparkline points={liveEquity} />
-          <div class="activity">
-            {s.trades.slice(0, 12).map((t) => (
-              <ActivityRow key={t.id} trade={t} />
-            ))}
-          </div>
-        </div>
-      )}
-      {runs.length === 0 && !busy && s.testlab?.kind !== 'paper' && <div class="empty-hint">No paper runs yet — run a sweep to compare live demo behaviour.</div>}
+      {runs.length === 0 && !busy && <div class="empty-hint">No global paper research runs have been recorded yet.</div>}
       <LabCards runs={runs} equity={s.testEquity} kind="paper" busy={busy} />
     </>
   );

@@ -29,6 +29,7 @@ test('paper simulator settles only from the next public tick and changes virtual
   assert.equal(state.balance, 109);
   assert.equal(state.netPnl, 9);
   assert.equal(state.lastSettled?.profit, 9);
+  assert.deepEqual(state.equity, [100, 109]);
   assert.deepEqual(events, ['started', 'tick', 'opened', 'tick', 'settled']);
 });
 

@@ -6,6 +6,7 @@ import type { DerivPrivateClient } from '../deriv/privateClient.ts';
 import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import type { Automation } from '../strategy/automation.ts';
+import type { PaperSimulator } from '../simulation/paperSimulator.ts';
 import { encryptToken } from '../db/crypto.ts';
 import {
   buildAuthorizeUrl,
@@ -19,7 +20,6 @@ import type { Direction } from '../core/digitMath.ts';
 import { contractProfit } from '../strategy/pnl.ts';
 import { runBacktest, TEST_MODES, TEST_STRATEGIES } from '../testlab/backtest.ts';
 import type { TestConfig } from '../testlab/backtest.ts';
-import { runPaperSweep } from '../testlab/paper.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
 import {
@@ -51,10 +51,11 @@ export interface ApiDeps {
   client: DerivPrivateClient;
   hub: Hub;
   automation: Automation;
+  paperSimulator: PaperSimulator;
 }
 
 export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
-  const { registry, feed, client, hub, automation } = deps;
+  const { registry, feed, client, hub, automation, paperSimulator } = deps;
   const oauthPending = new Map<string, { verifier: string; created: number }>();
 
   app.get('/health', async () => ({
@@ -107,6 +108,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       intelligence: automation.marketIntelligence(),
       trades: owner ? listTrades(20) : [],
       performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
+      paperSimulation: paperSimulator.state(),
     };
   });
 
@@ -196,23 +198,31 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
+  app.post('/api/paper/start', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    paperSimulator.start();
+    return { ok: true, state: paperSimulator.state() };
+  });
+
+  app.post('/api/paper/stop', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    paperSimulator.stop();
+    return { ok: true, state: paperSimulator.state() };
+  });
+
+  app.post('/api/paper/reset', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    paperSimulator.reset();
+    return { ok: true, state: paperSimulator.state() };
+  });
+
+  // This old endpoint executed real one-tick contracts on a connected demo
+  // account. Keep the failure explicit so a stale dashboard cannot silently
+  // spend account funds after the pure simulator rollout.
   app.post('/api/test/paper', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const tradesPerConfig = typeof body.trades_per_config === 'number' ? body.trades_per_config : undefined;
-    const configs = Array.isArray(body.configs) ? (body.configs as string[]) : undefined;
-    try {
-      const result = await runPaperSweep(automation, hub, {
-        configs: configs ? parseTestConfigs(configs) : undefined,
-        tradesPerConfig,
-        onProgress: (p) => hub.emit({ type: 'testlab', ts: Date.now(), ...p }),
-      });
-      return { ok: true, result };
-    } catch (err) {
-      const code = err instanceof Error && (err as Error & { code?: string }).code;
-      reply.code(typeof code === 'string' ? (code === 'BOT_RUNNING' ? 409 : 403) : 500);
-      return { error: err instanceof Error ? err.message : String(err) };
-    }
+    reply.code(410);
+    return { error: 'account-funded paper sweeps are retired; use /api/paper/start' };
   });
 
   app.get('/api/test/runs', async (req) => {

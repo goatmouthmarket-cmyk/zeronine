@@ -8,7 +8,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'overunder-public-d
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
 
 test('public dashboard exposes global market data but protects the connected account', async () => {
-  const [{ default: Fastify }, { default: cookie }, hubMod, marketMod, feedMod, clientMod, autoMod, routesMod, store, cfg] =
+  const [{ default: Fastify }, { default: cookie }, hubMod, marketMod, feedMod, clientMod, autoMod, paperMod, routesMod, store, cfg] =
     await Promise.all([
       import('fastify'),
       import('@fastify/cookie'),
@@ -17,6 +17,7 @@ test('public dashboard exposes global market data but protects the connected acc
       import('../src/deriv/publicFeed.ts'),
       import('../src/deriv/privateClient.ts'),
       import('../src/strategy/automation.ts'),
+      import('../src/simulation/paperSimulator.ts'),
       import('../src/api/routes.ts'),
       import('../src/db/store.ts'),
       import('../src/config.ts'),
@@ -31,7 +32,8 @@ test('public dashboard exposes global market data but protects the connected acc
   const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
   const client = new clientMod.DerivPrivateClient();
   const automation = new autoMod.Automation(registry, client, hub);
-  routesMod.registerApi(app, { registry, feed, client, hub, automation });
+  const paperSimulator = new paperMod.PaperSimulator();
+  routesMod.registerApi(app, { registry, feed, client, hub, automation, paperSimulator });
 
   store.setSession({
     id: 'public-test-session', loginid: 'CR123', balance: 123.45, currency: 'USD', mode: 'demo', auth_kind: 'pat',
@@ -49,9 +51,12 @@ test('public dashboard exposes global market data but protects the connected acc
   assert.deepEqual(guest.json().trades, []);
   assert.equal(guest.json().performance.profit, 0);
   assert.equal(guest.json().public_dashboard, true);
+  assert.equal(guest.json().paperSimulation.phase, 'idle');
 
   const guestWrite = await app.inject({ method: 'PUT', url: '/api/settings', payload: { base_stake: 99 } });
   assert.equal(guestWrite.statusCode, 403);
+  const guestPaper = await app.inject({ method: 'POST', url: '/api/paper/start' });
+  assert.equal(guestPaper.statusCode, 403);
 
   const unlock = await app.inject({ method: 'POST', url: '/api/auth/owner', payload: { token: 'owner-test-token' } });
   assert.equal(unlock.statusCode, 200);
@@ -59,6 +64,13 @@ test('public dashboard exposes global market data but protects the connected acc
   const owner = await app.inject({ method: 'GET', url: '/api/state', headers: { cookie: cookieHeader } });
   assert.equal(owner.json().session.loginid, 'CR123');
   assert.equal(owner.json().trades.length, 1);
+
+  const startPaper = await app.inject({ method: 'POST', url: '/api/paper/start', headers: { cookie: cookieHeader } });
+  assert.equal(startPaper.statusCode, 200);
+  assert.equal(startPaper.json().state.phase, 'running');
+  assert.equal(client.isConnected, false, 'pure paper start must not open a private account session');
+  const oldSweep = await app.inject({ method: 'POST', url: '/api/test/paper', headers: { cookie: cookieHeader } });
+  assert.equal(oldSweep.statusCode, 410);
 
   automation.dispose();
   await app.close();

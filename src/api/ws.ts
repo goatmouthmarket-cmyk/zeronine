@@ -7,7 +7,7 @@ import { isOwner } from './access.ts';
 
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
-const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning']);
+const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning', 'paper_simulation']);
 
 export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
   await app.register(websocket, { options: { maxPayload: 8192 } });
@@ -15,10 +15,12 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
   let lastSignal: unknown = null;
   let lastHold: unknown = null;
   let lastIntelligence: unknown = null;
+  let lastPaperSimulation: unknown = null;
   hub.on((evt) => {
     if (evt.type === 'signal') lastSignal = evt;
     if (evt.type === 'hold') lastHold = evt;
     if (evt.type === 'intelligence') lastIntelligence = evt;
+    if (evt.type === 'paper_simulation') lastPaperSimulation = evt;
   });
 
   app.get('/ws', { websocket: true }, (socket: WebSocket, req) => {
@@ -33,6 +35,7 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     if (lastSignal) socket.send(JSON.stringify(lastSignal));
     if (owner && lastHold) socket.send(JSON.stringify(lastHold));
     if (lastIntelligence) socket.send(JSON.stringify(lastIntelligence));
+    if (lastPaperSimulation) socket.send(JSON.stringify(lastPaperSimulation));
 
     let lastTickSent = 0;
     let pendingTick: unknown = null;

@@ -233,6 +233,42 @@ export interface TestLabActive {
   message: string;
 }
 
+export interface PaperSimulationContract {
+  id: number;
+  market: string;
+  direction: 'over' | 'under';
+  barrier: number;
+  stake: number;
+  payoutRatio: number;
+  entryEpoch: number;
+  entryQuote: number;
+  entryDigit: number;
+  estWin?: number;
+  edge?: number;
+  status: 'open' | 'won' | 'lost' | 'cancelled';
+  exitEpoch?: number;
+  exitQuote?: number;
+  exitDigit?: number;
+  profit?: number;
+}
+
+export interface PaperSimulationState {
+  phase: 'idle' | 'running' | 'stopped' | 'completed';
+  reason: string | null;
+  initialBalance: number;
+  balance: number;
+  availableBalance: number;
+  reservedStake: number;
+  netPnl: number;
+  wins: number;
+  losses: number;
+  totalTrades: number;
+  equity: number[];
+  openContract: PaperSimulationContract | null;
+  lastSettled: PaperSimulationContract | null;
+  lastTick: { market: string; quote: number; digit: number; epoch: number } | null;
+}
+
 export interface State {
   publicDashboard?: boolean;
   owner?: boolean;
@@ -259,7 +295,8 @@ export interface State {
   testRuns: TestRunRow[];
   testEquity: Record<string, number[]>;
   autoBacktest: { intervalMs: number; lastRunAt: number; nextRunAt: number; lastFingerprint: number; minNewDigits: number } | null;
-  autoPaper: { intervalMs: number; lastRunAt: number; nextRunAt: number } | null;
+  autoPaper: { enabled: boolean; intervalMs: number; lastRunAt: number; nextRunAt: number | null } | null;
+  paperSimulation: PaperSimulationState | null;
   patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
 }
 
@@ -288,6 +325,7 @@ const initial: State = {
   testEquity: {},
   autoBacktest: null,
   autoPaper: null,
+  paperSimulation: null,
   patterns: null,
 };
 
@@ -499,6 +537,9 @@ function applyEvent(evt: Record<string, unknown>): void {
       };
       break;
     }
+    case 'paper_simulation':
+      patch.paperSimulation = (evt.state as PaperSimulationState | null) ?? null;
+      break;
     case 'error':
       break;
     default:
@@ -583,6 +624,7 @@ export async function bootstrap(): Promise<void> {
       automation: s.automation,
       trades: s.trades,
       performance: s.performance,
+      paperSimulation: s.paperSimulation ?? null,
       publicDashboard: Boolean(s.public_dashboard),
       owner: Boolean(s.owner),
       digits: (() => {
@@ -619,7 +661,7 @@ export async function loadAutoBacktestStatus(): Promise<void> {
 
 export async function loadAutoPaperStatus(): Promise<void> {
   try {
-    const res = await api<{ intervalMs: number; lastRunAt: number; nextRunAt: number }>('/api/test/paper/status');
+    const res = await api<{ enabled: boolean; intervalMs: number; lastRunAt: number; nextRunAt: number | null }>('/api/test/paper/status');
     set({ autoPaper: res });
   } catch {
     // server may not support it yet on older builds - ignore
@@ -671,6 +713,24 @@ export async function startAutomation(opts?: {
 export async function stopAutomation(): Promise<void> {
   const res = await api<{ state: AutomationState }>('/api/automation/stop', { method: 'POST' });
   set({ automation: res.state, decision: null });
+}
+
+export async function startPaperSimulation(): Promise<PaperSimulationState> {
+  const res = await api<{ ok: boolean; state: PaperSimulationState }>('/api/paper/start', { method: 'POST' });
+  set({ paperSimulation: res.state });
+  return res.state;
+}
+
+export async function stopPaperSimulation(): Promise<PaperSimulationState> {
+  const res = await api<{ ok: boolean; state: PaperSimulationState }>('/api/paper/stop', { method: 'POST' });
+  set({ paperSimulation: res.state });
+  return res.state;
+}
+
+export async function resetPaperSimulation(): Promise<PaperSimulationState> {
+  const res = await api<{ ok: boolean; state: PaperSimulationState }>('/api/paper/reset', { method: 'POST' });
+  set({ paperSimulation: res.state });
+  return res.state;
 }
 
 export async function unlockDashboard(token: string): Promise<void> {

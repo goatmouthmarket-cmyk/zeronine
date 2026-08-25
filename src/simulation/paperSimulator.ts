@@ -56,6 +56,7 @@ export interface PaperSimulationState {
   wins: number;
   losses: number;
   totalTrades: number;
+  equity: number[];
   openContract: PaperContract | null;
   lastSettled: PaperContract | null;
   lastTick: PaperTick | null;
@@ -63,6 +64,7 @@ export interface PaperSimulationState {
 
 export type PaperSimulationEvent =
   | { type: 'started'; state: PaperSimulationState }
+  | { type: 'reset'; state: PaperSimulationState }
   | { type: 'stopped'; reason: string; state: PaperSimulationState }
   | { type: 'tick'; tick: PaperTick; state: PaperSimulationState }
   | { type: 'opened'; contract: PaperContract; state: PaperSimulationState }
@@ -116,6 +118,7 @@ export class PaperSimulator {
   private wins = 0;
   private losses = 0;
   private totalTrades = 0;
+  private equity: number[];
   private nextId = 1;
   private openContract: PaperContract | null = null;
   private lastSettled: PaperContract | null = null;
@@ -138,6 +141,7 @@ export class PaperSimulator {
       ? Number(options.maxTrades)
       : null;
     this.balance = this.initialBalance;
+    this.equity = [this.initialBalance];
   }
 
   on(listener: Listener): () => void {
@@ -158,6 +162,7 @@ export class PaperSimulator {
       wins: this.wins,
       losses: this.losses,
       totalTrades: this.totalTrades,
+      equity: [...this.equity],
       openContract: cloneContract(this.openContract),
       lastSettled: cloneContract(this.lastSettled),
       lastTick: cloneTick(this.lastTick),
@@ -199,9 +204,11 @@ export class PaperSimulator {
     this.wins = 0;
     this.losses = 0;
     this.totalTrades = 0;
+    this.equity = [this.initialBalance];
     this.nextId = 1;
     this.openContract = null;
     this.lastSettled = null;
+    this.emit({ type: 'reset', state: this.state() });
   }
 
   /** Feed every public market tick. The next tick for an open contract settles it. */
@@ -275,6 +282,8 @@ export class PaperSimulator {
     if (won) this.wins += 1;
     else this.losses += 1;
     this.balance = rounded(this.balance + profit);
+    this.equity.push(this.balance);
+    if (this.equity.length > 40) this.equity.shift();
     this.emit({ type: 'settled', contract: cloneContract(settled)!, state: this.state() });
     if (this.maxTrades !== null && this.totalTrades >= this.maxTrades) this.complete();
   }

@@ -28,6 +28,32 @@ import { runBacktest } from './testlab/backtest.ts';
 import { runPaperSweep } from './testlab/paper.ts';
 import { scanPatterns } from './testlab/patterns.ts';
 import { tuneSettings } from './strategy/tuning.ts';
+import { PaperSimulator } from './simulation/paperSimulator.ts';
+import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimulator.ts';
+import type { Direction } from './core/digitMath.ts';
+
+function paperSignalFromHubEvent(event: Record<string, unknown>, stake: number): PaperSignal | null {
+  const raw = event.signal as { holds?: unknown; candidates?: unknown } | undefined;
+  if (raw?.holds || !Array.isArray(raw?.candidates)) return null;
+  const candidate = raw.candidates[0] as Record<string, unknown> | undefined;
+  if (!candidate) return null;
+  const direction = candidate.direction;
+  const market = candidate.market;
+  const barrier = candidate.barrier;
+  if (
+    typeof market !== 'string'
+    || (direction !== 'over' && direction !== 'under')
+    || !Number.isInteger(barrier)
+  ) return null;
+  return {
+    market,
+    direction: direction as Direction,
+    barrier: barrier as number,
+    stake,
+    estWin: typeof candidate.estWin === 'number' ? candidate.estWin : undefined,
+    edge: typeof candidate.edge === 'number' ? candidate.edge : undefined,
+  };
+}
 
 async function main(): Promise<void> {
   getDb();
@@ -37,10 +63,35 @@ async function main(): Promise<void> {
 
   const hub = new Hub();
   const decisionMemory = new DecisionMemory();
+  const paperSimulator = new PaperSimulator({ defaultStake: getSettings().base_stake });
+  let latestPaperSignal: PaperSignal | null = null;
+  hub.on((event) => {
+    if (event.type !== 'signal') return;
+    latestPaperSignal = paperSignalFromHubEvent(event, getSettings().base_stake);
+  });
+  paperSimulator.on((event: PaperSimulationEvent) => {
+    // Raw ticks already travel over the throttled market-tick channel. Only
+    // state transitions need a separate public simulation event.
+    if (event.type === 'tick') return;
+    hub.emit({
+      type: 'paper_simulation',
+      ts: Date.now(),
+      event: event.type,
+      state: event.state,
+      ...(('contract' in event && event.contract) ? { contract: event.contract } : {}),
+      ...(('reason' in event && event.reason) ? { reason: event.reason } : {}),
+    });
+  });
   const registry = new MarketRegistry({
     onTick: (snap) => {
       insertDigit(snap.symbol, snap.lastEpoch, snap.lastQuote, snap.lastDigit);
       decisionMemory.onTick(snap.symbol, snap.lastDigit);
+      paperSimulator.onTick({
+        market: snap.symbol,
+        quote: snap.lastQuote,
+        digit: snap.lastDigit,
+        epoch: snap.lastEpoch,
+      }, latestPaperSignal);
       hub.emit({
         type: 'tick',
         ts: Date.now(),
@@ -67,7 +118,7 @@ async function main(): Promise<void> {
 
   const automation = new Automation(registry, client, hub, decisionMemory);
 
-  registerApi(app, { registry, feed, client, hub, automation });
+  registerApi(app, { registry, feed, client, hub, automation, paperSimulator });
   await registerWs(app, hub, registry);
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');

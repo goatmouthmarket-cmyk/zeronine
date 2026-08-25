@@ -17,6 +17,7 @@ export type HubEventType =
   | 'recovery'
   | 'testlab'
   | 'tuning'
+  | 'paper_simulation'
   | 'error';
 
 export interface AutomationEvent {

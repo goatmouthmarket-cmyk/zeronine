@@ -319,54 +319,12 @@ export class Automation {
     const canBuy = (): boolean => startedRunning && this.running && cycleEpoch === this.runEpoch;
     const settings = getSettings();
 
-    if (!this.client.isConnected) {
-      this.emit({ type: HOLD, ts: Date.now(), reason: 'account not connected' });
-      this.phase = 'waiting-connection';
-      return 1200;
-    }
-
     const session = getSession();
-    if (!session) {
-      this.emit({ type: HOLD, ts: Date.now(), reason: 'no session' });
-      return 1200;
-    }
-    const accountId = accountIdForLogin(session.loginid);
 
-    // Reconcile pending bets left by a restart or delayed settlement. A real
-    // contract remains pending until Deriv gives a terminal result; recording a
-    // timeout as zero PnL would corrupt both history and recovery debt.
-    const pending = getPendingTrades(accountId);
-    if (pending.length > 0) {
-      await this.reconcilePending(pending);
-      if (getPendingTrades(accountId).length > 0) {
-        this.emit({ type: HOLD, ts: Date.now(), reason: 'waiting open contract to settle' });
-        this.phase = 'waiting-settlement';
-        return 350;
-      }
-    }
-
-    const rec = getRecovery(accountId);
-    const ctx = buildRecoveryContext(settings, accountId);
-
-    // The peak-drawdown rail only applies while the bot is actively trading.
-    if (canBuy()) {
-      const guard = riskCheck({
-        stake: settings.max_stake,
-        settings,
-        balance: session.balance,
-        context: ctx,
-        lastTradeAt: 0,
-        tradeGapMs: 0,
-        now: Date.now(),
-        accountId,
-      });
-      if (!guard.ok && guard.reason.includes('drawdown')) {
-        this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
-        this.stop(guard.reason);
-        return 0;
-      }
-    }
-
+    // Scanning is entirely public-market work. Keeping it outside the private
+    // account gate lets guests inspect current signals and drive the virtual
+    // paper simulator without a Deriv token. Quotes and purchases remain gated
+    // below.
     this.phase = 'scanning';
     this.emit({ type: 'status', ts: Date.now(), state: this.state() });
     const conservative = settings.strategy_mode === 'conservative';
@@ -407,6 +365,48 @@ export class Automation {
       this.emit({ type: HOLD, ts: Date.now(), reason: signal.reason });
       this.phase = 'waiting-edge';
       return 1500; // WAIT is a valid outcome: no obligation to trade every scan
+    }
+
+    if (!this.client.isConnected || !session) {
+      this.phase = 'standby';
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'Connect Deriv to request live quotes or trade' });
+      return 1500;
+    }
+    const accountId = accountIdForLogin(session.loginid);
+
+    // Reconcile pending bets left by a restart or delayed settlement. A real
+    // contract remains pending until Deriv gives a terminal result; recording a
+    // timeout as zero PnL would corrupt both history and recovery debt.
+    const pending = getPendingTrades(accountId);
+    if (pending.length > 0) {
+      await this.reconcilePending(pending);
+      if (getPendingTrades(accountId).length > 0) {
+        this.emit({ type: HOLD, ts: Date.now(), reason: 'waiting open contract to settle' });
+        this.phase = 'waiting-settlement';
+        return 350;
+      }
+    }
+
+    const rec = getRecovery(accountId);
+    const ctx = buildRecoveryContext(settings, accountId);
+
+    // The peak-drawdown rail only applies while the bot is actively trading.
+    if (canBuy()) {
+      const guard = riskCheck({
+        stake: settings.max_stake,
+        settings,
+        balance: session.balance,
+        context: ctx,
+        lastTradeAt: 0,
+        tradeGapMs: 0,
+        now: Date.now(),
+        accountId,
+      });
+      if (!guard.ok && guard.reason.includes('drawdown')) {
+        this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
+        this.stop(guard.reason);
+        return 0;
+      }
     }
 
     // Quote every shortlist candidate across markets. Real ratios (payout/ask)
