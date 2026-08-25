@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.ts';
+import { config, shouldScheduleAutoDemoPaperSweep } from '../config.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
@@ -244,10 +244,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   app.get('/api/test/paper/status', async () => {
     const intervalMs = config.autoPaperIntervalMs;
     const lastRunAt = Number(getMeta('paper_last_run_at') ?? 0);
+    const enabled = shouldScheduleAutoDemoPaperSweep(config);
     return {
+      enabled,
       intervalMs,
       lastRunAt,
-      nextRunAt: lastRunAt > 0 ? lastRunAt + intervalMs : Date.now() + intervalMs,
+      nextRunAt: enabled ? (lastRunAt > 0 ? lastRunAt + intervalMs : Date.now() + intervalMs) : null,
     };
   });
 

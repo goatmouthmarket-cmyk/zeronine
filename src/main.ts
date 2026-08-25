@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import fastifyStatic from '@fastify/static';
 import fastifyCookie from '@fastify/cookie';
-import { config } from './config.ts';
+import { config, shouldScheduleAutoDemoPaperSweep } from './config.ts';
 import { resolveStoredToken } from './deriv/oauth.ts';
 import { Hub } from './api/hub.ts';
 import { registerApi } from './api/routes.ts';
@@ -152,40 +152,44 @@ async function main(): Promise<void> {
   const bootAutoBacktest = setTimeout(() => void runAutoBacktest(), 10_000);
   bootAutoBacktest.unref();
 
-  // Auto paper sweep: much more frequent than the backtest (env
-  // AUTO_PAPER_INTERVAL_MS, default 30m) so the demo tape is constantly
-  // re-evaluated. Always skips — never throws — when there is nothing safe to
-  // trade on: no demo session, the live bot is running, or the feed is down.
-  let autoPaperBusy = false;
-  const runAutoPaper = async (): Promise<void> => {
-    if (autoPaperBusy) return;
-    const session = getSession();
-    if (!session || session.mode !== 'demo') return;
-    if (automation.isRunning()) return;
-    if (automation.isOperatorStopped()) return;
-    if (!feed.status().connected) return;
-    autoPaperBusy = true;
-    try {
-      const lastRunAt = Number(getMeta('paper_last_run_at') ?? 0);
-      if (Date.now() - lastRunAt < config.autoPaperIntervalMs) return;
-      await runPaperSweep(automation, hub, {
-        tradesPerConfig: 40,
-        source: 'auto',
-        onProgress: (p) => hub.emit({ type: 'testlab', ts: Date.now(), source: 'auto', ...p }),
-      });
-      setMeta('paper_last_run_at', String(Date.now()));
-      console.info('[auto-paper] sweep finished');
-      runAutoTune();
-    } catch (err) {
-      console.warn(`[auto-paper] failed: ${err}`);
-    } finally {
-      autoPaperBusy = false;
-    }
-  };
-  const autoPaperTimer = setInterval(() => void runAutoPaper(), 60_000);
-  autoPaperTimer.unref();
-  const bootAutoPaper = setTimeout(() => void runAutoPaper(), 30_000);
-  bootAutoPaper.unref();
+  // Account-funded sweeps are off unless both explicit opt-in settings exist.
+  // A pure paper simulator has no Deriv account purchase path.
+  let autoPaperTimer: ReturnType<typeof setInterval> | undefined;
+  let bootAutoPaper: ReturnType<typeof setTimeout> | undefined;
+  if (shouldScheduleAutoDemoPaperSweep(config)) {
+    let autoPaperBusy = false;
+    const runAutoPaper = async (): Promise<void> => {
+      if (autoPaperBusy) return;
+      const session = getSession();
+      if (!session || session.mode !== 'demo') return;
+      if (automation.isRunning()) return;
+      if (automation.isOperatorStopped()) return;
+      if (!feed.status().connected) return;
+      autoPaperBusy = true;
+      try {
+        const lastRunAt = Number(getMeta('paper_last_run_at') ?? 0);
+        if (Date.now() - lastRunAt < config.autoPaperIntervalMs) return;
+        await runPaperSweep(automation, hub, {
+          tradesPerConfig: 40,
+          source: 'auto',
+          onProgress: (p) => hub.emit({ type: 'testlab', ts: Date.now(), source: 'auto', ...p }),
+        });
+        setMeta('paper_last_run_at', String(Date.now()));
+        console.info('[auto-paper] demo execution sweep finished');
+        runAutoTune();
+      } catch (err) {
+        console.warn(`[auto-paper] failed: ${err}`);
+      } finally {
+        autoPaperBusy = false;
+      }
+    };
+    autoPaperTimer = setInterval(() => void runAutoPaper(), 60_000);
+    autoPaperTimer.unref();
+    bootAutoPaper = setTimeout(() => void runAutoPaper(), 30_000);
+    bootAutoPaper.unref();
+  } else {
+    console.info('[auto-paper] account-funded demo sweeps disabled');
+  }
 
   // Self-tuning: recompute the champion (backtest + paper must agree) after
   // either automated source produces fresh runs. When the live bot is running
@@ -210,8 +214,8 @@ async function main(): Promise<void> {
     clearInterval(reconnectTimer);
     clearInterval(autoBacktestTimer);
     clearTimeout(bootAutoBacktest);
-    clearInterval(autoPaperTimer);
-    clearTimeout(bootAutoPaper);
+    if (autoPaperTimer) clearInterval(autoPaperTimer);
+    if (bootAutoPaper) clearTimeout(bootAutoPaper);
     automation.dispose();
     client.disconnect();
     feed.stop();

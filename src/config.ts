@@ -39,6 +39,8 @@ export interface AppConfig {
   tradeGapMs: number;
   autoBacktestHours: number;
   autoBacktestMinNewDigits: number;
+  /** Legacy paper sweeps use actual demo-account contracts. */
+  autoDemoPaperSweepsEnabled: boolean;
   autoPaperIntervalMs: number;
   autoTuneEnabled: boolean;
   autoTuneMinTrades: number;
@@ -64,6 +66,12 @@ function num(name: string, fallback: number): number {
   if (v === undefined || v === '') return fallback;
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+export function shouldScheduleAutoDemoPaperSweep(
+  settings: Pick<AppConfig, 'autoDemoPaperSweepsEnabled' | 'autoPaperIntervalMs'>,
+): boolean {
+  return settings.autoDemoPaperSweepsEnabled && settings.autoPaperIntervalMs > 0;
 }
 
 export function loadConfig(): AppConfig {
@@ -118,7 +126,9 @@ export function loadConfig(): AppConfig {
     tradeGapMs: num('TRADE_GAP_MS', 1200),
     autoBacktestHours: num('AUTO_BACKTEST_HOURS', 3),
     autoBacktestMinNewDigits: num('AUTO_BACKTEST_MIN_NEW_DIGITS', 5000),
-    autoPaperIntervalMs: num('AUTO_PAPER_INTERVAL_MS', 30 * 60 * 1000),
+    // An interval alone must never start background account trading.
+    autoDemoPaperSweepsEnabled: process.env.ENABLE_AUTO_DEMO_PAPER_SWEEPS === '1',
+    autoPaperIntervalMs: Math.max(0, num('AUTO_PAPER_INTERVAL_MS', 0)),
     autoTuneEnabled: process.env.AUTO_TUNE_ENABLED !== '0',
     autoTuneMinTrades: num('AUTO_TUNE_MIN_TRADES', 20),
     autoTuneFreshnessMs: num('AUTO_TUNE_FRESHNESS_MS', 48 * 60 * 60 * 1000),
