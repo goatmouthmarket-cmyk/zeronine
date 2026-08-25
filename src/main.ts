@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import fastifyStatic from '@fastify/static';
 import fastifyCookie from '@fastify/cookie';
-import { config, shouldScheduleAutoDemoPaperSweep } from './config.ts';
+import { config } from './config.ts';
 import { resolveStoredToken } from './deriv/oauth.ts';
 import { Hub } from './api/hub.ts';
 import { registerApi } from './api/routes.ts';
@@ -21,6 +21,7 @@ import {
   getSession,
   getSettings,
   insertDigit,
+  listPaperLedgerEntries,
   pruneDigits,
   setMeta,
   updateSessionBalance,
@@ -28,10 +29,10 @@ import {
 import { runBacktest } from './testlab/backtest.ts';
 import { runPaperSweep } from './testlab/paper.ts';
 import { scanPatterns } from './testlab/patterns.ts';
-import { tuneSettings } from './strategy/tuning.ts';
 import { PaperSimulator } from './simulation/paperSimulator.ts';
 import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimulator.ts';
 import type { Direction } from './core/digitMath.ts';
+import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
 
 function paperSignalFromHubEvent(event: Record<string, unknown>, stake: number): PaperSignal | null {
   const raw = event.signal as { holds?: unknown; candidates?: unknown } | undefined;
@@ -58,6 +59,16 @@ function paperSignalFromHubEvent(event: Record<string, unknown>, stake: number):
 
 async function main(): Promise<void> {
   getDb();
+  for (const entry of listPaperLedgerEntries(500).reverse()) {
+    if (entry.event !== 'settled' || entry.est_win == null || (entry.status !== 'won' && entry.status !== 'lost')) continue;
+    observeResearchOutcome({
+      market: entry.market,
+      direction: entry.contract_type === 'DIGITOVER' ? 'over' : 'under',
+      barrier: entry.barrier,
+      predicted: entry.est_win,
+      won: entry.status === 'won',
+    });
+  }
 
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   await app.register(fastifyCookie, { secret: config.sessionSecret });
@@ -75,6 +86,15 @@ async function main(): Promise<void> {
       appendPaperLedgerEntry(event.contract, 'purchased');
     } else if (event.type === 'settled') {
       appendPaperLedgerEntry(event.contract, 'settled');
+      if (event.contract.estWin != null) {
+        observeResearchOutcome({
+          market: event.contract.market,
+          direction: event.contract.direction,
+          barrier: event.contract.barrier,
+          predicted: event.contract.estWin,
+          won: event.contract.status === 'won',
+        });
+      }
     } else if (event.type === 'cancelled') {
       appendPaperLedgerEntry(event.contract, 'cancelled', event.reason);
     }
@@ -199,7 +219,6 @@ async function main(): Promise<void> {
       setMeta('backtest_last_fingerprint', String(fp));
       setMeta('backtest_last_run_at', String(Date.now()));
       console.info(`[auto-backtest] finished (history fingerprint ${fp})`);
-      runAutoTune();
     } catch (err) {
       console.warn(`[auto-backtest] failed: ${err}`);
     } finally {
@@ -213,9 +232,8 @@ async function main(): Promise<void> {
 
   // Account-funded sweeps are off unless both explicit opt-in settings exist.
   // A pure paper simulator has no Deriv account purchase path.
-  let autoPaperTimer: ReturnType<typeof setInterval> | undefined;
-  let bootAutoPaper: ReturnType<typeof setTimeout> | undefined;
-  if (shouldScheduleAutoDemoPaperSweep(config)) {
+  /* Legacy account-funded paper sweep removed. */
+  if (false) {
     let autoPaperBusy = false;
     const runAutoPaper = async (): Promise<void> => {
       if (autoPaperBusy) return;
@@ -242,10 +260,6 @@ async function main(): Promise<void> {
         autoPaperBusy = false;
       }
     };
-    autoPaperTimer = setInterval(() => void runAutoPaper(), 60_000);
-    autoPaperTimer.unref();
-    bootAutoPaper = setTimeout(() => void runAutoPaper(), 30_000);
-    bootAutoPaper.unref();
   } else {
     console.info('[auto-paper] account-funded demo sweeps disabled');
   }
@@ -255,16 +269,7 @@ async function main(): Promise<void> {
   // the verdict is computed and stored for the dashboard — settings are only
   // applied while the bot is idle so a run is never yanked mid-trade.
   const runAutoTune = (): void => {
-    try {
-      const verdict = tuneSettings({ apply: !automation.isRunning() });
-      if (!verdict) return;
-      hub.emit({ type: 'tuning', ts: Date.now(), ...verdict });
-      console.info(
-        `[auto-tune] ${verdict.reason}${verdict.applied ? ` (applied min edge ${verdict.minEdge}, stake $${verdict.baseStake})` : ''}`,
-      );
-    } catch (err) {
-      console.warn(`[auto-tune] failed: ${err}`);
-    }
+    // Intentionally inert: research P&L cannot rewrite live settings.
   };
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -273,8 +278,6 @@ async function main(): Promise<void> {
     clearInterval(reconnectTimer);
     clearInterval(autoBacktestTimer);
     clearTimeout(bootAutoBacktest);
-    if (autoPaperTimer) clearInterval(autoPaperTimer);
-    if (bootAutoPaper) clearTimeout(bootAutoPaper);
     automation.dispose();
     client.disconnect();
     feed.stop();

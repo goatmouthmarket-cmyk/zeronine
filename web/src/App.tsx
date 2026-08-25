@@ -22,6 +22,7 @@ import {
   runPatternScan,
   refreshTrades,
   loadLedgerEntries,
+  loadPaperLedgerEntries,
   startPaperSimulation,
   stopPaperSimulation,
   resetPaperSimulation,
@@ -411,10 +412,10 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     void loadTestRuns();
   }, []);
 
-  const recentItems = [
-    ...s.trades.map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade })),
-    ...s.testRuns.map((run) => ({ type: 'run' as const, ts: run.finished_at || run.started_at, run })),
-  ].sort((a, b) => b.ts - a.ts).slice(0, 5);
+  const recentItems = s.trades
+    .map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade }))
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 5);
 
   const toggleBot = async () => {
     setStartError('');
@@ -575,10 +576,8 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             </div>
             <div class="activity">
               {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
-              {recentItems.map((item) => item.type === 'trade' ? (
+              {recentItems.map((item) => (
                 <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
-              ) : (
-                <ActivityRunRow key={`run-${item.run.id}`} run={item.run} onOpen={() => setActivityDetail({ type: 'run', run: item.run })} />
               ))}
             </div>
           </section>
@@ -1409,7 +1408,7 @@ function HistoryPage(): JSX.Element {
 
   useEffect(() => {
     if (s.owner) void loadLedgerEntries(300);
-  }, [s.owner, s.trades.length, s.paperSimulation?.totalTrades]);
+  }, [s.owner, s.trades.length]);
 
   if (!s.owner) {
     return <><header class="header"><div class="page-title">History</div></header><div class="empty-hint">Unlock the dashboard to view the private trade ledger.</div></>;
@@ -2045,6 +2044,10 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
     ? paperSimulation.equity
     : [];
 
+  useEffect(() => {
+    if (owner) void loadPaperLedgerEntries(300);
+  }, [owner, paperSimulation?.totalTrades]);
+
   const run = async () => {
     setErr('');
     onBusy(true);
@@ -2094,6 +2097,7 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
       </div>
       {!owner && <div class="tl-note">Simulation controls belong to the dashboard owner. You can still watch the public tick, signal, and virtual-contract stage above.</div>}
       <TlErr err={err} />
+      <LedgerSection entries={s.paperLedgerEntries} currency="V$" />
       {runs.length === 0 && !busy && <div class="empty-hint">No global paper research runs have been recorded yet.</div>}
       <LabCards runs={runs} equity={s.testEquity} kind="paper" busy={busy} />
     </>

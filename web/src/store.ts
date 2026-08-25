@@ -306,6 +306,7 @@ export interface State {
   automation: AutomationState | null;
   trades: TradeRow[];
   ledgerEntries: LedgerEntry[];
+  paperLedgerEntries: LedgerEntry[];
   performance: PerformanceSummary | null;
   selected: string | null;
   signal: { signal: SignalPick; phase: string } | null;
@@ -336,6 +337,7 @@ const initial: State = {
   automation: null,
   trades: [],
   ledgerEntries: [],
+  paperLedgerEntries: [],
   performance: null,
   selected: null,
   signal: null,
@@ -830,6 +832,16 @@ export async function loadLedgerEntries(limit = 200): Promise<void> {
   } catch {
     // Keep the audit view empty when the dashboard is locked or an older server is running.
     set({ ledgerEntries: [] });
+  }
+}
+
+/** Owner-only virtual paper history, intentionally separate from account audit rows. */
+export async function loadPaperLedgerEntries(limit = 200): Promise<void> {
+  try {
+    const res = await api<{ entries: LedgerEntry[] }>(`/api/paper/history?limit=${limit}`);
+    set({ paperLedgerEntries: Array.isArray(res.entries) ? res.entries.slice(0, limit) : [] });
+  } catch {
+    set({ paperLedgerEntries: [] });
   }
 }
 

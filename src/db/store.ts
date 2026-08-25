@@ -68,6 +68,7 @@ export interface LedgerEntryRow {
   entry_spot: number | null;
   exit_spot: number | null;
   exit_digit: number | null;
+  est_win: number | null;
 }
 
 export interface PaperLedgerContract {
@@ -86,6 +87,7 @@ export interface PaperLedgerContract {
   exitQuote?: number;
   exitDigit?: number;
   profit?: number;
+  estWin?: number;
 }
 
 export interface PerformanceSummary {
@@ -265,6 +267,7 @@ function migrate(d: DatabaseSync): void {
       entry_spot REAL,
       exit_spot REAL,
       exit_digit INTEGER,
+      est_win REAL,
       CHECK (
         (book = 'account' AND account_id IS NOT NULL AND account_mode IN ('demo', 'real', 'unknown'))
         OR (book = 'paper' AND account_id IS NULL AND account_mode = 'not_applicable')
@@ -451,6 +454,7 @@ function migrate(d: DatabaseSync): void {
     d.exec(`ALTER TABLE trade_ledger ADD COLUMN entry_key TEXT`);
     d.exec(`UPDATE trade_ledger SET entry_key = 'legacy:' || id WHERE entry_key IS NULL OR entry_key = ''`);
   }
+  if (!ledgerCols.has('est_win')) d.exec(`ALTER TABLE trade_ledger ADD COLUMN est_win REAL`);
   d.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_ledger_entry_key ON trade_ledger(entry_key)`);
   backfillTradeLedger(d);
   void cols;
@@ -1155,8 +1159,8 @@ export function appendPaperLedgerEntry(
     .prepare(
       `INSERT OR IGNORE INTO trade_ledger
        (entry_key, ts, book, account_id, account_mode, event, source, trade_id, contract_ref, market, contract_type,
-        barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit)
-       VALUES (?, ?, 'paper', NULL, 'not_applicable', ?, 'paper', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit, est_win)
+       VALUES (?, ?, 'paper', NULL, 'not_applicable', ?, 'paper', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       `paper:${contract.runId}:${contract.id}:${event}`,
@@ -1174,21 +1178,29 @@ export function appendPaperLedgerEntry(
       contract.entryQuote,
       contract.exitQuote ?? null,
       contract.exitDigit ?? null,
+      contract.estWin ?? null,
     );
   return getDb()
     .prepare('SELECT * FROM trade_ledger WHERE entry_key = ?')
     .get(`paper:${contract.runId}:${contract.id}:${event}`) as unknown as LedgerEntryRow;
 }
 
-/** Current-account financial events plus shared, clearly-labelled virtual research. */
+/** Current-account financial events only. */
 export function listLedgerEntries(limit = 100, accountId = currentAccountId()): LedgerEntryRow[] {
   return getDb()
     .prepare(
       `SELECT * FROM trade_ledger
-       WHERE book = 'paper' OR (book = 'account' AND account_id = ?)
+       WHERE book = 'account' AND account_id = ?
        ORDER BY id DESC LIMIT ?`,
     )
     .all(accountId, limit) as unknown as LedgerEntryRow[];
+}
+
+/** Virtual paper lifecycle only; never joins an account book. */
+export function listPaperLedgerEntries(limit = 100): LedgerEntryRow[] {
+  return getDb()
+    .prepare("SELECT * FROM trade_ledger WHERE book = 'paper' ORDER BY id DESC LIMIT ?")
+    .all(limit) as unknown as LedgerEntryRow[];
 }
 
 interface PerformanceTotals {

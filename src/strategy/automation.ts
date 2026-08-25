@@ -34,6 +34,7 @@ import {
   saveRecovery,
   setAutomation,
 } from '../db/store.ts';
+import { calibrateResearchProbability } from '../intelligence/researchCalibration.ts';
 
 const HOLD = 'hold';
 
@@ -415,6 +416,8 @@ export class Automation {
     const quotes: QuotedOption[] = [];
     for (const c of signal.candidates) {
       try {
+        const calibration = calibrateResearchProbability(c.market, c.direction, c.barrier, c.estWin);
+        const estWin = calibration.probability;
         const q = await this.client.getQuote({
           direction: c.direction,
           barrier: c.barrier,
@@ -429,14 +432,14 @@ export class Automation {
           market: c.market,
           direction: c.direction,
           barrier: c.barrier,
-          estWin: c.estWin,
+          estWin,
           consistency: c.consistency,
           entropy: c.entropy,
           momentum: c.momentum,
           ask: q.askPrice,
           payout: q.payout,
-          realEdge: c.estWin - (ratio > 0 ? 1 / ratio : 0),
-          realEV: c.estWin * ratio - 1,
+          realEdge: estWin - (ratio > 0 ? 1 / ratio : 0),
+          realEV: estWin * ratio - 1,
         });
         recordQuote(c.market, c.direction, c.barrier, ratio);
         this.emit({
@@ -447,8 +450,9 @@ export class Automation {
           barrier: c.barrier,
           ask: q.askPrice,
           payout: q.payout,
-          estWin: c.estWin,
-          realEdge: c.estWin - (ratio > 0 ? 1 / ratio : 0),
+          estWin,
+          realEdge: estWin - (ratio > 0 ? 1 / ratio : 0),
+          researchCalibration: calibration,
         });
       } catch (err) {
         this.emit({ type: 'quote_error', ts: Date.now(), option: { ...c }, message: String(err) });

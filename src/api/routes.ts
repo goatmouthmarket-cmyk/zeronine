@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { config, shouldScheduleAutoDemoPaperSweep } from '../config.ts';
+import { config } from '../config.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
@@ -36,6 +36,7 @@ import {
   listMarkets,
   listDecisionEvents,
   listLedgerEntries,
+  listPaperLedgerEntries,
   listTestRuns,
   listTrades,
   markTradePurchased,
@@ -163,13 +164,20 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return { trades: listTrades(limit), performance: getPerformanceSummary() };
   });
 
-  // Account entries are scoped to the active Deriv login. Shared paper rows
-  // are virtual research only and are returned with an explicit `book` label.
+  // Account entries are scoped to the active Deriv login and never include
+  // virtual research.
   app.get('/api/ledger', async (req) => {
     if (!isOwner(req)) return { entries: [] };
     const q = req.query as { limit?: string };
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
     return { entries: listLedgerEntries(limit) };
+  });
+
+  app.get('/api/paper/history', async (req) => {
+    if (!isOwner(req)) return { entries: [] };
+    const q = req.query as { limit?: string };
+    const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
+    return { entries: listPaperLedgerEntries(limit) };
   });
 
   app.get('/api/performance', async (req) =>
@@ -262,14 +270,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.get('/api/test/paper/status', async () => {
-    const intervalMs = config.autoPaperIntervalMs;
-    const lastRunAt = Number(getMeta('paper_last_run_at') ?? 0);
-    const enabled = shouldScheduleAutoDemoPaperSweep(config);
     return {
-      enabled,
-      intervalMs,
-      lastRunAt,
-      nextRunAt: enabled ? (lastRunAt > 0 ? lastRunAt + intervalMs : Date.now() + intervalMs) : null,
+      enabled: false,
+      intervalMs: 0,
+      lastRunAt: 0,
+      nextRunAt: null,
+      reason: 'account-funded paper sweeps are retired; pure virtual simulation is operator-controlled',
     };
   });
 
