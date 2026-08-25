@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
@@ -373,6 +373,9 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const [resettingPerformance, setResettingPerformance] = useState(false);
   const [activityDetail, setActivityDetail] = useState<ActivityDetail | null>(null);
   const [marketChooserOpen, setMarketChooserOpen] = useState(false);
+  const [manualDirection, setManualDirection] = useState<'over' | 'under'>('over');
+  const [manualOverBarrier, setManualOverBarrier] = useState(0);
+  const [manualUnderBarrier, setManualUnderBarrier] = useState(9);
   const cooldownLeft = useBotCooldown();
 
   const market = s.markets.find((m) => m.symbol === s.selected) ?? s.markets[0];
@@ -400,6 +403,19 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
 
   const candidates = s.signal?.signal.candidates ?? [];
   const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
+  const tickerPredictions = useMemo(() => new Map(
+    (s.signal?.signal.candidates ?? []).map((candidate) => [candidate.market, candidate]),
+  ), [s.signal]);
+  const tickerProfits = useMemo(() => {
+    const totals = new Map<string, { count: number; profit: number }>();
+    for (const trade of s.trades) {
+      const current = totals.get(trade.market) ?? { count: 0, profit: 0 };
+      current.count += 1;
+      current.profit += trade.profit ?? 0;
+      totals.set(trade.market, current);
+    }
+    return totals;
+  }, [s.trades]);
 
   const currentStreak = (() => {
     let streak = 0;
@@ -510,10 +526,10 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
       <div class="ticker">
         <div class="ticker-row">
           {s.markets.map((m) => (
-            <TickerItem key={m.symbol} market={m} active={m.symbol === market?.symbol} />
+            <TickerItem key={m.symbol} market={m} active={m.symbol === market?.symbol} prediction={tickerPredictions.get(m.symbol)} performance={tickerProfits.get(m.symbol)} />
           ))}
           {s.markets.map((m) => (
-            <TickerItem key={`dup-${m.symbol}`} market={m} active={m.symbol === market?.symbol} />
+            <TickerItem key={`dup-${m.symbol}`} market={m} active={m.symbol === market?.symbol} prediction={tickerPredictions.get(m.symbol)} performance={tickerProfits.get(m.symbol)} />
           ))}
         </div>
       </div>
@@ -536,25 +552,33 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               feedConnected={s.feed?.connected ?? false}
               recovery={s.recovery}
               onChooseMarket={() => setMarketChooserOpen(true)}
+              marketChooserOpen={marketChooserOpen}
+              onCloseMarketChooser={() => setMarketChooserOpen(false)}
+              manualDirection={manualDirection}
+              manualOverBarrier={manualOverBarrier}
+              manualUnderBarrier={manualUnderBarrier}
+              onManualDirection={setManualDirection}
+              onManualBarrier={(direction, barrier) => direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier)}
+              onManualMarket={selectMarket}
             />
 
             <div class="manual-slot">
               {!automation && !decision && (
                 <div class="side-selector">
                   <button
-                    class={`side-btn over${activeDirection === 'over' ? ' active' : ''}`}
+                    class={`side-btn over${manualDirection === 'over' ? ' active' : ''}`}
                     disabled={guest || !market || manualBusy}
-                    onClick={() => placeManual('over')}
+                    onClick={() => void placeManual('over', manualOverBarrier)}
                   >
-                    <span class="side-name">Over 0</span>
+                    <span class="side-name">Over {manualOverBarrier}</span>
                     <span class="side-odds">{oddsText}</span>
                   </button>
                   <button
-                    class={`side-btn under${activeDirection === 'under' ? ' active' : ''}`}
+                    class={`side-btn under${manualDirection === 'under' ? ' active' : ''}`}
                     disabled={guest || !market || manualBusy}
-                    onClick={() => placeManual('under')}
+                    onClick={() => void placeManual('under', manualUnderBarrier)}
                   >
-                    <span class="side-name">Under 9</span>
+                    <span class="side-name">Under {manualUnderBarrier}</span>
                     <span class="side-odds">{oddsText}</span>
                   </button>
                   <div class={`manual-msg${manualError ? ' error' : ''}`} aria-live="polite">{manualMsg}</div>
@@ -617,32 +641,13 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
         </div>
       </div>
       {activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
-      {marketChooserOpen && (
-        <MarketConfidenceChooser
-          markets={s.markets}
-          candidates={heroCandidates}
-          selectedMarket={market?.symbol ?? null}
-          stake={s.settings?.base_stake ?? 1}
-          busy={manualBusy}
-          guest={guest}
-          onClose={() => {
-            setMarketChooserOpen(false);
-            requestAnimationFrame(() => document.getElementById('market-pulse-trigger')?.focus());
-          }}
-          onSelect={selectMarket}
-          onPlace={placeManual}
-        />
-      )}
     </>
   );
 }
 
-function TickerItem({ market, active }: { market: Market; active: boolean }): JSX.Element {
-  const s = useStore();
+function TickerItem({ market, active, prediction: pred, performance }: { market: Market; active: boolean; prediction?: SignalCandidate; performance?: { count: number; profit: number } }): JSX.Element {
   const digit = market.lastDigit >= 0 ? market.lastDigit : '–';
-  const pred = (s.signal?.signal.candidates ?? []).find((c) => c.market === market.symbol);
-  const trades = s.trades.filter((t) => t.market === market.symbol);
-  const profit = trades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
+  const profit = performance?.profit ?? 0;
 
   return (
     <div
@@ -663,7 +668,7 @@ function TickerItem({ market, active }: { market: Market; active: boolean }): JS
         </span>
       )}
       <span class={`tick-pl${profit >= 0 ? ' pos' : ' neg'}`}>
-        {trades.length ? fmtSigned(profit, '$') : '·'}
+        {performance?.count ? fmtSigned(profit, '$') : '·'}
       </span>
     </div>
   );
@@ -939,6 +944,102 @@ function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: ()
   );
 }
 
+function InlineMarketChooser({
+  markets,
+  candidates,
+  selectedMarket,
+  direction,
+  barrier,
+  onDirection,
+  onBarrier,
+  onMarket,
+  onClose,
+}: {
+  markets: Market[];
+  candidates: SignalCandidate[];
+  selectedMarket: Market | null;
+  direction: 'over' | 'under';
+  barrier: number;
+  onDirection: (direction: 'over' | 'under') => void;
+  onBarrier: (direction: 'over' | 'under', barrier: number) => void;
+  onMarket: (symbol: string) => void;
+  onClose: () => void;
+}): JSX.Element {
+  const bestByMarket = new Map<string, SignalCandidate>();
+  for (const candidate of candidates) {
+    const current = bestByMarket.get(candidate.market);
+    if (!current || candidate.estWin > current.estWin || (candidate.estWin === current.estWin && candidate.edge > current.edge)) {
+      bestByMarket.set(candidate.market, candidate);
+    }
+  }
+  const ranked = [...markets].sort((a, b) => {
+    const ac = bestByMarket.get(a.symbol);
+    const bc = bestByMarket.get(b.symbol);
+    return (bc?.estWin ?? -1) - (ac?.estWin ?? -1)
+      || (bc?.edge ?? -1) - (ac?.edge ?? -1)
+      || (b.health?.score ?? 0) - (a.health?.score ?? 0);
+  });
+  const recommendation = selectedMarket ? bestByMarket.get(selectedMarket.symbol) ?? null : null;
+  const exact = recommendation?.direction === direction && recommendation.barrier === barrier ? recommendation : null;
+  const min = direction === 'over' ? 0 : 1;
+  const max = direction === 'over' ? 8 : 9;
+  const setDirection = (next: 'over' | 'under') => {
+    onDirection(next);
+    const nextMin = next === 'over' ? 0 : 1;
+    const nextMax = next === 'over' ? 8 : 9;
+    onBarrier(next, Math.max(nextMin, Math.min(nextMax, barrier)));
+  };
+  const useStrongest = () => {
+    const strongest = ranked.map((market) => bestByMarket.get(market.symbol)).find(Boolean);
+    if (!strongest) return;
+    onMarket(strongest.market);
+    onDirection(strongest.direction);
+    onBarrier(strongest.direction, strongest.barrier);
+  };
+
+  return (
+    <section class="inline-market-chooser" aria-label="Manual market and barrier setup">
+      <div class="inline-chooser-head">
+        <span>Manual setup</span>
+        <button type="button" onClick={onClose} aria-label="Return to live chart">×</button>
+      </div>
+      <label class="inline-market-select">
+        <span>Market · strongest first</span>
+        <select value={selectedMarket?.symbol ?? ''} onChange={(event) => {
+          const symbol = (event.currentTarget as HTMLSelectElement).value;
+          onMarket(symbol);
+          const recommended = bestByMarket.get(symbol);
+          if (recommended) {
+            onDirection(recommended.direction);
+            onBarrier(recommended.direction, recommended.barrier);
+          }
+        }}>
+          {ranked.map((market, index) => {
+            const candidate = bestByMarket.get(market.symbol);
+            return <option value={market.symbol} key={market.symbol}>{index + 1}. {shortMarketName(market.display)}{candidate ? ` · ${Math.round(candidate.estWin * 100)}%` : ''}</option>;
+          })}
+        </select>
+      </label>
+      <div class="inline-direction" role="group" aria-label="Manual direction">
+        <button type="button" class={direction === 'over' ? 'active over' : ''} onClick={() => setDirection('over')}>Over</button>
+        <button type="button" class={direction === 'under' ? 'active under' : ''} onClick={() => setDirection('under')}>Under</button>
+      </div>
+      <div class="inline-barrier">
+        <span>Barrier</span>
+        <button type="button" onClick={() => onBarrier(direction, Math.max(min, barrier - 1))} aria-label="Decrease barrier">−</button>
+        <input type="number" inputMode="numeric" min={min} max={max} step={1} value={barrier} onInput={(event) => onBarrier(direction, Math.max(min, Math.min(max, Number((event.currentTarget as HTMLInputElement).value))))} />
+        <button type="button" onClick={() => onBarrier(direction, Math.min(max, barrier + 1))} aria-label="Increase barrier">+</button>
+      </div>
+      <div class="inline-confidence">
+        <div><span>Confidence</span><b>{exact ? `${(exact.estWin * 100).toFixed(1)}%` : 'Custom'}</b></div>
+        <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
+        <button type="button" onClick={useStrongest} disabled={!candidates.length}>Use strongest</button>
+      </div>
+      <p>Use the existing buttons below to place this setup.</p>
+    </section>
+  );
+}
+
 function MarketConfidenceChooser({
   markets,
   candidates,
@@ -1097,6 +1198,14 @@ function DecisionHero({
   feedConnected,
   recovery,
   onChooseMarket,
+  marketChooserOpen,
+  onCloseMarketChooser,
+  manualDirection,
+  manualOverBarrier,
+  manualUnderBarrier,
+  onManualDirection,
+  onManualBarrier,
+  onManualMarket,
 }: {
   markets: Market[];
   selectedMarket: Market | null;
@@ -1112,6 +1221,14 @@ function DecisionHero({
   feedConnected: boolean;
   recovery: Recovery | null;
   onChooseMarket: () => void;
+  marketChooserOpen: boolean;
+  onCloseMarketChooser: () => void;
+  manualDirection: 'over' | 'under';
+  manualOverBarrier: number;
+  manualUnderBarrier: number;
+  onManualDirection: (direction: 'over' | 'under') => void;
+  onManualBarrier: (direction: 'over' | 'under', barrier: number) => void;
+  onManualMarket: (symbol: string) => void;
 }): JSX.Element {
   const best = resolveTarget(candidates, quotes, decision);
 
@@ -1196,7 +1313,19 @@ function DecisionHero({
         </div>
       </div>
       </div>
-      <MarketPulse market={selectedMarket} onChoose={onChooseMarket} />
+      {marketChooserOpen ? (
+        <InlineMarketChooser
+          markets={markets}
+          candidates={candidates}
+          selectedMarket={selectedMarket}
+          direction={manualDirection}
+          barrier={manualDirection === 'over' ? manualOverBarrier : manualUnderBarrier}
+          onDirection={onManualDirection}
+          onBarrier={onManualBarrier}
+          onMarket={onManualMarket}
+          onClose={onCloseMarketChooser}
+        />
+      ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} />}
     </div>
   );
 }

@@ -134,16 +134,17 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, trade: {} }) });
   });
   await page.getByRole('button', { name: 'Choose a market and manual barrier from the live quote chart' }).click();
-  const chooser = page.getByRole('dialog', { name: 'Choose the strongest market' });
+  const chooser = page.locator('.inline-market-chooser');
   await expect(chooser).toBeVisible();
-  await chooser.locator('.market-rank-row').first().click();
+  await chooser.locator('select').selectOption({ index: 0 });
   expect(manualBody).toBeNull();
   await chooser.getByRole('button', { name: 'Under', exact: true }).click();
-  await chooser.locator('.manual-barrier input').fill('7');
-  await chooser.locator('.manual-place').click();
+  await chooser.locator('.inline-barrier input').fill('7');
+  await expect(page.locator('.side-btn.under .side-name')).toHaveText('Under 7');
+  await page.locator('.side-btn.under').click();
   await expect.poll(() => manualBody).toEqual(expect.objectContaining({ direction: 'under', barrier: 7 }));
-  await expect(chooser).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Choose a market and manual barrier from the live quote chart' })).toBeFocused();
+  await chooser.getByRole('button', { name: 'Return to live chart' }).click();
+  await expect(page.getByRole('button', { name: 'Choose a market and manual barrier from the live quote chart' })).toBeVisible();
 
   const selector = page.locator('.side-selector');
   const selectorBefore = await selector.boundingBox();
