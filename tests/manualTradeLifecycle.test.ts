@@ -30,6 +30,12 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
   let buyCalls = 0;
   let purchasingWasHidden = false;
+  let finishSettlement: ((value: {
+    contractId: string; settled: true; status: 'won'; profit: number; sellPrice: number; buyPrice: number;
+    entrySpot: number; exitSpot: number; exitDigit: number;
+  }) => void) | undefined;
+  const events: Array<Record<string, unknown>> = [];
+  hub.on((event) => events.push(event));
   const client = {
     isConnected: true,
     getQuote: async () => ({ id: 'proposal-1', direction: 'over' as const, barrier: 0, askPrice: 2, payout: 3.8 }),
@@ -38,7 +44,7 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
       purchasingWasHidden = store.getPendingTrades().length === 0;
       return { contractId: 'manual-contract-1', buyPrice: 2, payout: 3.8 };
     },
-    settleContract: async () => ({ contractId: 'manual-contract-1', settled: false, status: 'unknown' as const }),
+    settleContract: async () => new Promise((resolve) => { finishSettlement = resolve; }),
   };
   const automation = new autoMod.Automation(registry, client as never, hub);
   const paperSimulator = new (await import('../src/simulation/paperSimulator.ts')).PaperSimulator();
@@ -57,6 +63,19 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   assert.equal(purchasingWasHidden, true, 'watch reconciliation must not see a row before contract purchase');
   assert.equal(store.getPendingTrades().length, 1);
   assert.equal(store.getPendingTrades()[0]?.contract_id, 'manual-contract-1');
+
+  finishSettlement?.({
+    contractId: 'manual-contract-1', settled: true, status: 'won', profit: 1.8,
+    sellPrice: 3.8, buyPrice: 2, entrySpot: 100.1, exitSpot: 100.9, exitDigit: 9,
+  });
+  await assert.doesNotReject(async () => {
+    for (let attempt = 0; attempt < 20 && store.getPendingTrades().length > 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(store.getPendingTrades().length, 0);
+  });
+  const settledEvent = events.find((event) => event.type === 'trade' && event.settled === true);
+  assert.equal((settledEvent?.trade as { status?: string } | undefined)?.status, 'won');
 
   automation.dispose();
   await app.close();

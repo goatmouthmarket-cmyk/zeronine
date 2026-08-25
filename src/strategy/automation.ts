@@ -19,6 +19,7 @@ import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
   accountIdForLogin,
   getAutomation,
+  getTrade,
   getPendingTrades,
   getRecovery,
   getSession,
@@ -741,6 +742,8 @@ export class Automation {
         exitDigit: outcome.exitDigit,
       };
       resolveTrade(trade.id, status, profit, bought.contractId, exitDetails, accountId);
+      const settledTrade = getTrade(trade.id, accountId);
+      if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, settled: true });
       if (!won && conservative) this.markLoss(decision.market, decision.direction, decision.barrier);
       const next = applyOutcome(won, profit, settings, session.balance, accountId);
       saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery(accountId).last_win_epoch, updated_at: Date.now() }, accountId);
@@ -797,6 +800,8 @@ export class Automation {
             exitSpot: outcome.exitSpot,
             exitDigit: outcome.exitDigit,
           }, t.account_id);
+          const settledTrade = getTrade(t.id, t.account_id);
+          if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, settled: true, reconciled: true });
           if (t.purchase_id.startsWith('auto-')) {
             const settings = getSettings();
             if (!won && settings.strategy_mode === 'conservative') {

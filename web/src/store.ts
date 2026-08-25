@@ -544,6 +544,21 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       };
       patch.contract = c;
       if (c.result) {
+        const contractId = String(evt.contractId ?? '');
+        const tradeId = Number(evt.tradeId ?? 0);
+        const update = (evt.update ?? {}) as Record<string, unknown>;
+        patch.trades = state.trades.map((trade) => {
+          if (!(tradeId > 0 ? trade.id === tradeId : contractId && trade.contract_id === contractId)) return trade;
+          return {
+            ...trade,
+            status: c.result as TradeRow['status'],
+            profit: Number(c.profit ?? trade.profit ?? 0),
+            resolved_at: Date.now(),
+            entry_spot: Number.isFinite(Number(update.entrySpot)) ? Number(update.entrySpot) : trade.entry_spot,
+            exit_spot: Number.isFinite(Number(update.exitSpot)) ? Number(update.exitSpot) : trade.exit_spot,
+            exit_digit: Number.isFinite(Number(update.exitDigit)) ? Number(update.exitDigit) : trade.exit_digit,
+          };
+        });
         if (c.phase !== 'purchased') {
           void refreshTrades();
         }

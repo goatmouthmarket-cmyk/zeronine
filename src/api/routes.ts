@@ -28,6 +28,7 @@ import {
   getCalibration,
   getMeta,
   getOpenTrade,
+  getTrade,
   getPerformanceSummary,
   getRecovery,
   getSession,
@@ -514,7 +515,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
       markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
-      hub.emit({ type: 'trade', ts: Date.now(), trade, manual: true });
+      hub.emit({ type: 'trade', ts: Date.now(), trade: getTrade(trade.id, trade.account_id) ?? trade, manual: true });
       settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
       return { ok: true, trade: { id: trade.id, contractId: bought.contractId, ask: quote.askPrice, payout: quote.payout } };
     } catch (err) {
@@ -626,7 +627,8 @@ function settleInBackground(
   payout: number,
   accountId?: string,
 ): void {
-  void client
+  let attempts = 0;
+  const settle = (): void => { void client
     .settleContract(contractId, (u) => hub.emit({ type: 'contract', ts: Date.now(), contractId: u.contractId, update: u, manual: true }))
     .then((outcome) => {
       if (outcome.settled) {
@@ -641,12 +643,24 @@ function settleInBackground(
           { entrySpot: outcome.entrySpot, exitSpot: outcome.exitSpot, exitDigit: outcome.exitDigit },
           accountId,
         );
-        hub.emit({ type: 'contract', ts: Date.now(), contractId, result: status, profit, update: outcome });
+        const settledTrade = getTrade(tradeId, accountId);
+        if (settledTrade) hub.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, manual: true, settled: true });
+        hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, result: status, profit, update: outcome });
       } else {
         hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement' });
+        if (++attempts < 12) {
+          const retry = setTimeout(settle, 1_000);
+          retry.unref();
+        }
       }
     })
     .catch((err) => {
       hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement', error: String(err) });
+      if (++attempts < 12) {
+        const retry = setTimeout(settle, 1_000);
+        retry.unref();
+      }
     });
+  };
+  settle();
 }

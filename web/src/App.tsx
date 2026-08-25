@@ -426,6 +426,12 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     .map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade }))
     .sort((a, b) => b.ts - a.ts)
     .slice(0, 5), [s.trades]);
+  const hasOpenTrade = s.trades.some((trade) => trade.status === 'pending' || trade.status === 'purchasing');
+  useEffect(() => {
+    if (!active || !hasOpenTrade) return;
+    const timer = window.setInterval(() => void refreshTrades(), 1_500);
+    return () => window.clearInterval(timer);
+  }, [active, hasOpenTrade]);
   const marketNames = useMemo(
     () => new Map(s.markets.map((item) => [item.symbol, item.display])),
     [s.markets],

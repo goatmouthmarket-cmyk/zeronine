@@ -72,12 +72,9 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
         return;
       }
 
-      if (
-        ['trade', 'contract', 'decision', 'hold', 'error'].includes(evt.type) &&
-        socket.bufferedAmount > MAX_BUFFER
-      ) {
-        return; // drop non-critical events for slow clients
-      }
+      // Account lifecycle events must never be dropped: losing a settlement
+      // leaves an otherwise completed trade displayed as Open until reload.
+      // Tick traffic is already bounded above and can wait behind this send.
       socket.send(JSON.stringify(evt));
     });
 
