@@ -47,6 +47,10 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.ok(Array.isArray(stateBody.intelligence ?? []));
   assert.equal(stateBody.paperSimulation.phase, 'idle');
 
+  const ledger = await app.inject({ method: 'GET', url: '/api/ledger?limit=10' });
+  assert.equal(ledger.statusCode, 200);
+  assert.deepEqual(ledger.json().entries, []);
+
   const evidence = await app.inject({ method: 'GET', url: '/api/test/evidence?limit=10' });
   assert.equal(evidence.statusCode, 200);
   const evidenceBody = evidence.json();

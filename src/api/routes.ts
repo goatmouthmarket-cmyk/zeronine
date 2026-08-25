@@ -35,6 +35,7 @@ import {
   insertTrade,
   listMarkets,
   listDecisionEvents,
+  listLedgerEntries,
   listTestRuns,
   listTrades,
   markTradePurchased,
@@ -160,6 +161,15 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const q = req.query as { limit?: string };
     const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
     return { trades: listTrades(limit), performance: getPerformanceSummary() };
+  });
+
+  // Account entries are scoped to the active Deriv login. Shared paper rows
+  // are virtual research only and are returned with an explicit `book` label.
+  app.get('/api/ledger', async (req) => {
+    if (!isOwner(req)) return { entries: [] };
+    const q = req.query as { limit?: string };
+    const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
+    return { entries: listLedgerEntries(limit) };
   });
 
   app.get('/api/performance', async (req) =>

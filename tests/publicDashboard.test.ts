@@ -55,6 +55,8 @@ test('public dashboard exposes global market data but protects the connected acc
 
   const guestWrite = await app.inject({ method: 'PUT', url: '/api/settings', payload: { base_stake: 99 } });
   assert.equal(guestWrite.statusCode, 403);
+  const guestLedger = await app.inject({ method: 'GET', url: '/api/ledger' });
+  assert.deepEqual(guestLedger.json().entries, []);
   const guestPaper = await app.inject({ method: 'POST', url: '/api/paper/start' });
   assert.equal(guestPaper.statusCode, 403);
 
@@ -64,6 +66,9 @@ test('public dashboard exposes global market data but protects the connected acc
   const owner = await app.inject({ method: 'GET', url: '/api/state', headers: { cookie: cookieHeader } });
   assert.equal(owner.json().session.loginid, 'CR123');
   assert.equal(owner.json().trades.length, 1);
+  const ownerLedger = await app.inject({ method: 'GET', url: '/api/ledger', headers: { cookie: cookieHeader } });
+  assert.equal(ownerLedger.json().entries.length, 1);
+  assert.equal(ownerLedger.json().entries[0].book, 'account');
 
   const startPaper = await app.inject({ method: 'POST', url: '/api/paper/start', headers: { cookie: cookieHeader } });
   assert.equal(startPaper.statusCode, 200);

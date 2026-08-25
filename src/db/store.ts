@@ -18,6 +18,8 @@ export interface SessionRow {
 export interface TradeRow {
   id: number;
   account_id?: string;
+  /** Account mode captured when the contract was requested. */
+  account_mode?: 'demo' | 'real' | 'unknown';
   ts: number;
   market: string;
   contract_type: 'DIGITOVER' | 'DIGITUNDER';
@@ -38,6 +40,52 @@ export interface TradeRow {
   entry_spot?: number;
   exit_spot?: number;
   exit_digit?: number;
+}
+
+/**
+ * Immutable audit entries. Account entries mirror Deriv contract lifecycle
+ * events; paper entries are explicitly virtual and never belong to an account.
+ */
+export interface LedgerEntryRow {
+  id: number;
+  entry_key: string;
+  ts: number;
+  book: 'account' | 'paper';
+  account_id: string | null;
+  account_mode: 'demo' | 'real' | 'unknown' | 'not_applicable';
+  event: 'requested' | 'purchased' | 'settled' | 'cancelled';
+  source: 'manual' | 'bot' | 'paper';
+  trade_id: number | null;
+  contract_ref: string;
+  market: string;
+  contract_type: 'DIGITOVER' | 'DIGITUNDER';
+  barrier: number;
+  stake: number;
+  payout: number;
+  profit: number;
+  status: string;
+  reason: string;
+  entry_spot: number | null;
+  exit_spot: number | null;
+  exit_digit: number | null;
+}
+
+export interface PaperLedgerContract {
+  id: number;
+  runId: string;
+  market: string;
+  direction: 'over' | 'under';
+  barrier: number;
+  stake: number;
+  payoutRatio: number;
+  status: 'open' | 'won' | 'lost' | 'cancelled';
+  entryEpoch: number;
+  entryQuote: number;
+  entryDigit: number;
+  exitEpoch?: number;
+  exitQuote?: number;
+  exitDigit?: number;
+  profit?: number;
 }
 
 export interface PerformanceSummary {
@@ -175,6 +223,7 @@ function migrate(d: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS trades (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id TEXT NOT NULL DEFAULT '__legacy__',
+      account_mode TEXT NOT NULL DEFAULT 'unknown',
       ts INTEGER,
       market TEXT,
       contract_type TEXT,
@@ -194,6 +243,35 @@ function migrate(d: DatabaseSync): void {
       resolved_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades(ts DESC);
+    CREATE TABLE IF NOT EXISTS trade_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_key TEXT NOT NULL UNIQUE,
+      ts INTEGER NOT NULL,
+      book TEXT NOT NULL CHECK (book IN ('account', 'paper')),
+      account_id TEXT,
+      account_mode TEXT NOT NULL CHECK (account_mode IN ('demo', 'real', 'unknown', 'not_applicable')),
+      event TEXT NOT NULL CHECK (event IN ('requested', 'purchased', 'settled', 'cancelled')),
+      source TEXT NOT NULL CHECK (source IN ('manual', 'bot', 'paper')),
+      trade_id INTEGER,
+      contract_ref TEXT NOT NULL DEFAULT '',
+      market TEXT NOT NULL,
+      contract_type TEXT NOT NULL,
+      barrier INTEGER NOT NULL,
+      stake REAL NOT NULL DEFAULT 0,
+      payout REAL NOT NULL DEFAULT 0,
+      profit REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      entry_spot REAL,
+      exit_spot REAL,
+      exit_digit INTEGER,
+      CHECK (
+        (book = 'account' AND account_id IS NOT NULL AND account_mode IN ('demo', 'real', 'unknown'))
+        OR (book = 'paper' AND account_id IS NULL AND account_mode = 'not_applicable')
+      )
+    );
+    CREATE INDEX IF NOT EXISTS idx_trade_ledger_account_id ON trade_ledger(account_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_trade_ledger_book_id ON trade_ledger(book, id DESC);
     CREATE TABLE IF NOT EXISTS performance_baseline (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       wins INTEGER NOT NULL DEFAULT 0,
@@ -360,10 +438,21 @@ function migrate(d: DatabaseSync): void {
   if (!cols.has('entry_spot')) d.exec(`ALTER TABLE trades ADD COLUMN entry_spot REAL`);
   if (!cols.has('exit_spot')) d.exec(`ALTER TABLE trades ADD COLUMN exit_spot REAL`);
   if (!cols.has('exit_digit')) d.exec(`ALTER TABLE trades ADD COLUMN exit_digit INTEGER`);
+  if (!cols.has('resolved_at')) d.exec(`ALTER TABLE trades ADD COLUMN resolved_at INTEGER`);
   if (!cols.has('account_id')) d.exec(`ALTER TABLE trades ADD COLUMN account_id TEXT NOT NULL DEFAULT '__legacy__'`);
+  if (!cols.has('account_mode')) d.exec(`ALTER TABLE trades ADD COLUMN account_mode TEXT NOT NULL DEFAULT 'unknown'`);
   if (!cols.has('origin')) d.exec(`ALTER TABLE trades ADD COLUMN origin TEXT NOT NULL DEFAULT 'bot'`);
   d.exec(`UPDATE trades SET account_id = '${LEGACY_ACCOUNT_ID}' WHERE account_id IS NULL OR account_id = ''`);
   d.exec(`CREATE INDEX IF NOT EXISTS idx_trades_account_id ON trades(account_id, id DESC)`);
+  const ledgerCols = new Set(
+    (d.prepare(`PRAGMA table_info(trade_ledger)`).all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!ledgerCols.has('entry_key')) {
+    d.exec(`ALTER TABLE trade_ledger ADD COLUMN entry_key TEXT`);
+    d.exec(`UPDATE trade_ledger SET entry_key = 'legacy:' || id WHERE entry_key IS NULL OR entry_key = ''`);
+  }
+  d.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_ledger_entry_key ON trade_ledger(entry_key)`);
+  backfillTradeLedger(d);
   void cols;
 
   const settingsCols = new Set(
@@ -417,6 +506,41 @@ function migrate(d: DatabaseSync): void {
       (account_id, mode, streak, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at)
     SELECT '${LEGACY_ACCOUNT_ID}', mode, streak, debt, attempts, cycle_stake, peak_balance, last_win_epoch, updated_at
       FROM recovery_state WHERE id = 1;
+  `);
+}
+
+/** Build immutable lifecycle rows for contracts created before the ledger. */
+function backfillTradeLedger(d: DatabaseSync): void {
+  const source = "CASE WHEN origin IN ('manual', 'bot', 'paper') THEN origin WHEN reason = 'manual' THEN 'manual' ELSE 'bot' END";
+  const mode = "CASE WHEN account_mode IN ('demo', 'real') THEN account_mode ELSE 'unknown' END";
+  d.exec(`
+    INSERT OR IGNORE INTO trade_ledger
+      (entry_key, ts, book, account_id, account_mode, event, source, trade_id, contract_ref, market, contract_type,
+       barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit)
+    SELECT
+      'account:' || id || ':requested', COALESCE(ts, 0), 'account', account_id, ${mode}, 'requested', ${source}, id,
+      COALESCE(NULLIF(purchase_id, ''), 'trade:' || id), market, contract_type, barrier, stake, payout, 0, status,
+      COALESCE(reason, ''), entry_spot, exit_spot, exit_digit
+    FROM trades;
+
+    INSERT OR IGNORE INTO trade_ledger
+      (entry_key, ts, book, account_id, account_mode, event, source, trade_id, contract_ref, market, contract_type,
+       barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit)
+    SELECT
+      'account:' || id || ':purchased', COALESCE(ts, 0), 'account', account_id, ${mode}, 'purchased', ${source}, id,
+      contract_id, market, contract_type, barrier, stake, payout, 0, status,
+      COALESCE(reason, ''), entry_spot, exit_spot, exit_digit
+    FROM trades WHERE contract_id IS NOT NULL AND contract_id <> '';
+
+    INSERT OR IGNORE INTO trade_ledger
+      (entry_key, ts, book, account_id, account_mode, event, source, trade_id, contract_ref, market, contract_type,
+       barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit)
+    SELECT
+      'account:' || id || ':settled', COALESCE(resolved_at, ts, 0), 'account', account_id, ${mode}, 'settled', ${source}, id,
+      contract_id, market, contract_type, barrier, stake, payout, profit, status,
+      COALESCE(reason, ''), entry_spot, exit_spot, exit_digit
+    FROM trades
+    WHERE status <> 'pending' AND contract_id IS NOT NULL AND contract_id <> '';
   `);
 }
 
@@ -850,14 +974,16 @@ export function digitDistribution(market: string, limit: number): Array<{ digit:
 
 export function insertTrade(t: Omit<TradeRow, 'id' | 'resolved_at'> & { resolved_at?: number }): TradeRow {
   const accountId = currentAccountId();
+  const accountMode: TradeRow['account_mode'] = getSession()?.mode ?? 'unknown';
   const info = getDb()
     .prepare(
-      `INSERT INTO trades (account_id, ts, market, contract_type, barrier, duration, duration_unit, stake,
+      `INSERT INTO trades (account_id, account_mode, ts, market, contract_type, barrier, duration, duration_unit, stake,
         ask_price, payout, est_win, profit, status, contract_id, purchase_id, reason, origin, resolved_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       accountId,
+      accountMode,
       t.ts,
       t.market,
       t.contract_type,
@@ -876,9 +1002,11 @@ export function insertTrade(t: Omit<TradeRow, 'id' | 'resolved_at'> & { resolved
       t.origin ?? (t.reason === 'manual' ? 'manual' : 'bot'),
       t.resolved_at ?? null,
     );
-  return getDb()
+  const row = getDb()
     .prepare('SELECT * FROM trades WHERE id = ?')
     .get(Number(info.lastInsertRowid)) as unknown as TradeRow;
+  appendAccountLedgerEntry(row, 'requested');
+  return row;
 }
 
 export function getTrade(id: number, accountId = currentAccountId()): TradeRow | null {
@@ -912,6 +1040,11 @@ export function resolveTrade(
   extra?: { entrySpot?: number; exitSpot?: number; exitDigit?: number },
   accountId = currentAccountId(),
 ): void {
+  const before = getTrade(id, accountId);
+  if (!before) return;
+  // Settlement callbacks can be replayed after reconnect. Preserve the first
+  // terminal result so both the trade row and immutable ledger stay aligned.
+  if (before.status !== 'pending') return;
   getDb()
     .prepare(
       `UPDATE trades SET status=?, profit=?, contract_id=?, resolved_at=?,
@@ -928,19 +1061,121 @@ export function resolveTrade(
       id,
       accountId,
     );
+  const settled = getTrade(id, accountId);
+  if (settled) appendAccountLedgerEntry(settled, 'settled');
   updateScannerLogResult(id, status, profit);
 }
 
 export function markTradePurchased(id: number, contractId: string, stake: number, payout: number, accountId = currentAccountId()): void {
+  const before = getTrade(id, accountId);
+  if (!before) return;
   getDb()
     .prepare('UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=? WHERE id=? AND account_id=?')
     .run(contractId, stake, stake, payout, id, accountId);
+  if (!before.contract_id && contractId) {
+    const purchased = getTrade(id, accountId);
+    if (purchased) appendAccountLedgerEntry(purchased, 'purchased');
+  }
 }
 
 export function listTrades(limit = 50, accountId = currentAccountId()): TradeRow[] {
   return getDb()
     .prepare('SELECT * FROM trades WHERE account_id = ? ORDER BY id DESC LIMIT ?')
     .all(accountId, limit) as unknown as TradeRow[];
+}
+
+function normalizeAccountMode(mode: TradeRow['account_mode']): LedgerEntryRow['account_mode'] {
+  return mode === 'demo' || mode === 'real' ? mode : 'unknown';
+}
+
+/** Append an immutable account lifecycle entry. This never mutates balances. */
+function appendAccountLedgerEntry(
+  trade: TradeRow,
+  event: Extract<LedgerEntryRow['event'], 'requested' | 'purchased' | 'settled'>,
+): LedgerEntryRow {
+  const contractRef = trade.contract_id || trade.purchase_id || `trade:${trade.id}`;
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO trade_ledger
+       (entry_key, ts, book, account_id, account_mode, event, source, trade_id, contract_ref, market, contract_type,
+        barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit)
+       VALUES (?, ?, 'account', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      `account:${trade.id}:${event}`,
+      event === 'settled' ? (trade.resolved_at || Date.now()) : trade.ts,
+      trade.account_id ?? currentAccountId(),
+      normalizeAccountMode(trade.account_mode),
+      event,
+      trade.origin ?? (trade.reason === 'manual' ? 'manual' : 'bot'),
+      trade.id,
+      contractRef,
+      trade.market,
+      trade.contract_type,
+      trade.barrier,
+      trade.stake,
+      trade.payout,
+      event === 'settled' ? trade.profit : 0,
+      trade.status,
+      trade.reason,
+      trade.entry_spot ?? null,
+      trade.exit_spot ?? null,
+      trade.exit_digit ?? null,
+    );
+  return getDb().prepare('SELECT * FROM trade_ledger WHERE entry_key = ?').get(`account:${trade.id}:${event}`) as unknown as LedgerEntryRow;
+}
+
+/**
+ * Record a virtual contract event. It intentionally has no account scope and
+ * cannot affect account P&L, balances, recovery, tuning, or execution.
+ */
+export function appendPaperLedgerEntry(
+  contract: PaperLedgerContract,
+  event: Extract<LedgerEntryRow['event'], 'purchased' | 'settled' | 'cancelled'>,
+  reason = '',
+): LedgerEntryRow {
+  const status = event === 'purchased' ? 'open' : contract.status;
+  const ts = event === 'purchased'
+    ? contract.entryEpoch * 1_000
+    : contract.exitEpoch !== undefined ? contract.exitEpoch * 1_000 : Date.now();
+  getDb()
+    .prepare(
+      `INSERT OR IGNORE INTO trade_ledger
+       (entry_key, ts, book, account_id, account_mode, event, source, trade_id, contract_ref, market, contract_type,
+        barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit)
+       VALUES (?, ?, 'paper', NULL, 'not_applicable', ?, 'paper', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      `paper:${contract.runId}:${contract.id}:${event}`,
+      ts,
+      event,
+      `paper:${contract.runId}:${contract.id}`,
+      contract.market,
+      contract.direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
+      contract.barrier,
+      contract.stake,
+      Math.round(contract.stake * contract.payoutRatio * 100) / 100,
+      event === 'settled' ? (contract.profit ?? 0) : 0,
+      status,
+      reason || 'virtual research contract; assumed payout only',
+      contract.entryQuote,
+      contract.exitQuote ?? null,
+      contract.exitDigit ?? null,
+    );
+  return getDb()
+    .prepare('SELECT * FROM trade_ledger WHERE entry_key = ?')
+    .get(`paper:${contract.runId}:${contract.id}:${event}`) as unknown as LedgerEntryRow;
+}
+
+/** Current-account financial events plus shared, clearly-labelled virtual research. */
+export function listLedgerEntries(limit = 100, accountId = currentAccountId()): LedgerEntryRow[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM trade_ledger
+       WHERE book = 'paper' OR (book = 'account' AND account_id = ?)
+       ORDER BY id DESC LIMIT ?`,
+    )
+    .all(accountId, limit) as unknown as LedgerEntryRow[];
 }
 
 interface PerformanceTotals {

@@ -27,6 +27,8 @@ export interface PaperSignal {
 
 export interface PaperContract {
   id: number;
+  /** Stable across the lifecycle and regenerated after a simulator reset. */
+  runId: string;
   market: string;
   direction: Direction;
   barrier: number;
@@ -119,6 +121,7 @@ export class PaperSimulator {
   private losses = 0;
   private totalTrades = 0;
   private equity: number[];
+  private runId = PaperSimulator.newRunId();
   private nextId = 1;
   private openContract: PaperContract | null = null;
   private lastSettled: PaperContract | null = null;
@@ -206,6 +209,7 @@ export class PaperSimulator {
     this.totalTrades = 0;
     this.equity = [this.initialBalance];
     this.nextId = 1;
+    this.runId = PaperSimulator.newRunId();
     this.openContract = null;
     this.lastSettled = null;
     this.emit({ type: 'reset', state: this.state() });
@@ -245,6 +249,7 @@ export class PaperSimulator {
 
     const contract: PaperContract = {
       id: this.nextId++,
+      runId: this.runId,
       market: signal.market,
       direction: signal.direction,
       barrier: signal.barrier,
@@ -318,5 +323,9 @@ export class PaperSimulator {
     return signal.direction === 'over'
       ? signal.barrier >= 0 && signal.barrier <= 8
       : signal.barrier >= 1 && signal.barrier <= 9;
+  }
+
+  private static newRunId(): string {
+    return `paper-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   }
 }

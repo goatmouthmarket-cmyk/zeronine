@@ -97,6 +97,31 @@ export interface TradeRow {
   exit_digit?: number;
 }
 
+/** Immutable lifecycle record. Paper rows are virtual research, never account money. */
+export interface LedgerEntry {
+  id: number;
+  entry_key: string;
+  ts: number;
+  book: 'account' | 'paper';
+  account_id: string | null;
+  account_mode: 'demo' | 'real' | 'unknown' | 'not_applicable';
+  event: 'requested' | 'purchased' | 'settled' | 'cancelled';
+  source: 'manual' | 'bot' | 'paper';
+  trade_id: number | null;
+  contract_ref: string;
+  market: string;
+  contract_type: 'DIGITOVER' | 'DIGITUNDER';
+  barrier: number;
+  stake: number;
+  payout: number;
+  profit: number;
+  status: string;
+  reason: string;
+  entry_spot: number | null;
+  exit_spot: number | null;
+  exit_digit: number | null;
+}
+
 export interface PerformanceSummary {
   wins: number;
   losses: number;
@@ -280,6 +305,7 @@ export interface State {
   settings: Settings | null;
   automation: AutomationState | null;
   trades: TradeRow[];
+  ledgerEntries: LedgerEntry[];
   performance: PerformanceSummary | null;
   selected: string | null;
   signal: { signal: SignalPick; phase: string } | null;
@@ -309,6 +335,7 @@ const initial: State = {
   settings: null,
   automation: null,
   trades: [],
+  ledgerEntries: [],
   performance: null,
   selected: null,
   signal: null,
@@ -686,7 +713,7 @@ export async function oauthStart(): Promise<string> {
 export async function logout(): Promise<void> {
   await api('/api/auth/logout', { method: 'POST' });
   signalStabilizer.reset();
-  set({ session: null, automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null });
+  set({ session: null, automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null, ledgerEntries: [] });
 }
 
 export async function startAutomation(opts?: {
@@ -792,6 +819,17 @@ export async function refreshTrades(limit = 50): Promise<void> {
     if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, limit), performance: res.performance ?? state.performance });
   } catch {
     // best-effort refresh; stale list is fine
+  }
+}
+
+/** Owner-only audit history. The API scopes account rows to the active login. */
+export async function loadLedgerEntries(limit = 200): Promise<void> {
+  try {
+    const res = await api<{ entries: LedgerEntry[] }>(`/api/ledger?limit=${limit}`);
+    set({ ledgerEntries: Array.isArray(res.entries) ? res.entries.slice(0, limit) : [] });
+  } catch {
+    // Keep the audit view empty when the dashboard is locked or an older server is running.
+    set({ ledgerEntries: [] });
   }
 }
 

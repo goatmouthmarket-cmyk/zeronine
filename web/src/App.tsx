@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import {
   useStore,
@@ -21,6 +21,7 @@ import {
   runTestBacktest,
   runPatternScan,
   refreshTrades,
+  loadLedgerEntries,
   startPaperSimulation,
   stopPaperSimulation,
   resetPaperSimulation,
@@ -1403,8 +1404,22 @@ function HistoryPage(): JSX.Element {
   const s = useStore();
   const [filter, setFilter] = useState<Filter>('all');
 
+  useEffect(() => {
+    if (s.owner) void loadLedgerEntries(300);
+  }, [s.owner, s.trades.length, s.paperSimulation?.totalTrades]);
+
+  if (!s.owner) {
+    return <><header class="header"><div class="page-title">History</div></header><div class="empty-hint">Unlock the dashboard to view the private trade ledger.</div></>;
+  }
+
   if (!s.session) {
-    return <><header class="header"><div class="page-title">History</div></header><div class="empty-hint">Connect your Deriv account to view its private trade history.</div></>;
+    return (
+      <>
+        <header class="header"><div class="page-title">History</div></header>
+        <LedgerSection entries={s.ledgerEntries} />
+        <div class="empty-hint">Connect a Deriv account to view account trade history.</div>
+      </>
+    );
   }
 
   const trades = s.trades;
@@ -1531,7 +1546,77 @@ function HistoryPage(): JSX.Element {
           <ActivityRow key={t.id} trade={t} />
         ))}
       </div>
+
+      <LedgerSection entries={s.ledgerEntries} currency={currency} />
     </>
+  );
+}
+
+const LEDGER_EVENT_LABEL: Record<LedgerEntry['event'], string> = {
+  requested: 'Requested',
+  purchased: 'Purchased',
+  settled: 'Settled',
+  cancelled: 'Cancelled',
+};
+
+function ledgerBookLabel(entry: LedgerEntry): string {
+  if (entry.book === 'paper') return 'Virtual research';
+  if (entry.account_mode === 'real') return 'Real account';
+  if (entry.account_mode === 'demo') return 'Demo account';
+  return 'Account';
+}
+
+function LedgerSection({ entries, currency = '' }: { entries: LedgerEntry[]; currency?: string }): JSX.Element {
+  return (
+    <section class="section ledger">
+      <div class="section-head">
+        <div class="section-title">Trade Ledger</div>
+        <span class="ledger-count">{entries.length} events</span>
+      </div>
+      <div class="ledger-caption">Immutable lifecycle records. Virtual research is not account money.</div>
+      <div class="ledger-list">
+        {entries.length === 0 && <div class="empty-hint">No ledger entries yet</div>}
+        {entries.map((entry) => <LedgerRow key={entry.id} entry={entry} currency={currency} />)}
+      </div>
+    </section>
+  );
+}
+
+function LedgerRow({ entry, currency }: { entry: LedgerEntry; currency: string }): JSX.Element {
+  const settled = entry.event === 'settled';
+  const profit = entry.profit ?? 0;
+  const tone = settled ? (profit > 0 ? 'win' : profit < 0 ? 'loss' : 'push') : entry.event === 'cancelled' ? 'loss' : 'push';
+  const letter = entry.book === 'paper' ? 'P' : entry.account_mode === 'real' ? 'R' : 'D';
+  const contract = entry.contract_type === 'DIGITUNDER' ? `Under ${entry.barrier}` : `Over ${entry.barrier}`;
+  const date = new Date(entry.ts < 100_000_000_000 ? entry.ts * 1000 : entry.ts);
+  const time = Number.isNaN(date.getTime()) ? '' : date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const outcome = entry.event === 'settled'
+    ? entry.status === 'won' ? 'Won' : entry.status === 'lost' ? 'Lost' : 'Settled'
+    : LEDGER_EVENT_LABEL[entry.event];
+  const profitText = entry.book === 'paper'
+    ? `V${fmtSigned(profit, '$')}`
+    : fmtSigned(profit, currency);
+
+  return (
+    <div class={`ledger-row ${tone}`}>
+      <div class={`ledger-mark ${entry.book === 'paper' ? 'paper' : entry.account_mode}`}>{letter}</div>
+      <div class="ledger-main">
+        <div class="ledger-line">
+          <span class="ledger-contract">{contract}</span>
+          <span class={`ledger-book ${entry.book === 'paper' ? 'paper' : entry.account_mode}`}>{ledgerBookLabel(entry)}</span>
+          <span class={`activity-source ${entry.source}`}>{sourceLabel(entry.source)}</span>
+        </div>
+        <div class={`ledger-meta ${tone}`}>
+          <span>{outcome}</span>
+          <span>{LEDGER_EVENT_LABEL[entry.event].toLowerCase()}</span>
+          <span>{fmtMoney(entry.stake, entry.book === 'paper' ? '$' : currency)} stake</span>
+          {time && <span>{time}</span>}
+        </div>
+      </div>
+      <div class="ledger-pnl">
+        {settled ? <span class={profit > 0 ? 'pnl-win' : profit < 0 ? 'pnl-loss' : 'pnl-zero'}>{profitText}</span> : <span class="pnl-zero">-</span>}
+      </div>
+    </div>
   );
 }
 

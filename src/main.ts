@@ -15,6 +15,7 @@ import { Automation } from './strategy/automation.ts';
 import { DecisionMemory } from './intelligence/decisionMemory.ts';
 import {
   digitFingerprint,
+  appendPaperLedgerEntry,
   getDb,
   getMeta,
   getSession,
@@ -70,6 +71,13 @@ async function main(): Promise<void> {
     latestPaperSignal = paperSignalFromHubEvent(event, getSettings().base_stake);
   });
   paperSimulator.on((event: PaperSimulationEvent) => {
+    if (event.type === 'opened') {
+      appendPaperLedgerEntry(event.contract, 'purchased');
+    } else if (event.type === 'settled') {
+      appendPaperLedgerEntry(event.contract, 'settled');
+    } else if (event.type === 'cancelled') {
+      appendPaperLedgerEntry(event.contract, 'cancelled', event.reason);
+    }
     // Raw ticks already travel over the throttled market-tick channel. Only
     // state transitions need a separate public simulation event.
     if (event.type === 'tick') return;
