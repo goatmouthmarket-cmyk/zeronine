@@ -150,7 +150,7 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   const selectorBefore = await selector.boundingBox();
   const startBefore = await startButton.boundingBox();
   await page.locator('.side-btn.under').click();
-  await expect(page.getByText(/Under 9 placed @/)).toBeVisible();
+  await expect(page.getByText(/Under 7 placed @/)).toBeVisible();
   expect(await selector.boundingBox()).toEqual(selectorBefore);
   expect(await startButton.boundingBox()).toEqual(startBefore);
 

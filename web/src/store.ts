@@ -362,9 +362,13 @@ let state: State = initial;
 const signalStabilizer = new SignalStabilizer<SignalCandidate>();
 const listeners = new Set<() => void>();
 
-function set(patch: Partial<State>): void {
-  state = { ...state, ...patch };
+function notifyListeners(): void {
   for (const cb of listeners) cb();
+}
+
+function set(patch: Partial<State>, notify = true): void {
+  state = { ...state, ...patch };
+  if (notify) notifyListeners();
 }
 
 export function useStore(): State {
@@ -394,7 +398,7 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
   return body as T;
 }
 
-function applyEvent(evt: Record<string, unknown>): void {
+function applyEvent(evt: Record<string, unknown>, notify = true): void {
   const type = String(evt.type ?? '');
 
   const seedDigits = (markets: Market[]): Record<string, number[]> => {
@@ -576,7 +580,45 @@ function applyEvent(evt: Record<string, unknown>): void {
     default:
       return;
   }
-  set(patch);
+  set(patch, notify);
+}
+
+// Market feeds can deliver several symbols in the same paint interval. Retain
+// the newest tick for every symbol, then publish the combined result once so a
+// burst cannot force the entire dashboard to render for every WebSocket frame.
+const pendingTicks = new Map<string, Record<string, unknown>>();
+let tickFrame: number | null = null;
+
+function flushPendingTicks(): void {
+  if (tickFrame !== null) {
+    window.cancelAnimationFrame(tickFrame);
+    tickFrame = null;
+  }
+  if (pendingTicks.size === 0) return;
+  const ticks = [...pendingTicks.values()];
+  pendingTicks.clear();
+  for (const tick of ticks) applyEvent(tick, false);
+  notifyListeners();
+}
+
+function dispatchEvent(evt: Record<string, unknown>): void {
+  if (String(evt.type ?? '') === 'tick') {
+    const symbol = String(evt.symbol ?? '');
+    if (!symbol) return;
+    pendingTicks.set(symbol, evt);
+    if (tickFrame === null) {
+      tickFrame = window.requestAnimationFrame(() => {
+        tickFrame = null;
+        flushPendingTicks();
+      });
+    }
+    return;
+  }
+
+  // A control/trade event must observe every tick that arrived before it and
+  // must remain immediately visible to subscribers.
+  flushPendingTicks();
+  applyEvent(evt);
 }
 
 let ws: WebSocket | null = null;
@@ -596,7 +638,7 @@ export function connectWs(): void {
 
   ws.onmessage = (msg) => {
     try {
-      applyEvent(JSON.parse(String(msg.data)));
+      dispatchEvent(JSON.parse(String(msg.data)));
     } catch {
       // ignore malformed frames
     }

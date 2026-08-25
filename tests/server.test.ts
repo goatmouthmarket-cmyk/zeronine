@@ -100,3 +100,16 @@ test('app_meta round-trips and digit fingerprint counts stored ticks', async () 
   storeMod.insertDigit('X', before + 1, 0, 5);
   assert.ok(storeMod.digitFingerprint() > before, 'fingerprint grows with a new tick');
 });
+
+test('queued digit telemetry is committed together when explicitly flushed', async () => {
+  const storeMod = await import('../src/db/store.ts');
+  const epoch = Math.floor(Date.now() / 1000) + 10_000;
+  const before = storeMod.digitFingerprint();
+  storeMod.enqueueDigit('BATCH_A', epoch, 100.1, 1);
+  storeMod.enqueueDigit('BATCH_B', epoch + 1, 100.2, 2);
+  assert.equal(storeMod.pendingDigitCount(), 2);
+  assert.equal(storeMod.digitFingerprint(), before, 'enqueue does not write inside the live callback');
+  assert.equal(storeMod.flushDigitQueue(), 2);
+  assert.equal(storeMod.pendingDigitCount(), 0);
+  assert.ok(storeMod.digitFingerprint() >= before + 2);
+});

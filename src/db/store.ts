@@ -175,6 +175,13 @@ export interface AutomationRow {
 
 let db: DatabaseSync | null = null;
 
+type PendingDigit = { market: string; epoch: number; quote: number; digit: number };
+const DIGIT_FLUSH_DELAY_MS = 100;
+const DIGIT_QUEUE_LIMIT = 50_000;
+let pendingDigits: PendingDigit[] = [];
+let digitFlushTimer: NodeJS.Timeout | null = null;
+let digitFlushActive = false;
+
 export function getDb(): DatabaseSync {
   if (db) return db;
   fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
@@ -1194,6 +1201,57 @@ export function listLedgerEntries(limit = 100, accountId = currentAccountId()): 
        ORDER BY id DESC LIMIT ?`,
     )
     .all(accountId, limit) as unknown as LedgerEntryRow[];
+}
+
+/**
+ * Queue feed telemetry for a short batched transaction. Unlike execution and
+ * settlement writes, digit history is research data and must not block the
+ * live tick callback on a synchronous SQLite commit for every market update.
+ */
+export function enqueueDigit(market: string, epoch: number, quote: number, digit: number): void {
+  pendingDigits.push({ market, epoch, quote, digit });
+  if (pendingDigits.length > DIGIT_QUEUE_LIMIT) {
+    pendingDigits.splice(0, pendingDigits.length - DIGIT_QUEUE_LIMIT);
+  }
+  if (digitFlushTimer) return;
+  digitFlushTimer = setTimeout(() => flushDigitQueue(), DIGIT_FLUSH_DELAY_MS);
+  digitFlushTimer.unref();
+}
+
+/** Flush queued research ticks synchronously; used by the timer and shutdown. */
+export function flushDigitQueue(): number {
+  if (digitFlushTimer) {
+    clearTimeout(digitFlushTimer);
+    digitFlushTimer = null;
+  }
+  if (digitFlushActive || pendingDigits.length === 0) return 0;
+
+  digitFlushActive = true;
+  const batch = pendingDigits;
+  pendingDigits = [];
+  const database = getDb();
+  try {
+    const insert = database.prepare('INSERT OR IGNORE INTO digits (market, epoch, quote, digit) VALUES (?, ?, ?, ?)');
+    database.exec('BEGIN IMMEDIATE');
+    for (const item of batch) insert.run(item.market, item.epoch, item.quote, item.digit);
+    database.exec('COMMIT');
+    return batch.length;
+  } catch {
+    try { database.exec('ROLLBACK'); } catch { /* no active transaction */ }
+    // Preserve telemetry for a later retry without ever failing the feed.
+    pendingDigits = [...batch, ...pendingDigits].slice(-DIGIT_QUEUE_LIMIT);
+    if (!digitFlushTimer) {
+      digitFlushTimer = setTimeout(() => flushDigitQueue(), DIGIT_FLUSH_DELAY_MS * 5);
+      digitFlushTimer.unref();
+    }
+    return 0;
+  } finally {
+    digitFlushActive = false;
+  }
+}
+
+export function pendingDigitCount(): number {
+  return pendingDigits.length;
 }
 
 /** Virtual paper lifecycle only; never joins an account book. */

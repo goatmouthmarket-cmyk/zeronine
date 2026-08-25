@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { memo } from 'preact/compat';
+import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
@@ -220,7 +221,6 @@ function Icon({
 /* ---------------- app shell ---------------- */
 
 export function App(): JSX.Element {
-  const s = useStore();
   const [page, setPage] = useState<Page>('home');
 
   useEffect(() => {
@@ -231,21 +231,13 @@ export function App(): JSX.Element {
     <>
       <main class="app" data-page={page}>
         <div class="view view-home">
-          <HomePage page={page} onNavigate={setPage} />
+          <HomePage page={page} active={page === 'home'} onNavigate={setPage} />
         </div>
         <div class="desk-side">
-          <div class="view view-bot">
-            <BotPage />
-          </div>
-          <div class="view view-history">
-            <HistoryPage />
-          </div>
-          <div class="view view-backtest">
-            <TestLabPage />
-          </div>
-          <div class="view view-account">
-            <AccountPage />
-          </div>
+          {page === 'bot' && <div class="view view-bot"><BotPage /></div>}
+          {page === 'history' && <div class="view view-history"><HistoryPage /></div>}
+          {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
+          {page === 'account' && <div class="view view-account"><AccountPage /></div>}
         </div>
       </main>
       <BottomNav page={page} setPage={setPage} />
@@ -365,7 +357,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
 
 /* ---------------- home ---------------- */
 
-function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => void }): JSX.Element {
+function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const [startError, setStartError] = useState('');
   const [manualBusy, setManualBusy] = useState(false);
@@ -390,12 +382,12 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
   const guest = !s.session;
   const decision = automation ? s.decision?.decision : undefined;
 
-  const fallbackPerformance = {
+  const fallbackPerformance = useMemo(() => ({
     wins: s.trades.filter((t) => t.status === 'won').length,
     losses: s.trades.filter((t) => t.status === 'lost').length,
     pushes: s.trades.filter((t) => t.status === 'push' || t.status === 'expired' || t.status === 'timeout').length,
     profit: s.trades.reduce((acc, t) => acc + (t.profit ?? 0), 0),
-  };
+  }), [s.trades]);
   const performance = s.performance ?? fallbackPerformance;
 
   const activeDirection = decision?.direction ?? (s.settings?.barrier_preference === 'under' ? 'under' : 'over');
@@ -417,23 +409,29 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
     return totals;
   }, [s.trades]);
 
-  const currentStreak = (() => {
+  const currentStreak = useMemo(() => {
     let streak = 0;
     for (const t of s.trades) {
       if (t.status === 'lost' || t.status === 'error') break;
       if (t.status === 'won') streak += 1;
     }
     return streak;
-  })();
+  }, [s.trades]);
 
   useEffect(() => {
     void loadTestRuns();
   }, []);
 
-  const recentItems = s.trades
+  const recentItems = useMemo(() => s.trades
     .map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade }))
     .sort((a, b) => b.ts - a.ts)
-    .slice(0, 5);
+    .slice(0, 5), [s.trades]);
+  const marketNames = useMemo(
+    () => new Map(s.markets.map((item) => [item.symbol, item.display])),
+    [s.markets],
+  );
+  const openMarketChooser = useCallback(() => setMarketChooserOpen(true), []);
+  const closeMarketChooser = useCallback(() => setMarketChooserOpen(false), []);
 
   const toggleBot = async () => {
     setStartError('');
@@ -523,7 +521,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
         <div class="subtitle">{automation ? `Betting ${activeSide} or cycling` : 'Auto-cycling across markets'}</div>
       </header>
 
-      <div class="ticker">
+      {active && <div class="ticker">
         <div class="ticker-row">
           {s.markets.map((m) => (
             <TickerItem key={m.symbol} market={m} active={m.symbol === market?.symbol} prediction={tickerPredictions.get(m.symbol)} performance={tickerProfits.get(m.symbol)} />
@@ -532,9 +530,9 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             <TickerItem key={`dup-${m.symbol}`} market={m} active={m.symbol === market?.symbol} prediction={tickerPredictions.get(m.symbol)} performance={tickerProfits.get(m.symbol)} />
           ))}
         </div>
-      </div>
+      </div>}
 
-      <div class="dashboard">
+      {active && <div class="dashboard">
         <div class="dash-main">
           <section class="trade-card">
             <DecisionHero
@@ -551,9 +549,9 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
               trades={s.trades}
               feedConnected={s.feed?.connected ?? false}
               recovery={s.recovery}
-              onChooseMarket={() => setMarketChooserOpen(true)}
+              onChooseMarket={openMarketChooser}
               marketChooserOpen={marketChooserOpen}
-              onCloseMarketChooser={() => setMarketChooserOpen(false)}
+              onCloseMarketChooser={closeMarketChooser}
               manualDirection={manualDirection}
               manualOverBarrier={manualOverBarrier}
               manualUnderBarrier={manualUnderBarrier}
@@ -612,7 +610,7 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             <div class="activity">
               {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
               {recentItems.map((item) => (
-                <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} marketName={s.markets.find((market) => market.symbol === item.trade.market)?.display} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
+                <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} marketName={marketNames.get(item.trade.market)} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
               ))}
             </div>
           </section>
@@ -641,13 +639,13 @@ function HomePage({ page, onNavigate }: { page: Page; onNavigate: (p: Page) => v
             </div>
           </section>
         </div>
-      </div>
-      {activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
+      </div>}
+      {active && activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
     </>
   );
 }
 
-function TickerItem({ market, active, prediction: pred, performance }: { market: Market; active: boolean; prediction?: SignalCandidate; performance?: { count: number; profit: number } }): JSX.Element {
+const TickerItem = memo(function TickerItem({ market, active, prediction: pred, performance }: { market: Market; active: boolean; prediction?: SignalCandidate; performance?: { count: number; profit: number } }): JSX.Element {
   const digit = market.lastDigit >= 0 ? market.lastDigit : '–';
   const profit = performance?.profit ?? 0;
 
@@ -674,7 +672,7 @@ function TickerItem({ market, active, prediction: pred, performance }: { market:
       </span>
     </div>
   );
-}
+});
 
 function ActivityRow({ trade, marketName, onOpen }: { trade: TradeRow; marketName?: string; onOpen?: () => void }): JSX.Element {
   const win = trade.status === 'won';
@@ -899,30 +897,40 @@ function resolveTarget(
 }
 
 function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: () => void }): JSX.Element {
-  const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
-  const first = quotes[0] ?? 0;
-  const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
-  const change = last - first;
-  const changePct = first > 0 ? (change / first) * 100 : 0;
-  const up = change >= 0;
-  const width = 260;
-  const height = 146;
-  const pad = 7;
-  const min = quotes.length ? Math.min(...quotes) : 0;
-  const range = quotes.length ? Math.max(...quotes) - min || 1 : 1;
-  const stepX = quotes.length > 1 ? (width - pad * 2) / (quotes.length - 1) : 0;
-  const line = quotes.map((quote, index) => {
-    const x = pad + index * stepX;
-    const y = height - pad - ((quote - min) / range) * (height - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  const area = line.length ? `M${line.join(' L')} L${width - pad},${height - pad} L${pad},${height - pad} Z` : '';
+  const chart = useMemo(() => {
+    const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
+    const first = quotes[0] ?? 0;
+    const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
+    const change = last - first;
+    const width = 260;
+    const height = 146;
+    const pad = 7;
+    const min = quotes.length ? Math.min(...quotes) : 0;
+    const range = quotes.length ? Math.max(...quotes) - min || 1 : 1;
+    const stepX = quotes.length > 1 ? (width - pad * 2) / (quotes.length - 1) : 0;
+    const line = quotes.map((quote, index) => {
+      const x = pad + index * stepX;
+      const y = height - pad - ((quote - min) / range) * (height - pad * 2);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    return {
+      area: line.length ? `M${line.join(' L')} L${width - pad},${height - pad} L${pad},${height - pad} Z` : '',
+      changePct: first > 0 ? (change / first) * 100 : 0,
+      height,
+      last,
+      line,
+      quotesLength: quotes.length,
+      up: change >= 0,
+      width,
+    };
+  }, [market?.recentQuotes, market?.lastQuote]);
+  const { area, changePct, height, last, line, quotesLength, up, width } = chart;
 
   return (
     <button id="market-pulse-trigger" type="button" class={`market-pulse${up ? ' up' : ' down'}`} aria-label="Choose a market and manual barrier from the live quote chart" onClick={onChoose}>
       <div class="market-pulse-head">
         <span class="market-pulse-label">Live quote</span>
-        <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotes.length > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
+        <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotesLength > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
       </div>
       <div class="market-pulse-chart">
         {line.length > 1 ? (

@@ -37,17 +37,21 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     if (lastIntelligence) socket.send(JSON.stringify(lastIntelligence));
     if (lastPaperSimulation) socket.send(JSON.stringify(lastPaperSimulation));
 
-    let lastTickSent = 0;
-    let pendingTick: unknown = null;
+    const lastTickSent = new Map<string, number>();
+    const pendingTicks = new Map<string, Record<string, unknown>>();
     let tickTimer: NodeJS.Timeout | null = null;
 
     const flushTicks = (): void => {
       tickTimer = null;
-      if (pendingTick && socket.readyState === socket.OPEN) {
-        socket.send(JSON.stringify(pendingTick));
-        pendingTick = null;
-        lastTickSent = Date.now();
+      if (socket.readyState !== socket.OPEN) return;
+      const now = Date.now();
+      for (const [symbol, tick] of pendingTicks) {
+        if (socket.bufferedAmount >= MAX_BUFFER) break;
+        socket.send(JSON.stringify(tick));
+        pendingTicks.delete(symbol);
+        lastTickSent.set(symbol, now);
       }
+      if (pendingTicks.size > 0) tickTimer = setTimeout(flushTicks, TICK_INTERVAL_MS);
     };
 
     const unsubscribe = hub.on((evt) => {
@@ -55,12 +59,14 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       if (!owner && !PUBLIC_EVENTS.has(evt.type)) return;
 
       if (evt.type === 'tick') {
+        const symbol = typeof evt.symbol === 'string' ? evt.symbol : '';
         const now = Date.now();
-        if (now - lastTickSent >= TICK_INTERVAL_MS && socket.bufferedAmount < MAX_BUFFER) {
+        const lastSent = lastTickSent.get(symbol) ?? 0;
+        if (now - lastSent >= TICK_INTERVAL_MS && socket.bufferedAmount < MAX_BUFFER) {
           socket.send(JSON.stringify(evt));
-          lastTickSent = now;
+          lastTickSent.set(symbol, now);
         } else {
-          pendingTick = evt;
+          pendingTicks.set(symbol, evt);
           if (!tickTimer) tickTimer = setTimeout(flushTicks, TICK_INTERVAL_MS);
         }
         return;
@@ -78,10 +84,12 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     socket.on('close', () => {
       unsubscribe();
       if (tickTimer) clearTimeout(tickTimer);
+      pendingTicks.clear();
     });
     socket.on('error', () => {
       unsubscribe();
       if (tickTimer) clearTimeout(tickTimer);
+      pendingTicks.clear();
     });
   });
 }

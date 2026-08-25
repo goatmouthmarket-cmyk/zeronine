@@ -3144,6 +3144,34 @@ button.activity-row {
         animation: none;
     }
 }
+
+/* Keep live trading controls responsive on touch and compact devices. These
+   surfaces update several times per second, so avoid repaint-heavy blur,
+   animated shadows, and decorative pulses while retaining ticker motion. */
+@media (hover: none), (max-width: 619.98px) {
+    .ticker,
+    .detail-backdrop,
+    .market-chooser-backdrop {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .live-dot,
+    .cockpit-status-dot,
+    .activity-row.pending,
+    .activity-digit.pending,
+    .bot-control,
+    .bot-control svg,
+    .activity-streak.streak-up {
+        animation: none;
+    }
+
+    .bot-control,
+    .bot-control.running,
+    .activity-detail {
+        box-shadow: none;
+    }
+}
 /* =========================================================
    TEST LAB
 ========================================================= */

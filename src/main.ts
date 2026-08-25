@@ -20,7 +20,8 @@ import {
   getMeta,
   getSession,
   getSettings,
-  insertDigit,
+  enqueueDigit,
+  flushDigitQueue,
   listPaperLedgerEntries,
   pruneDigits,
   setMeta,
@@ -112,7 +113,7 @@ async function main(): Promise<void> {
   });
   const registry = new MarketRegistry({
     onTick: (snap) => {
-      insertDigit(snap.symbol, snap.lastEpoch, snap.lastQuote, snap.lastDigit);
+      enqueueDigit(snap.symbol, snap.lastEpoch, snap.lastQuote, snap.lastDigit);
       decisionMemory.onTick(snap.symbol, snap.lastDigit);
       paperSimulator.onTick({
         market: snap.symbol,
@@ -281,6 +282,7 @@ async function main(): Promise<void> {
     automation.dispose();
     client.disconnect();
     feed.stop();
+    flushDigitQueue();
     await app.close();
     process.exit(0);
   };
