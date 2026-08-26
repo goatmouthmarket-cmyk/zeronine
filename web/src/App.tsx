@@ -2316,6 +2316,85 @@ function ConfigPicker({
   );
 }
 
+function BacktestSimulationStage({
+  active,
+  runs,
+  selectedCount,
+  target,
+}: {
+  active: TestLabActive | null;
+  runs: TestRunRow[];
+  selectedCount: number;
+  target: number;
+}): JSX.Element {
+  const running = active?.kind === 'backtest';
+  const configIndex = running ? Math.min(active.configIndex ?? 0, Math.max(0, selectedCount - 1)) : 0;
+  const tradesDone = running ? active.tradesDone ?? 0 : 0;
+  const tradesTarget = running ? active.tradesTarget ?? target : target;
+  const configProgress = selectedCount > 0 ? configIndex / selectedCount : 0;
+  const tradeProgress = tradesTarget > 0 ? tradesDone / tradesTarget / Math.max(1, selectedCount) : 0;
+  const progress = running ? Math.min(100, Math.max(2, (configProgress + tradeProgress) * 100)) : runs.length ? 100 : 0;
+  const bestKey = bestConfigKey(runs, 'backtest');
+  const bestRun = bestKey ? useLatestRun(runs, 'backtest', bestKey) : null;
+  const [activeStrategy, activeMode] = (active?.config ?? bestKey ?? 'adaptive-balanced').split('-');
+  const strategyLabel = STRATEGY_META[activeStrategy as Settings['strategy_mode']]?.label ?? 'Strategy replay';
+  const modeLabel = MODE_META[activeMode as Settings['bot_mode']]?.label ?? 'Balanced';
+  const stateLabel = running ? 'Replaying history' : bestRun ? 'Replay complete' : 'Ready to simulate';
+
+  return (
+    <section class={`backtest-stage${running ? ' is-running' : runs.length ? ' is-complete' : ''}`} aria-label="Backtest simulation visualizer">
+      <div class="backtest-stage-glow" aria-hidden="true"></div>
+      <div class="backtest-stage-head">
+        <div>
+          <span class="backtest-stage-kicker">Historical replay engine</span>
+          <h2>{running ? 'Testing every decision.' : bestRun ? 'Replay intelligence ready.' : 'Turn history into an edge.'}</h2>
+          <p>{running ? active.message : bestRun ? 'Your strongest configuration is surfaced from the latest replay.' : 'Run selected strategies across recorded ticks in a fast visual simulation.'}</p>
+        </div>
+        <span class={`backtest-stage-state${running ? ' live' : runs.length ? ' complete' : ''}`}><i></i>{stateLabel}</span>
+      </div>
+
+      <div class="backtest-replay" aria-hidden="true">
+        <div class="backtest-grid"></div>
+        <div class="backtest-tick-ribbon">
+          {[7, 2, 9, 4, 1, 8, 3, 6, 0, 5, 9, 2, 7, 4].map((digit, index) => (
+            <span style={{ '--tick-index': index } as JSX.CSSProperties}>{digit}</span>
+          ))}
+        </div>
+        <svg viewBox="0 0 720 130" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="backtestLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#8b5cf6" stop-opacity=".15" />
+              <stop offset=".55" stop-color="#a78bfa" />
+              <stop offset="1" stop-color="#ff4d91" />
+            </linearGradient>
+          </defs>
+          <path class="backtest-replay-line" pathLength="100" d="M0 88 C42 74 58 102 101 78 S165 31 207 57 S271 109 314 74 S374 36 416 65 S479 98 522 51 S584 80 625 42 S681 58 720 24" />
+        </svg>
+        <span class="backtest-scanner"></span>
+        <span class="backtest-cursor"></span>
+      </div>
+
+      <div class="backtest-stage-console">
+        <div class="backtest-stage-config">
+          <span class="backtest-stage-index">{running ? String(configIndex + 1).padStart(2, '0') : '01'}</span>
+          <div><small>{running ? 'Now testing' : bestRun ? 'Best result' : 'First pass'}</small><strong>{strategyLabel} · {modeLabel}</strong></div>
+        </div>
+        <div class="backtest-stage-metric"><small>Replay size</small><strong>{target} <span>/ config</span></strong></div>
+        <div class="backtest-stage-metric"><small>Strategies</small><strong>{selectedCount}</strong></div>
+        <div class="backtest-stage-metric result"><small>{bestRun && !running ? 'Net result' : 'Simulated only'}</small><strong class={bestRun && bestRun.net_pnl >= 0 ? 'up' : bestRun ? 'down' : ''}>{bestRun && !running ? fmtSigned(bestRun.net_pnl, '$') : 'No funds'}</strong></div>
+      </div>
+
+      <div class="backtest-stage-progress" role="progressbar" aria-label="Backtest progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)}>
+        <span style={{ width: `${progress}%` }}></span>
+      </div>
+      <div class="backtest-stage-foot">
+        <span>{running ? `Config ${configIndex + 1} of ${selectedCount}` : runs.length ? 'Latest replay complete' : `${selectedCount} configurations queued`}</span>
+        <strong>{running ? `${tradesDone}/${tradesTarget} trades` : `${Math.round(progress)}%`}</strong>
+      </div>
+    </section>
+  );
+}
+
 function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => void }): JSX.Element {
   const s = useStore();
   const guest = !s.session;
@@ -2381,6 +2460,12 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
           />
         </label>
       </LabControls>
+      <BacktestSimulationStage
+        active={s.testlab?.kind === 'backtest' ? s.testlab : null}
+        runs={runs}
+        selectedCount={selected.size}
+        target={target}
+      />
       <LabActive active={s.testlab?.kind === 'backtest' ? s.testlab : null} />
       <TlErr err={err} />
       <div class="tl-statusbar">
