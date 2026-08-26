@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import {
   useStore,
@@ -554,6 +554,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               decision={decision}
               automation={automation}
               phase={s.automation?.phase}
+              observation={s.automation?.observation}
               holdReason={automation && !decision ? (s.hold?.reason ?? null) : null}
               stopReason={!automation ? (s.automation?.reason ?? null) : null}
               contract={s.contract}
@@ -881,6 +882,10 @@ function scannerPhaseLabel(phase?: string): string {
       return 'CHECKING QUOTES';
     case 'deciding':
       return 'LOCKING TARGET';
+    case 'observing':
+      return 'RECALCULATING SIGNAL';
+    case 'watching-signal':
+      return 'CONFIRMING SIGNAL';
     case 'buying':
       return 'PLACING BET';
     case 'settling':
@@ -894,6 +899,60 @@ function scannerPhaseLabel(phase?: string): string {
     default:
       return phase ? phase.toUpperCase().replace(/-/g, ' ') : 'SCANNING';
   }
+}
+
+function ObservationRail({
+  automation,
+  phase,
+  observation,
+  reason,
+  compact = false,
+}: {
+  automation: boolean;
+  phase?: string;
+  observation?: AutomationState['observation'];
+  reason?: string | null;
+  compact?: boolean;
+}): JSX.Element {
+  const executing = phase === 'buying' || phase === 'settling' || phase === 'settled';
+  const confirmed = observation?.phase === 'confirmed' || executing;
+  const watching = observation?.phase === 'watching' || phase === 'watching-signal';
+  const activeIndex = !automation ? -1 : executing ? 3 : confirmed ? 2 : watching ? 1 : 0;
+  const progress = observation && observation.required > 1
+    ? `${observation.confirmations}/${observation.required} fresh ticks`
+    : observation?.required === 1
+      ? '1 fresh tick required'
+      : 'evaluating every market';
+  const message = !automation
+    ? 'Starts observing when the bot runs.'
+    : executing
+      ? phase === 'settling' ? 'Snipe placed — watching the next tick settle.' : 'Qualified setup passed every gate.'
+      : watching
+        ? `Strongest setup is holding · ${progress}`
+        : reason || 'Comparing probability, payout edge, and market strength.';
+  const steps = ['Observe', 'Watch', 'Confirm', 'Snipe'];
+
+  return (
+    <div class={`observe-rail${compact ? ' compact' : ''}`} aria-live="polite" aria-label={`Automated decision state: ${steps[Math.max(0, activeIndex)]}`}>
+      <div class="observe-rail-top">
+        <span class="observe-rail-kicker">Observe → Observe → Snipe</span>
+        <span class={`observe-rail-mode${automation ? ' live' : ''}`}><i></i>{automation ? 'LIVE INTELLIGENCE' : 'STANDBY'}</span>
+      </div>
+      <div class="observe-rail-track">
+        {steps.map((step, index) => (
+          <div class={`observe-step${index < activeIndex ? ' passed' : index === activeIndex ? ' active' : ''}`}>
+            <span>{index < activeIndex ? '✓' : String(index + 1).padStart(2, '0')}</span>
+            <b>{step}</b>
+          </div>
+        ))}
+      </div>
+      <div class="observe-rail-message">
+        {watching && <span class="observe-mini-pulse" aria-hidden="true"></span>}
+        <span>{message}</span>
+        {automation && observation && !executing && <b>{progress}</b>}
+      </div>
+    </div>
+  );
 }
 
 function resolveTarget(
@@ -1269,6 +1328,7 @@ function DecisionHero({
   decision,
   automation,
   phase,
+  observation,
   holdReason,
   stopReason,
   contract,
@@ -1294,6 +1354,7 @@ function DecisionHero({
   decision?: Decision;
   automation: boolean;
   phase?: string;
+  observation?: AutomationState['observation'];
   holdReason: string | null;
   stopReason: string | null;
   contract: ContractEvt | null;
@@ -1390,6 +1451,8 @@ function DecisionHero({
       </div>
 
       <div class="cockpit-note">{note}</div>
+
+      <ObservationRail automation={automation} phase={phase} observation={observation} reason={holdReason} />
 
       <div class="cockpit-metrics">
         <div class="ckm">
@@ -1667,6 +1730,14 @@ function BotPage(): JSX.Element {
         <div class="page-title">Bot Settings</div>
         <div class="subtitle">{automation ? 'Bot is running' : 'Bot is stopped'}</div>
       </header>
+
+      <ObservationRail
+        automation={automation}
+        phase={s.automation?.phase}
+        observation={s.automation?.observation}
+        reason={s.hold?.reason}
+        compact
+      />
 
       <div class="section">
         <div class="set-group">

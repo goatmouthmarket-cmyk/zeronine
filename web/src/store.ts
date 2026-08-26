@@ -185,6 +185,13 @@ export interface AutomationState {
   runTarget?: number;
   runTrades?: number;
   reason?: string;
+  observation?: {
+    phase: 'observing' | 'watching' | 'confirmed';
+    key: string | null;
+    confirmations: number;
+    required: number;
+    lastTickEpoch: number | null;
+  };
 }
 
 export interface QuoteEvt {
