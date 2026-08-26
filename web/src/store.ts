@@ -532,6 +532,8 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
     case 'trade': {
       const t = evt.trade as TradeRow;
       if (t) patch.trades = [t, ...state.trades.filter((x) => x.id !== t.id)].slice(0, 50);
+      const performance = evt.performance as PerformanceSummary | undefined;
+      if (performance && typeof performance.profit === 'number') patch.performance = performance;
       break;
     }
     case 'contract': {

@@ -644,7 +644,16 @@ function settleInBackground(
           accountId,
         );
         const settledTrade = getTrade(tradeId, accountId);
-        if (settledTrade) hub.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, manual: true, settled: true });
+        if (settledTrade) {
+          hub.emit({
+            type: 'trade',
+            ts: Date.now(),
+            trade: settledTrade,
+            performance: getPerformanceSummary(accountId),
+            manual: true,
+            settled: true,
+          });
+        }
         hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, result: status, profit, update: outcome });
       } else {
         hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement' });

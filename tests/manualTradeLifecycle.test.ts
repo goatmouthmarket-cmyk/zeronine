@@ -63,6 +63,9 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   assert.equal(purchasingWasHidden, true, 'watch reconciliation must not see a row before contract purchase');
   assert.equal(store.getPendingTrades().length, 1);
   assert.equal(store.getPendingTrades()[0]?.contract_id, 'manual-contract-1');
+  const purchaseEvent = events.find((event) => event.type === 'trade')?.trade as { status?: string; contract_id?: string } | undefined;
+  assert.equal(purchaseEvent?.status, 'pending');
+  assert.equal(purchaseEvent?.contract_id, 'manual-contract-1');
 
   finishSettlement?.({
     contractId: 'manual-contract-1', settled: true, status: 'won', profit: 1.8,

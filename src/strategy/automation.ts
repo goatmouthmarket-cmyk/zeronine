@@ -19,6 +19,7 @@ import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
   accountIdForLogin,
   getAutomation,
+  getPerformanceSummary,
   getTrade,
   getPendingTrades,
   getRecovery,
@@ -725,6 +726,8 @@ export class Automation {
     const actualStake = bought.buyPrice > 0 ? bought.buyPrice : finalQuote.askPrice > 0 ? finalQuote.askPrice : decision.stake;
     const actualPayout = bought.payout > 0 ? bought.payout : finalQuote.payout;
     markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, accountId, this.registry.snapshot(decision.market).lastQuote);
+    const purchasedTrade = getTrade(trade.id, accountId);
+    if (purchasedTrade) this.emit({ type: 'trade', ts: Date.now(), trade: purchasedTrade });
     this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, phase: 'purchased' });
 
     this.phase = 'settling';
@@ -743,7 +746,7 @@ export class Automation {
       };
       resolveTrade(trade.id, status, profit, bought.contractId, exitDetails, accountId);
       const settledTrade = getTrade(trade.id, accountId);
-      if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, settled: true });
+      if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(accountId), settled: true });
       if (!won && conservative) this.markLoss(decision.market, decision.direction, decision.barrier);
       const next = applyOutcome(won, profit, settings, session.balance, accountId);
       saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery(accountId).last_win_epoch, updated_at: Date.now() }, accountId);
@@ -758,7 +761,9 @@ export class Automation {
       });
     } else {
       resolveTrade(trade.id, 'expired', 0, bought.contractId, undefined, accountId);
-      this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, result: 'expired' });
+      const expiredTrade = getTrade(trade.id, accountId);
+      if (expiredTrade) this.emit({ type: 'trade', ts: Date.now(), trade: expiredTrade, performance: getPerformanceSummary(accountId), settled: true });
+      this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, tradeId: trade.id, result: 'expired' });
     }
 
     this.phase = 'settled';
@@ -801,7 +806,7 @@ export class Automation {
             exitDigit: outcome.exitDigit,
           }, t.account_id);
           const settledTrade = getTrade(t.id, t.account_id);
-          if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, settled: true, reconciled: true });
+          if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(t.account_id), settled: true, reconciled: true });
           if (t.purchase_id.startsWith('auto-')) {
             const settings = getSettings();
             if (!won && settings.strategy_mode === 'conservative') {
@@ -819,6 +824,7 @@ export class Automation {
             update: outcome,
             result: status,
             profit,
+            tradeId: t.id,
             reconciled: true,
           });
         } else {
