@@ -126,7 +126,7 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   expect(Math.min(...mobileControlHeights)).toBeGreaterThanOrEqual(44);
   await mobileChooser.getByRole('button', { name: 'Return to live chart' }).click();
 
-  for (const viewport of [{ width: 1280, height: 720 }, { width: 1280, height: 667 }, { width: 1272, height: 536 }]) {
+  for (const viewport of [{ width: 1920, height: 818 }, { width: 1280, height: 720 }, { width: 1280, height: 667 }, { width: 1272, height: 536 }]) {
     await page.setViewportSize(viewport);
     const tradeCard = page.locator('.view-home .dash-main .trade-card');
     const dashboard = page.locator('.view-home .dashboard');
@@ -148,6 +148,12 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     const dashboardBounds = await dashboard.boundingBox();
     const perfBounds = await perf.boundingBox();
     expect((perfBounds?.y ?? 0) + (perfBounds?.height ?? 0)).toBeLessThanOrEqual((dashboardBounds?.y ?? 0) + (dashboardBounds?.height ?? 0));
+    if (viewport.height >= 800) {
+      const manualBounds = await page.locator('.side-selector').boundingBox();
+      const startBounds = await startButton.boundingBox();
+      expect((manualBounds?.y ?? viewport.height) + (manualBounds?.height ?? 0)).toBeLessThan(viewport.height);
+      expect((startBounds?.y ?? viewport.height) + (startBounds?.height ?? 0)).toBeLessThan(viewport.height);
+    }
   }
   const metricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));
   expect(metricBounds[0].bottom).toBeLessThanOrEqual(metricBounds[2].top);

@@ -3568,13 +3568,24 @@ button.activity-row {
     }
 
     .view-home .dash-main .cockpit {
+        height: clamp(350px, 49vh, 400px);
         min-height: 0;
         padding: 10px 0;
     }
 
     .view-home .dash-main .cockpit-primary {
-        grid-template-rows: 14px 36px 20px 50px 112px;
+        grid-template-rows: 14px 36px 20px 48px 96px 120px;
         row-gap: 6px;
+    }
+
+    .view-home .market-pulse-shell,
+    .view-home .market-pulse,
+    .view-home .market-pulse-chart {
+        min-height: 0;
+    }
+
+    .view-home .bot-feedback:empty {
+        min-height: 0;
     }
 
     .view-home .dash-main .bot-control {
