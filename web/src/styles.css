@@ -1594,6 +1594,8 @@ button.activity-row {
     min-width: 0;
 }
 
+.perf-header { display: none; }
+
 .observe-rail { margin: 13px 0 15px; padding: 0; background: transparent; border: 0; }
 .observe-rail.compact { margin: 0 0 14px; padding: 0 2px; }
 .observe-rail-top, .observe-rail-message { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -3426,6 +3428,33 @@ button.activity-row {
 }
 
 /* Desktop with a short window: compact spacing so everything fits without zooming out */
+@media (min-width: 1000px) {
+    .view-home .dash-side .section-head { gap: 10px; }
+    .view-home .perf-header {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(28px, auto)) minmax(74px, auto);
+        flex: 0 1 auto;
+        margin: 0 0 0 auto;
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        overflow: visible;
+    }
+    .view-home .perf-header .perf-cell {
+        display: flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 3px;
+        padding: 0 8px;
+        white-space: nowrap;
+    }
+    .view-home .perf-header .perf-cell + .perf-cell { border-left-color: var(--border); }
+    .view-home .perf-header .perf-value { font-size: 11px; letter-spacing: 0; }
+    .view-home .perf-header .perf-label { margin: 0; font-size: 7px; }
+    .view-home .perf-header .perf-cell.profit { align-items: center; gap: 4px; }
+    .view-home .perf-footer { display: none; }
+}
+
 @media (min-width: 1000px) and (max-height: 820px) {
     .app {
         padding-top: calc(14px + env(safe-area-inset-top));

@@ -611,6 +611,17 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           <section class="section">
             <div class="section-head">
               <div class="section-title">Recent Activity</div>
+              <div class="perf perf-header" aria-label="Performance summary">
+                <div class="perf-cell win"><div class="perf-value">{performance.wins}</div><div class="perf-label">W</div></div>
+                <div class="perf-cell loss"><div class="perf-value">{performance.losses}</div><div class="perf-label">L</div></div>
+                <div class="perf-cell push"><div class="perf-value">{performance.pushes}</div><div class="perf-label">P</div></div>
+                <div class={`perf-cell profit${performance.profit >= 0 ? '' : ' negative'}`}>
+                  <div class="perf-value">{fmtSigned(performance.profit, s.session?.currency)}</div>
+                  <button class="perf-reset" type="button" disabled={resettingPerformance} onClick={() => void resetPerformanceTotals()} title="Reset dashboard performance" aria-label="Reset dashboard performance">
+                    <Icon name="rotateCcw" size={10} strokeWidth={2} />
+                  </button>
+                </div>
+              </div>
               {currentStreak > 0 && (
                 <span class="activity-streak streak-up" key={currentStreak}>
                   <Icon name="flame" size={13} strokeWidth={1.8} />
@@ -627,7 +638,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             </div>
           </section>
 
-          <section class="perf">
+          <section class="perf perf-footer">
             <div class="perf-cell win">
               <div class="perf-value">{performance.wins}</div>
               <div class="perf-label">Wins</div>
