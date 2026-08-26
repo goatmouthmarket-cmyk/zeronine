@@ -4532,11 +4532,38 @@ button.activity-row {
     .app[data-page="home"] .trade-card .bot-control {
         min-width: 0;
     }
+
+    .app[data-page="home"] .cockpit {
+        grid-template-columns: minmax(300px, .92fr) minmax(340px, 1.08fr);
+        column-gap: clamp(24px, 2.5vw, 40px);
+    }
+
+    .app[data-page="home"] .cockpit-primary {
+        grid-template-rows: 14px 42px 20px minmax(34px, auto) 72px 64px;
+        row-gap: 6px;
+        align-content: start;
+        min-height: 0;
+    }
+
+    .app[data-page="home"] .cockpit-metrics {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-rows: 64px;
+        gap: clamp(8px, 1vw, 14px);
+    }
+
+    .app[data-page="home"] .ckm {
+        min-width: 0;
+        padding: 8px 0 6px;
+    }
+
+    .app[data-page="home"] .market-pulse-shell {
+        height: min(230px, 100%);
+    }
 }
 
 @media (min-width: 1000px) and (max-height: 700px) {
     .app[data-page="home"] .cockpit-primary {
-        grid-template-rows: 12px 32px 18px 34px 58px 90px;
+        grid-template-rows: 12px 32px 18px 32px 56px 54px;
         row-gap: 4px;
     }
 
@@ -4545,7 +4572,7 @@ button.activity-row {
     }
 
     .app[data-page="home"] .cockpit-metrics {
-        grid-template-rows: repeat(2, 42px);
+        grid-template-rows: 54px;
         gap: 6px;
     }
 

@@ -599,7 +599,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               )}
             </div>
 
-            <div class="bot-feedback" aria-live="polite">{startError && <div class="bot-error">{startError}</div>}</div>
+            {startError && <div class="bot-feedback" aria-live="polite"><div class="bot-error">{startError}</div></div>}
 
             <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0 && !guest} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
