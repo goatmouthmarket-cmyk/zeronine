@@ -14,6 +14,14 @@ test('guest account page presents the branded connection view and favicon', asyn
   await page.getByRole('button', { name: 'Account', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'See the signal. Trade when you are ready.' })).toBeVisible();
   await expect(page.getByText('Connect Deriv', { exact: true })).toBeVisible();
+  const heroBox = await page.locator('.connect-hero').boundingBox();
+  const cardBox = await page.locator('.connect-card').boundingBox();
+  expect(cardBox?.x ?? 0).toBeGreaterThan((heroBox?.x ?? 0) + (heroBox?.width ?? 0));
+  const accountOverflow = await page.locator('.view-account').evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(accountOverflow.scrollHeight).toBeLessThanOrEqual(accountOverflow.clientHeight);
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/favicon.svg');
 });
 

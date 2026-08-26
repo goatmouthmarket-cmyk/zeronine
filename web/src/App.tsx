@@ -304,7 +304,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
           </>
         )}
         <div class="connect-title">Connect Deriv</div>
-        <div class="connect-copy">Use a demo token to activate manual trading and the bot.</div>
+        <div class="connect-copy">Use a trading-enabled token to activate manual trading and the bot.</div>
         <input
           class="connect-input"
           type="password"

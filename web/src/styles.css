@@ -3293,6 +3293,48 @@ button.activity-row {
         overflow-y: auto;
     }
 
+    /* Disconnected Account uses the available desktop canvas instead of
+       stacking a phone-width connect screen inside a scrolling side pane. */
+    .desk-side .view-account:has(.connect-embedded) {
+        max-width: 1120px;
+        overflow: hidden;
+    }
+
+    .desk-side .view-account .connect-embedded {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(380px, 480px);
+        align-items: center;
+        gap: clamp(48px, 7vw, 100px);
+        width: 100%;
+        min-height: 100%;
+        padding: 0 24px;
+    }
+
+    .desk-side .view-account .connect-hero {
+        align-self: center;
+        padding: 0;
+    }
+
+    .desk-side .view-account .connect-brand {
+        display: none;
+    }
+
+    .desk-side .view-account .connect-hero h1 {
+        max-width: 500px;
+        font-size: clamp(38px, 4vw, 58px);
+    }
+
+    .desk-side .view-account .connect-hero p {
+        max-width: 500px;
+        font-size: 14px;
+    }
+
+    .desk-side .view-account .connect-card {
+        width: 100%;
+        max-width: 480px;
+        justify-self: end;
+    }
+
     .desk-side .header {
         padding: 0 2px 14px;
     }
