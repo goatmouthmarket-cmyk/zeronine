@@ -148,6 +148,39 @@
 .inline-basket-place { min-height: 30px; border: 0; border-radius: 8px; background: var(--purple); color: white; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
 .inline-basket-place:disabled { opacity: .42; cursor: default; }
 
+/* The chooser replaces the small chart on desktop. A two-column control grid
+   keeps it inside that footprint so the manual trade rail remains unobscured. */
+@media (min-width: 1000px) {
+  .inline-market-chooser {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 5px 7px;
+    padding: 8px;
+  }
+  .inline-chooser-head,
+  .inline-execution,
+  .inline-market-select,
+  .inline-stake,
+  .inline-confidence,
+  .inline-market-chooser > p,
+  .inline-basket-list,
+  .inline-basket-total,
+  .inline-basket-place {
+    grid-column: 1 / -1;
+  }
+  .inline-chooser-head button { width: 22px; height: 22px; }
+  .inline-market-select { gap: 2px; }
+  .inline-market-select select,
+  .inline-barrier input,
+  .inline-stake input { height: 29px; }
+  .inline-direction button,
+  .inline-barrier button,
+  .inline-confidence button { height: 29px; }
+  .inline-barrier { grid-template-columns: minmax(38px, 1fr) 26px 38px 26px; gap: 3px; }
+  .inline-stake { grid-template-columns: 1fr 112px; }
+  .inline-confidence { min-height: 34px; }
+  .inline-market-chooser > p { line-height: 10px; }
+}
+
 @keyframes inline-chooser-in { from { opacity: 0; transform: scale(.985); } }
 
 @media (max-width: 619.98px) {

@@ -1189,7 +1189,7 @@ function InlineMarketChooser({
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
         <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
         <div class="inline-confidence-actions">
-          <button type="button" onClick={useStrongestForBarrier} disabled={!ranked.length}>Best for barrier {barrier}</button>
+          <button type="button" title={`Choose the strongest Over/Under prediction for barrier ${barrier}`} onClick={useStrongestForBarrier} disabled={!ranked.length}>Best for {barrier}</button>
           <button type="button" class="secondary" onClick={useStrongest} disabled={!ranked.length}>Best overall</button>
         </div>
       </div>
