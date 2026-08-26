@@ -1403,97 +1403,6 @@ button {
     }
 }
 
-/* Home fluidity pass: content determines height; breakpoints change structure,
-   never scale or squeeze fixed geometry to imitate browser zoom. */
-@media (min-width: 700px) and (max-width: 999.98px) {
-    body { padding: 0; }
-    .app {
-        width: 100%;
-        max-width: none;
-        min-height: 100dvh;
-        border: 0;
-        border-radius: 0;
-        box-shadow: none;
-        padding-inline: clamp(22px,5vw,54px);
-    }
-    .dashboard { max-width: 860px; margin-inline: auto; }
-}
-
-@media (min-width: 620px) {
-    .cockpit {
-        align-items: stretch;
-        grid-template-columns: minmax(260px,.88fr) minmax(260px,1.12fr);
-        min-height: clamp(320px,48vh,500px);
-        column-gap: clamp(18px,2.4vw,34px);
-    }
-    .cockpit-primary { grid-template-rows: auto auto auto auto auto auto; align-content: start; }
-    .market-pulse-chart { min-height: 190px; }
-}
-
-@media (min-width: 1000px) {
-    html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
-    .app {
-        height: auto;
-        min-height: 100dvh;
-        overflow: visible;
-        grid-template-rows: auto auto;
-        padding-inline: clamp(22px,2.8vw,48px);
-    }
-    .view-home .dashboard {
-        width: 100%;
-        max-width: 1760px;
-        margin-inline: auto;
-        grid-template-columns: 1fr;
-        grid-template-rows: auto;
-        gap: clamp(18px,2vw,30px);
-        overflow: visible;
-    }
-    .view-home .dash-main,
-    .view-home .dash-side,
-    .view-home .dash-main .trade-card { min-height: 0; overflow: visible; }
-    .view-home .dash-main .trade-card .bot-control { position: static; }
-    .view-home .dash-side .section { padding-bottom: 8px; }
-    .desk-side { overflow-y: visible; }
-}
-
-@media (min-width: 1200px) {
-    .view-home .dashboard {
-        grid-template-columns: minmax(0,1.12fr) minmax(410px,.88fr);
-        align-items: start;
-    }
-    .view-home .dash-main,
-    .view-home .dash-side { min-width: 0; }
-    .view-home .dash-main .cockpit {
-        height: 380px;
-        min-height: 0;
-        padding-block: 8px;
-    }
-
-    .view-home .dash-main .cockpit-primary {
-        grid-template-rows: 14px 38px 20px 44px 82px 120px;
-        row-gap: 6px;
-    }
-
-    .view-home .market-pulse-shell {
-        align-self: center;
-        width: 100%;
-        height: 260px;
-    }
-}
-
-@media (min-width: 1700px) {
-    .view-home .dashboard { grid-template-columns: minmax(0,1.18fr) minmax(480px,.82fr); }
-    .view-home .dash-main .cockpit { height: 380px; }
-    .market-pulse-chart { min-height: 0; }
-}
-
-@media (max-width: 619.98px) {
-    .cockpit { padding-block: 10px; }
-    .market-pulse-shell { min-height: 66px; }
-    .market-pulse-chart { height: 54px; }
-    .market-pulse-attribution { margin-top: 3px; }
-}
-
 @media (prefers-reduced-motion: reduce) {
     .ticker-row {
         animation: none;
@@ -3587,28 +3496,13 @@ button.activity-row {
     }
 
     .view-home .dash-main .cockpit {
-        height: 332px;
         min-height: 0;
-        padding: 8px 0;
+        padding: 10px 0;
     }
 
     .view-home .dash-main .cockpit-primary {
-        grid-template-rows: 14px 34px 18px 38px 72px 108px;
-        row-gap: 5px;
-    }
-
-    .view-home .market-pulse-shell,
-    .view-home .market-pulse,
-    .view-home .market-pulse-chart {
-        min-height: 0;
-    }
-
-    .view-home .market-pulse-shell {
-        height: 240px;
-    }
-
-    .view-home .bot-feedback:empty {
-        min-height: 0;
+        grid-template-rows: 14px 36px 20px 50px 112px;
+        row-gap: 6px;
     }
 
     .view-home .dash-main .bot-control {
@@ -4492,95 +4386,92 @@ button.activity-row {
     .paper-stage *, .paper-stage-signal.locked, .paper-stage-order.moving, .backtest-stage *, .observe-rail * { animation: none !important; transform: none; }
 }
 
-/* Final desktop home geometry: the ticker owns the bottom rail. Reserve that
-   space and let only the cockpit flex, so trading controls can never sit below
-   or behind it regardless of browser zoom or display scaling. */
+/* Desktop home: preserve the original cockpit proportions. Prediction and
+   controls lead; the live chart is a small supporting panel at top right. */
 @media (min-width: 1000px) {
     .app[data-page="home"] {
         height: 100vh;
         height: 100dvh;
         min-height: 0;
-        padding-bottom: calc(72px + env(safe-area-inset-bottom));
-        grid-template-rows: auto minmax(0, 1fr);
+        padding-bottom: 0;
+        grid-template-rows: auto minmax(0, 1fr) auto;
         overflow: hidden;
     }
 
-    .app[data-page="home"] .view-home .dashboard,
-    .app[data-page="home"] .dash-main,
-    .app[data-page="home"] .trade-card {
-        height: 100%;
+    .app[data-page="home"] .ticker {
+        grid-column: 1;
+        grid-row: 3;
+        align-self: end;
+    }
+
+    .app[data-page="home"] .view-home .dashboard {
+        grid-row: 2;
         min-height: 0;
         overflow: hidden;
-    }
-
-    .app[data-page="home"] .trade-card {
-        display: grid;
-        grid-template-rows: minmax(0, 1fr) auto auto auto;
-        align-content: stretch;
-    }
-
-    .app[data-page="home"] .trade-card .cockpit {
-        width: 100%;
-        height: auto;
-        min-height: 0;
-        margin-top: 0;
-        overflow: hidden;
-    }
-
-    .app[data-page="home"] .trade-card .manual-slot,
-    .app[data-page="home"] .trade-card .bot-feedback,
-    .app[data-page="home"] .trade-card .bot-control {
-        min-width: 0;
     }
 
     .app[data-page="home"] .cockpit {
-        grid-template-columns: minmax(300px, .92fr) minmax(340px, 1.08fr);
-        column-gap: clamp(24px, 2.5vw, 40px);
+        grid-template-columns: minmax(0, 1.35fr) minmax(230px, .65fr);
+        column-gap: clamp(28px, 3vw, 46px);
+        align-items: start;
     }
 
     .app[data-page="home"] .cockpit-primary {
-        grid-template-rows: 14px 42px 20px minmax(34px, auto) 72px 64px;
+        grid-template-rows: 16px 40px 20px 54px 92px 104px;
         row-gap: 6px;
         align-content: start;
-        min-height: 0;
     }
 
     .app[data-page="home"] .cockpit-metrics {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        grid-template-rows: 64px;
-        gap: clamp(8px, 1vw, 14px);
-    }
-
-    .app[data-page="home"] .ckm {
-        min-width: 0;
-        padding: 8px 0 6px;
+        grid-template-rows: repeat(2, 48px);
+        gap: 8px;
     }
 
     .app[data-page="home"] .market-pulse-shell {
-        height: min(230px, 100%);
+        align-self: start;
+        width: 100%;
+        height: 190px;
+        margin-top: 0;
+    }
+
+    .app[data-page="home"] .market-pulse-chart {
+        min-height: 0;
     }
 }
 
 @media (min-width: 1000px) and (max-height: 700px) {
-    .app[data-page="home"] .cockpit-primary {
-        grid-template-rows: 12px 32px 18px 32px 56px 54px;
-        row-gap: 4px;
+    .app[data-page="home"] .cockpit {
+        padding-block: 5px;
     }
 
-    .app[data-page="home"] .observe-rail {
-        margin-block: 2px 4px;
+    .app[data-page="home"] .cockpit-primary {
+        grid-template-rows: 14px 36px 18px 42px 74px 92px;
+        row-gap: 5px;
     }
 
     .app[data-page="home"] .cockpit-metrics {
-        grid-template-rows: 54px;
-        gap: 6px;
-    }
-
-    .app[data-page="home"] .ckm {
-        padding-block: 3px;
+        grid-template-rows: repeat(2, 42px);
     }
 
     .app[data-page="home"] .market-pulse-shell {
-        height: min(210px, 100%);
+        height: 160px;
+    }
+
+    .app[data-page="home"] .cockpit {
+        column-gap: 28px;
+    }
+}
+
+@media (max-width: 619.98px) {
+    .market-pulse-shell {
+        min-height: 66px;
+    }
+
+    .market-pulse-chart {
+        height: 54px;
+    }
+
+    .market-pulse-attribution {
+        margin-top: 3px;
     }
 }
