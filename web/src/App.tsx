@@ -504,6 +504,12 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             <div class="logo">
               <span class="logo-zero"></span>
               <span class="logo-nine"></span>
+              <span class="logo-chart-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 18" fill="none">
+                  <path d="M2 15.5 8 10l4 3 8-9" />
+                  <path d="M14.5 4H20v5.5" />
+                </svg>
+              </span>
             </div>
             <div class="brand-title">
               <span class="zero">Zero</span><span class="nine">Nine</span>

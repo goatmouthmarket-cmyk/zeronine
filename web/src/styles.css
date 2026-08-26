@@ -185,6 +185,35 @@ button {
     transition: transform .24s cubic-bezier(.22, 1, .36, 1), filter .24s ease;
 }
 
+.logo-chart-arrow {
+    position: absolute;
+    z-index: 2;
+    top: -7px;
+    right: -15px;
+    width: 24px;
+    height: 18px;
+    padding: 2px;
+    border: 1px solid rgba(167, 139, 250, .3);
+    border-radius: 6px;
+    background: rgba(12, 10, 22, .94);
+    color: var(--green);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-5px, 5px) scale(.72);
+    transform-origin: bottom left;
+    transition: opacity .18s ease, transform .24s cubic-bezier(.22, 1, .36, 1);
+}
+
+.logo-chart-arrow svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .header .brand:not(.connect-brand) .logo:hover {
     transform: translateY(-2px) rotate(-5deg) scale(1.08);
     filter: drop-shadow(0 5px 10px rgba(139, 92, 246, .28));
@@ -248,6 +277,11 @@ button {
 
 .balance-add:active {
     transform: scale(.9);
+}
+
+.header .brand:not(.connect-brand) .logo:hover .logo-chart-arrow {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
 }
 
 .balance-add:focus-visible {
