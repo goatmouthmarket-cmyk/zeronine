@@ -2638,6 +2638,9 @@ button.activity-row {
 }
 
 .connect-kicker {
+    display: flex;
+    align-items: center;
+    gap: 9px;
     margin-bottom: 10px;
     color: var(--purple-light);
     font-size: 10px;
@@ -2662,23 +2665,24 @@ button.activity-row {
 }
 
 .connect-hero-pulse {
-    display: flex;
+    display: inline-flex;
     align-items: end;
-    gap: 5px;
-    height: 26px;
-    margin-top: 22px;
+    gap: 3px;
+    width: 16px;
+    height: 14px;
+    flex: 0 0 16px;
 }
 
 .connect-hero-pulse span {
-    width: 4px;
+    width: 3px;
     border-radius: 99px;
     background: var(--purple);
     animation: connect-pulse 1.4s ease-in-out infinite;
 }
 
-.connect-hero-pulse span:nth-child(1) { height: 11px; animation-delay: .1s; }
-.connect-hero-pulse span:nth-child(2) { height: 24px; background: var(--pink); animation-delay: .25s; }
-.connect-hero-pulse span:nth-child(3) { height: 15px; animation-delay: .4s; }
+.connect-hero-pulse span:nth-child(1) { height: 7px; animation-delay: .1s; }
+.connect-hero-pulse span:nth-child(2) { height: 14px; background: var(--pink); animation-delay: .25s; }
+.connect-hero-pulse span:nth-child(3) { height: 9px; animation-delay: .4s; }
 
 .connect-card {
     margin-top: 0;

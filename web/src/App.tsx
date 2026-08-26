@@ -266,10 +266,12 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
             <span class="zero">Zero</span><span class="nine">Nine</span>
           </div>
         </div>
-        <div class="connect-kicker">ZeroNine trading workspace</div>
+        <div class="connect-kicker">
+          <span class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>ZeroNine trading workspace</span>
+        </div>
         <h1>See the signal. Trade when you are ready.</h1>
         <p>Explore live market intelligence and shared research first. Connect Deriv only when you want to place a trade.</p>
-        <div class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></div>
       </div>
 
       <div class="connect-card">
