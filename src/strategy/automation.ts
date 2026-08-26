@@ -342,9 +342,6 @@ export class Automation {
     // $stake bet. That's the whole point of the profile.
     const scanMinWin = conservative ? 0 : minWin;
     const scanMinEdge = conservative ? -1 : minEdge;
-    // Capture tick identity before analysis. If a newer tick lands anywhere in
-    // the async quote span, the candidate describes an expired next-tick state
-    // and must be recalculated rather than purchased.
     const scanEpochs = new Map(this.registry.allSnapshots().map((snapshot) => [snapshot.symbol, snapshot.lastEpoch]));
     const intelligence = this.intelligence.snapshot(patternInput());
     this.latestIntelligence = intelligence;
@@ -588,15 +585,10 @@ export class Automation {
     }
 
     const requiredConfirmations = confirmationTicksForMode(settings.bot_mode);
-    const scanTickEpoch = scanEpochs.get(decision.market) ?? 0;
-    const currentTickEpoch = this.registry.snapshot(decision.market).lastEpoch;
-    if (currentTickEpoch !== scanTickEpoch) {
-      this.confirmation.reset(requiredConfirmations);
-      this.phase = 'observing';
-      this.emit({ type: HOLD, ts: Date.now(), reason: 'signal expired on a newer tick; recalculating' });
-      this.emit({ type: 'status', ts: Date.now(), state: this.state() });
-      return 50;
-    }
+    // Confirmation belongs to the market state analyzed in this cycle. Quote
+    // requests may span newer ticks on fast feeds; those newer epochs become
+    // evidence on the next cycle instead of repeatedly erasing progress.
+    const currentTickEpoch = scanEpochs.get(decision.market) ?? 0;
     const confirmation = this.confirmation.observe({
       market: decision.market,
       direction: decision.direction,
@@ -692,7 +684,10 @@ export class Automation {
       return 900;
     }
 
-    // Final quote at the planned stake so the proposal matches the buy.
+    // Final quote at the planned stake so the proposal matches the buy. Only
+    // this short selected-market span is freshness-critical: if its next tick
+    // arrives before the quote returns, discard it and recalculate.
+    const finalSignalEpoch = this.registry.snapshot(decision.market).lastEpoch;
     const finalQuote = await this.client.getQuote({
       direction: decision.direction,
       barrier: decision.barrier,
@@ -702,6 +697,14 @@ export class Automation {
       durationUnit: 't',
       symbol: decision.market,
     });
+
+    if (this.registry.snapshot(decision.market).lastEpoch !== finalSignalEpoch) {
+      this.confirmation.reset(requiredConfirmations);
+      this.phase = 'observing';
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'selected signal expired before purchase; recalculating' });
+      this.emit({ type: 'status', ts: Date.now(), state: this.state() });
+      return 50;
+    }
 
     // A stop can arrive while the final quote request is in flight.
     if (!canBuy()) {
