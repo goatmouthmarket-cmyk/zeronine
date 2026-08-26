@@ -37,6 +37,7 @@ import {
   setAutomation,
 } from '../db/store.ts';
 import { calibrateResearchProbability } from '../intelligence/researchCalibration.ts';
+import { SignalConfirmationGate, confirmationTicksForMode } from './signalConfirmation.ts';
 
 const HOLD = 'hold';
 
@@ -148,6 +149,7 @@ export class Automation {
   private intelligence: IntelligenceEngine;
   private latestIntelligence: IntelligenceSnapshot | null = null;
   private memory: DecisionMemory;
+  private confirmation = new SignalConfirmationGate();
 
   private runTarget = 0;
   private runTrades = 0;
@@ -190,6 +192,7 @@ export class Automation {
       runTarget: this.runTarget,
       runTrades: this.runTrades,
       reason: this.running ? undefined : this.stopReason ?? undefined,
+      observation: this.confirmation.state(),
     };
   }
 
@@ -225,6 +228,7 @@ export class Automation {
     this.runTarget = Math.max(0, Math.floor(opts.maxTrades ?? 0) || 0);
     this.runTrades = 0;
     this.runOrigin = opts.origin ?? 'bot';
+    this.confirmation.reset();
     resetRecovery();
     setAutomation({
       running: 1,
@@ -240,6 +244,7 @@ export class Automation {
 
   stop(reason = 'stopped'): void {
     this.runEpoch += 1;
+    this.confirmation.reset();
     const explicitOperatorStop = reason === 'user stop' || reason === 'emergency stop';
     if (explicitOperatorStop) this.operatorStopped = true;
     if (this.timer) clearTimeout(this.timer);
@@ -337,6 +342,10 @@ export class Automation {
     // $stake bet. That's the whole point of the profile.
     const scanMinWin = conservative ? 0 : minWin;
     const scanMinEdge = conservative ? -1 : minEdge;
+    // Capture tick identity before analysis. If a newer tick lands anywhere in
+    // the async quote span, the candidate describes an expired next-tick state
+    // and must be recalculated rather than purchased.
+    const scanEpochs = new Map(this.registry.allSnapshots().map((snapshot) => [snapshot.symbol, snapshot.lastEpoch]));
     const intelligence = this.intelligence.snapshot(patternInput());
     this.latestIntelligence = intelligence;
     this.emit({ type: 'intelligence', ts: intelligence.at, markets: this.marketIntelligence() });
@@ -349,6 +358,7 @@ export class Automation {
     );
     this.emit({ type: 'signal', ts: Date.now(), signal, phase: this.phase });
     if (signal.holds) {
+      this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
       const candidate = signal.candidates[0];
       const market = candidate ? intelligence.markets.get(candidate.market) : undefined;
       if (candidate && market) {
@@ -371,6 +381,7 @@ export class Automation {
     }
 
     if (!this.client.isConnected || !session) {
+      this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
       this.phase = 'standby';
       this.emit({ type: HOLD, ts: Date.now(), reason: 'Connect Deriv to request live quotes or trade' });
       return 1500;
@@ -461,6 +472,7 @@ export class Automation {
       }
     }
     if (quotes.length === 0) {
+      this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
       this.emit({ type: HOLD, ts: Date.now(), reason: 'no live quotes available' });
       this.phase = 'waiting-quotes';
       return 1500;
@@ -558,6 +570,7 @@ export class Automation {
             .filter((o) => o.estWin >= minWin && o.realEdge >= minEdge)
             .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
       if (eligible.length === 0) {
+        this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
         this.emit({ type: HOLD, ts: Date.now(), reason: conservative ? 'extreme digit too hot' : 'no live quote available' });
         this.phase = 'waiting-edge';
         return 1500;
@@ -572,6 +585,40 @@ export class Automation {
         holds: false,
         market: eligible[0].market,
       };
+    }
+
+    const requiredConfirmations = confirmationTicksForMode(settings.bot_mode);
+    const scanTickEpoch = scanEpochs.get(decision.market) ?? 0;
+    const currentTickEpoch = this.registry.snapshot(decision.market).lastEpoch;
+    if (currentTickEpoch !== scanTickEpoch) {
+      this.confirmation.reset(requiredConfirmations);
+      this.phase = 'observing';
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'signal expired on a newer tick; recalculating' });
+      this.emit({ type: 'status', ts: Date.now(), state: this.state() });
+      return 50;
+    }
+    const confirmation = this.confirmation.observe({
+      market: decision.market,
+      direction: decision.direction,
+      barrier: decision.barrier,
+      tickEpoch: currentTickEpoch,
+    }, requiredConfirmations);
+    if (confirmation.phase !== 'confirmed') {
+      this.phase = 'watching-signal';
+      this.emit({
+        type: HOLD,
+        ts: Date.now(),
+        reason: `observing strongest signal (${confirmation.confirmations}/${confirmation.required} fresh ticks)`,
+        candidate: {
+          market: decision.market,
+          direction: decision.direction,
+          barrier: decision.barrier,
+          estWin: decision.estWin,
+        },
+        confirmation,
+      });
+      this.emit({ type: 'status', ts: Date.now(), state: this.state() });
+      return 250;
     }
     // Re-check the run state after the async quoting phase: the user may have
     // stopped the bot mid-span, and we must not broadcast (or buy) a bet once
@@ -663,6 +710,7 @@ export class Automation {
     }
 
     this.phase = 'buying';
+    this.confirmation.reset(requiredConfirmations);
     const market = intelligence.markets.get(decision.market);
     this.memory.remember({
       ts: Date.now(),
