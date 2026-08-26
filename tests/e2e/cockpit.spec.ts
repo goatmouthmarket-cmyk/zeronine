@@ -152,7 +152,12 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
       const manualBounds = await page.locator('.side-selector').boundingBox();
       const startBounds = await startButton.boundingBox();
       const tickerBounds = await page.locator('.ticker').boundingBox();
+      const cockpitBounds = await page.locator('.cockpit').boundingBox();
+      const cockpitMetricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));
       const usableBottom = tickerBounds?.y ?? viewport.height;
+      expect(Math.max(...cockpitMetricBounds.map((bounds) => bounds.bottom))).toBeLessThanOrEqual(
+        (cockpitBounds?.y ?? 0) + (cockpitBounds?.height ?? 0),
+      );
       expect((manualBounds?.y ?? usableBottom) + (manualBounds?.height ?? 0)).toBeLessThanOrEqual(usableBottom);
       expect((startBounds?.y ?? usableBottom) + (startBounds?.height ?? 0)).toBeLessThanOrEqual(usableBottom);
     }
