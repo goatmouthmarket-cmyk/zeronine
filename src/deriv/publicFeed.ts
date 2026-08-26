@@ -32,6 +32,7 @@ export class DerivPublicFeed {
   private reconnectAttempt = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
+  private lastMessageAt = 0;
   private stopped = false;
 
   private registry: MarketRegistry;
@@ -78,6 +79,7 @@ export class DerivPublicFeed {
     });
 
     ws.on('message', (raw) => {
+      this.lastMessageAt = Date.now();
       try {
         this.handleMessage(JSON.parse(raw.toString()));
       } catch (err) {
@@ -101,6 +103,7 @@ export class DerivPublicFeed {
   private async afterOpen(): Promise<void> {
     try {
       this.connectedAt = Date.now();
+      this.lastMessageAt = Date.now();
       this.reconnectAttempt = 0;
       await this.discoverMarkets();
       this.subscribeAll();
@@ -231,6 +234,11 @@ export class DerivPublicFeed {
     this.clearTimers();
     this.pingTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        if (Date.now() - this.lastMessageAt > PING_INTERVAL_MS * 2) {
+          console.warn('[feed] no inbound data for 60s; reconnecting stale feed');
+          this.ws.close();
+          return;
+        }
         try {
           this.ws.send(JSON.stringify(ping()));
         } catch {

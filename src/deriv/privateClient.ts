@@ -94,6 +94,7 @@ export class DerivPrivateClient {
   private pending = new Map<number, Pending>();
   private contractSubs = new Map<string, Set<(u: ContractUpdate) => void>>();
   private pingTimer: NodeJS.Timeout | null = null;
+  private lastMessageAt = 0;
   onSession: ((s: SessionInfo) => void) | null = null;
   onBalance: ((balance: number) => void) | null = null;
   onDisconnect: (() => void) | null = null;
@@ -147,6 +148,7 @@ export class DerivPrivateClient {
       ws.on('open', () => {
         clearTimeout(handshakeTimer);
         this.connected = true;
+        this.lastMessageAt = Date.now();
         this.startPing();
         this.send({ balance: 1, subscribe: 1, req_id: this.nextReqId() });
         const info: SessionInfo = {
@@ -160,6 +162,7 @@ export class DerivPrivateClient {
       });
 
       ws.on('message', (raw) => {
+        this.lastMessageAt = Date.now();
         try {
           this.handleMessage(JSON.parse(raw.toString()));
         } catch {
@@ -378,6 +381,11 @@ export class DerivPrivateClient {
   private startPing(): void {
     this.stopPing();
     this.pingTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN && Date.now() - this.lastMessageAt > 60_000) {
+        console.warn('[private] no inbound data for 60s; reconnecting stale account socket');
+        this.ws.close();
+        return;
+      }
       this.send(ping());
     }, 30000);
   }

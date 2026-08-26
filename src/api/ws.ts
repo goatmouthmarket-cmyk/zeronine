@@ -7,6 +7,7 @@ import { isOwner } from './access.ts';
 
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
+const HEARTBEAT_INTERVAL_MS = 15_000;
 const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning', 'paper_simulation']);
 
 export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
@@ -40,6 +41,11 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     const lastTickSent = new Map<string, number>();
     const pendingTicks = new Map<string, Record<string, unknown>>();
     let tickTimer: NodeJS.Timeout | null = null;
+    const heartbeatTimer = setInterval(() => {
+      if (socket.readyState === socket.OPEN && socket.bufferedAmount < MAX_BUFFER) {
+        socket.send(JSON.stringify({ type: 'heartbeat', ts: Date.now() }));
+      }
+    }, HEARTBEAT_INTERVAL_MS);
 
     const flushTicks = (): void => {
       tickTimer = null;
@@ -81,11 +87,13 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     socket.on('close', () => {
       unsubscribe();
       if (tickTimer) clearTimeout(tickTimer);
+      clearInterval(heartbeatTimer);
       pendingTicks.clear();
     });
     socket.on('error', () => {
       unsubscribe();
       if (tickTimer) clearTimeout(tickTimer);
+      clearInterval(heartbeatTimer);
       pendingTicks.clear();
     });
   });

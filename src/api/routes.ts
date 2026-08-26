@@ -409,7 +409,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
     try {
       const token = await resolveStoredToken();
-      const info = await client.connect(token);
+      const info = await client.connect(token, session.loginid);
       return { ok: true, session: info };
     } catch (err) {
       reply.code(401);
@@ -516,24 +516,20 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!client.isConnected) {
       try {
         const token = await resolveStoredToken();
-        await client.reconnect(token);
+        await client.reconnect(token, session.loginid);
       } catch (err) {
         reply.code(409);
         return { error: `socket reconnect failed: ${String(err)}` };
       }
     }
     
-    // Check for stale pending trades and clear them
+    // Never clear a provider contract merely because local time elapsed. A
+    // delayed settlement must retain the single-open-contract lock.
     const openTrade = getOpenTrade();
     if (openTrade) {
       const staleness = Date.now() - openTrade.ts;
-      // Clear trades pending for more than 30 seconds (should have settled by then)
-      if (staleness > 30_000) {
-        resolveTrade(openTrade.id, 'timeout', 0, openTrade.contract_id || '');
-      } else {
-        reply.code(409);
-        return { error: `a contract is still open (${(staleness / 1000).toFixed(1)}s old)` };
-      }
+      reply.code(409);
+      return { error: `a contract is still open (${(staleness / 1000).toFixed(1)}s old); settlement recovery is active` };
     }
     
     let recordedTrade: ReturnType<typeof insertTrade> | null = null;
@@ -598,7 +594,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!client.isConnected) {
       try {
         const token = await resolveStoredToken();
-        await client.reconnect(token);
+        await client.reconnect(token, session.loginid);
       } catch (err) {
         reply.code(409);
         return { error: `socket reconnect failed: ${String(err)}` };
@@ -655,6 +651,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!openTrade) {
       return { ok: true, message: 'no stuck trade found' };
     }
+    if (openTrade.contract_id) {
+      reply.code(409);
+      return { error: 'this contract exists at Deriv and cannot be cleared locally; settlement recovery is active' };
+    }
     resolveTrade(openTrade.id, 'timeout', 0, openTrade.contract_id || '');
     return { ok: true, message: `cleared stuck trade ${openTrade.id}` };
   });
@@ -681,7 +681,15 @@ function settleInBackground(
   accountId?: string,
 ): void {
   let attempts = 0;
-  const settle = (): void => { void client
+  const retry = (): void => {
+    attempts += 1;
+    const timer = setTimeout(settle, Math.min(10_000, 1_000 * 2 ** Math.min(attempts - 1, 3)));
+    timer.unref();
+  };
+  const settle = (): void => {
+    const current = getTrade(tradeId, accountId);
+    if (!current || (current.status !== 'pending' && current.status !== 'purchasing')) return;
+    void client
     .settleContract(contractId, (u) => hub.emit({ type: 'contract', ts: Date.now(), contractId: u.contractId, update: u, manual: true }))
     .then((outcome) => {
       if (outcome.settled) {
@@ -710,18 +718,12 @@ function settleInBackground(
         hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, result: status, profit, update: outcome });
       } else {
         hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement' });
-        if (++attempts < 12) {
-          const retry = setTimeout(settle, 1_000);
-          retry.unref();
-        }
+        retry();
       }
     })
     .catch((err) => {
       hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement', error: String(err) });
-      if (++attempts < 12) {
-        const retry = setTimeout(settle, 1_000);
-        retry.unref();
-      }
+      retry();
     });
   };
   settle();

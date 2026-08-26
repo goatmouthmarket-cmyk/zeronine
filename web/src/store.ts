@@ -370,6 +370,26 @@ const initial: State = {
 let state: State = initial;
 const signalStabilizer = new SignalStabilizer<SignalCandidate>();
 const listeners = new Set<() => void>();
+const PUBLIC_MARKET_CACHE_KEY = 'zeronine:public-markets:v1';
+const PUBLIC_MARKET_CACHE_MAX_AGE_MS = 2 * 60_000;
+
+function cachePublicMarkets(markets: Market[]): void {
+  try {
+    sessionStorage.setItem(PUBLIC_MARKET_CACHE_KEY, JSON.stringify({ ts: Date.now(), markets }));
+  } catch {
+    // Storage is an optional warm-start optimization.
+  }
+}
+
+function readCachedPublicMarkets(): Market[] {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(PUBLIC_MARKET_CACHE_KEY) ?? 'null') as { ts?: number; markets?: Market[] } | null;
+    if (!cached?.ts || Date.now() - cached.ts > PUBLIC_MARKET_CACHE_MAX_AGE_MS || !Array.isArray(cached.markets)) return [];
+    return cached.markets;
+  } catch {
+    return [];
+  }
+}
 
 function notifyListeners(): void {
   for (const cb of listeners) cb();
@@ -393,7 +413,7 @@ export function useStore(): State {
 export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((init?.headers as Record<string, string>) ?? {}) };
   if (init?.body != null) headers['Content-Type'] = 'application/json';
-  const res = await fetch(path, { ...init, headers });
+  const res = await fetch(path, { ...init, cache: 'no-store', headers });
   let body: unknown = null;
   try {
     body = await res.json();
@@ -422,6 +442,7 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
   switch (type) {
     case 'hello': {
       const markets = (evt.markets as Market[]) ?? [];
+      cachePublicMarkets(markets);
       patch.markets = markets;
       patch.digits = seedDigits(markets);
       if (!state.selected && markets.length) patch.selected = markets[0]?.symbol ?? null;
@@ -651,6 +672,24 @@ function dispatchEvent(evt: Record<string, unknown>): void {
 let ws: WebSocket | null = null;
 let wsTimer: number | null = null;
 let retry = 0;
+let lastWsMessageAt = 0;
+let lastStateSyncAt = 0;
+let stateRefresh: Promise<void> | null = null;
+
+function resetWsConnection(): void {
+  if (wsTimer) window.clearTimeout(wsTimer);
+  wsTimer = null;
+  if (ws) {
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+    try { ws.close(); } catch { /* already closing */ }
+  }
+  ws = null;
+  retry = 0;
+  connectWs();
+}
 
 export function connectWs(): void {
   if (ws) return;
@@ -660,10 +699,12 @@ export function connectWs(): void {
 
   ws.onopen = () => {
     retry = 0;
+    lastWsMessageAt = Date.now();
     set({ ws: 'open' });
   };
 
   ws.onmessage = (msg) => {
+    lastWsMessageAt = Date.now();
     try {
       dispatchEvent(JSON.parse(String(msg.data)));
     } catch {
@@ -674,7 +715,7 @@ export function connectWs(): void {
   ws.onclose = () => {
     ws = null;
     set({ ws: 'closed' });
-    const delay = Math.min(15000, 1000 * 2 ** retry);
+    const delay = Math.min(15000, 1000 * 2 ** retry) + Math.floor(Math.random() * 350);
     retry += 1;
     if (wsTimer) window.clearTimeout(wsTimer);
     wsTimer = window.setTimeout(connectWs, delay);
@@ -691,33 +732,38 @@ export function connectWs(): void {
 
 window.addEventListener('pageshow', (ev) => {
   if (ev.persisted) {
-    if (ws) {
-      try {
-        ws.onclose = null;
-        ws.close();
-      } catch {
-        // ignore
-      }
-      ws = null;
-    }
-    if (wsTimer) {
-      window.clearTimeout(wsTimer);
-      wsTimer = null;
-    }
-    retry = 0;
-    connectWs();
+    resetWsConnection();
+    void refreshCoreState();
   }
 });
 
+function resumeFreshness(): void {
+  if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN || Date.now() - lastWsMessageAt > 35_000) resetWsConnection();
+  if (Date.now() - lastStateSyncAt > 15_000) void refreshCoreState();
+}
+
+window.addEventListener('online', resumeFreshness);
+document.addEventListener('visibilitychange', resumeFreshness);
+window.setInterval(() => {
+  if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+  if (ws?.readyState === WebSocket.OPEN && Date.now() - lastWsMessageAt > 35_000) resetWsConnection();
+  if (Date.now() - lastStateSyncAt > 60_000) void refreshCoreState();
+}, 15_000);
+
+window.setInterval(() => {
+  if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+  if (state.trades.some((trade) => trade.status === 'pending' || trade.status === 'purchasing')) void refreshTrades();
+}, 2_000);
+
 // ---- actions ----
 
-export async function bootstrap(): Promise<void> {
-  try {
-    signalStabilizer.reset();
-    const s = (await api('/api/state')) as State & { public_dashboard?: boolean; owner?: boolean };
-    set({
+function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean }): void {
+  const markets = Array.isArray(s.markets) ? s.markets : [];
+  cachePublicMarkets(markets);
+  set({
       feed: s.feed,
-      markets: s.markets,
+      markets,
       session: s.session,
       recovery: s.recovery,
       settings: s.settings,
@@ -729,13 +775,39 @@ export async function bootstrap(): Promise<void> {
       owner: Boolean(s.owner),
       digits: (() => {
         const out: Record<string, number[]> = {};
-        for (const m of s.markets) {
+        for (const m of markets) {
           if (m.recentDigits.length) out[m.symbol] = m.recentDigits.slice(-1000);
         }
         return out;
       })(),
-      selected: s.selected ?? s.markets[0]?.symbol ?? null,
-    });
+      selected: state.selected && markets.some((market) => market.symbol === state.selected)
+        ? state.selected
+        : s.selected ?? markets[0]?.symbol ?? null,
+  });
+  lastStateSyncAt = Date.now();
+}
+
+async function refreshCoreState(): Promise<void> {
+  if (stateRefresh) return stateRefresh;
+  stateRefresh = (async () => {
+    try {
+      const snapshot = (await api('/api/state')) as State & { public_dashboard?: boolean; owner?: boolean };
+      applyCoreState(snapshot);
+    } catch {
+      // Keep the last good state. WebSocket recovery continues independently.
+    }
+  })().finally(() => { stateRefresh = null; });
+  return stateRefresh;
+}
+
+export async function bootstrap(): Promise<void> {
+  signalStabilizer.reset();
+  if (state.markets.length === 0) {
+    const cachedMarkets = readCachedPublicMarkets();
+    if (cachedMarkets.length > 0) set({ markets: cachedMarkets, selected: cachedMarkets[0]?.symbol ?? null });
+  }
+  try {
+    await refreshCoreState();
   } catch (err) {
     // best-effort state load; the ws stream will repopulate
   }
@@ -903,13 +975,19 @@ export async function clearStuckTrade(): Promise<void> {
   }
 }
 
+const tradeRefreshes = new Map<number, Promise<void>>();
+
 export async function refreshTrades(limit = 50): Promise<void> {
-  try {
+  const current = tradeRefreshes.get(limit);
+  if (current) return current;
+  const refresh = (async () => { try {
     const res = await api<{ trades: TradeRow[]; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
     if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, limit), performance: res.performance ?? state.performance });
   } catch {
     // best-effort refresh; stale list is fine
-  }
+  } })().finally(() => tradeRefreshes.delete(limit));
+  tradeRefreshes.set(limit, refresh);
+  return refresh;
 }
 
 /** Owner-only audit history. The API scopes account rows to the active login. */

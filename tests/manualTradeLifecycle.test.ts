@@ -92,6 +92,16 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   });
   assert.equal(directReal.statusCode, 200);
   assert.equal(buyCalls, 2, 'real manual orders should not require a separate arming request');
+  const pendingReal = store.getPendingTrades()[0];
+  assert.ok(pendingReal);
+  store.getDb().prepare('UPDATE trades SET ts = ? WHERE id = ?').run(Date.now() - 120_000, pendingReal.id);
+  const blockedByOldOpenContract = await app.inject({
+    method: 'POST', url: '/api/trade/manual',
+    payload: { market: 'R_10', direction: 'over', barrier: 0, stake: 2, estWin: 0.73 },
+  });
+  assert.equal(blockedByOldOpenContract.statusCode, 409);
+  assert.match(blockedByOldOpenContract.json().error, /settlement recovery is active/i);
+  assert.equal(buyCalls, 2, 'elapsed time must never unlock a still-open provider contract');
 
   automation.dispose();
   await app.close();

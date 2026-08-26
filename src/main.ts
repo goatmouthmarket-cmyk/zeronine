@@ -72,6 +72,14 @@ async function main(): Promise<void> {
   }
 
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
+  app.addHook('onSend', async (req, reply, payload) => {
+    if (req.url.startsWith('/api/') || req.url.startsWith('/health')) {
+      reply.header('Cache-Control', 'private, no-store, max-age=0');
+      reply.header('Pragma', 'no-cache');
+      reply.header('Vary', 'Cookie');
+    }
+    return payload;
+  });
   await app.register(fastifyCookie, { secret: config.sessionSecret });
 
   const hub = new Hub();
@@ -152,7 +160,19 @@ async function main(): Promise<void> {
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');
   if (fs.existsSync(webDist)) {
-    app.register(fastifyStatic, { root: webDist, index: ['index.html'] });
+    app.register(fastifyStatic, {
+      root: webDist,
+      index: ['index.html'],
+      setHeaders(res, filePath) {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, max-age=0, must-revalidate');
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=3600');
+        }
+      },
+    });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/') || req.url.startsWith('/health')) {
         reply.code(404).send({ error: 'not found' });
@@ -176,7 +196,7 @@ async function main(): Promise<void> {
     if (!session || client.isConnected) return;
     try {
       const token = await resolveStoredToken();
-      const info = await client.connect(token);
+      const info = await client.connect(token, session.loginid);
       updateSessionBalance(info.balance);
       console.info(`[private] reconnected ${info.loginid} (${info.mode})`);
     } catch (err) {
