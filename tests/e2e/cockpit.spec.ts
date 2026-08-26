@@ -164,8 +164,10 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     }
   }
   const metricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));
-  expect(metricBounds[0].bottom).toBeLessThanOrEqual(metricBounds[2].top);
-  expect(metricBounds[1].bottom).toBeLessThanOrEqual(metricBounds[3].top);
+  expect(metricBounds[0].right).toBeLessThanOrEqual(metricBounds[1].left);
+  expect(metricBounds[1].right).toBeLessThanOrEqual(metricBounds[2].left);
+  expect(metricBounds[2].right).toBeLessThanOrEqual(metricBounds[3].left);
+  expect(new Set(metricBounds.map((bounds) => Math.round(bounds.top))).size).toBe(1);
 
   let manualBody: Record<string, unknown> | null = null;
   await page.route('**/api/trade/manual', async (route) => {

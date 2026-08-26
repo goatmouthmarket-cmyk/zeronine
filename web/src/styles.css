@@ -4411,26 +4411,32 @@ button.activity-row {
     }
 
     .app[data-page="home"] .cockpit {
-        grid-template-columns: minmax(0, 1.35fr) minmax(230px, .65fr);
-        column-gap: clamp(28px, 3vw, 46px);
+        grid-template-columns: minmax(0, 1.45fr) minmax(220px, .55fr);
+        column-gap: clamp(32px, 3.2vw, 52px);
         align-items: start;
     }
 
     .app[data-page="home"] .cockpit-primary {
-        grid-template-rows: 16px 40px 20px 54px 92px 104px;
-        row-gap: 6px;
+        grid-template-rows: 16px 42px 20px 38px 68px 58px;
+        row-gap: 5px;
         align-content: start;
     }
 
     .app[data-page="home"] .cockpit-metrics {
-        grid-template-rows: repeat(2, 48px);
-        gap: 8px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-rows: 58px;
+        gap: clamp(12px, 1.6vw, 24px);
+    }
+
+    .app[data-page="home"] .ckm {
+        min-width: 0;
+        padding-block: 7px 5px;
     }
 
     .app[data-page="home"] .market-pulse-shell {
         align-self: start;
         width: 100%;
-        height: 190px;
+        height: 220px;
         margin-top: 0;
     }
 
@@ -4445,16 +4451,16 @@ button.activity-row {
     }
 
     .app[data-page="home"] .cockpit-primary {
-        grid-template-rows: 14px 36px 18px 42px 74px 92px;
-        row-gap: 5px;
+        grid-template-rows: 14px 36px 18px 34px 70px 52px;
+        row-gap: 4px;
     }
 
     .app[data-page="home"] .cockpit-metrics {
-        grid-template-rows: repeat(2, 42px);
+        grid-template-rows: 52px;
     }
 
     .app[data-page="home"] .market-pulse-shell {
-        height: 160px;
+        height: 190px;
     }
 
     .app[data-page="home"] .cockpit {
