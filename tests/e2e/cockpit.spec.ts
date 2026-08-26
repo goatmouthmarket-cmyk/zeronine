@@ -99,6 +99,16 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   expect((mobilePulseBox?.y ?? 0) + (mobilePulseBox?.height ?? 0)).toBeLessThanOrEqual(
     (mobileCockpitBox?.y ?? 0) + (mobileCockpitBox?.height ?? 0),
   );
+  const mobileActivity = page.locator('.activity-row').first();
+  await expect(mobileActivity.locator('.activity-feed')).toBeVisible();
+  await page.getByRole('button', { name: 'Choose a market and manual barrier from the live quote chart' }).click();
+  const mobileChooser = page.locator('.inline-market-chooser');
+  await expect(mobileChooser).toBeVisible();
+  const mobileControlHeights = await mobileChooser.locator('select, input, .inline-direction button, .inline-confidence-actions button').evaluateAll(
+    (controls) => controls.map((control) => control.getBoundingClientRect().height),
+  );
+  expect(Math.min(...mobileControlHeights)).toBeGreaterThanOrEqual(44);
+  await mobileChooser.getByRole('button', { name: 'Return to live chart' }).click();
 
   for (const viewport of [{ width: 1280, height: 720 }, { width: 1280, height: 667 }, { width: 1272, height: 536 }]) {
     await page.setViewportSize(viewport);

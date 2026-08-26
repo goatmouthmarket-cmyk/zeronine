@@ -138,27 +138,33 @@
 
 @media (max-width: 619.98px) {
   .inline-market-chooser {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto;
-    gap: 5px 8px;
-    height: 78px;
-    padding: 5px 7px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: repeat(6, auto);
+    gap: 8px;
+    height: auto;
+    padding: 12px;
+    overflow: visible;
   }
-  .inline-chooser-head { display: none; }
-  .inline-market-select { grid-row: 1; grid-column: 1; }
-  .inline-market-select > span { display: none; }
-  .inline-market-select select { height: 20px; font-size: 8px; }
-  .inline-direction { grid-row: 1; grid-column: 2; }
-  .inline-direction button { width: 42px; height: 20px; font-size: 8px; }
-  .inline-stake { grid-row: 2; grid-column: 1; grid-template-columns: auto 80px; }
-  .inline-stake input { height: 20px; font-size: 9px; }
-  .inline-barrier { grid-row: 3; grid-column: 1; grid-template-columns: auto 22px 36px 22px; }
-  .inline-barrier button, .inline-barrier input { height: 20px; font-size: 9px; }
-  .inline-confidence { grid-row: 2 / 4; grid-column: 2; grid-template-columns: auto; align-self: center; }
-  .inline-confidence > div { display: none; }
-  .inline-confidence > .inline-confidence-actions { display: flex; }
-  .inline-confidence button { height: 20px; padding: 0 6px; font-size: 7px; }
-  .inline-confidence-actions { gap: 3px; }
+  .inline-chooser-head { display: flex; grid-row: 1; grid-column: 1 / -1; }
+  .inline-chooser-head button { width: 36px; height: 36px; }
+  .inline-market-select { grid-row: 2; grid-column: 1 / -1; }
+  .inline-market-select > span { display: block; }
+  .inline-market-select select { height: 46px; font-size: 12px; }
+  .inline-direction { grid-row: 3; grid-column: 1 / -1; }
+  .inline-direction button { width: auto; height: 46px; font-size: 12px; }
+  .inline-barrier { grid-row: 4; grid-column: 1 / -1; grid-template-columns: 1fr 44px 58px 44px; }
+  .inline-barrier button, .inline-barrier input { height: 46px; font-size: 13px; }
+  .inline-stake { grid-row: 5; grid-column: 1 / -1; grid-template-columns: 1fr 120px; }
+  .inline-stake input { height: 46px; font-size: 13px; }
+  .inline-confidence { grid-row: 6; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .inline-confidence > div { display: grid; }
+  .inline-confidence > .inline-confidence-actions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .inline-confidence button { min-height: 46px; height: auto; padding: 8px; font-size: 9px; line-height: 1.2; }
   .inline-market-chooser > p { display: none; }
 }
 
