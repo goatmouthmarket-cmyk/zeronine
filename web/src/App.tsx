@@ -1680,6 +1680,7 @@ function BotPage(): JSX.Element {
   const [maxTradesText, setMaxTradesText] = useState('0');
   const [strategy, setStrategy] = useState<Settings['strategy_mode']>(s.settings?.strategy_mode ?? 'conservative');
   const [mode, setMode] = useState<Settings['bot_mode']>(s.settings?.bot_mode ?? 'balanced');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState('');
   const cooldownLeft = useBotCooldown();
   const automation = s.automation?.running ?? false;
@@ -1713,6 +1714,20 @@ function BotPage(): JSX.Element {
   const pickMode = (m: Settings['bot_mode']) => {
     setMode(m);
     void updateSettings({ bot_mode: m });
+  };
+
+  const restoreRecommended = () => {
+    setMode('balanced');
+    setStrategy('conservative');
+    setStakeText('1');
+    setMaxTradesText('0');
+    void updateSettings({
+      bot_mode: 'balanced', strategy_mode: 'conservative', base_stake: 1,
+      max_stake: 5, min_edge: 0.02, min_recovery_win: 0.6,
+      max_consecutive_losses: 3, max_drawdown_pct: 10,
+      max_recovery_debt: 10, max_recovery_exposure: 15,
+      barrier_preference: 'auto', barrier_number: 0, pattern_weight: 0,
+    });
   };
 
   const toggleBot = async () => {
@@ -1750,8 +1765,8 @@ function BotPage(): JSX.Element {
         compact
       />
 
-      <div class="section">
-        <div class="set-group">
+      <div class={`section bot-settings-section${advancedOpen ? ' advanced-open' : ''}`}>
+        <div class="set-group bot-account">
           <div class="set-row">
             <span class="set-label">Account</span>
             <span class={`set-value${s.session?.mode === 'demo' ? '' : ' real'}`}>
@@ -1764,7 +1779,7 @@ function BotPage(): JSX.Element {
           </div>
         </div>
 
-        <div class="set-group">
+        <div class="set-group bot-stake">
           <div class="set-label-top">Stake</div>
           <input
             class="set-input"
@@ -1776,8 +1791,8 @@ function BotPage(): JSX.Element {
           />
         </div>
 
-        <div class="set-group">
-          <div class="set-label-top">Mode</div>
+        <div class="set-group bot-mode">
+          <div class="set-label-top">Trading style</div>
           <div class="seg">
             {(Object.keys(MODE_META) as Settings['bot_mode'][]).map((key) => (
               <button
@@ -1785,15 +1800,22 @@ function BotPage(): JSX.Element {
                 class={`seg-btn${mode === key ? ' active' : ''}`}
                 onClick={() => pickMode(key)}
               >
-                {MODE_META[key].label}
+                {key === 'strict' ? 'Safe' : MODE_META[key].label}
               </button>
             ))}
           </div>
           <div class="set-hint">{MODE_META[mode].hint}</div>
         </div>
 
-        <div class="set-group">
-          <div class="set-label-top">Strategy</div>
+        <div class="bot-advanced-toggle-wrap">
+          <button class="bot-advanced-toggle" type="button" onClick={() => setAdvancedOpen((open) => !open)} aria-expanded={advancedOpen}>
+            <span><b>Advanced settings</b><small>Strategy, barriers, patterns, and limits</small></span>
+            <Icon name="chevronRight" size={15} strokeWidth={2} />
+          </button>
+        </div>
+
+        <div class="set-group bot-tuning">
+          <div class="set-label-top">Recovery strategy</div>
           <div class="seg">
             {(Object.keys(STRATEGY_META) as Settings['strategy_mode'][]).map((key) => (
               <button
@@ -1808,15 +1830,15 @@ function BotPage(): JSX.Element {
           <div class="set-hint">{STRATEGY_META[strategy].hint}</div>
         </div>
 
-        <div class="set-group">
-          <div class="set-label-top">Bet on</div>
+        <div class="set-group bot-tuning">
+          <div class="set-label-top">Automated barrier</div>
           <BarrierPicker settings={s.settings} showLabel={false} />
           <div class="set-hint">
             Auto scans every barrier. Conservative is locked to Over 0 / Under 9.
           </div>
         </div>
 
-        <div class="set-group">
+        <div class="set-group bot-tuning">
           <div class="set-label-top">Learned patterns</div>
           <div class="seg">
             {[0, 1].map((w) => (
@@ -1836,7 +1858,7 @@ function BotPage(): JSX.Element {
           <div class="set-hint">Per-strategy override — Global uses the default above. A/B: compare extreme spread and moderate aggressives with patterns off.</div>
         </div>
 
-        <div class="set-group">
+        <div class="set-group bot-trades">
           <div class="set-row">
             <span class="set-label">Max trades</span>
             <input
@@ -1852,17 +1874,25 @@ function BotPage(): JSX.Element {
         </div>
 
         {s.settings && (
-          <div class="set-group">
-            <div class="set-label-top">Automation limits</div>
+          <div class="bot-protection">
+            <div><span>Protection</span><strong>Configured</strong></div>
+            <p>Stops at {s.settings.max_drawdown_pct}% drawdown or {s.settings.max_consecutive_losses} consecutive losses. Recovery is limited by its debt and exposure controls.</p>
+          </div>
+        )}
+
+        {s.settings && (
+          <div class="set-group bot-tuning">
+            <div class="set-label-top">Risk and execution limits</div>
             <div class="risk-grid">
-              <BotLimitInput label="Max stake" field="max_stake" value={s.settings.max_stake} min={0} step={0.1} suffix="$" />
-              <BotLimitInput label="Max drawdown" field="max_drawdown_pct" value={s.settings.max_drawdown_pct} min={0} step={0.5} suffix="%" />
-              <BotLimitInput label="Consecutive losses" field="max_consecutive_losses" value={s.settings.max_consecutive_losses} min={1} step={1} />
-              <BotLimitInput label="Recovery debt cap" field="max_recovery_debt" value={s.settings.max_recovery_debt} min={0} step={1} suffix="$" />
-              <BotLimitInput label="Recovery exposure cap" field="max_recovery_exposure" value={s.settings.max_recovery_exposure} min={0} step={1} suffix="$" />
-              <BotLimitInput label="Minimum edge" field="min_edge" value={s.settings.min_edge} min={0} step={0.1} suffix="%" scale={100} />
-              <BotLimitInput label="Recovery win floor" field="min_recovery_win" value={s.settings.min_recovery_win} min={0} step={1} suffix="%" scale={100} />
+              <BotLimitInput label="Maximum stake" field="max_stake" value={s.settings.max_stake} min={0} step={0.1} suffix="$" />
+              <BotLimitInput label="Maximum drawdown" field="max_drawdown_pct" value={s.settings.max_drawdown_pct} min={0} step={0.5} suffix="%" />
+              <BotLimitInput label="Losses before stop" field="max_consecutive_losses" value={s.settings.max_consecutive_losses} min={1} step={1} />
+              <BotLimitInput label="Recovery debt limit" field="max_recovery_debt" value={s.settings.max_recovery_debt} min={0} step={1} suffix="$" />
+              <BotLimitInput label="Recovery exposure limit" field="max_recovery_exposure" value={s.settings.max_recovery_exposure} min={0} step={1} suffix="$" />
+              <BotLimitInput label="Minimum payout edge" field="min_edge" value={s.settings.min_edge} min={0} step={0.1} suffix="%" scale={100} />
+              <BotLimitInput label="Recovery win probability" field="min_recovery_win" value={s.settings.min_recovery_win} min={0} step={1} suffix="%" scale={100} />
             </div>
+            <button class="bot-restore" type="button" onClick={restoreRecommended}>Restore recommended settings</button>
           </div>
         )}
 

@@ -2180,6 +2180,18 @@ button.activity-row {
    BOT SETTINGS
 ========================================================= */
 
+.bot-settings-section { display: flex; flex-direction: column; }
+.bot-account { order: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding-top: 4px; }
+.bot-account .set-row { display: block; }.bot-account .set-row + .set-row { text-align: right; }.bot-account .set-value { display: block; margin-top: 3px; }
+.bot-mode { order: 2; }.bot-stake { order: 3; }.bot-trades { order: 4; }.bot-protection { order: 5; }.bot-advanced-toggle-wrap { order: 6; }.bot-tuning { order: 7; display: none; }.bot-settings-section.advanced-open .bot-tuning { display: block; }.bot-settings-section .bot-error { order: 8; }.bot-settings-section .bot-control { order: 9; }
+.bot-mode .seg { gap: 5px; background: transparent; border: 0; padding: 0; }.bot-mode .seg-btn { position: relative; min-height: 42px; border: 1px solid var(--border); background: var(--surface-2); }.bot-mode .seg-btn.active { border-color: rgba(139,92,246,.55); background: rgba(139,92,246,.14); box-shadow: none; }.bot-mode .seg-btn:nth-child(2):after { position: absolute; top: -7px; left: 50%; content: "Recommended"; transform: translateX(-50%); padding: 1px 5px; color: var(--purple-light); background: var(--surface); border: 1px solid rgba(139,92,246,.3); border-radius: 99px; font-size: 6px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.bot-stake, .bot-trades { border-top: 1px solid var(--border); }.bot-trades .set-hint { text-align: right; }
+.bot-protection { margin: 11px 0 3px; padding: 10px 11px; background: rgba(34,197,94,.055); border-left: 2px solid rgba(34,197,94,.55); }.bot-protection div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }.bot-protection span { color: var(--text); font-size: 11px; font-weight: 750; }.bot-protection strong { color: var(--green); font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }.bot-protection p { margin: 4px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.bot-advanced-toggle-wrap { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }.bot-advanced-toggle { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; color: var(--text); background: transparent; border: 0; cursor: pointer; text-align: left; }.bot-advanced-toggle span { display: grid; gap: 2px; }.bot-advanced-toggle b { font-size: 11px; }.bot-advanced-toggle small { color: var(--muted); font-size: 8.5px; }.bot-advanced-toggle svg { color: var(--muted); transition: transform .18s ease; }.advanced-open .bot-advanced-toggle svg { transform: rotate(90deg); }
+.bot-restore { width: 100%; margin-top: 12px; padding: 9px 10px; color: var(--muted); background: transparent; border: 1px solid var(--border); border-radius: 9px; font-size: 9px; font-weight: 700; cursor: pointer; }.bot-restore:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-2); }
+
+@media (min-width: 700px) { .bot-stake, .bot-trades { width: calc(50% - 6px); }.bot-stake { align-self: flex-start; }.bot-trades { align-self: flex-end; margin-top: -83px; border-top: 0; }.bot-trades + .bot-protection { margin-top: 14px; } }
+
 .set-group {
     padding: 14px 0;
 }
