@@ -151,8 +151,10 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     if (viewport.height >= 800) {
       const manualBounds = await page.locator('.side-selector').boundingBox();
       const startBounds = await startButton.boundingBox();
-      expect((manualBounds?.y ?? viewport.height) + (manualBounds?.height ?? 0)).toBeLessThan(viewport.height);
-      expect((startBounds?.y ?? viewport.height) + (startBounds?.height ?? 0)).toBeLessThan(viewport.height);
+      const tickerBounds = await page.locator('.ticker').boundingBox();
+      const usableBottom = tickerBounds?.y ?? viewport.height;
+      expect((manualBounds?.y ?? usableBottom) + (manualBounds?.height ?? 0)).toBeLessThanOrEqual(usableBottom);
+      expect((startBounds?.y ?? usableBottom) + (startBounds?.height ?? 0)).toBeLessThanOrEqual(usableBottom);
     }
   }
   const metricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));

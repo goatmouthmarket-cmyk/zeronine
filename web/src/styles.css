@@ -1459,13 +1459,16 @@ button {
     }
     .view-home .dash-main,
     .view-home .dash-side { min-width: 0; }
-    .view-home .dash-main .cockpit { min-height: clamp(320px,48vh,520px); }
+    .view-home .dash-main .cockpit {
+        height: clamp(290px, 32vh, 320px);
+        min-height: 0;
+    }
 }
 
 @media (min-width: 1700px) {
     .view-home .dashboard { grid-template-columns: minmax(0,1.18fr) minmax(480px,.82fr); }
-    .view-home .dash-main .cockpit { min-height: min(54vh,560px); }
-    .market-pulse-chart { min-height: 240px; }
+    .view-home .dash-main .cockpit { height: clamp(290px, 30vh, 320px); }
+    .market-pulse-chart { min-height: 0; }
 }
 
 @media (max-width: 619.98px) {
@@ -3568,14 +3571,14 @@ button.activity-row {
     }
 
     .view-home .dash-main .cockpit {
-        height: clamp(350px, 49vh, 400px);
+        height: 290px;
         min-height: 0;
-        padding: 10px 0;
+        padding: 8px 0;
     }
 
     .view-home .dash-main .cockpit-primary {
-        grid-template-rows: 14px 36px 20px 48px 96px 120px;
-        row-gap: 6px;
+        grid-template-rows: 14px 34px 18px 38px 62px 92px;
+        row-gap: 5px;
     }
 
     .view-home .market-pulse-shell,
