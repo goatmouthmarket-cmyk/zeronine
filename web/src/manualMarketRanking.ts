@@ -21,6 +21,18 @@ export interface ManualSetup {
   confidence: number;
 }
 
+export function strongestManualSetups(
+  markets: ManualMarket[],
+  candidates: ManualSignalCandidate[],
+  limit = 5,
+): ManualSetup[] {
+  return markets
+    .map((market) => strongestManualSetup([market], candidates))
+    .filter((setup): setup is ManualSetup => Boolean(setup))
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, Math.max(0, limit));
+}
+
 export function confidenceForSetup(market: ManualMarket, direction: ManualDirection, barrier: number): number {
   const digits = market.recentDigits.filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
   const theoretical = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;

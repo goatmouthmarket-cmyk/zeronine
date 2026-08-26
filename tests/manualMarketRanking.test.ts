@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { confidenceForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier } from '../web/src/manualMarketRanking.ts';
+import { confidenceForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
 import type { ManualMarket, ManualSignalCandidate } from '../web/src/manualMarketRanking.ts';
 
 function market(symbol: string, digits: number[]): ManualMarket {
@@ -46,4 +46,17 @@ test('an exact scanner candidate outranks empirical fallback for the same barrie
     market: 'B', direction: 'over', barrier: 7, estWin: 0.95, edge: 0.1,
   } satisfies ManualSignalCandidate;
   assert.equal(rankMarketsForSetup([a, b], [candidate], 'over', 7)[0]?.symbol, 'B');
+});
+
+test('five-at-once selection returns one strongest prediction per distinct market', () => {
+  const markets = Array.from({ length: 6 }, (_, index) => market(`M${index}`, [index, index, 9 - index]));
+  const candidates: ManualSignalCandidate[] = markets.flatMap((item, index) => [
+    { market: item.symbol, direction: 'over' as const, barrier: 4, estWin: 0.9 - index * 0.02, edge: 0.1 },
+    { market: item.symbol, direction: 'under' as const, barrier: 5, estWin: 0.5, edge: 0.01 },
+  ]);
+  const basket = strongestManualSetups(markets, candidates, 5);
+  assert.equal(basket.length, 5);
+  assert.equal(new Set(basket.map((setup) => setup.market)).size, 5);
+  assert.deepEqual(basket.map((setup) => setup.market), ['M0', 'M1', 'M2', 'M3', 'M4']);
+  assert.ok(basket.every((setup) => setup.direction === 'over' && setup.barrier === 4));
 });

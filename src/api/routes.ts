@@ -582,6 +582,123 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
+  app.post('/api/trade/manual-basket', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'not connected' };
+    }
+    if (automation.isRunning()) {
+      reply.code(409);
+      return { error: 'stop the bot before placing a manual basket' };
+    }
+    const orders = (req.body as { orders?: Array<{ market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number }> } | undefined)?.orders;
+    if (!Array.isArray(orders) || orders.length !== 5) {
+      reply.code(400);
+      return { error: 'a manual basket requires exactly five orders' };
+    }
+    if (new Set(orders.map((order) => order.market)).size !== 5) {
+      reply.code(400);
+      return { error: 'basket markets must be distinct' };
+    }
+    const normalized = orders.map((order) => {
+      const market = String(order.market ?? '');
+      const direction = order.direction;
+      const barrier = Number(order.barrier);
+      const stake = Number(order.stake);
+      const theoreticalWin = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
+      const requestedEstWin = Number(order.estWin);
+      const estWin = Number.isFinite(requestedEstWin) && requestedEstWin > 0 && requestedEstWin < 1 ? requestedEstWin : theoreticalWin;
+      return { market, direction, barrier, stake, estWin };
+    });
+    const invalid = normalized.find((order) => {
+      const validBarrier = Number.isInteger(order.barrier)
+        && (order.direction === 'over' ? order.barrier >= 0 && order.barrier <= 8 : order.direction === 'under' && order.barrier >= 1 && order.barrier <= 9);
+      return !order.market || !registry.has(order.market) || !validBarrier || !(order.stake > 0);
+    });
+    if (invalid) {
+      reply.code(400);
+      return { error: `invalid basket order for ${invalid.market || 'unknown market'}` };
+    }
+    if (getOpenTrade()) {
+      reply.code(409);
+      return { error: 'wait for the open contract to settle before placing a basket' };
+    }
+    if (!client.isConnected) {
+      try {
+        const token = await resolveStoredToken();
+        await client.reconnect(token, session.loginid);
+      } catch (err) {
+        reply.code(409);
+        return { error: `socket reconnect failed: ${String(err)}` };
+      }
+    }
+
+    const batchId = crypto.randomUUID();
+    try {
+      // Obtain every proposal before purchasing so no leg starts while another
+      // is still waiting for its quote. Provider buys are then launched in one
+      // concurrent turn (network arrival can still differ by milliseconds).
+      const quotes = await Promise.all(normalized.map((order) => client.getQuote({
+        direction: order.direction as Direction,
+        barrier: order.barrier,
+        amount: order.stake,
+        currency: session.currency || 'USD',
+        duration: 1,
+        durationUnit: 't',
+        symbol: order.market,
+      })));
+      const trades = normalized.map((order, index) => insertTrade({
+        ts: Date.now(),
+        market: order.market,
+        contract_type: order.direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
+        barrier: quotes[index].barrier,
+        duration: 1,
+        duration_unit: 't',
+        stake: order.stake,
+        ask_price: quotes[index].askPrice,
+        payout: quotes[index].payout,
+        est_win: order.estWin,
+        profit: 0,
+        status: 'purchasing',
+        contract_id: '',
+        purchase_id: `manual-basket-${batchId}-${index + 1}`,
+        reason: `manual basket ${batchId}`,
+        origin: 'manual',
+      }));
+      const outcomes = await Promise.allSettled(quotes.map((quote) => client.placeBuy(quote.id, quote.askPrice)));
+      let purchased = 0;
+      const results = outcomes.map((outcome, index) => {
+        const trade = trades[index];
+        const quote = quotes[index];
+        if (outcome.status === 'rejected') {
+          resolveTrade(trade.id, 'error', 0, '', undefined, trade.account_id);
+          return { market: trade.market, ok: false, error: String(outcome.reason) };
+        }
+        purchased += 1;
+        const bought = outcome.value;
+        const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : normalized[index].stake;
+        const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
+        const entrySnapshot = registry.snapshot(trade.market);
+        markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
+        const purchasedTrade = getTrade(trade.id, trade.account_id) ?? trade;
+        hub.emit({ type: 'trade', ts: Date.now(), trade: purchasedTrade, manual: true, batchId });
+        settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
+        return { market: trade.market, ok: true, tradeId: trade.id, contractId: bought.contractId };
+      });
+      if (purchased === 0) {
+        reply.code(502);
+        return { error: 'all five basket purchases failed', batchId, results };
+      }
+      return { ok: true, batchId, purchased, failed: 5 - purchased, results };
+    } catch (err) {
+      console.warn(`[manual-basket] quote phase failed: ${String(err)}`);
+      reply.code(502);
+      return { error: `basket quote failed before purchase: ${String(err)}` };
+    }
+  });
+
   app.post('/api/automation/start', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     const session = getSession();

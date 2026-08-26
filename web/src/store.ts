@@ -946,6 +946,13 @@ export interface ManualOrder {
   estWin: number;
 }
 
+export interface ManualBasketResult {
+  ok: boolean;
+  batchId: string;
+  purchased: number;
+  failed: number;
+}
+
 export async function manualTrade(order: ManualOrder): Promise<void> {
   try {
     const res = await api<{ ok: boolean; trade: unknown }>('/api/trade/manual', {
@@ -995,6 +1002,13 @@ export async function refreshTrades(limit = 50): Promise<void> {
   } })().finally(() => tradeRefreshes.delete(limit));
   tradeRefreshes.set(limit, refresh);
   return refresh;
+}
+
+export async function manualBasketTrade(orders: ManualOrder[]): Promise<ManualBasketResult> {
+  return api<ManualBasketResult>('/api/trade/manual-basket', {
+    method: 'POST',
+    body: JSON.stringify({ orders }),
+  });
 }
 
 /** Owner-only audit history. The API scopes account rows to the active login. */

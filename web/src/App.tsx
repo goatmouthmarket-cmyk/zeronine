@@ -14,6 +14,7 @@ import {
   stopAutomation,
   selectMarket,
   manualTrade,
+  manualBasketTrade,
   resetPerformance,
   updateSettings,
   loadTestRuns,
@@ -31,7 +32,7 @@ import {
   switchDerivAccount,
 } from './store';
 import './marketChooser.css';
-import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier } from './manualMarketRanking';
+import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -487,6 +488,32 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     }
   };
 
+  const placeManualBasket = async (setups: ManualSetup[]): Promise<boolean> => {
+    if (guest || manualBusy || automation || setups.length !== 5) return false;
+    setManualBusy(true);
+    setManualMsg('');
+    setManualError(false);
+    try {
+      const stake = manualStake;
+      const result = await manualBasketTrade(setups.map((setup) => ({
+        market: setup.market,
+        direction: setup.direction,
+        barrier: setup.barrier,
+        stake,
+        estWin: setup.confidence,
+      })));
+      setManualMsg(`Basket placed · ${result.purchased}/5 contracts @ ${fmtMoney(stake, s.session?.currency)} each`);
+      setManualError(result.failed > 0);
+      return result.purchased > 0;
+    } catch (e) {
+      setManualError(true);
+      setManualMsg(e instanceof Error ? e.message : String(e));
+      return false;
+    } finally {
+      setManualBusy(false);
+    }
+  };
+
   const resetPerformanceTotals = async () => {
     if (resettingPerformance || !window.confirm('Reset dashboard performance totals? Trade history will be kept.')) return;
     setResettingPerformance(true);
@@ -573,6 +600,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               onManualDirection={setManualDirection}
               onManualBarrier={(direction, barrier) => direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier)}
               onManualMarket={selectMarket}
+              onManualBasket={placeManualBasket}
             />
 
             <div class="manual-slot">
@@ -1050,6 +1078,7 @@ function InlineMarketChooser({
   onBarrier,
   onMarket,
   onStake,
+  onBasket,
   onClose,
 }: {
   markets: Market[];
@@ -1062,8 +1091,10 @@ function InlineMarketChooser({
   onBarrier: (direction: 'over' | 'under', barrier: number) => void;
   onMarket: (symbol: string) => void;
   onStake: (stake: string) => void;
+  onBasket: (setups: ManualSetup[]) => Promise<boolean>;
   onClose: () => void;
 }): JSX.Element {
+  const [execution, setExecution] = useState<'single' | 'basket'>('single');
   const calculateRanking = () => rankMarketsForSetup(markets, candidates, direction, barrier);
   const [rankedSymbols, setRankedSymbols] = useState<string[]>(() => calculateRanking().map((market) => market.symbol));
   useEffect(() => {
@@ -1079,6 +1110,8 @@ function InlineMarketChooser({
     .filter((market): market is Market => Boolean(market));
   const exact = selectedMarket ? exactCandidateForSetup(candidates, selectedMarket.symbol, direction, barrier) ?? null : null;
   const selectedConfidence = selectedMarket ? exact?.estWin ?? confidenceForSetup(selectedMarket, direction, barrier) : null;
+  const basket = strongestManualSetups(markets, candidates, 5);
+  const basketStake = Math.max(0.1, Number(stake) || 1);
   const min = direction === 'over' ? 0 : 1;
   const max = direction === 'over' ? 8 : 9;
   const setDirection = (next: 'over' | 'under') => {
@@ -1109,6 +1142,10 @@ function InlineMarketChooser({
         .map((market) => market.symbol),
     );
   };
+  const placeBasket = async () => {
+    if (basket.length !== 5) return;
+    if (await onBasket(basket)) onClose();
+  };
 
   return (
     <section class="inline-market-chooser" aria-label="Manual market and barrier setup">
@@ -1116,6 +1153,11 @@ function InlineMarketChooser({
         <span>Manual setup</span>
         <button type="button" onClick={onClose} aria-label="Return to live chart">×</button>
       </div>
+      <div class="inline-execution" role="group" aria-label="Manual execution mode">
+        <button type="button" class={execution === 'single' ? 'active' : ''} onClick={() => setExecution('single')}>Single</button>
+        <button type="button" class={execution === 'basket' ? 'active' : ''} onClick={() => setExecution('basket')}>5 at once</button>
+      </div>
+      {execution === 'single' ? <>
       <label class="inline-market-select">
         <span>Market · strongest first</span>
         <select value={selectedMarket?.symbol ?? ''} onChange={(event) => {
@@ -1152,6 +1194,25 @@ function InlineMarketChooser({
         </div>
       </div>
       <p>Use the existing buttons below to place this setup.</p>
+      </> : <>
+        <div class="inline-basket-list" aria-label="Five basket predictions">
+          {basket.map((setup, index) => {
+            const basketMarket = markets.find((item) => item.symbol === setup.market);
+            return <div class="inline-basket-leg" key={setup.market}>
+              <span>{index + 1}</span>
+              <b>{shortMarketName(basketMarket?.display ?? setup.market)}</b>
+              <em>{sideLabel(setup.direction, setup.barrier)}</em>
+              <strong>{Math.round(setup.confidence * 100)}%</strong>
+            </div>;
+          })}
+        </div>
+        <label class="inline-stake basket-stake">
+          <span>Stake per trade</span>
+          <input type="number" inputMode="decimal" min="0.1" step="0.1" value={stake} onInput={(event) => onStake((event.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <div class="inline-basket-total"><span>Total exposure</span><b>{fmtMoney(basketStake * 5)}</b></div>
+        <button class="inline-basket-place" type="button" disabled={basket.length !== 5} onClick={() => void placeBasket()}>Place 5 predictions together</button>
+      </>}
     </section>
   );
 }
@@ -1325,6 +1386,7 @@ function DecisionHero({
   onManualBarrier,
   onManualMarket,
   onManualStake,
+  onManualBasket,
 }: {
   markets: Market[];
   selectedMarket: Market | null;
@@ -1351,6 +1413,7 @@ function DecisionHero({
   onManualBarrier: (direction: 'over' | 'under', barrier: number) => void;
   onManualMarket: (symbol: string) => void;
   onManualStake: (stake: string) => void;
+  onManualBasket: (setups: ManualSetup[]) => Promise<boolean>;
 }): JSX.Element {
   // Manual mode stays pinned to the operator's chosen market. Automation may
   // scan broadly until it emits a decision, after which the decision itself
@@ -1464,6 +1527,7 @@ function DecisionHero({
           onBarrier={onManualBarrier}
           onMarket={onManualMarket}
           onStake={onManualStake}
+          onBasket={onManualBasket}
           onClose={onCloseMarketChooser}
         />
       ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} />}
