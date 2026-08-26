@@ -514,7 +514,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const bought = await client.placeBuy(quote.id, quote.askPrice);
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
-      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, registry.snapshot(market).lastQuote);
+      const entrySnapshot = registry.snapshot(market);
+      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
       hub.emit({ type: 'trade', ts: Date.now(), trade: getTrade(trade.id, trade.account_id) ?? trade, manual: true });
       settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
       return { ok: true, trade: { id: trade.id, contractId: bought.contractId, ask: quote.askPrice, payout: quote.payout } };
@@ -640,7 +641,7 @@ function settleInBackground(
           status,
           profit,
           contractId,
-          { entrySpot: outcome.entrySpot, exitSpot: outcome.exitSpot, exitDigit: outcome.exitDigit },
+          { entrySpot: outcome.entrySpot, entryDigit: outcome.entryDigit, exitSpot: outcome.exitSpot, exitDigit: outcome.exitDigit },
           accountId,
         );
         const settledTrade = getTrade(tradeId, accountId);

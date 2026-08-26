@@ -76,6 +76,7 @@ export interface ContractUpdate {
   exitSpot?: number;
   exitDigit?: number;
   entrySpot?: number;
+  entryDigit?: number;
 }
 
 type Pending = {
@@ -227,6 +228,8 @@ export class DerivPrivateClient {
     const exitTick = c.exit_tick;
     const entryTick = c.entry_tick;
     const exitSpot = Number(exitTick?.quote ?? c.exit_spot ?? NaN);
+    const entrySpot = Number(entryTick?.quote ?? c.entry_spot ?? NaN);
+    const precision = getPrecision(c.underlying_symbol);
     return {
       contractId: String(c.contract_id),
       status,
@@ -235,8 +238,9 @@ export class DerivPrivateClient {
       buyPrice: Number(c.buy_price ?? 0),
       settled: !!c.is_sold,
       exitSpot: Number.isFinite(exitSpot) ? exitSpot : undefined,
-      exitDigit: Number.isFinite(exitSpot) ? lastDigitOf(exitSpot, getPrecision(c.underlying_symbol)) : undefined,
-      entrySpot: Number.isFinite(Number(entryTick?.quote ?? NaN)) ? Number(entryTick.quote) : undefined,
+      exitDigit: Number.isFinite(exitSpot) ? lastDigitOf(exitSpot, precision) : undefined,
+      entrySpot: Number.isFinite(entrySpot) ? entrySpot : undefined,
+      entryDigit: Number.isFinite(entrySpot) ? lastDigitOf(entrySpot, precision) : undefined,
     };
   }
 

@@ -689,13 +689,13 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
   const label = trade.contract_type === 'DIGITOVER' ? `Over ${trade.barrier}` : `Under ${trade.barrier}`;
   const pnl = trade.profit ?? 0;
   const liveDigit = market?.lastDigit != null && market.lastDigit >= 0 ? market.lastDigit : null;
-  const digit = trade.exit_digit != null && trade.exit_digit >= 0 ? trade.exit_digit : pend && liveDigit != null ? liveDigit : '–';
+  const entryDigit = trade.entry_digit != null && trade.entry_digit >= 0 ? trade.entry_digit : '–';
+  const currentDigit = pend && liveDigit != null ? liveDigit : trade.exit_digit != null && trade.exit_digit >= 0 ? trade.exit_digit : '–';
+  const currentLabel = pend ? 'Live' : 'Exit';
+  const currentSpot = pend ? market?.lastQuote : trade.exit_spot;
   const formatSpot = (value?: number | null) => value != null && Number.isFinite(value)
     ? value.toLocaleString(undefined, { maximumFractionDigits: 5 })
     : '--';
-  const feedText = pend
-    ? `Entry ${formatSpot(trade.entry_spot)} → Live ${formatSpot(market?.lastQuote)}${liveDigit != null ? ` · digit ${liveDigit}` : ''}`
-    : `Entry ${formatSpot(trade.entry_spot)} → Exit ${formatSpot(trade.exit_spot)}${trade.exit_digit != null ? ` · digit ${trade.exit_digit}` : ''}`;
 
   const tone = win ? 'win' : loss ? 'loss' : 'push';
   const time = new Date(trade.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -704,13 +704,12 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
 
   return (
     <div
-      class={`activity-row${onOpen ? ' activity-open' : ''}${pend ? ' pending' : ''}`}
+      class={`activity-row trade-activity-row${onOpen ? ' activity-open' : ''}${pend ? ' pending' : ''}`}
       onClick={onOpen}
       onKeyDown={(event) => { if (onOpen && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onOpen(); } }}
       role={onOpen ? 'button' : undefined}
       tabIndex={onOpen ? 0 : undefined}
     >
-      <div class={`activity-digit ${tone}${pend ? ' pending' : ''}`}>{digit}</div>
       <div class="activity-main">
         <div class="activity-betline">
           <span class="activity-bet">{shortMarketName(market?.display ?? trade.market)} · {label}</span>
@@ -720,8 +719,20 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
         <div class={`activity-result ${tone}`}>
           {pend && <span class="live-dot"></span>}
           <span class="activity-outcome">{resultText}</span>
-          <span class="activity-feed"> · {feedText}</span>
           <span class="activity-meta">· {time}</span>
+        </div>
+        <div class="activity-track" aria-label={`Entry digit ${entryDigit}, ${currentLabel.toLowerCase()} digit ${currentDigit}`}>
+          <div class="activity-point">
+            <span class="activity-point-label">Entry</span>
+            <strong class="activity-point-digit">{entryDigit}</strong>
+            <span class="activity-point-quote">{formatSpot(trade.entry_spot)}</span>
+          </div>
+          <span class="activity-track-arrow" aria-hidden="true">→</span>
+          <div class={`activity-point ${pend ? 'live' : tone}`}>
+            <span class="activity-point-label">{currentLabel}</span>
+            <strong class="activity-point-digit">{currentDigit}</strong>
+            <span class="activity-point-quote">{formatSpot(currentSpot)}</span>
+          </div>
         </div>
       </div>
       <div class="activity-pnl">

@@ -725,7 +725,8 @@ export class Automation {
     const bought = await this.client.placeBuy(finalQuote.id, finalQuote.askPrice);
     const actualStake = bought.buyPrice > 0 ? bought.buyPrice : finalQuote.askPrice > 0 ? finalQuote.askPrice : decision.stake;
     const actualPayout = bought.payout > 0 ? bought.payout : finalQuote.payout;
-    markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, accountId, this.registry.snapshot(decision.market).lastQuote);
+    const entrySnapshot = this.registry.snapshot(decision.market);
+    markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, accountId, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
     const purchasedTrade = getTrade(trade.id, accountId);
     if (purchasedTrade) this.emit({ type: 'trade', ts: Date.now(), trade: purchasedTrade });
     this.emit({ type: 'contract', ts: Date.now(), contractId: bought.contractId, phase: 'purchased' });
@@ -741,6 +742,7 @@ export class Automation {
       const profit = contractProfit(won, actualStake, actualPayout, outcome);
       const exitDetails = {
         entrySpot: outcome.entrySpot,
+        entryDigit: outcome.entryDigit,
         exitSpot: outcome.exitSpot,
         exitDigit: outcome.exitDigit,
       };
@@ -802,6 +804,7 @@ export class Automation {
           const profit = contractProfit(won, t.stake ?? 0, t.payout ?? 0, outcome);
           resolveTrade(t.id, status, profit, t.contract_id, {
             entrySpot: outcome.entrySpot,
+            entryDigit: outcome.entryDigit,
             exitSpot: outcome.exitSpot,
             exitDigit: outcome.exitDigit,
           }, t.account_id);

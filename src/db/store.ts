@@ -38,6 +38,7 @@ export interface TradeRow {
   origin?: 'manual' | 'bot' | 'paper';
   resolved_at: number;
   entry_spot?: number;
+  entry_digit?: number;
   exit_spot?: number;
   exit_digit?: number;
 }
@@ -249,7 +250,11 @@ function migrate(d: DatabaseSync): void {
       purchase_id TEXT,
       reason TEXT,
       origin TEXT NOT NULL DEFAULT 'bot',
-      resolved_at INTEGER
+      resolved_at INTEGER,
+      entry_spot REAL,
+      entry_digit INTEGER,
+      exit_spot REAL,
+      exit_digit INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades(ts DESC);
     CREATE TABLE IF NOT EXISTS trade_ledger (
@@ -446,6 +451,7 @@ function migrate(d: DatabaseSync): void {
     (d.prepare(`PRAGMA table_info(trades)`).all() as Array<{ name: string }>).map((c) => c.name),
   );
   if (!cols.has('entry_spot')) d.exec(`ALTER TABLE trades ADD COLUMN entry_spot REAL`);
+  if (!cols.has('entry_digit')) d.exec(`ALTER TABLE trades ADD COLUMN entry_digit INTEGER`);
   if (!cols.has('exit_spot')) d.exec(`ALTER TABLE trades ADD COLUMN exit_spot REAL`);
   if (!cols.has('exit_digit')) d.exec(`ALTER TABLE trades ADD COLUMN exit_digit INTEGER`);
   if (!cols.has('resolved_at')) d.exec(`ALTER TABLE trades ADD COLUMN resolved_at INTEGER`);
@@ -1048,7 +1054,7 @@ export function resolveTrade(
   status: TradeRow['status'],
   profit: number,
   contractId: string,
-  extra?: { entrySpot?: number; exitSpot?: number; exitDigit?: number },
+  extra?: { entrySpot?: number; entryDigit?: number; exitSpot?: number; exitDigit?: number },
   accountId = currentAccountId(),
 ): void {
   const before = getTrade(id, accountId);
@@ -1059,7 +1065,7 @@ export function resolveTrade(
   getDb()
     .prepare(
       `UPDATE trades SET status=?, profit=?, contract_id=?, resolved_at=?,
-        entry_spot=COALESCE(?, entry_spot), exit_spot=?, exit_digit=? WHERE id=? AND account_id=?`,
+        entry_spot=COALESCE(?, entry_spot), entry_digit=COALESCE(?, entry_digit), exit_spot=?, exit_digit=? WHERE id=? AND account_id=?`,
     )
     .run(
       status,
@@ -1067,6 +1073,7 @@ export function resolveTrade(
       contractId,
       Date.now(),
       extra?.entrySpot ?? null,
+      extra?.entryDigit ?? null,
       extra?.exitSpot ?? null,
       extra?.exitDigit ?? null,
       id,
@@ -1084,12 +1091,13 @@ export function markTradePurchased(
   payout: number,
   accountId = currentAccountId(),
   entrySpot?: number,
+  entryDigit?: number,
 ): void {
   const before = getTrade(id, accountId);
   if (!before) return;
   getDb()
-    .prepare("UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=?, status='pending', entry_spot=COALESCE(entry_spot, ?) WHERE id=? AND account_id=?")
-    .run(contractId, stake, stake, payout, typeof entrySpot === 'number' && Number.isFinite(entrySpot) ? entrySpot : null, id, accountId);
+    .prepare("UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=?, status='pending', entry_spot=COALESCE(entry_spot, ?), entry_digit=COALESCE(entry_digit, ?) WHERE id=? AND account_id=?")
+    .run(contractId, stake, stake, payout, typeof entrySpot === 'number' && Number.isFinite(entrySpot) ? entrySpot : null, typeof entryDigit === 'number' && Number.isInteger(entryDigit) ? entryDigit : null, id, accountId);
   if (!before.contract_id && contractId) {
     const purchased = getTrade(id, accountId);
     if (purchased) appendAccountLedgerEntrySafely(purchased, 'purchased');

@@ -93,6 +93,7 @@ export interface TradeRow {
   origin?: 'manual' | 'bot' | 'paper';
   resolved_at: number;
   entry_spot?: number;
+  entry_digit?: number;
   exit_spot?: number;
   exit_digit?: number;
 }
@@ -557,6 +558,7 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
             profit: Number(c.profit ?? trade.profit ?? 0),
             resolved_at: Date.now(),
             entry_spot: Number.isFinite(Number(update.entrySpot)) ? Number(update.entrySpot) : trade.entry_spot,
+            entry_digit: Number.isFinite(Number(update.entryDigit)) ? Number(update.entryDigit) : trade.entry_digit,
             exit_spot: Number.isFinite(Number(update.exitSpot)) ? Number(update.exitSpot) : trade.exit_spot,
             exit_digit: Number.isFinite(Number(update.exitDigit)) ? Number(update.exitDigit) : trade.exit_digit,
           };

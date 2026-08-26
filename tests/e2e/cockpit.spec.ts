@@ -100,7 +100,8 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     (mobileCockpitBox?.y ?? 0) + (mobileCockpitBox?.height ?? 0),
   );
   const mobileActivity = page.locator('.activity-row').first();
-  await expect(mobileActivity.locator('.activity-feed')).toBeVisible();
+  await expect(mobileActivity.locator('.activity-track')).toBeVisible();
+  await expect(mobileActivity.locator('.activity-point-digit')).toHaveCount(2);
   await page.getByRole('button', { name: 'Choose a market and manual barrier from the live quote chart' }).click();
   const mobileChooser = page.locator('.inline-market-chooser');
   await expect(mobileChooser).toBeVisible();
