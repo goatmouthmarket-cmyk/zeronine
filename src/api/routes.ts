@@ -431,11 +431,16 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(401);
       return { error: 'not connected' };
     }
-    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number };
+    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number };
     const market = body.market;
     const direction = body.direction;
     const barrier = Number(body.barrier);
     const stake = Number(body.stake);
+    const theoreticalWin = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
+    const requestedEstWin = Number(body.estWin);
+    const estWin = Number.isFinite(requestedEstWin) && requestedEstWin > 0 && requestedEstWin < 1
+      ? requestedEstWin
+      : theoreticalWin;
     if (!market || (direction !== 'over' && direction !== 'under') || !Number.isFinite(barrier) || !Number.isFinite(stake)) {
       reply.code(400);
       return { error: 'market/direction/barrier/stake required' };
@@ -503,7 +508,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         stake,
         ask_price: quote.askPrice,
         payout: quote.payout,
-        est_win: 0,
+        est_win: estWin,
         profit: 0,
         status: 'purchasing',
         contract_id: '',

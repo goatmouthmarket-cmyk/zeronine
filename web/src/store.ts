@@ -840,6 +840,7 @@ export interface ManualOrder {
   direction: 'over' | 'under';
   barrier: number;
   stake: number;
+  estWin: number;
 }
 
 export async function manualTrade(order: ManualOrder): Promise<void> {

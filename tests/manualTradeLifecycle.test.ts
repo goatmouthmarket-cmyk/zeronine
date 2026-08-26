@@ -56,13 +56,14 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   const response = await app.inject({
     method: 'POST',
     url: '/api/trade/manual',
-    payload: { market: 'R_10', direction: 'over', barrier: 0, stake: 2 },
+    payload: { market: 'R_10', direction: 'over', barrier: 0, stake: 2, estWin: 0.73 },
   });
   assert.equal(response.statusCode, 200);
   assert.equal(buyCalls, 1);
   assert.equal(purchasingWasHidden, true, 'watch reconciliation must not see a row before contract purchase');
   assert.equal(store.getPendingTrades().length, 1);
   assert.equal(store.getPendingTrades()[0]?.contract_id, 'manual-contract-1');
+  assert.equal(store.getPendingTrades()[0]?.est_win, 0.73, 'manual confidence snapshot must be retained');
   const purchaseEvent = events.find((event) => event.type === 'trade')?.trade as { status?: string; contract_id?: string } | undefined;
   assert.equal(purchaseEvent?.status, 'pending');
   assert.equal(purchaseEvent?.contract_id, 'manual-contract-1');

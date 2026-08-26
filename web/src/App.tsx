@@ -474,7 +474,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualError(false);
     try {
       const stake = manualStake;
-      await manualTrade({ market: marketSymbol, direction, barrier, stake });
+      const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
+      const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
+      const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
+      await manualTrade({ market: marketSymbol, direction, barrier, stake, estWin });
       const label = shortMarketName(s.markets.find((item) => item.symbol === marketSymbol)?.display ?? marketSymbol);
       setManualMsg(`${label} · ${direction === 'under' ? 'Under' : 'Over'} ${barrier} placed @ ${stake}`);
       return true;
@@ -799,6 +802,17 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
   const exactPath = trade?.entry_spot != null && trade.exit_spot != null;
   const path = trade ? (exactPath ? [trade.entry_spot!, trade.exit_spot!] : market?.recentQuotes ?? []) : equity[`${run?.kind}-${run?.strategy_mode}-${run?.bot_mode}`] ?? [0, run?.net_pnl ?? 0];
   const title = trade ? `${trade.contract_type === 'DIGITOVER' ? 'Over' : 'Under'} ${trade.barrier}` : run?.kind === 'backtest' ? 'Backtest run' : 'Paper sweep';
+  const storedEstimate = trade != null && Number.isFinite(trade.est_win) && trade.est_win > 0 && trade.est_win < 1;
+  const baselineEstimate = trade
+    ? trade.contract_type === 'DIGITOVER' ? (9 - trade.barrier) / 10 : trade.barrier / 10
+    : 0;
+  const estimatedWin = trade ? (storedEstimate ? trade.est_win : baselineEstimate) : 0;
+  const settledForLearning = trade?.status === 'won' || trade?.status === 'lost';
+  const learningText = trade
+    ? settledForLearning
+      ? `This ${trade.status} result is saved as calibration evidence for ${shortMarketName(market?.display ?? trade.market)} · ${title}. It helps measure whether the ${Math.round(estimatedWin * 100)}% forecast was too high or too low; future tuning uses a group of settled results so one bet cannot oversteer predictions.`
+      : `Once this bet settles, its result will be compared with the ${Math.round(estimatedWin * 100)}% forecast and retained as calibration evidence for this exact market, direction, and barrier.`
+    : '';
 
   return (
     <div class="detail-backdrop" role="presentation" onClick={onClose}>
@@ -816,11 +830,15 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
             <Detail label="Market" value={shortMarketName(market?.display ?? trade.market)} />
             <Detail label="Entry amount" value={fmtMoney(trade.stake, '$')} />
             <Detail label="Payout" value={fmtMoney(trade.payout, '$')} />
-            <Detail label="Estimated win" value={`${(trade.est_win * 100).toFixed(1)}%`} />
+            <Detail label="Estimated win" value={`${(estimatedWin * 100).toFixed(1)}%${storedEstimate ? '' : ' baseline'}`} />
             <Detail label="Entry spot" value={trade.entry_spot != null ? String(trade.entry_spot) : '--'} />
             <Detail label="Exit" value={trade.exit_spot != null ? String(trade.exit_spot) : '--'} />
             <Detail label="Reason" value={trade.reason || '--'} />
             <Detail label="Result" value={trade.status} color={trade.status === 'won' ? 'green' : trade.status === 'lost' ? 'red' : undefined} />
+            <div class={`detail-learning${settledForLearning ? ' settled' : ''}`}>
+              <span class="detail-learning-label">Prediction learning</span>
+              <p>{learningText}</p>
+            </div>
           </div>
         ) : run ? (
           <div class="detail-grid">

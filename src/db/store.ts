@@ -1124,8 +1124,8 @@ function appendAccountLedgerEntry(
     .prepare(
       `INSERT OR IGNORE INTO trade_ledger
        (entry_key, ts, book, account_id, account_mode, event, source, trade_id, contract_ref, market, contract_type,
-        barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit)
-       VALUES (?, ?, 'account', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        barrier, stake, payout, profit, status, reason, entry_spot, exit_spot, exit_digit, est_win)
+       VALUES (?, ?, 'account', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       `account:${trade.id}:${event}`,
@@ -1147,6 +1147,7 @@ function appendAccountLedgerEntry(
       trade.entry_spot ?? null,
       trade.exit_spot ?? null,
       trade.exit_digit ?? null,
+      trade.est_win ?? null,
     );
   return getDb().prepare('SELECT * FROM trade_ledger WHERE entry_key = ?').get(`account:${trade.id}:${event}`) as unknown as LedgerEntryRow;
 }
