@@ -250,6 +250,39 @@ button {
     transform: scale(.9);
 }
 
+.balance-add:focus-visible {
+    outline: 2px solid var(--purple-light);
+    outline-offset: 2px;
+}
+
+.account-switcher {
+    margin-top: 16px;
+    padding: 15px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface-2);
+}
+
+.account-switcher-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.account-switcher-head h3 { margin-top: 5px; font-size: 16px; }
+.account-loading, .account-empty, .account-switcher-copy { color: var(--muted); font-size: 10.5px; }
+.account-switcher-copy { margin: 9px 0 13px; line-height: 1.5; }
+.account-options { display: grid; gap: 8px; }
+.account-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.018); }
+.account-option.real { border-color: rgba(255,82,99,.22); }
+.account-option.current { border-color: rgba(34,197,94,.3); }
+.account-option-main { display: grid; gap: 3px; min-width: 0; }
+.account-option-main strong { font-size: 12px; }
+.account-option-main > span:last-child { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.account-mode { width: fit-content; font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.account-mode.demo { color: var(--purple-light); }
+.account-mode.real { color: var(--red); }
+.account-current { color: var(--green); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.account-option button { min-height: 34px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-3); color: var(--text); font-size: 10px; font-weight: 750; cursor: pointer; }
+.account-option button.danger { border-color: rgba(255,82,99,.35); background: rgba(255,82,99,.14); color: var(--red); }
+.account-option button:disabled { opacity: .55; cursor: wait; }
+.account-empty { padding: 8px 0 2px; }
+
 .subtitle {
     margin-top: 12px;
     font-size: 13px;

@@ -3,6 +3,7 @@ import { config } from '../config.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
+import { listDerivAccounts } from '../deriv/privateClient.ts';
 import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import type { Automation } from '../strategy/automation.ts';
@@ -416,6 +417,57 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
+  app.get('/api/auth/accounts', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    if (!getSession()) {
+      reply.code(401);
+      return { error: 'no session' };
+    }
+    try {
+      const accounts = await listDerivAccounts(await resolveStoredToken());
+      return { accounts: accounts.map((account) => ({
+        accountId: String(account.account_id),
+        mode: String(account.account_type ?? '').toLowerCase().includes('demo') ? 'demo' : 'real',
+        currency: account.currency || '',
+        balance: Number(account.balance ?? 0),
+        status: account.status || '',
+      })) };
+    } catch (err) {
+      reply.code(502);
+      return { error: String(err) };
+    }
+  });
+
+  app.post('/api/auth/switch-account', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    const accountId = String((req.body as { accountId?: unknown } | undefined)?.accountId ?? '').trim();
+    if (!session || !accountId) {
+      reply.code(400);
+      return { error: 'connected session and accountId required' };
+    }
+    if (getOpenTrade()) {
+      reply.code(409);
+      return { error: 'wait for the open contract to settle before switching accounts' };
+    }
+    automation.stop('account switch');
+    storeSetAutomation({ armed_until: 0 });
+    const token = await resolveStoredToken();
+    const tokenSession = getSession() ?? session;
+    try {
+      const info = await client.reconnect(token, accountId);
+      const now = Date.now();
+      setSession({ ...tokenSession, id: crypto.randomUUID(), loginid: info.loginid, balance: info.balance,
+        currency: info.currency, mode: info.mode, created_at: now, updated_at: now });
+      hub.emit({ type: 'session', ts: now, session: { ...info } });
+      return { ok: true, session: info };
+    } catch (err) {
+      try { await client.reconnect(token, session.loginid); } catch { /* reconnect loop will retry */ }
+      reply.code(502);
+      return { error: String(err) };
+    }
+  });
+
   app.post('/api/auth/logout', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     automation.stop('logged out');
@@ -553,11 +605,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       }
     }
     
-    if (session.mode === 'real' && storeGetAutomation().armed_until < Date.now()) {
-      reply.code(403);
-      return { error: 'real-account automation requires arming first' };
-    }
-
     // Optional per-run config: strategy mode, stake amount, and run length in trades.
     const body = (req.body ?? {}) as Record<string, unknown>;
     const sPatch: Record<string, unknown> = {};

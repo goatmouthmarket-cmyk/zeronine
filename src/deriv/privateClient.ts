@@ -13,7 +13,7 @@ export interface SessionInfo {
   mode: 'demo' | 'real';
 }
 
-interface DerivAccount {
+export interface DerivAccountInfo {
   account_id: string | number;
   account_type?: string;
   currency?: string;
@@ -21,7 +21,7 @@ interface DerivAccount {
   status?: string;
 }
 
-async function restAccounts(token: string): Promise<DerivAccount[]> {
+export async function listDerivAccounts(token: string): Promise<DerivAccountInfo[]> {
   const res = await fetch(`${REST_BASE}/accounts`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -31,7 +31,7 @@ async function restAccounts(token: string): Promise<DerivAccount[]> {
     },
   });
   if (!res.ok) throw new Error(`accounts api HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const payload = (await res.json()) as { data?: DerivAccount[] | DerivAccount };
+  const payload = (await res.json()) as { data?: DerivAccountInfo[] | DerivAccountInfo };
   const data = payload?.data;
   const list = Array.isArray(data) ? data : data ? [data] : [];
   return list.filter((a) => a && a.account_id != null);
@@ -107,15 +107,17 @@ export class DerivPrivateClient {
     return this.reqCounter++;
   }
 
-  async connect(token: string): Promise<SessionInfo> {
+  async connect(token: string, accountId?: string): Promise<SessionInfo> {
     let lastErr: unknown = new Error('connect failed');
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
-        const accounts = await restAccounts(token);
+        const accounts = await listDerivAccounts(token);
         if (accounts.length === 0) throw new Error('no Deriv accounts available for this token');
-        const wanted = config.derivAccountId
-          ? accounts.find((a) => String(a.account_id) === String(config.derivAccountId))
+        const requestedAccount = accountId || config.derivAccountId;
+        const wanted = requestedAccount
+          ? accounts.find((a) => String(a.account_id) === String(requestedAccount))
           : undefined;
+        if (requestedAccount && !wanted) throw new Error('requested Deriv account is unavailable for this login');
         const demo = wanted ?? accounts.find((a) => String(a.account_type ?? '').toLowerCase().includes('demo'));
         const account = wanted ?? demo ?? accounts[0];
         const url = await restOtpUrl(account.account_id, token);
@@ -128,7 +130,7 @@ export class DerivPrivateClient {
     throw lastErr;
   }
 
-  private openSocket(url: string, account: DerivAccount): Promise<SessionInfo> {
+  private openSocket(url: string, account: DerivAccountInfo): Promise<SessionInfo> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url, { perMessageDeflate: false, handshakeTimeout: 15000 });
       this.ws = ws;
@@ -366,11 +368,11 @@ export class DerivPrivateClient {
     this.contractSubs.clear();
   }
 
-  async reconnect(token: string): Promise<SessionInfo> {
+  async reconnect(token: string, accountId?: string): Promise<SessionInfo> {
     this.disconnect();
     // Small delay to ensure old socket is fully closed
     await new Promise((resolve) => setTimeout(resolve, 100));
-    return this.connect(token);
+    return this.connect(token, accountId);
   }
 
   private startPing(): void {

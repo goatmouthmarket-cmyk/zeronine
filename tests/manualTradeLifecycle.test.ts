@@ -81,6 +81,18 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   const settledEvent = events.find((event) => event.type === 'trade' && event.settled === true);
   assert.equal((settledEvent?.trade as { status?: string } | undefined)?.status, 'won');
 
+  store.setSession({
+    id: 'manual-real', loginid: 'CR_REAL', balance: 100, currency: 'USD', mode: 'real', auth_kind: 'pat',
+    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+  });
+  const directReal = await app.inject({
+    method: 'POST',
+    url: '/api/trade/manual',
+    payload: { market: 'R_10', direction: 'over', barrier: 0, stake: 2, estWin: 0.73 },
+  });
+  assert.equal(directReal.statusCode, 200);
+  assert.equal(buyCalls, 2, 'real manual orders should not require a separate arming request');
+
   automation.dispose();
   await app.close();
 });

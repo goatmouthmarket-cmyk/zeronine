@@ -38,6 +38,14 @@ export interface SessionInfo {
   auth_kind?: string;
 }
 
+export interface DerivAccountInfo {
+  accountId: string;
+  mode: 'demo' | 'real';
+  currency: string;
+  balance: number;
+  status: string;
+}
+
 export interface Recovery {
   mode: 'base' | 'recovering';
   streak: number;
@@ -833,6 +841,22 @@ export async function unlockDashboard(token: string): Promise<void> {
 export async function arm(): Promise<void> {
   await api('/api/automation/arm', { method: 'POST' });
   return;
+}
+
+export async function loadDerivAccounts(): Promise<DerivAccountInfo[]> {
+  const res = await api<{ accounts: DerivAccountInfo[] }>('/api/auth/accounts');
+  return Array.isArray(res.accounts) ? res.accounts : [];
+}
+
+export async function switchDerivAccount(accountId: string): Promise<SessionInfo> {
+  const res = await api<{ ok: boolean; session: SessionInfo }>('/api/auth/switch-account', {
+    method: 'POST',
+    body: JSON.stringify({ accountId }),
+  });
+  signalStabilizer.reset();
+  set({ session: res.session, trades: [], performance: null, recovery: null, contract: null, decision: null });
+  await refreshTrades();
+  return res.session;
 }
 
 export interface ManualOrder {

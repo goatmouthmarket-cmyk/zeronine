@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import {
   useStore,
@@ -11,7 +11,6 @@ import {
   logout,
   startAutomation,
   stopAutomation,
-  arm,
   selectMarket,
   manualTrade,
   resetPerformance,
@@ -27,6 +26,8 @@ import {
   startPaperSimulation,
   stopPaperSimulation,
   resetPaperSimulation,
+  loadDerivAccounts,
+  switchDerivAccount,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier } from './manualMarketRanking';
@@ -347,7 +348,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         >
           {oauthBusy ? 'Opening Deriv login…' : 'Sign in with Deriv'}
         </button>
-        <div class="connect-hint">Demo account • API token only</div>
+        <div class="connect-hint">Demo or real account • trading-enabled API token</div>
         {s.ws === 'closed' && <div class="connect-err">Feed disconnected – reconnecting…</div>}
       </div>
     </>
@@ -456,7 +457,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     if (cooldownLeft > 0) return;
     try {
       const stake = Math.max(0.1, s.settings?.base_stake ?? 1);
-      if (s.session?.mode === 'real') await arm();
       await startAutomation({ strategyMode: s.settings?.strategy_mode ?? 'conservative', baseStake: stake });
     } catch (err) {
       setStartError(err instanceof Error ? err.message : String(err));
@@ -522,7 +522,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           </nav>
           <div class="balance">
             <div class="balance-amount">{fmtMoney(s.session?.balance ?? 0, s.session?.currency)}</div>
-            <button class="balance-add">
+            <button class="balance-add" type="button" onClick={() => onNavigate('account')} aria-label="Manage balance and switch Deriv account" title="Manage Deriv account">
               <Icon name="plus" size={14} strokeWidth={2.2} />
             </button>
           </div>
@@ -1647,7 +1647,6 @@ function BotPage(): JSX.Element {
         return;
       }
       if (cooldownLeft > 0) return;
-      if (s.session?.mode === 'real') await arm();
       const stake = Math.max(0.1, Number(stakeText) || 0);
       const maxTrades = Math.max(0, Math.floor(Number(maxTradesText) || 0));
       await startAutomation({
@@ -2704,7 +2703,31 @@ function TestLabPage(): JSX.Element {
 function AccountPage(): JSX.Element {
   const s = useStore();
   const session = s.session;
+  const [accounts, setAccounts] = useState<DerivAccountInfo[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [switchingAccount, setSwitchingAccount] = useState('');
+  const [accountError, setAccountError] = useState('');
+  useEffect(() => {
+    if (!session) return;
+    setLoadingAccounts(true);
+    setAccountError('');
+    void loadDerivAccounts()
+      .then(setAccounts)
+      .catch((error) => setAccountError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setLoadingAccounts(false));
+  }, [session?.loginid]);
   if (!session) return <ConnectView embedded />;
+  const switchAccount = async (account: DerivAccountInfo): Promise<void> => {
+    setAccountError('');
+    setSwitchingAccount(account.accountId);
+    try {
+      await switchDerivAccount(account.accountId);
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSwitchingAccount('');
+    }
+  };
   return (
     <>
       <header class="header">
@@ -2739,6 +2762,34 @@ function AccountPage(): JSX.Element {
             {s.automation?.running ? 'Running' : 'Stopped'}
           </span>
         </div>
+      </div>
+      <div class="account-switcher">
+        <div class="account-switcher-head">
+          <div><span class="detail-label">Trading account</span><h3>Choose demo or real</h3></div>
+          {loadingAccounts && <span class="account-loading">Loading…</span>}
+        </div>
+        <p class="account-switcher-copy">The header + opens this account manager. Switching is blocked while a contract is open. A selected real account is clearly marked and trades immediately through the same risk gates as demo.</p>
+        <div class="account-options">
+          {accounts.map((account) => {
+            const current = account.accountId === session.loginid;
+            return (
+              <div class={`account-option ${account.mode}${current ? ' current' : ''}`} key={account.accountId}>
+                <div class="account-option-main">
+                  <span class={`account-mode ${account.mode}`}>{account.mode === 'real' ? 'Real money' : 'Demo'}</span>
+                  <strong>{account.accountId}</strong>
+                  <span>{fmtMoney(account.balance, account.currency || session.currency)}</span>
+                </div>
+                {current ? <span class="account-current">Current</span> : (
+                  <button class={account.mode === 'real' ? 'danger' : ''} type="button" disabled={!!switchingAccount} onClick={() => void switchAccount(account)}>
+                    {switchingAccount === account.accountId ? 'Switching…' : `Use ${account.mode}`}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {!loadingAccounts && accounts.length === 0 && !accountError && <div class="account-empty">No additional Deriv accounts are available for this login.</div>}
+        {accountError && <div class="connect-err">{accountError}</div>}
       </div>
       <button class="logout-btn" onClick={() => void logout()}>
         <Icon name="logout" size={15} strokeWidth={1.8} />

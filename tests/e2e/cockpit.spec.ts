@@ -65,6 +65,13 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     await route.fulfill({ response, json: state });
   });
   await page.routeWebSocket('**/ws', () => {});
+  await page.route('**/api/auth/accounts', async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ accounts: [
+      { accountId: 'CR_TEST', mode: 'demo', currency: 'USD', balance: 100, status: 'active' },
+      { accountId: 'CR_REAL', mode: 'real', currency: 'USD', balance: 25, status: 'active' },
+    ] }),
+  }));
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByText('Pattern', { exact: true })).toBeVisible();
   const startButton = page.getByRole('button', { name: 'Start Bot' });
@@ -134,7 +141,6 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     const perfBounds = await perf.boundingBox();
     expect((perfBounds?.y ?? 0) + (perfBounds?.height ?? 0)).toBeLessThanOrEqual((dashboardBounds?.y ?? 0) + (dashboardBounds?.height ?? 0));
   }
-
   const metricBounds = await metrics.evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().toJSON()));
   expect(metricBounds[0].bottom).toBeLessThanOrEqual(metricBounds[2].top);
   expect(metricBounds[1].bottom).toBeLessThanOrEqual(metricBounds[3].top);
@@ -191,5 +197,8 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   await startButton.click();
   await expect.poll(() => startBody).toEqual(expect.objectContaining({ strategy_mode: expect.any(String), base_stake: expect.any(Number) }));
   await expect(page.locator('.bot-control.running')).toBeVisible();
+  await page.getByRole('button', { name: 'Manage balance and switch Deriv account' }).click();
+  await expect(page.getByRole('heading', { name: 'Choose demo or real' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use real' })).toBeVisible();
   expect(errors).toEqual([]);
 });
