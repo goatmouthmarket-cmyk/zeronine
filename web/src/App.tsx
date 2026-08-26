@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
+import { MarketPulseChart } from './MarketPulseChart';
 import {
   useStore,
   connectPat,
@@ -1011,63 +1012,30 @@ function resolveTarget(
 }
 
 function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: () => void }): JSX.Element {
-  const chart = useMemo(() => {
-    const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
-    const first = quotes[0] ?? 0;
-    const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
-    const change = last - first;
-    const width = 260;
-    const height = 146;
-    const pad = 7;
-    const min = quotes.length ? Math.min(...quotes) : 0;
-    const range = quotes.length ? Math.max(...quotes) - min || 1 : 1;
-    const stepX = quotes.length > 1 ? (width - pad * 2) / (quotes.length - 1) : 0;
-    const line = quotes.map((quote, index) => {
-      const x = pad + index * stepX;
-      const y = height - pad - ((quote - min) / range) * (height - pad * 2);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    return {
-      area: line.length ? `M${line.join(' L')} L${width - pad},${height - pad} L${pad},${height - pad} Z` : '',
-      changePct: first > 0 ? (change / first) * 100 : 0,
-      height,
-      last,
-      line,
-      quotesLength: quotes.length,
-      up: change >= 0,
-      width,
-    };
-  }, [market?.recentQuotes, market?.lastQuote]);
-  const { area, changePct, height, last, line, quotesLength, up, width } = chart;
+  const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
+  const first = quotes[0] ?? 0;
+  const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
+  const changePct = first > 0 ? ((last - first) / first) * 100 : 0;
+  const up = last >= first;
+  const label = shortMarketName(market?.display ?? 'Selected market');
 
   return (
-    <button id="market-pulse-trigger" type="button" class={`market-pulse${up ? ' up' : ' down'}`} aria-label="Choose a market and manual barrier from the live quote chart" onClick={onChoose}>
-      <div class="market-pulse-head">
-        <span class="market-pulse-label">Live quote</span>
-        <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotesLength > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
-      </div>
-      <div class="market-pulse-chart">
-        {line.length > 1 ? (
-          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={`${shortMarketName(market?.display ?? 'market')} recent quote movement`}>
-            <defs>
-              <linearGradient id="market-pulse-fill" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0" stopColor="currentColor" stopOpacity=".22" />
-                <stop offset="1" stopColor="currentColor" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path class="market-pulse-area" d={area} />
-            <path class="market-pulse-line" d={`M${line.join(' L')}`} />
-            <circle class="market-pulse-dot" cx={line[line.length - 1]?.split(',')[0]} cy={line[line.length - 1]?.split(',')[1]} r="3" />
-          </svg>
-        ) : (
-          <span class="market-pulse-empty">Awaiting ticks</span>
-        )}
-      </div>
-      <div class="market-pulse-foot">
-        <span>{shortMarketName(market?.display ?? 'Selected market')}</span>
-        <b>{last > 0 ? last.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}</b>
-      </div>
-    </button>
+    <div class="market-pulse-shell">
+      <button id="market-pulse-trigger" type="button" class={`market-pulse${up ? ' up' : ' down'}`} aria-label="Choose a market and manual barrier from the live quote chart" onClick={onChoose}>
+        <div class="market-pulse-head">
+          <span class="market-pulse-label">Live quote</span>
+          <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotes.length > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
+        </div>
+        <div class="market-pulse-chart">
+          {quotes.length > 1 ? <MarketPulseChart quotes={quotes} lastEpoch={market?.lastEpoch ?? 0} up={up} label={label} /> : <span class="market-pulse-empty">Awaiting ticks</span>}
+        </div>
+        <div class="market-pulse-foot">
+          <span>{label}</span>
+          <b>{last > 0 ? last.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}</b>
+        </div>
+      </button>
+      <a class="market-pulse-attribution" href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView</a>
+    </div>
   );
 }
 

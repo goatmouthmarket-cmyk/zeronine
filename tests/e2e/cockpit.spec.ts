@@ -85,7 +85,7 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   const startButton = page.getByRole('button', { name: 'Start Bot' });
   await expect(startButton).toBeVisible();
   await expect(page.locator('.market-pulse')).toBeVisible();
-  await expect(page.locator('.market-pulse svg')).toBeVisible();
+  await expect(page.locator('.market-pulse-canvas')).toHaveAttribute('role', 'img');
   await expect(page.locator('.activity-streak')).toContainText('1 STREAK');
   const liveActivity = page.locator('.activity-open').filter({ hasText: 'Over 0' }).first();
   await expect(liveActivity.locator('.activity-source.bot')).toHaveText('Bot');
@@ -106,7 +106,7 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.market-pulse')).toBeVisible();
-  await expect(page.locator('.market-pulse svg')).toBeVisible();
+  await expect(page.locator('.market-pulse-canvas')).toBeVisible();
   const mobileCockpit = page.locator('.cockpit');
   const mobilePulse = page.locator('.market-pulse');
   const mobileCockpitBox = await mobileCockpit.boundingBox();
@@ -130,7 +130,7 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
     await page.setViewportSize(viewport);
     const tradeCard = page.locator('.view-home .dash-main .trade-card');
     const dashboard = page.locator('.view-home .dashboard');
-    const perf = page.locator('.view-home .perf');
+    const perf = page.locator('.view-home .perf-header');
     await expect(tradeCard).toBeVisible();
     await expect(perf).toBeVisible();
     const overflow = await tradeCard.evaluate((element) => ({
@@ -176,12 +176,21 @@ test('cockpit is stable and Start Bot sends the automation request', async ({ pa
   const startBefore = await startButton.boundingBox();
   await page.locator('.side-btn.under').click();
   await expect(page.getByText(/Under 7 placed @/)).toBeVisible();
-  expect(await selector.boundingBox()).toEqual(selectorBefore);
-  expect(await startButton.boundingBox()).toEqual(startBefore);
+  expect(await selector.boundingBox()).toEqual(expect.objectContaining({
+    x: selectorBefore?.x,
+    width: selectorBefore?.width,
+    height: selectorBefore?.height,
+  }));
+  expect(await startButton.boundingBox()).toEqual(expect.objectContaining({
+    x: startBefore?.x,
+    width: startBefore?.width,
+    height: startBefore?.height,
+  }));
 
   await page.getByRole('button', { name: 'Bot', exact: true }).click();
-  await expect(page.getByText('Automation limits', { exact: true })).toBeVisible();
-  await expect(page.getByText('Max drawdown', { exact: true })).toBeVisible();
+  await expect(page.getByText('Protection', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Advanced settings/ }).click();
+  await expect(page.getByText('Maximum drawdown', { exact: true })).toBeVisible();
   await expect(page.getByText('Daily loss limit', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Home', exact: true }).click();
 

@@ -476,7 +476,17 @@ button {
     min-width: 0;
     min-height: 0;
     color: var(--green);
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
 }
+
+.market-pulse-shell { display: grid; grid-template-rows: minmax(0,1fr) auto; min-width: 0; min-height: 0; }
+.market-pulse-attribution { justify-self: end; margin-top: 2px; color: var(--muted-2); font-size: 7px; line-height: 1; text-decoration: none; opacity: .62; }.market-pulse-attribution:hover { color: var(--muted); opacity: 1; }
 
 .market-pulse.down {
     color: var(--red);
@@ -518,6 +528,7 @@ button {
     position: relative;
     min-height: 0;
     margin: 8px 0;
+    contain: layout paint;
 }
 
 .market-pulse-chart svg {
@@ -534,7 +545,7 @@ button {
 .market-pulse-line {
     fill: none;
     stroke: currentColor;
-    stroke-width: 2.2;
+    stroke-width: 1.75;
     vector-effect: non-scaling-stroke;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -1388,6 +1399,82 @@ button {
     }
 }
 
+/* Home fluidity pass: content determines height; breakpoints change structure,
+   never scale or squeeze fixed geometry to imitate browser zoom. */
+@media (min-width: 700px) and (max-width: 999.98px) {
+    body { padding: 0; }
+    .app {
+        width: 100%;
+        max-width: none;
+        min-height: 100dvh;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding-inline: clamp(22px,5vw,54px);
+    }
+    .dashboard { max-width: 860px; margin-inline: auto; }
+}
+
+@media (min-width: 620px) {
+    .cockpit {
+        align-items: stretch;
+        grid-template-columns: minmax(260px,.88fr) minmax(260px,1.12fr);
+        min-height: clamp(320px,48vh,500px);
+        column-gap: clamp(18px,2.4vw,34px);
+    }
+    .cockpit-primary { grid-template-rows: auto auto auto auto auto auto; align-content: start; }
+    .market-pulse-chart { min-height: 190px; }
+}
+
+@media (min-width: 1000px) {
+    html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
+    .app {
+        height: auto;
+        min-height: 100dvh;
+        overflow: visible;
+        grid-template-rows: auto auto;
+        padding-inline: clamp(22px,2.8vw,48px);
+    }
+    .view-home .dashboard {
+        width: 100%;
+        max-width: 1760px;
+        margin-inline: auto;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        gap: clamp(18px,2vw,30px);
+        overflow: visible;
+    }
+    .view-home .dash-main,
+    .view-home .dash-side,
+    .view-home .dash-main .trade-card { min-height: 0; overflow: visible; }
+    .view-home .dash-main .trade-card .bot-control { position: static; }
+    .view-home .dash-side .section { padding-bottom: 8px; }
+    .desk-side { overflow-y: visible; }
+}
+
+@media (min-width: 1200px) {
+    .view-home .dashboard {
+        grid-template-columns: minmax(0,1.12fr) minmax(410px,.88fr);
+        align-items: start;
+    }
+    .view-home .dash-main,
+    .view-home .dash-side { min-width: 0; }
+    .view-home .dash-main .cockpit { min-height: clamp(320px,48vh,520px); }
+}
+
+@media (min-width: 1700px) {
+    .view-home .dashboard { grid-template-columns: minmax(0,1.18fr) minmax(480px,.82fr); }
+    .view-home .dash-main .cockpit { min-height: min(54vh,560px); }
+    .market-pulse-chart { min-height: 240px; }
+}
+
+@media (max-width: 619.98px) {
+    .cockpit { padding-block: 10px; }
+    .market-pulse-shell { min-height: 66px; }
+    .market-pulse-chart { height: 54px; }
+    .market-pulse-attribution { margin-top: 3px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ticker-row {
         animation: none;
@@ -1593,6 +1680,8 @@ button.activity-row {
 .activity-main {
     min-width: 0;
 }
+
+.market-pulse-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .perf-header { display: none; }
 
