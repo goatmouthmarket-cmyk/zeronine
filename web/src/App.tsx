@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, ArbLegQuote, ArbObservation, ArbSessionSummary } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
 import {
@@ -30,11 +30,19 @@ import {
   resetPaperSimulation,
   loadDerivAccounts,
   switchDerivAccount,
+  startArbResearch,
+  stopArbResearch,
+  loadArbState,
+  loadArbSessions,
+  loadArbObservations,
+  deleteArbSession,
+  arbReportUrl,
+  arbExportUrl,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
 
-type Page = 'home' | 'bot' | 'history' | 'backtest' | 'account';
+type Page = 'home' | 'bot' | 'history' | 'backtest' | 'arbitrage' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
 type ActivityDetail = { type: 'trade'; trade: TradeRow } | { type: 'run'; run: TestRunRow };
 
@@ -240,6 +248,7 @@ export function App(): JSX.Element {
           {page === 'bot' && <div class="view view-bot"><BotPage /></div>}
           {page === 'history' && <div class="view view-history"><HistoryPage /></div>}
           {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
+          {page === 'arbitrage' && <div class="view view-arbitrage"><ArbitragePage /></div>}
           {page === 'account' && <div class="view view-account"><AccountPage /></div>}
         </div>
       </main>
@@ -548,6 +557,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             <button class={`nav-link${page === 'history' ? ' active' : ''}`} onClick={() => onNavigate('history')}>History</button>
             <button class={`nav-link${page === 'bot' ? ' active' : ''}`} onClick={() => onNavigate('bot')}>Bot</button>
             <button class={`nav-link${page === 'backtest' ? ' active' : ''}`} onClick={() => onNavigate('backtest')}>Backtest</button>
+            <button class={`nav-link${page === 'arbitrage' ? ' active' : ''}`} onClick={() => onNavigate('arbitrage')}>Arbitrage</button>
             <button class={`nav-link${page === 'account' ? ' active' : ''}`} onClick={() => onNavigate('account')}>Account</button>
           </nav>
           <div class="balance">
@@ -2188,13 +2198,163 @@ function Bar({ label, rate, count, tone }: { label: string; rate: number; count:
   );
 }
 
+/* ---------------- arbitrage research ---------------- */
+
+const ARB_PAIRS = ['U1/O0', 'U2/O1', 'U3/O2', 'U4/O3', 'U5/O4', 'U6/O5', 'U7/O6', 'U8/O7', 'U9/O8'];
+
+function arbPercent(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const pct = Math.abs(value) <= 1 ? value * 100 : value;
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
+}
+
+function arbMoney(value: number | null | undefined, currency = ''): string {
+  return value == null || !Number.isFinite(value) ? '—' : fmtMoney(value, currency);
+}
+
+function arbSignedMoney(value: number | null | undefined, currency = ''): string {
+  return value == null || !Number.isFinite(value) ? '—' : fmtSigned(value, currency);
+}
+
+function ArbLeg({ label, leg, tone, currency }: { label: string; leg: ArbLegQuote | null | undefined; tone: 'under' | 'over'; currency: string }): JSX.Element {
+  const ask = leg?.askPrice ?? null;
+  const payout = leg?.payout ?? null;
+  return (
+    <div class={`arb-leg ${tone}${leg?.error ? ' error' : ''}`}>
+      <div class="arb-leg-head">
+        <span class="arb-leg-label">{label}</span>
+        <span class="arb-leg-contract">{leg ? `${leg.contractType === 'DIGITUNDER' ? 'Under' : 'Over'} ${leg.barrier}` : 'Waiting'}</span>
+      </div>
+      <div class="arb-leg-price">{arbMoney(ask, currency)}</div>
+      <div class="arb-leg-meta">
+        <span>{payout == null ? 'No quote' : `${arbMoney(payout, currency)} payout`}</span>
+        <span>{leg?.latencyMs == null ? '—' : `${Math.round(leg.latencyMs)}ms`}</span>
+      </div>
+      {leg?.error && <div class="arb-leg-error">{leg.error}</div>}
+    </div>
+  );
+}
+
+function ArbLatestQuote({ observation, currency }: { observation: ArbObservation | null; currency: string }): JSX.Element {
+  const sync = observation?.syncQuality ?? 'incomplete';
+  const edge = observation?.edge ?? null;
+  return (
+    <section class={`arb-quote-stage ${observation?.status === 'valid' ? ' valid' : ''}`}>
+      <div class="arb-stage-head">
+        <div>
+          <span class="arb-kicker">Latest paired proposal</span>
+          <strong>{observation ? `${observation.market} · ${observation.pair}` : 'Awaiting observations'}</strong>
+        </div>
+        <span class={`arb-sync ${sync}`}>{sync} sync{observation?.syncMs != null ? ` · ${Math.round(observation.syncMs)}ms` : ''}</span>
+      </div>
+      <div class="arb-legs">
+        <ArbLeg label="Lower leg" leg={observation?.lower} tone="under" currency={currency} />
+        <span class="arb-plus">+</span>
+        <ArbLeg label="Upper leg" leg={observation?.upper} tone="over" currency={currency} />
+      </div>
+      <div class="arb-stage-metrics">
+        <div><span>Combined cost</span><strong>{arbMoney(observation?.totalCost, currency)}</strong></div>
+        <div><span>Payout</span><strong>{arbMoney(observation?.payout, currency)}</strong></div>
+        <div><span>Margin</span><strong class={edge != null && edge > 0 ? 'up' : edge != null && edge < 0 ? 'down' : ''}>{arbSignedMoney(observation?.grossMargin ?? edge, currency)}</strong></div>
+        <div><span>Return</span><strong class={edge != null && edge > 0 ? 'up' : edge != null && edge < 0 ? 'down' : ''}>{arbPercent(observation?.roi)}</strong></div>
+      </div>
+      {observation?.diagnostic && <div class="arb-diagnostic">{observation.diagnostic}</div>}
+    </section>
+  );
+}
+
+function ArbitragePage(): JSX.Element {
+  const s = useStore();
+  const [market, setMarket] = useState(s.markets[0]?.symbol ?? '');
+  const [pair, setPair] = useState('U5/O4');
+  const [payout, setPayout] = useState(10);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const arb = s.arb;
+
+  useEffect(() => {
+    void loadArbState();
+  }, []);
+  useEffect(() => {
+    if (!market && s.markets[0]?.symbol) setMarket(s.markets[0].symbol);
+  }, [market, s.markets]);
+
+  const activeMarket = arb?.market || market;
+  const currency = arb?.currency || s.session?.currency || 'USD';
+  const observe = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      if (arb?.running) await stopArbResearch();
+      else await startArbResearch({ market, pair, payout, currency });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <header class="header">
+        <div class="page-title">Arbitrage</div>
+        <div class="subtitle">Paired quote research · observation only · no order execution</div>
+      </header>
+      <div class="arb-layout">
+        <section class="arb-controls">
+          <div class="arb-controls-head">
+            <div>
+              <span class="arb-kicker">Research scanner</span>
+              <strong>{arb?.running ? 'Observing live proposals' : 'Configure an adjacent pair'}</strong>
+            </div>
+            <span class={`arb-live ${arb?.running ? ' live' : ''}`}><i></i>{arb?.running ? 'Live' : arb?.phase ?? 'Idle'}</span>
+          </div>
+          <div class="arb-control-grid">
+            <label class="tl-field">
+              <span class="tl-field-label">Market</span>
+              <select class="tl-input arb-select" value={market} disabled={busy || Boolean(arb?.running)} onChange={(e: any) => setMarket(e.currentTarget.value)}>
+                {s.markets.map((item) => <option key={item.symbol} value={item.symbol}>{shortMarketName(item.display)}</option>)}
+              </select>
+            </label>
+            <label class="tl-field">
+              <span class="tl-field-label">Adjacent pair</span>
+              <select class="tl-input arb-select" value={pair} disabled={busy || Boolean(arb?.running)} onChange={(e: any) => setPair(e.currentTarget.value)}>
+                {ARB_PAIRS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
+            <label class="tl-field">
+              <span class="tl-field-label">Target payout</span>
+              <input class="tl-input" type="number" min="1" step="1" value={payout} disabled={busy || Boolean(arb?.running)} onInput={(e: any) => setPayout(Math.max(1, Number(e.currentTarget.value) || 1))} />
+            </label>
+          </div>
+          <div class="arb-actions">
+            <button class={`arb-observe${arb?.running ? ' stop' : ''}${busy ? ' busy' : ''}`} disabled={busy || !market} onClick={() => void observe()}>
+              <Icon name={arb?.running ? 'square' : 'play'} size={15} strokeWidth={2.2} />
+              {arb?.running ? 'Stop observing' : 'Start observing'}
+            </button>
+            <span class="arb-safety">Research only. No buy request can be sent from this view.</span>
+          </div>
+          {error && <div class="tl-err">{error}</div>}
+        </section>
+        <ArbLatestQuote observation={arb?.latest ?? null} currency={currency} />
+        <section class="arb-health">
+          <div><span>Market</span><strong>{s.markets.find((item) => item.symbol === activeMarket)?.display ?? (activeMarket || '—')}</strong></div>
+          <div><span>Session</span><strong>{arb?.sessionId ? `#${arb.sessionId}` : '—'}</strong></div>
+          <div><span>Observed</span><strong>{(arb?.observations ?? 0).toLocaleString()}</strong></div>
+          <div><span>Usable pairs</span><strong class="up">{(arb?.validObservations ?? 0).toLocaleString()}</strong></div>
+        </section>
+      </div>
+    </>
+  );
+}
+
 /* ---------------- test lab ---------------- */
 
 const STRATEGY_KEYS = ['conservative', 'martingale', 'boosted_martingale', 'chase'] as const;
 const MODE_KEYS = ['rapid', 'balanced', 'strict'] as const;
 const ALL_CONFIG_KEYS: string[] = STRATEGY_KEYS.flatMap((s) => MODE_KEYS.map((m) => `${s}-${m}`));
 
-type LabTab = 'backtest' | 'paper' | 'compare' | 'patterns';
+type LabTab = 'backtest' | 'paper' | 'compare' | 'patterns' | 'arbitrage';
 
 function configKey(strategy: string, mode: string): string {
   return `${strategy}-${mode}`;
@@ -2892,6 +3052,134 @@ function PatternsTab({ busy }: { busy: boolean }): JSX.Element {
   );
 }
 
+function ArbResearchTab(): JSX.Element {
+  const s = useStore();
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const sessions = s.arbSessions;
+  const selected = sessions.find((session) => session.id === sessionId) ?? sessions[0] ?? null;
+  const observations = s.arbObservations;
+
+  const refresh = async (id?: string | null) => {
+    setLoading(true);
+    setError('');
+    try {
+      const loaded = await loadArbSessions();
+      const next = id ?? sessionId ?? loaded[0]?.id ?? null;
+      setSessionId(next);
+      if (next) await loadArbObservations({ sessionId: next, limit: 150 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const chooseSession = (id: string) => {
+    setSessionId(id);
+    setLoading(true);
+    void loadArbObservations({ sessionId: id, limit: 150 })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setLoading(false));
+  };
+
+  const copyReport = async () => {
+    if (!selected) return;
+    setError('');
+    try {
+      const response = await fetch(arbReportUrl(selected.id));
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const report = await response.text();
+      await navigator.clipboard.writeText(report);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const removeSession = async () => {
+    if (!selected || !window.confirm(`Delete research session #${selected.id}?`)) return;
+    setLoading(true);
+    try {
+      await deleteArbSession(selected.id);
+      const next = s.arbSessions.find((session) => session.id !== selected.id) ?? null;
+      setSessionId(next?.id ?? null);
+      if (next) await loadArbObservations({ sessionId: next.id, limit: 150 });
+      else await loadArbObservations({ limit: 1 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const best = observations.reduce<ArbObservation | null>((current, item) => {
+    if (item.status !== 'valid' || item.edge == null) return current;
+    return !current || (current.edge ?? -Infinity) < item.edge ? item : current;
+  }, null);
+
+  return (
+    <>
+      <div class="arb-research-toolbar">
+        <div>
+          <span class="arb-kicker">Stored evidence</span>
+          <strong>{selected ? `Session #${selected.id} · ${selected.market} ${selected.pair}` : 'No research session selected'}</strong>
+        </div>
+        <div class="arb-report-actions">
+          <button class="arb-text-btn" disabled={loading} onClick={() => void refresh(selected?.id)}>Refresh</button>
+          <button class="arb-text-btn" disabled={!selected} onClick={() => void copyReport()}>Copy report</button>
+          {selected && <a class="arb-text-btn" href={arbExportUrl(selected.id)} download>Export JSON</a>}
+          <button class="arb-text-btn danger" disabled={!selected || loading} onClick={() => void removeSession()}>Delete</button>
+        </div>
+      </div>
+      {error && <TlErr err={error} />}
+      {sessions.length > 0 && (
+        <div class="arb-session-list" aria-label="Arbitrage research sessions">
+          {sessions.map((session) => (
+            <button class={`arb-session${selected?.id === session.id ? ' active' : ''}`} key={session.id} onClick={() => chooseSession(session.id)}>
+              <span class="arb-session-pair">{session.market} · {session.pair}</span>
+              <span class="arb-session-detail">{session.observations} samples · best {arbPercent(session.bestEdge)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {selected && (
+        <div class="arb-research-metrics">
+          <Metric label="Samples" value={selected.observations.toLocaleString()} />
+          <Metric label="Valid pairs" value={selected.validObservations.toLocaleString()} tone="up" />
+          <Metric label="Best edge" value={arbPercent(selected.bestEdge)} tone={selected.bestEdge != null && selected.bestEdge < 0 ? 'down' : 'up'} />
+          <Metric label="Average edge" value={arbPercent(selected.avgEdge)} tone={selected.avgEdge != null && selected.avgEdge < 0 ? 'down' : 'up'} />
+        </div>
+      )}
+      {best && (
+        <div class="tl-note auto">Nearest observed opportunity: {best.market} {best.pair} at {new Date(best.ts).toLocaleTimeString()} · {arbPercent(best.edge)} edge · {best.syncQuality} sync. This remains research evidence, not an executable order.</div>
+      )}
+      {observations.length === 0 && !loading && <div class="empty-hint">No observations stored yet. Start the observer from the Arbitrage page.</div>}
+      {observations.length > 0 && (
+        <div class="arb-table-wrap">
+          <div class="arb-table-head"><span>Time</span><span>Pair</span><span>Cost</span><span>Edge</span><span>Sync</span><span>State</span></div>
+          <div class="arb-table">
+            {observations.map((observation) => (
+              <div class="arb-table-row" key={observation.id}>
+                <span>{new Date(observation.ts).toLocaleTimeString()}</span>
+                <span>{observation.market} · {observation.pair}</span>
+                <span>{arbMoney(observation.totalCost, observation.currency)}</span>
+                <span class={observation.edge != null && observation.edge > 0 ? 'up' : observation.edge != null && observation.edge < 0 ? 'down' : ''}>{arbPercent(observation.edge)}</span>
+                <span class={`arb-sync ${observation.syncQuality}`}>{observation.syncMs == null ? observation.syncQuality : `${Math.round(observation.syncMs)}ms`}</span>
+                <span class={`arb-observation-state ${observation.status}`}>{observation.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function TestLabPage(): JSX.Element {
   const s = useStore();
   const [tab, setTab] = useState<LabTab>('backtest');
@@ -2902,22 +3190,23 @@ function TestLabPage(): JSX.Element {
   }, []);
   useEffect(() => {
     if (tab === 'patterns') void loadPatternsData();
+    if (tab === 'arbitrage') void loadArbSessions();
   }, [tab]);
 
   return (
     <>
       <header class="header">
         <div class="page-title">Test Lab</div>
-        <div class="subtitle">Backtest the replay · sweep the demo · learn the patterns</div>
+        <div class="subtitle">Backtest the replay · sweep the demo · retain research evidence</div>
       </header>
       <div class="seg tl-tabs">
-        {(['backtest', 'paper', 'compare', 'patterns'] as LabTab[]).map((t) => (
+        {(['backtest', 'paper', 'compare', 'patterns', 'arbitrage'] as LabTab[]).map((t) => (
           <button
             class={`seg-btn${tab === t ? ' active' : ''}`}
             onClick={() => setTab(t)}
             key={t}
           >
-            {t[0].toUpperCase() + t.slice(1)}
+            {t === 'arbitrage' ? 'Arb research' : t[0].toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -2925,6 +3214,7 @@ function TestLabPage(): JSX.Element {
       {tab === 'paper' && <PaperTab busy={busy} onBusy={setBusy} />}
       {tab === 'compare' && <CompareTab busy={busy} />}
       {tab === 'patterns' && <PatternsTab busy={busy} />}
+      {tab === 'arbitrage' && <ArbResearchTab />}
     </>
   );
 }
@@ -3064,7 +3354,11 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
         </button>
         <button class={`nav-item${page === 'backtest' ? ' active' : ''}`} onClick={() => setPage('backtest')}>
           <Icon name="stats" size={20} />
-          Backtest
+          Lab
+        </button>
+        <button class={`nav-item${page === 'arbitrage' ? ' active' : ''}`} onClick={() => setPage('arbitrage')}>
+          <Icon name="crosshair" size={20} />
+          Arb
         </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} onClick={() => setPage('account')}>
           <Icon name="account" size={20} />

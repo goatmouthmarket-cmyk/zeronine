@@ -310,6 +310,69 @@ export interface PaperSimulationState {
   lastTick: { market: string; quote: number; digit: number; epoch: number } | null;
 }
 
+/** Research-only paired quote state. It never represents a Deriv purchase. */
+export interface ArbLegQuote {
+  contractType: 'DIGITOVER' | 'DIGITUNDER' | string;
+  barrier: number;
+  askPrice: number | null;
+  payout: number | null;
+  proposalId?: string;
+  requestedAt?: number;
+  receivedAt?: number;
+  latencyMs?: number;
+  error?: string | null;
+}
+
+export interface ArbObservation {
+  id: number;
+  sessionId: string;
+  ts: number;
+  market: string;
+  pair: string;
+  payout: number;
+  currency: string;
+  lower: ArbLegQuote;
+  upper: ArbLegQuote;
+  totalCost: number | null;
+  grossMargin: number | null;
+  roi: number | null;
+  edge: number | null;
+  syncMs: number | null;
+  syncQuality: 'good' | 'fair' | 'poor' | 'incomplete' | string;
+  status: 'valid' | 'incomplete' | 'invalid' | string;
+  diagnostic?: string | null;
+}
+
+export interface ArbSessionSummary {
+  id: string;
+  startedAt: number;
+  stoppedAt: number | null;
+  market: string;
+  pair: string;
+  payout: number;
+  currency: string;
+  observations: number;
+  validObservations: number;
+  bestEdge: number | null;
+  avgEdge: number | null;
+  reason?: string | null;
+}
+
+export interface ArbResearchState {
+  phase: 'idle' | 'observing' | 'stopped' | 'error' | string;
+  running: boolean;
+  market: string;
+  pair: string;
+  payout: number;
+  currency: string;
+  sessionId: string | null;
+  latest: ArbObservation | null;
+  observations: number;
+  validObservations: number;
+  lastActivityAt?: number;
+  reason?: string | null;
+}
+
 export interface State {
   publicDashboard?: boolean;
   owner?: boolean;
@@ -341,6 +404,9 @@ export interface State {
   autoPaper: { enabled: boolean; intervalMs: number; lastRunAt: number; nextRunAt: number | null } | null;
   paperSimulation: PaperSimulationState | null;
   patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
+  arb: ArbResearchState | null;
+  arbSessions: ArbSessionSummary[];
+  arbObservations: ArbObservation[];
 }
 
 const initial: State = {
@@ -372,6 +438,9 @@ const initial: State = {
   autoPaper: null,
   paperSimulation: null,
   patterns: null,
+  arb: null,
+  arbSessions: [],
+  arbObservations: [],
 };
 
 let state: State = initial;
@@ -630,6 +699,27 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
     case 'paper_simulation':
       patch.paperSimulation = (evt.state as PaperSimulationState | null) ?? null;
       break;
+    case 'arb':
+      patch.arb = unwrapArbState(evt.state);
+      break;
+    case 'arb_observation': {
+      const observation = normalizeArbObservation(evt.observation);
+      const researchState = unwrapArbState(evt.state);
+      if (researchState) patch.arb = researchState;
+      if (observation) {
+        patch.arbObservations = [observation, ...state.arbObservations.filter((item) => item.id !== observation.id)].slice(0, 250);
+        if (!researchState && state.arb) {
+          patch.arb = {
+            ...state.arb,
+            latest: observation,
+            observations: Math.max(state.arb.observations, state.arb.observations + 1),
+            validObservations: state.arb.validObservations + (observation.status === 'valid' ? 1 : 0),
+            lastActivityAt: observation.ts,
+          };
+        }
+      }
+      break;
+    }
     case 'error':
       break;
     default:
@@ -778,6 +868,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean
       trades: s.trades,
       performance: s.performance,
       paperSimulation: s.paperSimulation ?? null,
+      arb: s.arb ?? null,
       publicDashboard: Boolean(s.public_dashboard),
       owner: Boolean(s.owner),
       digits: (() => {
@@ -820,6 +911,7 @@ export async function bootstrap(): Promise<void> {
   }
   void loadAutoBacktestStatus();
   void loadAutoPaperStatus();
+  void loadArbState();
   connectWs();
 }
 
@@ -910,6 +1002,185 @@ export async function resetPaperSimulation(): Promise<PaperSimulationState> {
   const res = await api<{ ok: boolean; state: PaperSimulationState }>('/api/paper/reset', { method: 'POST' });
   set({ paperSimulation: res.state });
   return res.state;
+}
+
+// ---- arbitrage research actions ----
+
+function arbNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function arbText(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeArbObservation(raw: unknown): ArbObservation | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const underBarrier = arbNumber(row.under_barrier) ?? arbNumber((row.lower as Record<string, unknown> | undefined)?.barrier) ?? 0;
+  const overBarrier = arbNumber(row.over_barrier) ?? arbNumber((row.upper as Record<string, unknown> | undefined)?.barrier) ?? 0;
+  const lowerRaw = row.lower as Record<string, unknown> | undefined;
+  const upperRaw = row.upper as Record<string, unknown> | undefined;
+  const statusRaw = arbText(row.status, 'incomplete');
+  return {
+    id: arbNumber(row.id) ?? 0,
+    sessionId: arbText(row.session_id, arbText(row.sessionId)),
+    ts: arbNumber(row.timestamp) ?? arbNumber(row.ts) ?? Date.now(),
+    market: arbText(row.symbol, arbText(row.market)),
+    pair: arbText(row.pair, `U${underBarrier}/O${overBarrier}`),
+    payout: arbNumber(row.target_payout) ?? arbNumber(row.payout) ?? 0,
+    currency: arbText(row.currency, 'USD'),
+    lower: {
+      contractType: arbText(lowerRaw?.contractType, 'DIGITUNDER'),
+      barrier: underBarrier,
+      askPrice: arbNumber(row.under_ask) ?? arbNumber(lowerRaw?.askPrice),
+      payout: arbNumber(row.under_payout) ?? arbNumber(lowerRaw?.payout),
+      proposalId: arbText(row.under_proposal_id, arbText(lowerRaw?.proposalId)) || undefined,
+      requestedAt: arbNumber(row.under_request_sent_at) ?? arbNumber(lowerRaw?.requestedAt) ?? undefined,
+      receivedAt: arbNumber(row.under_received_at) ?? arbNumber(lowerRaw?.receivedAt) ?? undefined,
+      latencyMs: arbNumber(row.under_round_trip_ms) ?? arbNumber(lowerRaw?.latencyMs) ?? undefined,
+    },
+    upper: {
+      contractType: arbText(upperRaw?.contractType, 'DIGITOVER'),
+      barrier: overBarrier,
+      askPrice: arbNumber(row.over_ask) ?? arbNumber(upperRaw?.askPrice),
+      payout: arbNumber(row.over_payout) ?? arbNumber(upperRaw?.payout),
+      proposalId: arbText(row.over_proposal_id, arbText(upperRaw?.proposalId)) || undefined,
+      requestedAt: arbNumber(row.over_request_sent_at) ?? arbNumber(upperRaw?.requestedAt) ?? undefined,
+      receivedAt: arbNumber(row.over_received_at) ?? arbNumber(upperRaw?.receivedAt) ?? undefined,
+      latencyMs: arbNumber(row.over_round_trip_ms) ?? arbNumber(upperRaw?.latencyMs) ?? undefined,
+    },
+    totalCost: arbNumber(row.combined_cost) ?? arbNumber(row.totalCost),
+    grossMargin: arbNumber(row.theoretical_profit) ?? arbNumber(row.grossMargin),
+    roi: arbNumber(row.theoretical_roi) ?? arbNumber(row.roi),
+    edge: arbNumber(row.theoretical_roi) ?? arbNumber(row.edge),
+    syncMs: arbNumber(row.quote_gap_ms) ?? arbNumber(row.syncMs),
+    syncQuality: arbText(row.sync_quality, arbText(row.syncQuality, 'incomplete')),
+    status: statusRaw === 'incomplete_pair' ? 'incomplete' : statusRaw === 'invalid_pair' ? 'invalid' : statusRaw,
+    diagnostic: arbText(row.reason, arbText(row.diagnostic)) || null,
+  };
+}
+
+function normalizeArbSession(raw: unknown): ArbSessionSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  return {
+    id: arbText(row.id),
+    startedAt: arbNumber(row.started_at) ?? arbNumber(row.startedAt) ?? Date.now(),
+    stoppedAt: arbNumber(row.stopped_at) ?? arbNumber(row.stoppedAt),
+    market: arbText(row.symbol, arbText(row.market)),
+    pair: arbText(row.pair_key, arbText(row.pair)),
+    payout: arbNumber(row.target_payout) ?? arbNumber(row.payout) ?? 0,
+    currency: arbText(row.currency, 'USD'),
+    observations: arbNumber(row.observation_count) ?? arbNumber(row.observations) ?? 0,
+    validObservations: arbNumber(row.high_quality_count) ?? arbNumber(row.validObservations) ?? 0,
+    bestEdge: arbNumber(row.bestEdge),
+    avgEdge: arbNumber(row.avgEdge),
+    reason: arbText(row.reason) || null,
+  };
+}
+
+function unwrapArbState(res: unknown): ArbResearchState | null {
+  const payload = res && typeof res === 'object' && Object.prototype.hasOwnProperty.call(res, 'state')
+    ? (res as { state?: unknown }).state
+    : res;
+  if (!payload || typeof payload !== 'object') return null;
+  const raw = payload as Record<string, unknown>;
+  if (typeof raw.market === 'string' && typeof raw.phase === 'string') return raw as unknown as ArbResearchState;
+  const config = raw.config as Record<string, unknown> | null | undefined;
+  const pair = config?.pair as Record<string, unknown> | undefined;
+  const session = raw.session as Record<string, unknown> | null | undefined;
+  const latest = normalizeArbObservation(raw.latest);
+  const under = arbNumber(pair?.underBarrier) ?? 0;
+  const over = arbNumber(pair?.overBarrier) ?? 0;
+  const running = Boolean(raw.running);
+  return {
+    phase: running ? 'observing' : session ? 'stopped' : 'idle',
+    running,
+    market: arbText(config?.symbol, arbText(session?.symbol)),
+    pair: under > 0 ? `U${under}/O${over}` : arbText(session?.pair_key),
+    payout: arbNumber(config?.targetPayout) ?? arbNumber(session?.target_payout) ?? 0,
+    currency: arbText(config?.currency, arbText(session?.currency, 'USD')),
+    sessionId: arbText(session?.id) || null,
+    latest,
+    observations: arbNumber(session?.observation_count) ?? 0,
+    validObservations: arbNumber(session?.high_quality_count) ?? 0,
+    lastActivityAt: latest?.ts,
+    reason: latest?.diagnostic ?? null,
+  };
+}
+
+export async function loadArbState(): Promise<void> {
+  try {
+    const res = await api<{ state?: ArbResearchState } | ArbResearchState>('/api/arb/state');
+    const next = unwrapArbState(res);
+    set({ arb: next });
+  } catch {
+    // The research module is optional on older deployments.
+  }
+}
+
+export async function startArbResearch(opts: { market: string; pair: string; payout: number; currency?: string }): Promise<ArbResearchState> {
+  const pair = /^U([1-9])\/O([0-8])$/.exec(opts.pair);
+  if (!pair) throw new Error('Choose an adjacent U1/O0 through U9/O8 pair');
+  const res = await api<{ state?: ArbResearchState } | ArbResearchState>('/api/arb/start', {
+    method: 'POST',
+    body: JSON.stringify({
+      symbol: opts.market,
+      under_barrier: Number(pair[1]),
+      over_barrier: Number(pair[2]),
+      target_payout: opts.payout,
+    }),
+  });
+  const next = unwrapArbState(res);
+  if (!next) throw new Error('Research engine did not return state');
+  set({ arb: next, arbObservations: [] });
+  return next;
+}
+
+export async function stopArbResearch(): Promise<ArbResearchState> {
+  const res = await api<{ state?: ArbResearchState } | ArbResearchState>('/api/arb/stop', { method: 'POST' });
+  const next = unwrapArbState(res);
+  if (!next) throw new Error('Research engine did not return state');
+  set({ arb: next });
+  return next;
+}
+
+export async function loadArbSessions(): Promise<ArbSessionSummary[]> {
+  const res = await api<{ sessions?: unknown[] } | unknown[]>('/api/arb/research/sessions');
+  const rows = Array.isArray(res) ? res : res.sessions ?? [];
+  const sessions = rows.map(normalizeArbSession).filter((item): item is ArbSessionSummary => item !== null);
+  set({ arbSessions: sessions });
+  return sessions;
+}
+
+export async function loadArbObservations(opts?: { sessionId?: string; limit?: number; offset?: number; market?: string; pair?: string }): Promise<ArbObservation[]> {
+  const params = new URLSearchParams();
+  if (opts?.sessionId) params.set('session_id', opts.sessionId);
+  if (opts?.limit) params.set('limit', String(opts.limit));
+  if (opts?.offset) params.set('offset', String(opts.offset));
+  if (opts?.market) params.set('symbol', opts.market);
+  if (opts?.pair) params.set('pair', opts.pair);
+  const suffix = params.size ? `?${params}` : '';
+  const res = await api<{ observations?: unknown[] } | unknown[]>(`/api/arb/research/observations${suffix}`);
+  const rows = Array.isArray(res) ? res : res.observations ?? [];
+  const observations = rows.map(normalizeArbObservation).filter((item): item is ArbObservation => item !== null);
+  set({ arbObservations: observations });
+  return observations;
+}
+
+export async function deleteArbSession(sessionId: string): Promise<void> {
+  await api(`/api/arb/research/sessions/${sessionId}`, { method: 'DELETE' });
+  set({ arbSessions: state.arbSessions.filter((session) => session.id !== sessionId) });
+}
+
+export function arbReportUrl(sessionId: string): string {
+  return `/api/arb/research/report?session_id=${encodeURIComponent(sessionId)}`;
+}
+
+export function arbExportUrl(sessionId: string): string {
+  return `/api/arb/research/export?session_id=${encodeURIComponent(sessionId)}`;
 }
 
 export async function unlockDashboard(token: string): Promise<void> {
