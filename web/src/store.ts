@@ -369,6 +369,11 @@ export interface ArbResearchState {
   latest: ArbObservation | null;
   observations: number;
   validObservations: number;
+  positiveObservations: number;
+  highQualityObservations: number;
+  errorObservations: number;
+  bestEdge: number | null;
+  averageEdge: number | null;
   lastActivityAt?: number;
   reason?: string | null;
 }
@@ -382,13 +387,26 @@ export interface ArbDemoExecutionState {
     symbol: string;
     pair_key: string;
     target_payout: number;
+    currency: string;
+    created_at: number;
+    completed_at: number | null;
+    quote_gap_ms: number | null;
+    buy_request_gap_ms: number | null;
+    buy_fill_gap_ms: number | null;
     reason: string | null;
   };
   legs: Array<{
     leg: 'under' | 'over';
     status: string;
     contract_id: string | null;
+    barrier: number;
+    ask_price: number | null;
+    payout: number | null;
+    buy_price: number | null;
+    error_message: string | null;
     settlement_status: string | null;
+    settlement_profit: number | null;
+    exit_tick_time: number | null;
   }>;
 }
 
@@ -1130,7 +1148,12 @@ function unwrapArbState(res: unknown): ArbResearchState | null {
     sessionId: arbText(session?.id) || null,
     latest,
     observations: arbNumber(session?.observation_count) ?? 0,
-    validObservations: arbNumber(session?.high_quality_count) ?? 0,
+    validObservations: Math.max(0, (arbNumber(session?.observation_count) ?? 0) - (arbNumber(session?.error_count) ?? 0)),
+    positiveObservations: arbNumber(session?.positive_count) ?? 0,
+    highQualityObservations: arbNumber(session?.high_quality_count) ?? 0,
+    errorObservations: arbNumber(session?.error_count) ?? 0,
+    bestEdge: arbNumber(raw.bestEdge),
+    averageEdge: arbNumber(raw.averageEdge),
     lastActivityAt: latest?.ts,
     reason: latest?.diagnostic ?? null,
   };
@@ -1143,6 +1166,18 @@ export async function loadArbState(): Promise<void> {
     set({ arb: next });
   } catch {
     // The research module is optional on older deployments.
+  }
+}
+
+export async function loadLatestArbDemoExecution(): Promise<void> {
+  try {
+    const list = await api<{ executions: Array<{ id: string }> }>('/api/arb/feasibility/executions');
+    const id = list.executions?.[0]?.id;
+    if (!id) return;
+    const detail = await api<ArbDemoExecutionState>(`/api/arb/feasibility/executions/${encodeURIComponent(id)}`);
+    set({ arbDemoExecution: detail });
+  } catch {
+    // Execution history is unavailable on public or disconnected views.
   }
 }
 

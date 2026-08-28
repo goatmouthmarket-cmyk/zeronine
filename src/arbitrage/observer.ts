@@ -26,6 +26,7 @@ export interface ArbObserverState {
   config: Omit<ArbObserveConfig, 'pair'> & { pair: ArbPair } | null;
   latest: ArbObservationRow | null;
   diagnostics: { requests: number; proposalErrors: number; timeouts: number; rateLimitEvents: number; reconnects: number; requestsPerMinute: number };
+  edgeStats: { best: number | null; average: number | null };
 }
 
 /** Stable, browser-facing shape. Database names remain private to the API. */
@@ -49,6 +50,8 @@ export function arbStateForApi(state: ArbObserverState): Record<string, unknown>
     market: c?.symbol ?? s?.symbol ?? '', pair: c ? arbPairKey(c.pair) : s?.pair_key ?? 'U5/O4', payout: c?.targetPayout ?? s?.target_payout ?? 10,
     currency: c?.currency ?? s?.currency ?? 'USD', sessionId: s?.id ?? null, latest: state.latest ? arbObservationForApi(state.latest) : null,
     observations: s?.observation_count ?? 0, validObservations: Math.max(0, (s?.observation_count ?? 0) - (s?.error_count ?? 0)),
+    positiveObservations: s?.positive_count ?? 0, highQualityObservations: s?.high_quality_count ?? 0,
+    errorObservations: s?.error_count ?? 0, bestEdge: state.edgeStats.best, averageEdge: state.edgeStats.average,
     lastActivityAt: state.latest?.timestamp, reason: state.latest?.reason ?? null, diagnostics: state.diagnostics,
   };
 }
@@ -77,6 +80,9 @@ export class ArbitrageObserver {
   private inFlight = false;
   private requestTimes: number[] = [];
   private diagnostics = { requests: 0, proposalErrors: 0, timeouts: 0, rateLimitEvents: 0, reconnects: 0 };
+  private validEdgeCount = 0;
+  private validEdgeSum = 0;
+  private bestEdge: number | null = null;
 
   private readonly registry: MarketRegistry;
   private readonly client: Pick<DerivPrivateClient, 'getQuote' | 'isConnected'>;
@@ -91,7 +97,9 @@ export class ArbitrageObserver {
   state(): ArbObserverState {
     const cutoff = Date.now() - 60_000;
     this.requestTimes = this.requestTimes.filter((t) => t >= cutoff);
-    return { running: this.running, session: this.session, config: this.config, latest: this.latest, diagnostics: { ...this.diagnostics, requestsPerMinute: this.requestTimes.length } };
+    return { running: this.running, session: this.session, config: this.config, latest: this.latest,
+      diagnostics: { ...this.diagnostics, requestsPerMinute: this.requestTimes.length },
+      edgeStats: { best: this.bestEdge, average: this.validEdgeCount ? this.validEdgeSum / this.validEdgeCount : null } };
   }
 
   start(input: ArbObserveConfig): ArbObserverState {
@@ -109,6 +117,9 @@ export class ArbitrageObserver {
     });
     this.running = true;
     this.latest = null;
+    this.validEdgeCount = 0;
+    this.validEdgeSum = 0;
+    this.bestEdge = null;
     this.emitState();
     void this.scan();
     return this.state();
@@ -174,6 +185,12 @@ export class ArbitrageObserver {
       sync_quality: calculation.syncQuality ?? null, status: calculation.status, reason: error || calculation.reason || null, is_positive: Number(calculation.isPositive), is_high_quality_candidate: Number(calculation.isHighQualityCandidate), last_digit: snapshot.lastDigit >= 0 ? snapshot.lastDigit : null,
     };
     this.pending.push(row);
+    if (row.status === 'valid' && Number.isFinite(row.theoretical_roi)) {
+      const edge = Number(row.theoretical_roi);
+      this.validEdgeCount += 1;
+      this.validEdgeSum += edge;
+      this.bestEdge = this.bestEdge == null ? edge : Math.max(this.bestEdge, edge);
+    }
     this.latest = { ...row, id: 0 };
     this.session = this.session ? {
       ...this.session,

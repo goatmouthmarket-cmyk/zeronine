@@ -33,6 +33,7 @@ import {
   startArbResearch,
   stopArbResearch,
   loadArbState,
+  loadLatestArbDemoExecution,
   loadArbSessions,
   loadArbObservations,
   deleteArbSession,
@@ -2259,9 +2260,50 @@ function ArbLatestQuote({ observation, currency }: { observation: ArbObservation
         <div><span>Margin</span><strong class={edge != null && edge > 0 ? 'up' : edge != null && edge < 0 ? 'down' : ''}>{arbSignedMoney(observation?.grossMargin ?? edge, currency)}</strong></div>
         <div><span>Return</span><strong class={edge != null && edge > 0 ? 'up' : edge != null && edge < 0 ? 'down' : ''}>{arbPercent(observation?.roi)}</strong></div>
       </div>
+      {observation?.totalCost != null && observation.payout != null && observation.totalCost > observation.payout && (
+        <div class="arb-price-verdict reject"><strong>Not an arbitrage at this quote.</strong> The two legs cost {arbMoney(observation.totalCost, currency)} to return {arbMoney(observation.payout, currency)}, locking in a {arbMoney(observation.totalCost - observation.payout, currency)} loss before execution risk.</div>
+      )}
       {observation?.diagnostic && <div class="arb-diagnostic">{observation.diagnostic}</div>}
     </section>
   );
+}
+
+function ArbResearchVerdict({ arb, currency }: { arb: import('./store').ArbResearchState | null; currency: string }): JSX.Element {
+  const samples = arb?.validObservations ?? 0;
+  const positives = arb?.positiveObservations ?? 0;
+  const highQuality = arb?.highQualityObservations ?? 0;
+  const progress = samples < 100 ? samples : samples < 500 ? Math.round(samples / 5) : 100;
+  const stage = samples < 100 ? 'Initial scan' : samples < 500 ? 'Developing evidence' : 'Evidence review ready';
+  const verdict = highQuality > 0
+    ? { tone: 'candidate', title: 'Candidate quotes found — execution still unproven', copy: `${highQuality} synchronized positive quote${highQuality === 1 ? '' : 's'} cleared the research filter. A demo feasibility test is still required to prove both contracts can fill and settle together.` }
+    : positives > 0
+      ? { tone: 'caution', title: 'Price candidates found, but synchronization is weak', copy: `${positives} quote${positives === 1 ? '' : 's'} fell below payout, but none met the high-quality timing filter. Recalibrate the market/pair or continue sampling before any demo test.` }
+      : samples >= 100
+        ? { tone: 'reject', title: 'Currently not viable at observed prices', copy: `None of ${samples.toLocaleString()} usable paired quotes cost less than the payout. More samples can strengthen that conclusion, but the present evidence says this pair loses money rather than locking profit.` }
+        : { tone: 'learning', title: 'Not enough evidence yet', copy: `Collected ${samples.toLocaleString()} usable paired quotes. Reach at least 100 for an initial price verdict; 500 gives a more useful review window.` };
+  return <section class={`arb-verdict ${verdict.tone}`} aria-live="polite">
+    <div class="arb-verdict-head"><div><span class="arb-kicker">What the research is learning</span><strong>{verdict.title}</strong></div><span>{stage}</span></div>
+    <p>{verdict.copy}</p>
+    <div class="arb-progress"><i style={{ width: `${progress}%` }}></i></div>
+    <div class="arb-verdict-stats"><span><strong>{samples.toLocaleString()}</strong> usable</span><span><strong>{positives.toLocaleString()}</strong> below payout</span><span><strong>{highQuality.toLocaleString()}</strong> synchronized</span><span><strong>{arbPercent(arb?.bestEdge)}</strong> best return</span></div>
+    {arb?.averageEdge != null && <small>Average observed return: {arbPercent(arb.averageEdge)} · payout basis {arbMoney(arb.payout, currency)}</small>}
+  </section>;
+}
+
+function ArbExecutionEvidence({ state }: { state: import('./store').ArbDemoExecutionState }): JSX.Element {
+  const { execution, legs } = state;
+  const terminal = ['completed', 'partial_fill', 'both_failed', 'quote_failed', 'unknown_execution'].includes(execution.status);
+  const bothFilled = execution.feasibility_status === 'both_filled';
+  const aligned = execution.settlement_alignment === 'same_settlement_event';
+  const settled = legs.length === 2 && legs.every((leg) => leg.settlement_status);
+  const net = legs.reduce((sum, leg) => sum + (leg.settlement_profit ?? 0), 0);
+  const title = !terminal ? 'Demo test in progress' : bothFilled && aligned && settled ? 'Both contracts executed and settled together' : execution.status === 'quote_failed' ? 'Test stopped before purchase' : execution.feasibility_status === 'partial_fill' ? 'Unsafe result: only one contract filled' : execution.feasibility_status === 'unknown_execution' ? 'Unresolved provider outcome — do not retry' : 'Dual-contract execution was not proven';
+  return <section class={`arb-execution-evidence ${bothFilled && aligned && settled ? 'success' : terminal ? 'failed' : 'running'}`} aria-live="polite">
+    <div class="arb-verdict-head"><div><span class="arb-kicker">Latest demo execution evidence</span><strong>{title}</strong></div><span>{execution.status.replaceAll('_', ' ')}</span></div>
+    <div class="arb-execution-legs">{legs.map((leg) => <div key={leg.leg}><span>{leg.leg === 'under' ? 'Lower' : 'Upper'} leg · {leg.leg === 'under' ? 'Under' : 'Over'} {leg.barrier}</span><strong>{leg.status.replaceAll('_', ' ')}</strong><small>Quote {arbMoney(leg.ask_price, execution.currency)} · bought {arbMoney(leg.buy_price, execution.currency)}</small><small>{leg.settlement_status ? `${leg.settlement_status.replaceAll('_', ' ')} · ${arbSignedMoney(leg.settlement_profit, execution.currency)}` : leg.error_message ?? 'Settlement pending'}</small></div>)}</div>
+    <div class="arb-execution-summary"><span>Both filled <strong>{bothFilled ? 'Yes' : 'No'}</strong></span><span>Same settlement <strong>{aligned ? 'Yes' : 'No / unproven'}</strong></span><span>Request gap <strong>{execution.buy_request_gap_ms == null ? '—' : `${execution.buy_request_gap_ms}ms`}</strong></span><span>Recorded net <strong>{settled ? arbSignedMoney(net, execution.currency) : 'Pending'}</strong></span></div>
+    {execution.reason && <p>{execution.reason}</p>}
+  </section>;
 }
 
 function ArbitragePage(): JSX.Element {
@@ -2275,6 +2317,7 @@ function ArbitragePage(): JSX.Element {
 
   useEffect(() => {
     void loadArbState();
+    void loadLatestArbDemoExecution();
   }, []);
   useEffect(() => {
     if (!market && s.markets[0]?.symbol) setMarket(s.markets[0].symbol);
@@ -2357,19 +2400,16 @@ function ArbitragePage(): JSX.Element {
               Run one demo test
             </button>
           </div>
-          {s.arbDemoExecution && <div class="arb-feasibility-result">
-            <span>Demo execution {s.arbDemoExecution.execution.id.slice(-8)}</span>
-            <strong>{s.arbDemoExecution.execution.status.replaceAll('_', ' ')}</strong>
-            <span>{s.arbDemoExecution.execution.settlement_alignment?.replaceAll('_', ' ') ?? 'settlement alignment pending'}</span>
-          </div>}
           {error && <div class="tl-err">{error}</div>}
         </section>
         <ArbLatestQuote observation={arb?.latest ?? null} currency={currency} />
+        <ArbResearchVerdict arb={arb} currency={currency} />
+        {s.arbDemoExecution && <ArbExecutionEvidence state={s.arbDemoExecution} />}
         <section class="arb-health">
           <div><span>Market</span><strong>{s.markets.find((item) => item.symbol === activeMarket)?.display ?? (activeMarket || '—')}</strong></div>
           <div><span>Session</span><strong>{arb?.sessionId ? `#${arb.sessionId}` : '—'}</strong></div>
           <div><span>Observed</span><strong>{(arb?.observations ?? 0).toLocaleString()}</strong></div>
-          <div><span>Usable pairs</span><strong class="up">{(arb?.validObservations ?? 0).toLocaleString()}</strong></div>
+          <div><span>Usable quotes</span><strong class="up">{(arb?.validObservations ?? 0).toLocaleString()}</strong></div>
         </section>
       </div>
     </>
