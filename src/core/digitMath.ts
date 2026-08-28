@@ -49,6 +49,8 @@ export interface ProposalArgs {
   durationUnit: 't' | 'm' | 's';
   symbol: string;
   reqId: number;
+  /** Defaults to stake for all existing trading callers. */
+  basis?: 'stake' | 'payout';
 }
 
 export function proposal(args: ProposalArgs): Record<string, unknown> {
@@ -56,7 +58,7 @@ export function proposal(args: ProposalArgs): Record<string, unknown> {
     proposal: 1,
     req_id: args.reqId,
     amount: Math.round(args.amount * 100) / 100,
-    basis: 'stake',
+    basis: args.basis ?? 'stake',
     contract_type: CONTRACT_TYPE[args.direction],
     currency: args.currency,
     duration: args.duration,

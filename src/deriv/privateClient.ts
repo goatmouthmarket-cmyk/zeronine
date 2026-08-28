@@ -64,6 +64,10 @@ export interface QuoteResult {
   spot: number;
   barrier: number;
   direction: Direction;
+  requestSentAt: number;
+  receivedAt: number;
+  roundTripMs: number;
+  basis: 'stake' | 'payout';
 }
 
 export interface ContractUpdate {
@@ -277,7 +281,9 @@ export class DerivPrivateClient {
     duration: number;
     durationUnit: 't' | 'm' | 's';
     symbol: string;
+    basis?: 'stake' | 'payout';
   }): Promise<QuoteResult> {
+    const requestSentAt = Date.now();
     const msg = (await this.request(
       proposal({
         ...args,
@@ -295,6 +301,10 @@ export class DerivPrivateClient {
       spot: Number(p.spot ?? 0),
       barrier: args.barrier,
       direction: args.direction,
+      requestSentAt,
+      receivedAt: Date.now(),
+      roundTripMs: Date.now() - requestSentAt,
+      basis: args.basis ?? 'stake',
     };
   }
 

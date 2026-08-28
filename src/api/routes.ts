@@ -8,6 +8,7 @@ import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import type { Automation } from '../strategy/automation.ts';
 import type { PaperSimulator } from '../simulation/paperSimulator.ts';
+import { arbObservationForApi, arbStateForApi, type ArbitrageObserver } from '../arbitrage/observer.ts';
 import { encryptToken } from '../db/crypto.ts';
 import {
   buildAuthorizeUrl,
@@ -47,7 +48,14 @@ import {
   setAutomation as storeSetAutomation,
   setSession,
   updateSettings,
+  arbComparisons,
+  arbResearchSummary,
+  deleteArbSession,
+  getArbSession,
+  listArbObservations,
+  listArbSessions,
 } from '../db/store.ts';
+import { ARB_PAIRS } from '../arbitrage/core.ts';
 
 export interface ApiDeps {
   registry: MarketRegistry;
@@ -56,10 +64,11 @@ export interface ApiDeps {
   hub: Hub;
   automation: Automation;
   paperSimulator: PaperSimulator;
+  arbitrage?: ArbitrageObserver;
 }
 
 export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
-  const { registry, feed, client, hub, automation, paperSimulator } = deps;
+  const { registry, feed, client, hub, automation, paperSimulator, arbitrage } = deps;
   const oauthPending = new Map<string, { verifier: string; created: number }>();
 
   app.get('/health', async () => ({
@@ -113,7 +122,58 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       trades: owner ? listTrades(20) : [],
       performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
       paperSimulation: paperSimulator.state(),
+      arbitrage: arbitrage ? arbStateForApi(arbitrage.state()) : null,
     };
+  });
+
+  app.get('/api/arb/state', async () => ({ state: arbitrage ? arbStateForApi(arbitrage.state()) : null, pairs: ARB_PAIRS }));
+  app.get('/api/arb/research/sessions', async () => ({ sessions: listArbSessions().map(arbSessionForApi) }));
+  app.get('/api/arb/research/observations', async (req) => {
+    const q = req.query as Record<string, string | undefined>;
+    return { observations: listArbObservations({ sessionId: q.session_id ?? q.sessionId, limit: Number(q.limit ?? 200), positiveOnly: q.positive === '1', highQualityOnly: q.high_quality === '1', symbol: q.symbol ?? q.market, pairKey: q.pair, maxQuoteGapMs: q.max_quote_gap_ms ? Number(q.max_quote_gap_ms) : undefined }).map(arbObservationForApi) };
+  });
+  app.get('/api/arb/research/report', async (req, reply) => {
+    const q = req.query as { session_id?: string; sessionId?: string; format?: string };
+    const session = q.session_id || q.sessionId ? getArbSession(q.session_id ?? q.sessionId ?? '') : arbitrage?.state().session;
+    if (!session) { reply.code(404); return { error: 'research session not found' }; }
+    const summary = arbResearchSummary(session.id);
+    const comparisons = arbComparisons(session.id);
+    const observations = listArbObservations({ sessionId: session.id, limit: 5000 });
+    const payload = { configuration: session, summary, pairs: comparisons.pairs, markets: comparisons.markets, positiveObservations: observations.filter((r) => r.is_positive), nearMisses: observations.filter((r) => !r.is_positive && r.status === 'valid').slice(0, 100), executions: { note: 'NO EXECUTION DATA - OBSERVATION ONLY' } };
+    if (q.format === 'json') return payload;
+    reply.type('text/plain; charset=utf-8');
+    return buildArbTextReport(payload);
+  });
+  app.get('/api/arb/research/export', async (req) => {
+    const q = req.query as { session_id?: string; sessionId?: string };
+    const id = q.session_id ?? q.sessionId ?? arbitrage?.state().session?.id;
+    if (!id) return { error: 'research session not found' };
+    return { session: getArbSession(id), summary: arbResearchSummary(id), comparisons: arbComparisons(id), observations: listArbObservations({ sessionId: id, limit: 10000 }) };
+  });
+  app.post('/api/arb/start', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    if (!arbitrage) { reply.code(503); return { error: 'arbitrage observer unavailable' }; }
+    const session = getSession();
+    if (!session || !client.isConnected) { reply.code(409); return { error: 'connect a Deriv account before requesting real proposals' }; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const symbol = typeof body.symbol === 'string' ? body.symbol : typeof body.market === 'string' ? body.market : registry.symbols()[0] ?? '';
+    const snap = registry.snapshot(symbol);
+    const pair = typeof body.pair === 'string' ? /^U([1-9])\/O([0-8])$/.exec(body.pair) : null;
+    const underBarrier = Number(body.under_barrier ?? pair?.[1] ?? 5);
+    const overBarrier = Number(body.over_barrier ?? pair?.[2] ?? 4);
+    try {
+      return { ok: true, state: arbStateForApi(arbitrage.start({ symbol, marketDisplay: snap.display, pair: { underBarrier, overBarrier }, targetPayout: Number(body.target_payout ?? body.payout ?? 10), currency: session.currency, duration: 1, durationUnit: 't' })) };
+    } catch (err) { reply.code(400); return { error: String(err) }; }
+  });
+  app.post('/api/arb/stop', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    return { ok: true, state: arbitrage ? arbStateForApi(arbitrage.stop()) : null };
+  });
+  app.delete('/api/arb/research/sessions/:id', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const id = (req.params as { id: string }).id;
+    if (arbitrage?.state().session?.id === id) arbitrage.stop();
+    return { ok: deleteArbSession(id) };
   });
 
   app.get('/api/settings', async () => getSettings());
@@ -786,6 +846,48 @@ function parseTestConfigs(entries: string[]): TestConfig[] {
     }
   }
   return out;
+}
+
+function buildArbTextReport(payload: {
+  configuration: import('../db/store.ts').ArbSessionRow;
+  summary: Record<string, unknown>;
+  pairs: Array<Record<string, unknown>>;
+  markets: Array<Record<string, unknown>>;
+  positiveObservations: import('../db/store.ts').ArbObservationRow[];
+  nearMisses: import('../db/store.ts').ArbObservationRow[];
+  executions: Record<string, unknown>;
+}): string {
+  const c = payload.configuration;
+  const s = payload.summary;
+  const val = (v: unknown): string => v == null ? 'n/a' : typeof v === 'number' ? String(v) : String(v);
+  return [
+    'DERIV COMPLEMENTARY DIGIT ARBITRAGE RESEARCH REPORT', '', 'CONFIGURATION',
+    `Session: ${val(c.id)}`, `Market: ${val(c.market_display)} (${val(c.symbol)})`, `Pair: ${val(c.pair_key)}`,
+    `Duration: ${val(c.duration)} ${val(c.duration_unit)}`, `Basis: ${val(c.basis)}`, `Target payout: ${val(c.target_payout)} ${val(c.currency)}`,
+    `Started: ${new Date(Number(c.started_at)).toISOString()}`, `Stopped: ${c.stopped_at ? new Date(Number(c.stopped_at)).toISOString() : 'running'}`,
+    '', 'SUMMARY', `Valid observations: ${val(s.observations)}`, `Positive quote events: ${val(s.positive)}`, `High-quality positive events: ${val(s.high_quality_positive)}`,
+    `Positive event rate: ${val(s.positive_rate)}`, `Best theoretical edge %: ${val(s.best_edge_pct)}`, `Best theoretical profit: ${val(s.best_profit)}`,
+    `Average combined cost %: ${val(s.average_combined_cost_pct)}`, `Median combined cost %: ${val(s.median_combined_cost_pct)}`,
+    `P5 combined cost %: ${val(s.p5_combined_cost_pct)}`, `P1 combined cost %: ${val(s.p1_combined_cost_pct)}`,
+    `Minimum combined cost %: ${val(s.minimum_combined_cost_pct)}`, `Maximum combined cost %: ${val(s.maximum_combined_cost_pct)}`,
+    `Average house margin %: ${val(s.average_house_margin_pct)}`, `Average quote gap ms: ${val(s.average_quote_gap_ms)}`,
+    `Median quote gap ms: ${val(s.median_quote_gap_ms)}`, `P95 quote gap ms: ${val(s.p95_quote_gap_ms)}`, `Average request round trip ms: ${val(s.average_request_round_trip_ms)}`,
+    '', 'PAIR COMPARISON', ...payload.pairs.map((p) => JSON.stringify(p)), '', 'MARKET COMPARISON', ...payload.markets.map((m) => JSON.stringify(m)),
+    '', 'EXECUTION RESULTS', String(payload.executions.note ?? 'NO EXECUTION DATA - OBSERVATION ONLY'),
+    '', 'CONCLUSION DATA', `Number below payout: ${payload.positiveObservations.length}`, `Near misses retained: ${payload.nearMisses.length}`,
+    'All figures are observations from two real payout-basis proposal responses. No contracts were purchased by this research session.', 'END REPORT',
+  ].join('\n');
+}
+
+function arbSessionForApi(session: import('../db/store.ts').ArbSessionRow): Record<string, unknown> {
+  const summary = arbResearchSummary(session.id);
+  return {
+    id: session.id, startedAt: session.started_at, stoppedAt: session.stopped_at, market: session.symbol,
+    pair: session.pair_key, payout: session.target_payout, currency: session.currency, observations: session.observation_count,
+    validObservations: Math.max(0, session.observation_count - session.error_count), bestEdge: summary.best_edge_pct,
+    avgEdge: summary.average_house_margin_pct == null ? null : -Number(summary.average_house_margin_pct),
+    reason: session.status === 'running' ? null : 'stopped',
+  };
 }
 
 function settleInBackground(
