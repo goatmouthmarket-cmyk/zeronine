@@ -311,7 +311,7 @@ export interface PaperSimulationState {
 }
 
 export interface MomentumState {
-  phase: 'connecting' | 'idle' | 'observing' | 'stopped' | 'error';
+  phase: 'connecting' | 'scanning' | 'idle' | 'observing' | 'stopped' | 'error';
   running: boolean;
   markets: Array<{ symbol: string; display: string; market: string }>;
   config: { symbol: string; multiplier: number; stake: number; commissionRate: number } | null;
@@ -324,6 +324,7 @@ export interface MomentumState {
   completedWindows: number; signalledWindows: number; wins: number; losses: number; estimatedNet: number;
   lastOutcome: { direction: 'up' | 'down'; openPrice: number; decisionPrice: number; exitPrice: number; won: boolean; estimatedNet: number } | null;
   reason: string | null;
+  scan: { candidates: number; startedAt: number; endsAt: number } | null;
 }
 
 export interface State {
@@ -943,10 +944,9 @@ export async function loadMomentumState(): Promise<MomentumState | null> {
   return res.state;
 }
 
-export async function startMomentumResearch(input: { symbol: string; multiplier: number; stake: number; commissionRate: number }): Promise<MomentumState> {
+export async function startMomentumResearch(): Promise<MomentumState> {
   const res = await api<{ state: MomentumState }>('/api/momentum/start', {
     method: 'POST',
-    body: JSON.stringify({ symbol: input.symbol, multiplier: input.multiplier, stake: input.stake, commission_rate: input.commissionRate }),
   });
   set({ momentum: res.state });
   return res.state;

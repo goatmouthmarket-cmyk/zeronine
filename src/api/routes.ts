@@ -123,9 +123,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   app.post('/api/momentum/start', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     if (!momentum) { reply.code(503); return { error: 'momentum observer unavailable' }; }
-    const body = (req.body ?? {}) as Record<string, unknown>;
     try {
-      return { state: await momentum.start({ symbol: String(body.symbol ?? ''), multiplier: Number(body.multiplier ?? 20), stake: Number(body.stake ?? 10), commissionRate: Number(body.commission_rate ?? .001) }) };
+      return { state: await momentum.startAutomatic() };
     } catch (error) { reply.code(400); return { error: String(error) }; }
   });
   app.post('/api/momentum/stop', async (req, reply) => {

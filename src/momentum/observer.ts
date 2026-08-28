@@ -5,6 +5,9 @@ import type { Hub } from '../api/hub.ts';
 const WINDOW_SECONDS = 300;
 const DECISION_AFTER_SECONDS = 60;
 const MAX_TICKS = 1_200;
+const SCAN_SECONDS = 60;
+const MAX_SCAN_MARKETS = 12;
+const AUTOMATIC_CONFIG = { multiplier: 20, stake: 10, commissionRate: .001 } as const;
 
 export interface MomentumMarket { symbol: string; display: string; market: string }
 export interface MomentumConfig { symbol: string; multiplier: number; stake: number; commissionRate: number }
@@ -32,7 +35,7 @@ export interface MomentumWindow {
   estimatedNet: number;
 }
 export interface MomentumState {
-  phase: 'connecting' | 'idle' | 'observing' | 'stopped' | 'error';
+  phase: 'connecting' | 'scanning' | 'idle' | 'observing' | 'stopped' | 'error';
   running: boolean;
   markets: MomentumMarket[];
   config: MomentumConfig | null;
@@ -44,6 +47,7 @@ export interface MomentumState {
   estimatedNet: number;
   lastOutcome: { direction: 'up' | 'down'; openPrice: number; decisionPrice: number; exitPrice: number; won: boolean; estimatedNet: number } | null;
   reason: string | null;
+  scan: { candidates: number; startedAt: number; endsAt: number } | null;
 }
 
 type Tick = { epoch: number; quote: number };
@@ -72,6 +76,14 @@ export function momentumSignal(ticks: Tick[], now: number): MomentumSignal {
   return { direction, confidence, score, reason: `${direction === 'up' ? 'Upward' : 'Downward'} returns agree across ${Math.round(agreement * 3)} of 3 horizons`, return15s: r15, return30s: r30, return60s: r60 };
 }
 
+export function rankMomentumMarkets(markets: MomentumMarket[]): MomentumMarket[] {
+  return [...markets].sort((a, b) => {
+    const bitcoin = Number(/BTC|Bitcoin/i.test(b.display + b.symbol)) - Number(/BTC|Bitcoin/i.test(a.display + a.symbol));
+    const crypto = Number(b.market === 'cryptocurrency') - Number(a.market === 'cryptocurrency');
+    return bitcoin || crypto || a.display.localeCompare(b.display);
+  });
+}
+
 export class MomentumObserver {
   private readonly hub: Hub;
   private ws: WebSocket | null = null;
@@ -91,13 +103,18 @@ export class MomentumObserver {
   private losses = 0;
   private estimatedNet = 0;
   private lastOutcome: MomentumState['lastOutcome'] = null;
+  private scanTicks = new Map<string, Tick[]>();
+  private scanRequests = new Map<number, string>();
+  private scanStartedAt = 0;
+  private scanTimer: NodeJS.Timeout | null = null;
 
   constructor(hub: Hub) { this.hub = hub; }
 
   state(): MomentumState {
     return { phase: this.phase, running: this.running, markets: this.markets, config: this.config, window: this.window,
       completedWindows: this.completedWindows, signalledWindows: this.signalledWindows, wins: this.wins, losses: this.losses,
-      estimatedNet: this.estimatedNet, lastOutcome: this.lastOutcome, reason: this.reason };
+      estimatedNet: this.estimatedNet, lastOutcome: this.lastOutcome, reason: this.reason,
+      scan: this.scanStartedAt ? { candidates: this.scanTicks.size, startedAt: this.scanStartedAt, endsAt: this.scanStartedAt + SCAN_SECONDS } : null };
   }
 
   async connect(): Promise<void> {
@@ -106,7 +123,7 @@ export class MomentumObserver {
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(config.derivPublicUrl, { perMessageDeflate: false, handshakeTimeout: 15_000 });
       this.ws = ws;
-      const timer = setTimeout(() => reject(new Error('momentum market discovery timed out')), 15_000);
+      const timer = setTimeout(() => { this.ws = null; ws.terminate(); reject(new Error('momentum market discovery timed out')); }, 15_000);
       ws.on('open', () => ws.send(JSON.stringify({ active_symbols: 'brief', req_id: this.req++ })));
       ws.on('message', (raw) => {
         try {
@@ -122,15 +139,16 @@ export class MomentumObserver {
           if (msg.msg_type === 'active_symbols') {
             const rows = (msg.active_symbols ?? []) as Array<Record<string, any>>;
             const preferred = rows.filter((row) => row.exchange_is_open === 1 && row.is_trading_suspended === 0 && ['cryptocurrency', 'forex', 'indices', 'stock_index', 'commodities'].includes(String(row.market)));
-            this.markets = preferred.map((row) => ({ symbol: String(row.underlying_symbol), display: String(row.underlying_symbol_name ?? row.underlying_symbol), market: String(row.market) }));
-            this.markets.sort((a, b) => Number(/BTC/i.test(b.display)) - Number(/BTC/i.test(a.display)) || a.display.localeCompare(b.display));
+            this.markets = rankMomentumMarkets(preferred.map((row) => ({ symbol: String(row.underlying_symbol), display: String(row.underlying_symbol_name ?? row.underlying_symbol), market: String(row.market) })));
             clearTimeout(timer); this.phase = this.running ? 'observing' : 'idle'; this.emit(); resolve();
-          } else if (msg.msg_type === 'tick' && msg.req_id === this.tickReq && msg.tick) {
-            this.onTick(Number(msg.tick.quote), Number(msg.tick.epoch));
+          } else if (msg.msg_type === 'tick' && msg.tick) {
+            const scanSymbol = this.scanRequests.get(Number(msg.req_id));
+            if (scanSymbol) this.onScanTick(scanSymbol, Number(msg.tick.quote), Number(msg.tick.epoch));
+            else if (msg.req_id === this.tickReq) this.onTick(Number(msg.tick.quote), Number(msg.tick.epoch));
           }
         } catch { /* malformed provider frame */ }
       });
-      ws.on('error', (error) => { clearTimeout(timer); this.reason = error.message; this.phase = 'error'; this.emit(); reject(error); });
+      ws.on('error', (error) => { clearTimeout(timer); this.ws = null; this.reason = error.message; this.phase = 'error'; this.emit(); reject(error); });
       ws.on('close', () => {
         this.ws = null;
         for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('real-market feed disconnected')); }
@@ -149,19 +167,63 @@ export class MomentumObserver {
     if (!available.some((item) => item.contract_type === 'MULTUP') || !available.some((item) => item.contract_type === 'MULTDOWN')) {
       throw new Error('this market does not currently offer both Multiplier Up and Multiplier Down');
     }
+    return this.begin(input);
+  }
+
+  private begin(input: MomentumConfig): MomentumState {
     this.stopSubscription();
     this.config = input; this.ticks = []; this.window = null; this.running = true; this.phase = 'observing'; this.reason = null;
-    this.completedWindows = 0; this.signalledWindows = 0; this.wins = 0; this.losses = 0; this.estimatedNet = 0; this.lastOutcome = null;
     this.tickReq = this.req++;
     this.ws!.send(JSON.stringify({ ticks: input.symbol, subscribe: 1, req_id: this.tickReq }));
+    this.emit(); return this.state();
+  }
+
+  async startAutomatic(): Promise<MomentumState> {
+    await this.connect();
+    this.stopSubscription();
+    const checks = await Promise.allSettled(this.markets.slice(0, 24).map(async (market) => {
+      const contracts = await this.request({ contracts_for: market.symbol });
+      const available = (contracts.contracts_for?.available ?? []) as Array<{ contract_type?: string }>;
+      return available.some((item) => item.contract_type === 'MULTUP') && available.some((item) => item.contract_type === 'MULTDOWN') ? market : null;
+    }));
+    const candidates = checks.flatMap((check) => check.status === 'fulfilled' && check.value ? [check.value] : []).slice(0, MAX_SCAN_MARKETS);
+    if (!candidates.length) throw new Error('No open real market currently offers both multiplier directions');
+    this.running = true; this.phase = 'scanning'; this.reason = 'Comparing live momentum across verified real markets';
+    this.config = null; this.window = null; this.scanStartedAt = Math.floor(Date.now() / 1000);
+    for (const market of candidates) {
+      this.scanTicks.set(market.symbol, []);
+      const requestId = this.req++; this.scanRequests.set(requestId, market.symbol);
+      this.ws!.send(JSON.stringify({ ticks: market.symbol, subscribe: 1, req_id: requestId }));
+    }
+    this.scanTimer = setTimeout(() => this.finishScan(), SCAN_SECONDS * 1_000); this.scanTimer.unref();
     this.emit(); return this.state();
   }
 
   stop(): MomentumState { this.running = false; this.phase = 'stopped'; this.stopSubscription(); this.emit(); return this.state(); }
 
   private stopSubscription(): void {
+    if (this.scanTimer) clearTimeout(this.scanTimer);
+    this.scanTimer = null; this.scanStartedAt = 0; this.scanTicks.clear(); this.scanRequests.clear();
     if (this.ws && this.tickReq) this.ws.send(JSON.stringify({ forget_all: 'ticks', req_id: this.req++ }));
+    else if (this.ws) this.ws.send(JSON.stringify({ forget_all: 'ticks', req_id: this.req++ }));
     this.tickReq = 0;
+  }
+
+  private onScanTick(symbol: string, quote: number, epoch: number): void {
+    const ticks = this.scanTicks.get(symbol);
+    if (!ticks || !Number.isFinite(quote) || !Number.isFinite(epoch)) return;
+    ticks.push({ quote, epoch });
+    while (ticks.length > 240) ticks.shift();
+  }
+
+  private finishScan(): void {
+    const now = Math.floor(Date.now() / 1000);
+    const ranked = [...this.scanTicks.entries()].map(([symbol, ticks]) => ({ symbol, signal: momentumSignal(ticks, now) }))
+      .filter((item) => item.signal.direction !== 'wait')
+      .sort((a, b) => (b.signal.confidence * Math.abs(b.signal.score)) - (a.signal.confidence * Math.abs(a.signal.score)));
+    const selected = ranked[0]?.symbol ?? [...this.scanTicks.entries()].sort((a, b) => Math.abs(pct(b[1][0]?.quote ?? 0, b[1].at(-1)?.quote ?? 0)) - Math.abs(pct(a[1][0]?.quote ?? 0, a[1].at(-1)?.quote ?? 0)))[0]?.[0];
+    if (!selected) { this.running = false; this.phase = 'error'; this.reason = 'No usable ticks arrived during the market scan'; this.stopSubscription(); this.emit(); return; }
+    this.begin({ symbol: selected, ...AUTOMATIC_CONFIG });
   }
 
   private request(payload: Record<string, unknown>): Promise<Record<string, any>> {
@@ -178,7 +240,12 @@ export class MomentumObserver {
     if (!this.running || !this.config || !Number.isFinite(quote) || !Number.isFinite(epoch)) return;
     this.ticks.push({ quote, epoch }); if (this.ticks.length > MAX_TICKS) this.ticks.shift();
     if (!this.window) this.window = this.newWindow(quote, epoch);
-    if (epoch >= this.window.endsAt) { this.completeWindow(quote); this.window = this.newWindow(quote, epoch); }
+    if (epoch >= this.window.endsAt) {
+      this.completeWindow(quote);
+      this.running = false; this.phase = 'connecting'; this.reason = 'Re-scanning for the strongest next five-minute opportunity'; this.emit();
+      void this.startAutomatic().catch((error) => { this.phase = 'error'; this.reason = String(error); this.emit(); });
+      return;
+    }
     const elapsed = epoch - this.window.startedAt;
     const signal = momentumSignal(this.ticks, epoch);
     this.window.currentPrice = quote; this.window.changePct = pct(this.window.openPrice, quote); this.window.signal = signal;

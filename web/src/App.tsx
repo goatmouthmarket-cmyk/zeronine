@@ -2203,55 +2203,45 @@ function momentumPct(value: number | null | undefined): string {
 function MomentumPage(): JSX.Element {
   const s = useStore();
   const momentum = s.momentum;
-  const [symbol, setSymbol] = useState('');
-  const [multiplier, setMultiplier] = useState(20);
-  const [stake, setStake] = useState(10);
-  const [commissionPct, setCommissionPct] = useState(.1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => { void loadMomentumState(); }, []);
-  useEffect(() => {
-    if (!symbol && momentum?.markets[0]) setSymbol(momentum.markets[0].symbol);
-  }, [symbol, momentum?.markets]);
-
   const toggle = async () => {
     setBusy(true); setError('');
     try {
       if (momentum?.running) await stopMomentumResearch();
-      else await startMomentumResearch({ symbol, multiplier, stake, commissionRate: commissionPct / 100 });
+      else await startMomentumResearch();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
 
   const w = momentum?.window;
   const signal = w?.signal;
-  const market = momentum?.markets.find((item) => item.symbol === (momentum.config?.symbol ?? symbol));
+  const market = momentum?.markets.find((item) => item.symbol === momentum.config?.symbol);
   const secondsLeft = w ? Math.max(0, w.endsAt - Math.floor(Date.now() / 1000)) : 300;
   const elapsed = w ? Math.max(0, 300 - secondsLeft) : 0;
   const settledSignals = (momentum?.wins ?? 0) + (momentum?.losses ?? 0);
   const winRate = momentum && settledSignals ? momentum.wins / settledSignals : null;
-  const breakEvenMove = (momentum?.config?.commissionRate ?? commissionPct / 100);
+  const breakEvenMove = (momentum?.config?.commissionRate ?? .001);
 
   return <>
     <header class="header">
       <div class="page-title">Multiplier Momentum</div>
-      <div class="subtitle">Real-market five-minute directional research · no purchases</div>
+      <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
     </header>
     <div class="mom-layout">
       <section class="mom-hero">
-        <div><span class="mom-kicker">Five-minute research engine</span><h2>{momentum?.running ? market?.display ?? 'Observing real market' : 'Find movement that survives the cost'}</h2><p>One direction, one rolling window. The model waits 60 seconds, compares 15/30/60-second returns, then tracks an estimated multiplier outcome through minute five.</p></div>
+        <div><span class="mom-kicker">Always-on opportunity scanner</span><h2>{momentum?.phase === 'scanning' ? `Comparing ${momentum.scan?.candidates ?? 0} real markets` : momentum?.running ? market?.display ?? 'Selecting the strongest market' : 'Automatic research paused'}</h2><p>The engine verifies multiplier availability, watches up to 12 real markets for 60 seconds, and selects the strongest aligned momentum. It then tracks that direction through a five-minute research window.</p></div>
         <span class={`mom-status ${momentum?.phase ?? 'idle'}`}><i></i>{momentum?.phase ?? 'idle'}</span>
       </section>
 
-      <section class="mom-controls">
-        <label><span>Real market</span><select value={symbol} disabled={busy || momentum?.running} onChange={(e: any) => setSymbol(e.currentTarget.value)}>{momentum?.markets.map((item) => <option value={item.symbol} key={item.symbol}>{item.display}</option>)}</select></label>
-        <label><span>Multiplier</span><input type="number" min="1" step="1" value={multiplier} disabled={busy || momentum?.running} onInput={(e: any) => setMultiplier(Math.max(1, Number(e.currentTarget.value) || 1))} /></label>
-        <label><span>Research stake</span><input type="number" min="1" step="1" value={stake} disabled={busy || momentum?.running} onInput={(e: any) => setStake(Math.max(1, Number(e.currentTarget.value) || 1))} /></label>
-        <label><span>Commission assumption</span><div class="mom-suffix"><input type="number" min="0" step="0.01" value={commissionPct} disabled={busy || momentum?.running} onInput={(e: any) => setCommissionPct(Math.max(0, Number(e.currentTarget.value) || 0))} /><b>%</b></div></label>
-        <button class={`mom-toggle ${momentum?.running ? 'stop' : ''}`} disabled={busy || !symbol || !s.owner} onClick={() => void toggle()}><Icon name={momentum?.running ? 'square' : 'play'} size={15} />{momentum?.running ? 'Stop research' : 'Start research'}</button>
+      <section class="mom-auto-rail">
+        <div class="mom-auto-market"><span class="mom-kicker">Selected automatically</span><strong>{market?.display ?? (momentum?.phase === 'scanning' ? 'Live comparison in progress' : 'Waiting for market data')}</strong><small>{market ? `${market.market.replace('_', ' ')} · MULTUP + MULTDOWN verified` : momentum?.reason ?? 'Selection uses aligned momentum strength, not a fixed preferred symbol.'}</small></div>
+        <div class="mom-auto-settings"><div><span>Scan set</span><strong>{momentum?.scan?.candidates ?? 'Up to 12'}</strong></div><div><span>Window</span><strong>5 min</strong></div><div><span>Cost hurdle</span><strong>{momentumPct(breakEvenMove)}</strong></div></div>
+        <button class={`mom-toggle ${momentum?.running ? 'stop' : ''}`} disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name={momentum?.running ? 'square' : 'play'} size={15} />{momentum?.running ? 'Pause' : 'Resume automatic scan'}</button>
       </section>
-      {!s.owner && <div class="tl-note">Unlock the owner dashboard to start a research session. This observer never sends a buy request.</div>}
+      {!s.owner && <div class="tl-note">Research starts automatically on the server. Unlock only if you need to pause or resume it.</div>}
       {error && <div class="tl-err">{error}</div>}
 
       <section class="mom-window" aria-live="polite">
@@ -2262,7 +2252,7 @@ function MomentumPage(): JSX.Element {
       </section>
 
       <section class="mom-evidence">
-        <div class="mom-evidence-head"><div><span class="mom-kicker">Why this direction</span><strong>{signal?.reason ?? 'Start the observer to build evidence'}</strong></div>{w?.direction && <span class={`mom-locked ${w.direction}`}>Research entry locked · {w.direction}</span>}</div>
+        <div class="mom-evidence-head"><div><span class="mom-kicker">Why this direction</span><strong>{signal?.reason ?? momentum?.reason ?? 'Building live cross-market evidence'}</strong></div>{w?.direction && <span class={`mom-locked ${w.direction}`}>Research entry locked · {w.direction}</span>}</div>
         <div class="mom-horizons"><div><span>15 sec</span><strong class={(signal?.return15s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return15s)}</strong></div><div><span>30 sec</span><strong class={(signal?.return30s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return30s)}</strong></div><div><span>60 sec</span><strong class={(signal?.return60s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return60s)}</strong></div><div><span>Cost hurdle</span><strong>{momentumPct(breakEvenMove)}</strong></div></div>
       </section>
 
@@ -2271,7 +2261,7 @@ function MomentumPage(): JSX.Element {
       </section>
 
       <section class="mom-scoreboard"><div><span>Windows completed</span><strong>{momentum?.completedWindows ?? 0}</strong></div><div><span>Signals taken</span><strong>{momentum?.signalledWindows ?? 0}</strong></div><div><span>Directional wins</span><strong>{momentum?.wins ?? 0}</strong></div><div><span>Observed win rate</span><strong>{winRate == null ? '—' : `${(winRate * 100).toFixed(1)}%`}</strong></div></section>
-      <div class="mom-disclaimer"><strong>Research estimate, not account P&amp;L.</strong> The commission field is an assumption. Before demo execution, the system must capture Deriv’s actual proposal commission and live sell price; spot movement alone is not sufficient evidence of profitability.</div>
+      <div class="mom-disclaimer"><strong>Research estimate, not account P&amp;L.</strong> The 0.10% cost hurdle is a fixed assumption. Before demo execution, the system must capture Deriv’s actual proposal commission and live sell price; spot movement alone is not sufficient evidence of profitability.</div>
     </div>
   </>;
 }

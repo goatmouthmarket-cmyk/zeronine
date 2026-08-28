@@ -156,7 +156,14 @@ async function main(): Promise<void> {
 
   const automation = new Automation(registry, client, hub, decisionMemory);
   const momentum = new MomentumObserver(hub);
-  void momentum.connect().catch((error) => console.warn(`[momentum] market discovery failed: ${String(error)}`));
+  const startMomentumResearch = (): void => {
+    void momentum.startAutomatic().catch((error) => {
+      console.warn(`[momentum] automatic research start failed; retrying in 30 seconds: ${String(error)}`);
+      const retry = setTimeout(startMomentumResearch, 30_000);
+      retry.unref();
+    });
+  };
+  startMomentumResearch();
 
   registerApi(app, { registry, feed, client, hub, automation, paperSimulator, momentum });
   await registerWs(app, hub, registry);
