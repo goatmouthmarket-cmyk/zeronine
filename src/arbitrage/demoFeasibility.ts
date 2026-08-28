@@ -168,7 +168,9 @@ export class ArbDemoFeasibility {
       });
       this.emit(id);
       if (!filled.length) {
-        releaseArbExecution(id);
+        // A timeout/disconnect may mean Deriv accepted a buy although no
+        // response made it back. Keep the account locked for reconciliation.
+        if (feasibility.status !== 'unknown_execution') releaseArbExecution(id);
         return this.requiredState(id);
       }
 
@@ -177,14 +179,12 @@ export class ArbDemoFeasibility {
       void this.captureSettlements(id).catch((error) => {
         console.warn(`[arb-feasibility] settlement capture failed: ${String(error)}`);
         updateArbExecution(id, { status: 'unknown_execution', completed_at: Date.now(), reason: 'settlement capture failed' });
-        releaseArbExecution(id);
         this.emit(id);
       });
       return this.requiredState(id);
     } catch (error) {
       console.warn(`[arb-feasibility] execution setup failed: ${String(error)}`);
       updateArbExecution(id, { status: 'unknown_execution', completed_at: Date.now(), reason: String(error).slice(0, 500) });
-      releaseArbExecution(id);
       this.emit(id);
       return this.requiredState(id);
     }
@@ -219,11 +219,12 @@ export class ArbDemoFeasibility {
     const over = legs.find((leg) => leg.leg === 'over');
     if (!under || !over) throw new Error('execution legs disappeared during settlement capture');
     const feasibility = assessDualLegFeasibility(legResult(under), legResult(over));
+    const unresolved = feasibility.status === 'unknown_execution';
     updateArbExecution(id, {
-      status: 'completed', completed_at: Date.now(), feasibility_status: feasibility.status,
+      status: unresolved ? 'unknown_execution' : 'completed', completed_at: Date.now(), feasibility_status: feasibility.status,
       settlement_alignment: feasibility.alignment, buy_request_gap_ms: feasibility.buyRequestGapMs, buy_fill_gap_ms: feasibility.buyFillGapMs,
     });
-    releaseArbExecution(id);
+    if (!unresolved) releaseArbExecution(id);
     this.emit(id);
   }
 

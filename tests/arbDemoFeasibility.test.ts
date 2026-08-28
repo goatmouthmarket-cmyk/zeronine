@@ -73,11 +73,35 @@ test('an ambiguous buy outcome is retained once and is never retried', async () 
   };
   const harness = new harnessMod.ArbDemoFeasibility(client as never, new hubMod.Hub());
   const state = await harness.start({ accountId: 'deriv:CR_ARB', symbol: 'R_50', currency: 'USD', pair: { underBarrier: 5, overBarrier: 4 }, targetPayout: 10 });
-  await waitFor(() => harness.state(state.execution.id)?.execution.status === 'completed');
+  await waitFor(() => harness.state(state.execution.id)?.execution.status === 'unknown_execution');
   const completed = harness.state(state.execution.id)!;
   assert.deepEqual(buys.sort(), ['proposal-over', 'proposal-under']);
   assert.equal(completed.execution.feasibility_status, 'unknown_execution');
   assert.equal(completed.legs.find((leg) => leg.leg === 'over')?.status, 'unknown');
+
+  // Simulate an operator reconciliation for this isolated test process.
+  const [store, occupancy] = await Promise.all([
+    import('../src/db/store.ts'), import('../src/arbitrage/occupancy.ts'),
+  ]);
+  store.updateArbExecution(state.execution.id, { status: 'completed', completed_at: Date.now(), reason: 'test reconciliation' });
+  occupancy.releaseArbExecution(state.execution.id);
+});
+
+test('a persisted unknown paired execution blocks another run after the in-memory guard is clear', async () => {
+  const [store, occupancy] = await Promise.all([
+    import('../src/db/store.ts'), import('../src/arbitrage/occupancy.ts'),
+  ]);
+  const id = `unknown-${crypto.randomUUID()}`;
+  const now = Date.now();
+  store.insertArbExecution({
+    id, created_at: now, updated_at: now, completed_at: now, account_id: 'deriv:CR_ARB', account_mode: 'demo',
+    symbol: 'R_50', currency: 'USD', pair_key: 'U5/O4', under_barrier: 5, over_barrier: 4, target_payout: 10,
+    status: 'unknown_execution', feasibility_status: 'unknown_execution', settlement_alignment: 'unknown',
+    buy_request_gap_ms: null, buy_fill_gap_ms: null, quote_gap_ms: null, reason: 'provider response lost',
+  });
+  assert.equal(occupancy.activeArbExecutionId(), id);
+  assert.equal(occupancy.claimArbExecution('another-run'), false);
+  store.updateArbExecution(id, { status: 'completed', completed_at: Date.now(), reason: 'test reconciliation' });
 });
 
 test('the demo endpoint requires explicit confirmation and rejects real sessions', async () => {

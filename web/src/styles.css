@@ -3634,6 +3634,7 @@ button.activity-row {
 .arb-observe { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 11px; padding: 10px 15px; background: linear-gradient(135deg, var(--purple-deep), var(--purple)); color: #fff; font-size: 12px; font-weight: 750; cursor: pointer; transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease; box-shadow: 0 7px 17px rgba(124,58,237,.2); }
 .arb-observe:hover:not(:disabled) { transform: translateY(-1px); }.arb-observe.stop { background: linear-gradient(135deg, #d83251, var(--red)); box-shadow: 0 7px 17px rgba(255,82,99,.18); }.arb-observe.busy { opacity: .62; }.arb-observe:disabled { opacity: .45; cursor: not-allowed; }
 .arb-safety { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.arb-feasibility { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding: 12px; background: rgba(255,82,99,.045); border: 1px solid rgba(255,82,99,.2); border-radius: 9px; }.arb-feasibility strong, .arb-feasibility span { display: block; }.arb-feasibility strong { margin: 3px 0; color: var(--text); font-size: 11px; }.arb-feasibility > div > span:last-child { color: var(--muted); font-size: 10px; line-height: 1.35; }.arb-feasibility-result { display: flex; align-items: center; justify-content: space-between; gap: 9px; margin-top: 8px; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; text-transform: uppercase; }.arb-feasibility-result strong { color: var(--red); font-size: 10px; }
 .arb-quote-stage { position: relative; overflow: hidden; padding: 16px; background: linear-gradient(135deg, rgba(139,92,246,.1), var(--surface) 55%, rgba(255,77,145,.06)); }
 .arb-quote-stage.valid::after { position: absolute; top: 0; right: 0; width: 32%; height: 2px; content: ""; background: linear-gradient(90deg, transparent, var(--green)); }
 .arb-sync.good { color: var(--green); }.arb-sync.fair { color: var(--purple-light); }.arb-sync.poor, .arb-sync.incomplete { color: var(--muted); }
@@ -4363,6 +4364,8 @@ button.activity-row {
     .arb-control-grid { grid-template-columns: 1fr 1fr; }
     .arb-control-grid .tl-field:last-child { grid-column: span 2; }
     .arb-actions { align-items: flex-start; flex-direction: column; }
+    .arb-feasibility { align-items: stretch; flex-direction: column; }
+    .arb-feasibility .arb-text-btn { width: 100%; }
     .arb-observe { width: 100%; }
     .arb-safety { text-align: center; }
     .arb-stage-metrics { grid-template-columns: repeat(2, 1fr); }

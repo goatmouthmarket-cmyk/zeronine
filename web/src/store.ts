@@ -373,6 +373,25 @@ export interface ArbResearchState {
   reason?: string | null;
 }
 
+export interface ArbDemoExecutionState {
+  execution: {
+    id: string;
+    status: string;
+    feasibility_status: string | null;
+    settlement_alignment: string | null;
+    symbol: string;
+    pair_key: string;
+    target_payout: number;
+    reason: string | null;
+  };
+  legs: Array<{
+    leg: 'under' | 'over';
+    status: string;
+    contract_id: string | null;
+    settlement_status: string | null;
+  }>;
+}
+
 export interface State {
   publicDashboard?: boolean;
   owner?: boolean;
@@ -407,6 +426,7 @@ export interface State {
   arb: ArbResearchState | null;
   arbSessions: ArbSessionSummary[];
   arbObservations: ArbObservation[];
+  arbDemoExecution: ArbDemoExecutionState | null;
 }
 
 const initial: State = {
@@ -441,6 +461,7 @@ const initial: State = {
   arb: null,
   arbSessions: [],
   arbObservations: [],
+  arbDemoExecution: null,
 };
 
 let state: State = initial;
@@ -720,6 +741,9 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       }
       break;
     }
+    case 'arb_execution':
+      patch.arbDemoExecution = (evt.state as ArbDemoExecutionState | null) ?? null;
+      break;
     case 'error':
       break;
     default:
@@ -869,6 +893,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean
       performance: s.performance,
       paperSimulation: s.paperSimulation ?? null,
       arb: s.arb ?? null,
+      arbDemoExecution: s.arbDemoExecution ?? null,
       publicDashboard: Boolean(s.public_dashboard),
       owner: Boolean(s.owner),
       digits: (() => {
@@ -1145,6 +1170,21 @@ export async function stopArbResearch(): Promise<ArbResearchState> {
   if (!next) throw new Error('Research engine did not return state');
   set({ arb: next });
   return next;
+}
+
+/** Explicit Demo-only paired-contract feasibility experiment. Never automatic. */
+export async function runArbDemoFeasibility(input: { market: string; pair: string; payout: number }): Promise<ArbDemoExecutionState> {
+  const res = await api<{ state: ArbDemoExecutionState }>('/api/arb/feasibility/demo', {
+    method: 'POST',
+    body: JSON.stringify({
+      confirm_demo_execution: true,
+      market: input.market,
+      pair: input.pair,
+      payout: input.payout,
+    }),
+  });
+  set({ arbDemoExecution: res.state });
+  return res.state;
 }
 
 export async function loadArbSessions(): Promise<ArbSessionSummary[]> {

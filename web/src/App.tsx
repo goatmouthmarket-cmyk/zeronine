@@ -38,6 +38,7 @@ import {
   deleteArbSession,
   arbReportUrl,
   arbExportUrl,
+  runArbDemoFeasibility,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
@@ -2293,6 +2294,18 @@ function ArbitragePage(): JSX.Element {
       setBusy(false);
     }
   };
+  const runDemoFeasibility = async () => {
+    if (!window.confirm(`Run one DEMO-only paired feasibility test for ${pair} on ${market}? This sends two real demo contracts and may create an unhedged partial fill.`)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await runArbDemoFeasibility({ market, pair, payout });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <>
@@ -2334,6 +2347,21 @@ function ArbitragePage(): JSX.Element {
             </button>
             <span class="arb-safety">Research only. No buy request can be sent from this view.</span>
           </div>
+          <div class="arb-feasibility">
+            <div>
+              <span class="arb-kicker">Demo feasibility test</span>
+              <strong>Manual dual-contract evidence only</strong>
+              <span>Requires a connected demo account, stopped bot, and explicit confirmation.</span>
+            </div>
+            <button class="arb-text-btn danger" disabled={busy || !s.owner || s.session?.mode !== 'demo' || Boolean(s.arbDemoExecution && !['completed', 'both_failed', 'quote_failed'].includes(s.arbDemoExecution.execution.status))} onClick={() => void runDemoFeasibility()}>
+              Run one demo test
+            </button>
+          </div>
+          {s.arbDemoExecution && <div class="arb-feasibility-result">
+            <span>Demo execution {s.arbDemoExecution.execution.id.slice(-8)}</span>
+            <strong>{s.arbDemoExecution.execution.status.replaceAll('_', ' ')}</strong>
+            <span>{s.arbDemoExecution.execution.settlement_alignment?.replaceAll('_', ' ') ?? 'settlement alignment pending'}</span>
+          </div>}
           {error && <div class="tl-err">{error}</div>}
         </section>
         <ArbLatestQuote observation={arb?.latest ?? null} currency={currency} />

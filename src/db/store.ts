@@ -1774,6 +1774,17 @@ export function getArbExecution(id: string): ArbExecutionRow | null {
   return (getDb().prepare('SELECT * FROM arb_executions WHERE id=?').get(id) as ArbExecutionRow | undefined) ?? null;
 }
 
+/**
+ * A paired buy with an unknown result must survive a process restart.  The
+ * dashboard has one private account at a time, so block all account trading
+ * until the exceptional run has been reconciled with the provider.
+ */
+export function getActiveArbExecution(): ArbExecutionRow | null {
+  return (getDb().prepare(
+    "SELECT * FROM arb_executions WHERE status IN ('quoting', 'buying', 'settling', 'unknown_execution') ORDER BY created_at DESC LIMIT 1",
+  ).get() as ArbExecutionRow | undefined) ?? null;
+}
+
 export function getArbExecutionLegs(executionId: string): ArbExecutionLegRow[] {
   return getDb().prepare("SELECT * FROM arb_execution_legs WHERE execution_id=? ORDER BY CASE leg WHEN 'under' THEN 0 ELSE 1 END").all(executionId) as unknown as ArbExecutionLegRow[];
 }
