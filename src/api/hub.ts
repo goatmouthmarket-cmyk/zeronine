@@ -18,9 +18,7 @@ export type HubEventType =
   | 'testlab'
   | 'tuning'
   | 'paper_simulation'
-  | 'arb'
-  | 'arb_observation'
-  | 'arb_execution'
+  | 'momentum'
   | 'error';
 
 export interface AutomationEvent {

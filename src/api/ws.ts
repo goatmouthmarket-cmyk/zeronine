@@ -8,7 +8,7 @@ import { isOwner } from './access.ts';
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning', 'paper_simulation', 'arb', 'arb_observation']);
+const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning', 'paper_simulation', 'momentum']);
 
 export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
   await app.register(websocket, { options: { maxPayload: 8192 } });

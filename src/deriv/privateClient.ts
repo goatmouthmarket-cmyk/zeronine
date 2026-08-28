@@ -81,7 +81,7 @@ export interface ContractUpdate {
   exitDigit?: number;
   entrySpot?: number;
   entryDigit?: number;
-  /** Provider epoch fields retained for paired-feasibility settlement evidence. */
+  /** Provider lifecycle epochs retained for reconciliation evidence. */
   dateStart?: number;
   dateExpiry?: number;
   entryTickTime?: number;

@@ -7,8 +7,7 @@ import { config } from './config.ts';
 import { resolveStoredToken } from './deriv/oauth.ts';
 import { Hub } from './api/hub.ts';
 import { registerApi } from './api/routes.ts';
-import { ArbitrageObserver } from './arbitrage/observer.ts';
-import { ArbDemoFeasibility } from './arbitrage/demoFeasibility.ts';
+import { MomentumObserver } from './momentum/observer.ts';
 import { registerWs } from './api/ws.ts';
 import { MarketRegistry } from './core/marketState.ts';
 import { DerivPublicFeed } from './deriv/publicFeed.ts';
@@ -156,10 +155,10 @@ async function main(): Promise<void> {
   client.onDisconnect = () => hub.emit({ type: 'session', ts: Date.now(), session: null, reason: 'disconnected' });
 
   const automation = new Automation(registry, client, hub, decisionMemory);
-  const arbitrage = new ArbitrageObserver(registry, client, hub);
-  const arbDemoFeasibility = new ArbDemoFeasibility(client, hub);
+  const momentum = new MomentumObserver(hub);
+  void momentum.connect().catch((error) => console.warn(`[momentum] market discovery failed: ${String(error)}`));
 
-  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, arbitrage, arbDemoFeasibility });
+  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, momentum });
   await registerWs(app, hub, registry);
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');
