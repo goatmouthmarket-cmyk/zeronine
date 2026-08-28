@@ -9,6 +9,8 @@ import type { MarketRegistry } from '../core/marketState.ts';
 import type { Automation } from '../strategy/automation.ts';
 import type { PaperSimulator } from '../simulation/paperSimulator.ts';
 import { arbObservationForApi, arbStateForApi, type ArbitrageObserver } from '../arbitrage/observer.ts';
+import type { ArbDemoFeasibility } from '../arbitrage/demoFeasibility.ts';
+import { activeArbExecutionId, isArbExecutionActive } from '../arbitrage/occupancy.ts';
 import { encryptToken } from '../db/crypto.ts';
 import {
   buildAuthorizeUrl,
@@ -54,6 +56,10 @@ import {
   getArbSession,
   listArbObservations,
   listArbSessions,
+  accountIdForLogin,
+  getArbExecution,
+  getArbExecutionLegs,
+  listArbExecutions,
 } from '../db/store.ts';
 import { ARB_PAIRS } from '../arbitrage/core.ts';
 
@@ -65,10 +71,11 @@ export interface ApiDeps {
   automation: Automation;
   paperSimulator: PaperSimulator;
   arbitrage?: ArbitrageObserver;
+  arbDemoFeasibility?: ArbDemoFeasibility;
 }
 
 export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
-  const { registry, feed, client, hub, automation, paperSimulator, arbitrage } = deps;
+  const { registry, feed, client, hub, automation, paperSimulator, arbitrage, arbDemoFeasibility } = deps;
   const oauthPending = new Map<string, { verifier: string; created: number }>();
 
   app.get('/health', async () => ({
@@ -123,10 +130,48 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
       paperSimulation: paperSimulator.state(),
       arbitrage: arbitrage ? arbStateForApi(arbitrage.state()) : null,
+      arbDemoExecution: owner && activeArbExecutionId() ? arbDemoFeasibility?.state(activeArbExecutionId()!) ?? null : null,
     };
   });
 
   app.get('/api/arb/state', async () => ({ state: arbitrage ? arbStateForApi(arbitrage.state()) : null, pairs: ARB_PAIRS }));
+  app.get('/api/arb/feasibility/executions', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) { reply.code(401); return { error: 'not connected' }; }
+    return { active_execution_id: activeArbExecutionId(), executions: listArbExecutions(100, accountIdForLogin(session.loginid)) };
+  });
+  app.get('/api/arb/feasibility/executions/:id', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    const id = (req.params as { id: string }).id;
+    const execution = getArbExecution(id);
+    if (!session || !execution || execution.account_id !== accountIdForLogin(session.loginid)) { reply.code(404); return { error: 'execution not found' }; }
+    return { execution, legs: getArbExecutionLegs(id), active: activeArbExecutionId() === id };
+  });
+  app.post('/api/arb/feasibility/demo', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    if (!arbDemoFeasibility) { reply.code(503); return { error: 'demo feasibility harness unavailable' }; }
+    const session = getSession();
+    if (!session) { reply.code(401); return { error: 'not connected' }; }
+    if (session.mode !== 'demo') { reply.code(403); return { error: 'paired feasibility execution is restricted to a Deriv demo account' }; }
+    if (!client.isConnected) { reply.code(409); return { error: 'connect the selected demo account before running a paired experiment' }; }
+    if (automation.isRunning()) { reply.code(409); return { error: 'stop the bot before running a paired feasibility experiment' }; }
+    if (getOpenTrade()) { reply.code(409); return { error: 'wait for the normal open contract to settle before running a paired experiment' }; }
+    if (isArbExecutionActive()) { reply.code(409); return { error: 'a paired feasibility experiment is already active' }; }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (body.confirm_demo_execution !== true) { reply.code(400); return { error: 'set confirm_demo_execution to true to explicitly authorize this demo-only paired purchase' }; }
+    const symbol = typeof body.symbol === 'string' ? body.symbol : typeof body.market === 'string' ? body.market : '';
+    if (!symbol || !registry.has(symbol)) { reply.code(400); return { error: 'a known market symbol is required' }; }
+    const pair = typeof body.pair === 'string' ? /^U([1-9])\/O([0-8])$/.exec(body.pair) : null;
+    const underBarrier = Number(body.under_barrier ?? pair?.[1] ?? NaN);
+    const overBarrier = Number(body.over_barrier ?? pair?.[2] ?? NaN);
+    const targetPayout = Number(body.target_payout ?? body.payout ?? NaN);
+    try {
+      const state = await arbDemoFeasibility.start({ accountId: accountIdForLogin(session.loginid), symbol, currency: session.currency || 'USD', pair: { underBarrier, overBarrier }, targetPayout });
+      return { ok: true, state };
+    } catch (error) { reply.code(409); return { error: String(error) }; }
+  });
   app.get('/api/arb/research/sessions', async () => ({ sessions: listArbSessions().map(arbSessionForApi) }));
   app.get('/api/arb/research/observations', async (req) => {
     const q = req.query as Record<string, string | undefined>;
@@ -500,6 +545,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   app.post('/api/auth/switch-account', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
+    if (isArbExecutionActive()) { reply.code(409); return { error: 'a paired feasibility execution is active; wait for settlement capture before switching accounts' }; }
     const session = getSession();
     const accountId = String((req.body as { accountId?: unknown } | undefined)?.accountId ?? '').trim();
     if (!session || !accountId) {
@@ -530,6 +576,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   app.post('/api/auth/logout', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
+    if (isArbExecutionActive()) { reply.code(409); return { error: 'a paired feasibility execution is active; wait for settlement capture before disconnecting' }; }
     automation.stop('logged out');
     client.disconnect();
     clearSession();
@@ -538,6 +585,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   app.post('/api/trade/manual', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
+    if (isArbExecutionActive()) { reply.code(409); return { error: 'a paired feasibility execution is active' }; }
     const session = getSession();
     if (!session) {
       reply.code(401);
@@ -644,6 +692,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   app.post('/api/trade/manual-basket', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
+    if (isArbExecutionActive()) { reply.code(409); return { error: 'a paired feasibility execution is active' }; }
     const session = getSession();
     if (!session) {
       reply.code(401);
@@ -761,6 +810,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   app.post('/api/automation/start', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
+    if (isArbExecutionActive()) { reply.code(409); return { error: 'a paired feasibility execution is active' }; }
     const session = getSession();
     if (!session) {
       reply.code(401);

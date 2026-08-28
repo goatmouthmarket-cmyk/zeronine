@@ -20,6 +20,7 @@ export type HubEventType =
   | 'paper_simulation'
   | 'arb'
   | 'arb_observation'
+  | 'arb_execution'
   | 'error';
 
 export interface AutomationEvent {

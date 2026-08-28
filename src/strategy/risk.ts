@@ -2,6 +2,7 @@ import { getOpenTrade, getRecovery } from '../db/store.ts';
 import type { SettingsRow } from '../db/store.ts';
 import type { RecoveryContext, StrategyMode } from '../strategy/recovery.ts';
 import { config } from '../config.ts';
+import { isArbExecutionActive } from '../arbitrage/occupancy.ts';
 
 export interface RiskCheck {
   ok: boolean;
@@ -50,6 +51,8 @@ export function riskCheck(params: {
   accountId?: string;
 }): RiskCheck {
   const { stake, settings, balance, context, lastTradeAt, tradeGapMs } = params;
+
+  if (isArbExecutionActive()) return { ok: false, reason: 'demo paired-feasibility execution is active' };
 
   if (!Number.isFinite(stake) || stake <= 0) return { ok: false, reason: 'invalid stake' };
   if (balance > 0 && stake > balance * 0.9) return { ok: false, reason: 'insufficient balance' };

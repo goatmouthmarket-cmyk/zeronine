@@ -15,6 +15,7 @@
 - Keep sensitive tokens encrypted through the existing session and crypto flow; never log or return PATs or OAuth tokens.
 - Keep virtual-paper outcomes explicitly separate from Deriv account balances, risk, recovery, stake sizing, and execution. They may be retained only as clearly-labelled research evidence unless an explicit, validated calibration contract is added.
 - Keep audit, ledger, analytics, and research persistence out of the execution critical path. A failure to record telemetry must never prevent a Deriv quote, purchase, settlement, or stop request.
+- Paired arbitrage feasibility execution is demo-only, owner-confirmed, globally exclusive, and must remain outside normal trades, recovery, and account P&L. Unknown buy outcomes are evidence to reconcile, never grounds for an automatic retry.
 
 ## Validation
 

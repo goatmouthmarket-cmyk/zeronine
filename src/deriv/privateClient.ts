@@ -81,6 +81,11 @@ export interface ContractUpdate {
   exitDigit?: number;
   entrySpot?: number;
   entryDigit?: number;
+  /** Provider epoch fields retained for paired-feasibility settlement evidence. */
+  dateStart?: number;
+  dateExpiry?: number;
+  entryTickTime?: number;
+  exitTickTime?: number;
 }
 
 type Pending = {
@@ -250,6 +255,10 @@ export class DerivPrivateClient {
       exitDigit: Number.isFinite(exitSpot) ? lastDigitOf(exitSpot, precision) : undefined,
       entrySpot: Number.isFinite(entrySpot) ? entrySpot : undefined,
       entryDigit: Number.isFinite(entrySpot) ? lastDigitOf(entrySpot, precision) : undefined,
+      dateStart: Number.isFinite(Number(c.date_start)) ? Number(c.date_start) : undefined,
+      dateExpiry: Number.isFinite(Number(c.date_expiry)) ? Number(c.date_expiry) : undefined,
+      entryTickTime: Number.isFinite(Number(entryTick?.epoch)) ? Number(entryTick.epoch) : undefined,
+      exitTickTime: Number.isFinite(Number(exitTick?.epoch)) ? Number(exitTick.epoch) : undefined,
     };
   }
 

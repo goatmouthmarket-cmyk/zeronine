@@ -158,6 +158,60 @@ export interface ArbObservationRow {
   last_digit: number | null;
 }
 
+export type ArbExecutionStatus = 'quoting' | 'quote_failed' | 'buying' | 'settling' | 'completed' | 'partial_fill' | 'both_failed' | 'unknown_execution';
+export type ArbExecutionLegStatus = 'quoted' | 'filled' | 'rejected' | 'unknown';
+
+/** A demo-only paired execution experiment. It is not a normal trade row. */
+export interface ArbExecutionRow {
+  id: string;
+  created_at: number;
+  updated_at: number;
+  completed_at: number | null;
+  account_id: string;
+  account_mode: 'demo';
+  symbol: string;
+  currency: string;
+  pair_key: string;
+  under_barrier: number;
+  over_barrier: number;
+  target_payout: number;
+  status: ArbExecutionStatus;
+  feasibility_status: string | null;
+  settlement_alignment: string | null;
+  buy_request_gap_ms: number | null;
+  buy_fill_gap_ms: number | null;
+  quote_gap_ms: number | null;
+  reason: string | null;
+}
+
+export interface ArbExecutionLegRow {
+  id: number;
+  execution_id: string;
+  leg: 'under' | 'over';
+  direction: 'under' | 'over';
+  barrier: number;
+  proposal_id: string | null;
+  ask_price: number | null;
+  payout: number | null;
+  quote_sent_at: number | null;
+  quote_received_at: number | null;
+  quote_round_trip_ms: number | null;
+  buy_sent_at: number | null;
+  buy_completed_at: number | null;
+  status: ArbExecutionLegStatus;
+  contract_id: string | null;
+  buy_price: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  date_start: number | null;
+  date_expiry: number | null;
+  entry_tick_time: number | null;
+  exit_tick_time: number | null;
+  settlement_status: string | null;
+  settlement_profit: number | null;
+  settled_at: number | null;
+}
+
 const LEGACY_ACCOUNT_ID = '__legacy__';
 const LOCAL_ACCOUNT_ID = '__local__';
 
@@ -562,6 +616,57 @@ function migrate(d: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_arb_observations_session_id ON arb_observations(session_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_arb_observations_pair_market ON arb_observations(symbol, under_barrier, over_barrier, id DESC);
+    CREATE TABLE IF NOT EXISTS arb_executions (
+      id TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      account_id TEXT NOT NULL,
+      account_mode TEXT NOT NULL CHECK (account_mode = 'demo'),
+      symbol TEXT NOT NULL,
+      currency TEXT NOT NULL,
+      pair_key TEXT NOT NULL,
+      under_barrier INTEGER NOT NULL,
+      over_barrier INTEGER NOT NULL,
+      target_payout REAL NOT NULL,
+      status TEXT NOT NULL,
+      feasibility_status TEXT,
+      settlement_alignment TEXT,
+      buy_request_gap_ms REAL,
+      buy_fill_gap_ms REAL,
+      quote_gap_ms REAL,
+      reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_arb_executions_account_created ON arb_executions(account_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS arb_execution_legs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      execution_id TEXT NOT NULL REFERENCES arb_executions(id) ON DELETE CASCADE,
+      leg TEXT NOT NULL CHECK (leg IN ('under', 'over')),
+      direction TEXT NOT NULL CHECK (direction IN ('under', 'over')),
+      barrier INTEGER NOT NULL,
+      proposal_id TEXT,
+      ask_price REAL,
+      payout REAL,
+      quote_sent_at INTEGER,
+      quote_received_at INTEGER,
+      quote_round_trip_ms REAL,
+      buy_sent_at INTEGER,
+      buy_completed_at INTEGER,
+      status TEXT NOT NULL CHECK (status IN ('quoted', 'filled', 'rejected', 'unknown')),
+      contract_id TEXT,
+      buy_price REAL,
+      error_code TEXT,
+      error_message TEXT,
+      date_start INTEGER,
+      date_expiry INTEGER,
+      entry_tick_time INTEGER,
+      exit_tick_time INTEGER,
+      settlement_status TEXT,
+      settlement_profit REAL,
+      settled_at INTEGER,
+      UNIQUE(execution_id, leg)
+    );
+    CREATE INDEX IF NOT EXISTS idx_arb_execution_legs_execution ON arb_execution_legs(execution_id, leg);
     CREATE INDEX IF NOT EXISTS idx_digits_market_id ON digits(market, id DESC);
   `);
 
@@ -1619,6 +1724,62 @@ export function arbComparisons(sessionId?: string): { pairs: Array<Record<string
     a.samples++; a.cost += r.combined_cost_pct!; a.minCost = Math.min(a.minCost, r.combined_cost_pct!); a.positive += r.is_positive; a.bestEdge = Math.max(a.bestEdge, r.theoretical_roi!); a.margin += r.house_margin_pct!; map.set(k, a); return map;
   }, new Map<string, any>()).values()].map((a: any) => ({ key: a.key, samples: a.samples, average_cost_pct: a.cost / a.samples, minimum_cost_pct: a.minCost, positive_count: a.positive, positive_rate: a.positive / a.samples, best_edge_pct: a.bestEdge, average_house_margin_pct: a.margin / a.samples }));
   return { pairs: aggregate(rows, (r) => `U${r.under_barrier}/O${r.over_barrier}`), markets: aggregate(rows, (r) => r.symbol) };
+}
+
+export function insertArbExecution(row: ArbExecutionRow): void {
+  getDb().prepare(
+    `INSERT INTO arb_executions (id, created_at, updated_at, completed_at, account_id, account_mode, symbol, currency, pair_key,
+      under_barrier, over_barrier, target_payout, status, feasibility_status, settlement_alignment, buy_request_gap_ms, buy_fill_gap_ms, quote_gap_ms, reason)
+     VALUES (?, ?, ?, ?, ?, 'demo', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    row.id, row.created_at, row.updated_at, row.completed_at, row.account_id, row.symbol, row.currency, row.pair_key,
+    row.under_barrier, row.over_barrier, row.target_payout, row.status, row.feasibility_status, row.settlement_alignment,
+    row.buy_request_gap_ms, row.buy_fill_gap_ms, row.quote_gap_ms, row.reason,
+  );
+}
+
+export function updateArbExecution(
+  id: string,
+  patch: Partial<Pick<ArbExecutionRow, 'completed_at' | 'status' | 'feasibility_status' | 'settlement_alignment' | 'buy_request_gap_ms' | 'buy_fill_gap_ms' | 'quote_gap_ms' | 'reason'>>,
+): void {
+  const fields = Object.entries(patch).filter(([, value]) => value !== undefined);
+  if (!fields.length) return;
+  const now = Date.now();
+  const sql = `UPDATE arb_executions SET updated_at=?, ${fields.map(([key]) => `${key}=?`).join(', ')} WHERE id=?`;
+  getDb().prepare(sql).run(now, ...fields.map(([, value]) => value), id);
+}
+
+export function upsertArbExecutionLeg(row: Omit<ArbExecutionLegRow, 'id'>): void {
+  getDb().prepare(
+    `INSERT INTO arb_execution_legs (execution_id, leg, direction, barrier, proposal_id, ask_price, payout, quote_sent_at, quote_received_at,
+      quote_round_trip_ms, buy_sent_at, buy_completed_at, status, contract_id, buy_price, error_code, error_message, date_start, date_expiry,
+      entry_tick_time, exit_tick_time, settlement_status, settlement_profit, settled_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(execution_id, leg) DO UPDATE SET
+       proposal_id=excluded.proposal_id, ask_price=excluded.ask_price, payout=excluded.payout,
+       quote_sent_at=excluded.quote_sent_at, quote_received_at=excluded.quote_received_at, quote_round_trip_ms=excluded.quote_round_trip_ms,
+       buy_sent_at=excluded.buy_sent_at, buy_completed_at=excluded.buy_completed_at, status=excluded.status,
+       contract_id=excluded.contract_id, buy_price=excluded.buy_price, error_code=excluded.error_code, error_message=excluded.error_message,
+       date_start=excluded.date_start, date_expiry=excluded.date_expiry, entry_tick_time=excluded.entry_tick_time,
+       exit_tick_time=excluded.exit_tick_time, settlement_status=excluded.settlement_status,
+       settlement_profit=excluded.settlement_profit, settled_at=excluded.settled_at`,
+  ).run(
+    row.execution_id, row.leg, row.direction, row.barrier, row.proposal_id, row.ask_price, row.payout, row.quote_sent_at, row.quote_received_at,
+    row.quote_round_trip_ms, row.buy_sent_at, row.buy_completed_at, row.status, row.contract_id, row.buy_price, row.error_code, row.error_message,
+    row.date_start, row.date_expiry, row.entry_tick_time, row.exit_tick_time, row.settlement_status, row.settlement_profit, row.settled_at,
+  );
+}
+
+export function getArbExecution(id: string): ArbExecutionRow | null {
+  return (getDb().prepare('SELECT * FROM arb_executions WHERE id=?').get(id) as ArbExecutionRow | undefined) ?? null;
+}
+
+export function getArbExecutionLegs(executionId: string): ArbExecutionLegRow[] {
+  return getDb().prepare("SELECT * FROM arb_execution_legs WHERE execution_id=? ORDER BY CASE leg WHEN 'under' THEN 0 ELSE 1 END").all(executionId) as unknown as ArbExecutionLegRow[];
+}
+
+export function listArbExecutions(limit = 100, accountId = currentAccountId()): ArbExecutionRow[] {
+  return getDb().prepare('SELECT * FROM arb_executions WHERE account_id=? ORDER BY created_at DESC LIMIT ?').all(accountId, Math.max(1, Math.min(limit, 500))) as unknown as ArbExecutionRow[];
 }
 
 export function getMeta(key: string): string | null {
