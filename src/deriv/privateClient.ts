@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { config } from '../config.ts';
-import { balanceSubscribe, getPrecision, ping, proposal, multiplierProposal, buy, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
+import { balanceSubscribe, getPrecision, ping, proposal, multiplierProposal, buy, sell, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
 import type { Direction, MultiplierDirection } from '../core/digitMath.ts';
 import { updateSessionBalance } from '../db/store.ts';
 
@@ -369,6 +369,24 @@ export class DerivPrivateClient {
       payout: Number(b.payout ?? 0),
       buyPrice: Number(b.buy_price ?? price),
       purchaseTime: Number(b.purchase_time ?? Math.floor(Date.now() / 1000)),
+    };
+  }
+
+  async sellContract(contractId: string, price = 0): Promise<{ contractId: string; soldFor: number; balanceAfter: number | null; transactionId: string; referenceId: string }> {
+    const msg = (await this.request(sell(contractId, price, 0), 'sell', 12000)) as any;
+    const s = msg?.sell;
+    if (!s?.contract_id) throw new Error('sell rejected');
+    const balanceAfter = Number(s.balance_after);
+    if (Number.isFinite(balanceAfter)) {
+      updateSessionBalance(balanceAfter);
+      this.onBalance?.(balanceAfter);
+    }
+    return {
+      contractId: String(s.contract_id),
+      soldFor: Number(s.sold_for ?? 0),
+      balanceAfter: Number.isFinite(balanceAfter) ? balanceAfter : null,
+      transactionId: String(s.transaction_id ?? ''),
+      referenceId: String(s.reference_id ?? ''),
     };
   }
 

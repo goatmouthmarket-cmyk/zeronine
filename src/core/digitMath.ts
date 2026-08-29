@@ -102,6 +102,10 @@ export function buy(proposalId: string | number, price: number, reqId: number): 
   return { buy: proposalId, price, req_id: reqId };
 }
 
+export function sell(contractId: string | number, price: number, reqId: number): Record<string, unknown> {
+  return { sell: Number(contractId), price: Math.max(0, price), req_id: reqId };
+}
+
 export function proposalOpenContract(contractId: string | number, reqId: number, subscribe = true): Record<string, unknown> {
   const msg: Record<string, unknown> = {
     proposal_open_contract: 1,

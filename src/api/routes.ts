@@ -564,6 +564,99 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
+  app.post('/api/momentum/close', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'connect a Deriv demo account to close a Momentum trade' };
+    }
+    if (session.mode !== 'demo') {
+      reply.code(403);
+      return { error: 'Momentum trades are restricted to a Deriv demo account' };
+    }
+    const openTrade = getOpenTrade();
+    if (!openTrade) {
+      reply.code(409);
+      return { error: 'no open Momentum trade found' };
+    }
+    if (openTrade.contract_type !== 'MULTUP' && openTrade.contract_type !== 'MULTDOWN') {
+      reply.code(409);
+      return { error: 'the open contract is not a Momentum multiplier trade' };
+    }
+    if (!/momentum manual/i.test(openTrade.reason ?? '')) {
+      reply.code(409);
+      return { error: 'the open multiplier contract was not opened from Momentum trade controls' };
+    }
+    if (!openTrade.contract_id) {
+      reply.code(409);
+      return { error: 'Momentum purchase outcome is unknown; reconcile at Deriv before closing locally' };
+    }
+
+    if (!client.isConnected) {
+      try {
+        const token = await resolveStoredToken();
+        const connected = await client.reconnect(token, session.loginid);
+        if (connected.mode !== 'demo') {
+          reply.code(403);
+          return { error: 'Momentum trades are restricted to a Deriv demo account' };
+        }
+      } catch (error) {
+        reply.code(409);
+        return { error: `socket reconnect failed: ${String(error)}` };
+      }
+    }
+
+    try {
+      const sold = await client.sellContract(openTrade.contract_id, 0);
+      const profit = Math.round((sold.soldFor - openTrade.stake) * 100) / 100;
+      const status = profit > 0 ? 'won' : profit < 0 ? 'lost' : 'push';
+      resolveTrade(openTrade.id, status, profit, sold.contractId, undefined, openTrade.account_id);
+      activeSettlements.delete(settlementKeyFor(openTrade.account_id, openTrade.id, openTrade.contract_id));
+      const trade = getTrade(openTrade.id, openTrade.account_id) ?? openTrade;
+      const performance = getPerformanceSummary(openTrade.account_id);
+      hub.emit({ type: 'trade', ts: Date.now(), trade, performance, manual: true, momentum: true, settled: true, sold: true });
+      hub.emit({
+        type: 'contract',
+        ts: Date.now(),
+        contractId: sold.contractId,
+        tradeId: openTrade.id,
+        result: status,
+        profit,
+        sellPrice: sold.soldFor,
+        buyPrice: openTrade.stake,
+        sold: true,
+        settled: true,
+        status,
+      });
+      return {
+        ok: true,
+        trade,
+        session: (() => {
+          const updated = getSession();
+          return updated ? {
+            loginid: updated.loginid,
+            balance: updated.balance,
+            currency: updated.currency,
+            mode: updated.mode,
+            auth_kind: updated.auth_kind,
+          } : null;
+        })(),
+        sold: {
+          contractId: sold.contractId,
+          soldFor: sold.soldFor,
+          profit,
+          balanceAfter: sold.balanceAfter,
+          transactionId: sold.transactionId,
+          referenceId: sold.referenceId,
+        },
+      };
+    } catch (error) {
+      reply.code(503);
+      return { error: `Momentum close failed: ${error instanceof Error ? error.message : String(error)}` };
+    }
+  });
+
   app.get('/api/settings', async () => getSettings());
 
   app.put('/api/settings', async (req, reply) => {
@@ -1267,6 +1360,10 @@ function parseTestConfigs(entries: string[]): TestConfig[] {
 
 const activeSettlements = new Set<string>();
 
+function settlementKeyFor(accountId: string | undefined, tradeId: number, contractId: string): string {
+  return `${accountId ?? 'current'}:${tradeId}:${contractId}`;
+}
+
 function settleInBackground(
   client: DerivPrivateClient,
   hub: Hub,
@@ -1276,7 +1373,7 @@ function settleInBackground(
   payout: number,
   accountId?: string,
 ): void {
-  const settlementKey = `${accountId ?? 'current'}:${tradeId}:${contractId}`;
+  const settlementKey = settlementKeyFor(accountId, tradeId, contractId);
   if (activeSettlements.has(settlementKey)) return;
   activeSettlements.add(settlementKey);
   let attempts = 0;

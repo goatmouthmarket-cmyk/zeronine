@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, PaperTrade, PaperPortfolio, GoldDiagnostics, GoldModuleState, GoldRuntimeReadiness, GoldDemoAccount } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldDiagnostics, GoldModuleState, GoldRuntimeReadiness, GoldDemoAccount } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
@@ -37,6 +37,7 @@ import {
   stopMomentumResearch,
   focusMomentumMarket,
   placeMomentumDemoTrade,
+  closeMomentumDemoTrade,
   loadGoldState,
   startGoldOAuth,
   disconnectGoldOAuth,
@@ -2347,7 +2348,9 @@ function MomentumTradeDesk({
   const [direction, setDirection] = useState<'up' | 'down'>(suggestedDirection ?? 'up');
   const [stakeText, setStakeText] = useState('1');
   const [purchase, setPurchase] = useState<MomentumTradePurchase | null>(null);
+  const [closed, setClosed] = useState<MomentumTradeClose | null>(null);
   const [busy, setBusy] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
   const stake = Number(stakeText);
   const isDemo = session?.mode === 'demo';
@@ -2358,15 +2361,19 @@ function MomentumTradeDesk({
     && /momentum manual/i.test(item.reason ?? '')
     && (item.status === 'pending' || item.status === 'purchasing')
   ) ?? null;
+  const closedMomentumTrade = closed?.contractId
+    ? trades.find((item) => item.contract_id === closed.contractId) ?? null
+    : null;
   const canPlace = canQuote && Boolean(suggestedDirection) && !openAccountTrade;
   const trade = purchase?.id == null
-    ? openMomentumTrade
-    : trades.find((item) => item.id === purchase.id) ?? openMomentumTrade;
-  const trackedContractId = purchase?.contractId ?? purchase?.contract_id ?? trade?.contract_id ?? '';
+    ? openMomentumTrade ?? closedMomentumTrade
+    : trades.find((item) => item.id === purchase.id) ?? openMomentumTrade ?? closedMomentumTrade;
+  const trackedContractId = purchase?.contractId ?? purchase?.contract_id ?? closed?.contractId ?? trade?.contract_id ?? '';
   const matchingContract = trackedContractId && contract?.contractId === trackedContractId ? contract : null;
   const settledTrade = trade && ['won', 'lost', 'push'].includes(trade.status) ? trade : null;
   const liveContractProfit = Number.isFinite(Number(matchingContract?.profit)) ? Number(matchingContract?.profit) : undefined;
-  const contractPnl = settledTrade?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit;
+  const contractPnl = settledTrade?.profit ?? closed?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit;
+  const canClose = Boolean(openMomentumTrade?.contract_id && !closing);
   const liveSellPrice = Number.isFinite(Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice))
     ? Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice)
     : undefined;
@@ -2376,18 +2383,22 @@ function MomentumTradeDesk({
       ? `Contract ${matchingContract.result}`
       : matchingContract?.phase
         ? `Contract ${matchingContract.phase}`
+        : closed
+          ? 'Contract closed'
         : trade
           ? `Contract ${trade.status}`
           : purchase
             ? 'Demo contract submitted'
             : 'No open demo contract';
-  const potentialProfit = purchase?.payout != null && purchase.ask != null ? purchase.payout - purchase.ask : null;
+  const potentialProfit = closed?.profit ?? (purchase?.payout != null && purchase.ask != null ? purchase.payout - purchase.ask : null);
   const suggestionTone = suggestedDirection ?? 'wait';
   const suggestionText = suggestedDirection
     ? `${suggestedDirection.toUpperCase()}${Number.isFinite(Number(suggestedConfidence)) ? ` - ${suggestedConfidence}%` : ''}`
     : 'WAIT';
   const actionNote = busy
     ? 'Sending demo order'
+    : closing
+      ? 'Closing demo contract'
     : openAccountTrade
       ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
       : suggestedDirection
@@ -2396,6 +2407,7 @@ function MomentumTradeDesk({
 
   useEffect(() => {
     setPurchase(null);
+    setClosed(null);
     setError('');
   }, [symbol, direction, stakeText]);
 
@@ -2423,6 +2435,21 @@ function MomentumTradeDesk({
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const closeOpenTrade = async () => {
+    if (!canClose) return;
+    setClosing(true);
+    setError('');
+    try {
+      setClosed(await closeMomentumDemoTrade());
+      setPurchase(null);
+      await refreshTrades();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setClosing(false);
     }
   };
 
@@ -2467,7 +2494,7 @@ function MomentumTradeDesk({
       <div class={`mom-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
         <span>Live contract P&amp;L</span>
         <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
-        <small>{liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
+        <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
       </div>
     </div>
 
@@ -2482,6 +2509,7 @@ function MomentumTradeDesk({
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
       </div>
       <span class="mom-trade-action-note">{actionNote}</span>
+      {openMomentumTrade && <button class="mom-trade-close" type="button" disabled={!canClose} onClick={() => void closeOpenTrade()}><Icon name="x" size={14} />{closing ? 'Closing' : 'Close trade'}</button>}
     </div>
 
     {unavailableReason && <div class="mom-trade-note">{unavailableReason}</div>}

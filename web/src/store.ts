@@ -213,6 +213,7 @@ export interface ContractEvt {
   buyPrice?: number;
   status?: string;
   settled?: boolean;
+  sold?: boolean;
   phase?: string;
   error?: string;
   update?: {
@@ -450,6 +451,15 @@ export interface MomentumTradePurchase {
   exitPrice?: number | null;
   balance?: number | null;
   currency?: string;
+}
+
+export interface MomentumTradeClose {
+  contractId?: string;
+  soldFor?: number;
+  profit?: number;
+  balanceAfter?: number | null;
+  transactionId?: string;
+  referenceId?: string;
 }
 
 /**
@@ -792,6 +802,7 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
         buyPrice: Number.isFinite(Number(evt.buyPrice)) ? Number(evt.buyPrice) : Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined,
         status: typeof evt.status === 'string' ? evt.status : typeof update.status === 'string' ? update.status : undefined,
         settled: typeof evt.settled === 'boolean' ? evt.settled : typeof update.settled === 'boolean' ? update.settled : undefined,
+        sold: typeof evt.sold === 'boolean' ? evt.sold : undefined,
         phase: evt.phase as string | undefined,
         error: evt.error as string | undefined,
         update: {
@@ -1219,6 +1230,17 @@ export async function placeMomentumDemoTrade(input: {
   if (!res.trade) throw new Error('The demo order service did not confirm a purchase.');
   return res.trade;
 }
+
+export async function closeMomentumDemoTrade(): Promise<MomentumTradeClose> {
+  const res = await api<{ ok?: boolean; sold?: MomentumTradeClose; trade?: TradeRow; session?: SessionInfo }>('/api/momentum/close', {
+    method: 'POST',
+  });
+  if (res.trade) set({ trades: [res.trade, ...state.trades.filter((trade) => trade.id !== res.trade!.id)].slice(0, 50) });
+  if (res.session) set({ session: res.session });
+  if (!res.sold) throw new Error('The demo close service did not confirm a sale.');
+  return res.sold;
+}
+
 export async function unlockDashboard(token: string): Promise<void> {
   await api('/api/auth/owner', { method: 'POST', body: JSON.stringify({ token }) });
   await bootstrap();

@@ -300,6 +300,90 @@ test('owner state resumes live tracking for an already-open Momentum contract', 
   await app.close();
 });
 
+test('Momentum close sells the open multiplier contract and resolves the trade', async () => {
+  const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
+    import('fastify'),
+    import('../src/api/hub.ts'),
+    import('../src/core/marketState.ts'),
+    import('../src/deriv/publicFeed.ts'),
+    import('../src/strategy/automation.ts'),
+    import('../src/simulation/paperSimulator.ts'),
+    import('../src/api/routes.ts'),
+    import('../src/db/store.ts'),
+    import('../src/config.ts'),
+  ]);
+  cfg.config.dashboardAdminToken = '';
+  store.setSession({
+    id: 'momentum-demo-close', loginid: 'VRTC_CLOSE', balance: 250, currency: 'USD', mode: 'demo', auth_kind: 'pat',
+    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+  });
+
+  const open = store.insertTrade({
+    ts: Date.now(),
+    market: 'R_100',
+    contract_type: 'MULTUP',
+    barrier: 0,
+    duration: 5,
+    duration_unit: 'm',
+    stake: 3,
+    ask_price: 3,
+    payout: 6,
+    est_win: 0,
+    profit: 0,
+    status: 'pending',
+    contract_id: '11041116359',
+    purchase_id: 'momentum-close',
+    reason: 'momentum manual UP',
+    origin: 'manual',
+  });
+
+  const hub = new hubMod.Hub();
+  const events: Array<Record<string, unknown>> = [];
+  hub.on((event) => events.push(event));
+  const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
+  const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
+  let soldContract = '';
+  let soldPrice = -1;
+  const client = {
+    isConnected: true,
+    getQuote: async () => ({ id: 'unused' }),
+    getMultiplierQuote: async () => ({ id: 'unused', askPrice: 1, payout: 2, spot: 1 }),
+    placeBuy: async () => ({ contractId: 'unused', buyPrice: 1, payout: 2 }),
+    sellContract: async (contractId: string, price: number) => {
+      soldContract = contractId;
+      soldPrice = price;
+      return { contractId, soldFor: 3.42, balanceAfter: 250.42, transactionId: 'sell-tx', referenceId: 'sell-ref' };
+    },
+    settleContract: async () => new Promise(() => undefined),
+  };
+  const automation = new autoMod.Automation(registry, client as never, hub);
+  const app = Fastify();
+  routesMod.registerApi(app, {
+    registry, feed, client: client as never, hub, automation,
+    paperSimulator: new paperMod.PaperSimulator(),
+  });
+
+  const response = await app.inject({ method: 'POST', url: '/api/momentum/close' });
+  assert.equal(response.statusCode, 200);
+  assert.equal(soldContract, '11041116359');
+  assert.equal(soldPrice, 0);
+  assert.equal(response.json().sold.profit, 0.42);
+  const closed = store.getTrade(open.id, open.account_id);
+  assert.equal(closed?.status, 'won');
+  assert.equal(closed?.profit, 0.42);
+  assert.equal(store.getOpenTrade(open.account_id), null);
+  const contractEvent = events.find((event) => event.type === 'contract' && event.contractId === '11041116359');
+  assert.ok(contractEvent);
+  assert.equal(contractEvent.tradeId, open.id);
+  assert.equal(contractEvent.result, 'won');
+  assert.equal(contractEvent.profit, 0.42);
+  assert.equal(contractEvent.sellPrice, 3.42);
+  assert.equal(contractEvent.sold, true);
+
+  automation.dispose();
+  await app.close();
+});
+
 test('an uncertain Momentum buy remains locked and cannot be retried or locally cleared', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
     import('fastify'),
