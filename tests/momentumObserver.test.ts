@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { momentumSignal, rankMomentumMarkets } from '../src/momentum/observer.ts';
+import { momentumSignal, momentumVerificationPool, rankMomentumMarkets } from '../src/momentum/observer.ts';
 
 function series(values: number[]): Array<{ epoch: number; quote: number }> {
   return values.map((quote, index) => ({ epoch: index * 15, quote }));
@@ -33,4 +33,15 @@ test('automatic market ranking prefers Bitcoin then other crypto markets', () =>
     { symbol: 'cryBTCUSD', display: 'Bitcoin/USD', market: 'cryptocurrency' },
   ]);
   assert.deepEqual(ranked.map((market) => market.symbol), ['cryBTCUSD', 'cryETHUSD', 'frxEURUSD']);
+});
+
+test('verification pool interleaves market families instead of consuming one ranked family first', () => {
+  const pool = momentumVerificationPool([
+    { symbol: 'cryBTCUSD', display: 'Bitcoin/USD', market: 'cryptocurrency' },
+    { symbol: 'cryETHUSD', display: 'ETH/USD', market: 'cryptocurrency' },
+    { symbol: 'frxEURUSD', display: 'EUR/USD', market: 'forex' },
+    { symbol: 'R_100', display: 'Volatility 100', market: 'synthetic_index' },
+    { symbol: 'frxGBPUSD', display: 'GBP/USD', market: 'forex' },
+  ], 5);
+  assert.deepEqual(pool.map((market) => market.symbol), ['cryBTCUSD', 'frxEURUSD', 'R_100', 'cryETHUSD', 'frxGBPUSD']);
 });

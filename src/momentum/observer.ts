@@ -8,6 +8,7 @@ const DECISION_AFTER_SECONDS = 60;
 const MAX_TICKS = 1_200;
 const SCAN_SECONDS = 60;
 const MAX_SCAN_MARKETS = 12;
+const MAX_DISCOVERY_MARKETS = 48;
 const MAX_SCAN_SAMPLES = 16;
 const MAX_FOCUS_SAMPLES = 90;
 const UI_EMIT_INTERVAL_MS = 250;
@@ -180,7 +181,13 @@ export class MomentumObserver {
           if (msg.msg_type === 'active_symbols') {
             const rows = (msg.active_symbols ?? []) as Array<Record<string, any>>;
             const preferred = rows.filter((row) => row.exchange_is_open === 1 && row.is_trading_suspended === 0 && ['cryptocurrency', 'forex', 'indices', 'stock_index', 'commodities'].includes(String(row.market)));
-            this.markets = rankMomentumMarkets(preferred.map((row) => ({ symbol: String(row.underlying_symbol), display: String(row.underlying_symbol_name ?? row.underlying_symbol), market: String(row.market) })));
+            const unique = new Map<string, MomentumMarket>();
+            for (const row of preferred) {
+              const symbol = String(row.underlying_symbol);
+              if (!symbol || unique.has(symbol)) continue;
+              unique.set(symbol, { symbol, display: String(row.underlying_symbol_name ?? symbol), market: String(row.market) });
+            }
+            this.markets = rankMomentumMarkets([...unique.values()]);
             clearTimeout(timer); this.phase = this.running ? 'observing' : 'idle'; this.emit(); resolve();
           } else if (msg.msg_type === 'tick' && msg.tick) {
             const scanSymbol = this.scanRequests.get(Number(msg.req_id));
@@ -237,7 +244,7 @@ export class MomentumObserver {
       return this.state();
     }
     this.stopSubscription();
-    const candidates = (await this.verifyMultiplierMarkets(this.markets.slice(0, 24), generation)).slice(0, MAX_SCAN_MARKETS);
+    const candidates = (await this.verifyMultiplierMarkets(momentumVerificationPool(this.markets), generation)).slice(0, MAX_SCAN_MARKETS);
     if (generation !== this.generation) return this.state();
     if (!candidates.length) throw new Error('No open real market currently offers both multiplier directions');
     this.running = true; this.phase = 'scanning'; this.reason = 'Comparing live momentum across verified real markets';
@@ -399,4 +406,27 @@ export class MomentumObserver {
     this.lastEmitAt = Date.now();
     this.hub.emit({ type: 'momentum', ts: this.lastEmitAt, state: this.state() });
   }
+}
+
+/** Build a bounded, cross-market discovery set instead of consuming crypto first. */
+export function momentumVerificationPool(markets: MomentumMarket[], limit = MAX_DISCOVERY_MARKETS): MomentumMarket[] {
+  const groups = new Map<string, MomentumMarket[]>();
+  for (const market of markets) {
+    const group = groups.get(market.market) ?? [];
+    group.push(market);
+    groups.set(market.market, group);
+  }
+  const pool: MomentumMarket[] = [];
+  for (let index = 0; pool.length < limit; index += 1) {
+    let added = false;
+    for (const group of groups.values()) {
+      const market = group[index];
+      if (!market) continue;
+      pool.push(market);
+      added = true;
+      if (pool.length >= limit) break;
+    }
+    if (!added) break;
+  }
+  return pool;
 }
