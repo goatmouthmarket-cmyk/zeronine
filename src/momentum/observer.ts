@@ -9,6 +9,9 @@ const MAX_TICKS = 1_200;
 const SCAN_SECONDS = 60;
 const MAX_SCAN_MARKETS = 12;
 const MAX_DISCOVERY_MARKETS = 48;
+const CONTRACT_CHECK_INTERVAL_MS = 350;
+const CONTRACT_CHECK_RETRY_MS = 1_500;
+const MULTIPLIER_SUPPORT_CACHE_MS = 10 * 60 * 1_000;
 const MAX_SCAN_SAMPLES = 16;
 const MAX_FOCUS_SAMPLES = 90;
 const UI_EMIT_INTERVAL_MS = 250;
@@ -66,7 +69,10 @@ export interface MomentumState {
 }
 
 type Tick = { epoch: number; quote: number };
+type ContractAvailability = { contract_type?: string };
+type MultiplierSupport = { checkedAt: number; supported: boolean };
 
+function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function pct(from: number, to: number): number { return from > 0 ? (to - from) / from : 0; }
 function sampleTicks(ticks: Tick[], limit: number): MomentumSample[] {
   if (ticks.length <= limit) return ticks.map((tick) => ({ ...tick }));
@@ -104,6 +110,29 @@ export function rankMomentumMarkets(markets: MomentumMarket[]): MomentumMarket[]
   });
 }
 
+/**
+ * Deriv labels the open Volatility/Boom/Crash family as `synthetic_index`.
+ * It is a market family, not proof that multiplier contracts are available;
+ * that check remains in the bounded contracts_for verification below.
+ */
+export function discoverMomentumMarkets(rows: Array<Record<string, unknown>>): MomentumMarket[] {
+  const supportedMarkets = new Set(['cryptocurrency', 'forex', 'indices', 'stock_index', 'commodities', 'synthetic_index']);
+  const unique = new Map<string, MomentumMarket>();
+  for (const row of rows) {
+    const market = String(row.market ?? '');
+    if (row.exchange_is_open !== 1 || row.is_trading_suspended !== 0 || !supportedMarkets.has(market)) continue;
+    const symbol = String(row.underlying_symbol ?? '');
+    if (!symbol || unique.has(symbol)) continue;
+    unique.set(symbol, { symbol, display: String(row.underlying_symbol_name ?? symbol), market });
+  }
+  return rankMomentumMarkets([...unique.values()]);
+}
+
+export function supportsBothMultiplierDirections(available: ContractAvailability[]): boolean {
+  return available.some((item) => item.contract_type === 'MULTUP')
+    && available.some((item) => item.contract_type === 'MULTDOWN');
+}
+
 export class MomentumObserver {
   private readonly hub: Hub;
   private ws: WebSocket | null = null;
@@ -131,6 +160,8 @@ export class MomentumObserver {
   private lastEmitAt = 0;
   private emitTimer: NodeJS.Timeout | null = null;
   private generation = 0;
+  private multiplierSupport = new Map<string, MultiplierSupport>();
+  private nextContractCheckAt = 0;
 
   constructor(hub: Hub) { this.hub = hub; this.research = getMomentumResearchSummary(); }
 
@@ -180,14 +211,7 @@ export class MomentumObserver {
           if (msg.error) { this.reason = String(msg.error.message ?? 'Deriv market error'); this.phase = 'error'; this.emit(); return; }
           if (msg.msg_type === 'active_symbols') {
             const rows = (msg.active_symbols ?? []) as Array<Record<string, any>>;
-            const preferred = rows.filter((row) => row.exchange_is_open === 1 && row.is_trading_suspended === 0 && ['cryptocurrency', 'forex', 'indices', 'stock_index', 'commodities'].includes(String(row.market)));
-            const unique = new Map<string, MomentumMarket>();
-            for (const row of preferred) {
-              const symbol = String(row.underlying_symbol);
-              if (!symbol || unique.has(symbol)) continue;
-              unique.set(symbol, { symbol, display: String(row.underlying_symbol_name ?? symbol), market: String(row.market) });
-            }
-            this.markets = rankMomentumMarkets([...unique.values()]);
+            this.markets = discoverMomentumMarkets(rows);
             clearTimeout(timer); this.phase = this.running ? 'observing' : 'idle'; this.emit(); resolve();
           } else if (msg.msg_type === 'tick' && msg.tick) {
             const scanSymbol = this.scanRequests.get(Number(msg.req_id));
@@ -216,8 +240,8 @@ export class MomentumObserver {
     if (!this.markets.some((market) => market.symbol === input.symbol)) throw new Error('selected real market is unavailable');
     if (!(input.multiplier > 0 && input.stake > 0 && input.commissionRate >= 0)) throw new Error('stake, multiplier, and commission must be valid');
     const contracts = await this.request({ contracts_for: input.symbol });
-    const available = (contracts.contracts_for?.available ?? []) as Array<{ contract_type?: string }>;
-    if (!available.some((item) => item.contract_type === 'MULTUP') || !available.some((item) => item.contract_type === 'MULTDOWN')) {
+    const available = (contracts.contracts_for?.available ?? []) as ContractAvailability[];
+    if (!supportsBothMultiplierDirections(available)) {
       throw new Error('this market does not currently offer both Multiplier Up and Multiplier Down');
     }
     return this.begin(input);
@@ -300,23 +324,46 @@ export class MomentumObserver {
 
   private async verifyMultiplierMarkets(markets: MomentumMarket[], generation: number): Promise<MomentumMarket[]> {
     const verified: MomentumMarket[] = [];
-    let next = 0;
-    const worker = async (): Promise<void> => {
-      while (generation === this.generation) {
-        const market = markets[next++];
-        if (!market) return;
+    for (const market of markets) {
+      if (generation !== this.generation || verified.length >= MAX_SCAN_MARKETS) break;
+      const cached = this.multiplierSupport.get(market.symbol);
+      let supported = cached && Date.now() - cached.checkedAt < MULTIPLIER_SUPPORT_CACHE_MS
+        ? cached.supported
+        : null;
+      if (supported == null) {
         try {
-          const contracts = await this.request({ contracts_for: market.symbol });
-          if (generation !== this.generation) return;
-          const available = (contracts.contracts_for?.available ?? []) as Array<{ contract_type?: string }>;
-          if (available.some((item) => item.contract_type === 'MULTUP') && available.some((item) => item.contract_type === 'MULTDOWN')) verified.push(market);
+          supported = await this.checkMultiplierSupport(market.symbol, generation);
+          if (generation !== this.generation) break;
+          this.multiplierSupport.set(market.symbol, { checkedAt: Date.now(), supported });
         } catch {
-          // An unavailable market simply does not join this scan.
+          // A transient feed/rate-limit error is unknown, not proof that this
+          // market lacks multiplier contracts. It remains eligible next scan.
+          continue;
         }
       }
-    };
-    await Promise.all(Array.from({ length: Math.min(4, markets.length) }, () => worker()));
+      if (supported) verified.push(market);
+    }
     return verified;
+  }
+
+  private async checkMultiplierSupport(symbol: string, generation: number): Promise<boolean> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await this.paceContractCheck();
+      try {
+        const contracts = await this.request({ contracts_for: symbol });
+        return supportsBothMultiplierDirections((contracts.contracts_for?.available ?? []) as ContractAvailability[]);
+      } catch (error) {
+        if (generation !== this.generation || attempt > 0 || !/rate limit/i.test(String(error))) throw error;
+        await delay(CONTRACT_CHECK_RETRY_MS);
+      }
+    }
+    return false;
+  }
+
+  private async paceContractCheck(): Promise<void> {
+    const wait = this.nextContractCheckAt - Date.now();
+    if (wait > 0) await delay(wait);
+    this.nextContractCheckAt = Date.now() + CONTRACT_CHECK_INTERVAL_MS;
   }
 
   private request(payload: Record<string, unknown>): Promise<Record<string, any>> {

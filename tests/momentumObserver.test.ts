@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { momentumSignal, momentumVerificationPool, rankMomentumMarkets } from '../src/momentum/observer.ts';
+import {
+  discoverMomentumMarkets,
+  momentumSignal,
+  momentumVerificationPool,
+  rankMomentumMarkets,
+  supportsBothMultiplierDirections,
+} from '../src/momentum/observer.ts';
 
 function series(values: number[]): Array<{ epoch: number; quote: number }> {
   return values.map((quote, index) => ({ epoch: index * 15, quote }));
@@ -44,4 +50,21 @@ test('verification pool interleaves market families instead of consuming one ran
     { symbol: 'frxGBPUSD', display: 'GBP/USD', market: 'forex' },
   ], 5);
   assert.deepEqual(pool.map((market) => market.symbol), ['cryBTCUSD', 'frxEURUSD', 'R_100', 'cryETHUSD', 'frxGBPUSD']);
+});
+
+test('discovery includes open synthetic indices before contract verification', () => {
+  const markets = discoverMomentumMarkets([
+    { underlying_symbol: 'cryBTCUSD', underlying_symbol_name: 'BTC/USD', market: 'cryptocurrency', exchange_is_open: 1, is_trading_suspended: 0 },
+    { underlying_symbol: 'R_100', underlying_symbol_name: 'Volatility 100', market: 'synthetic_index', exchange_is_open: 1, is_trading_suspended: 0 },
+    { underlying_symbol: 'R_50', underlying_symbol_name: 'Volatility 50', market: 'synthetic_index', exchange_is_open: 1, is_trading_suspended: 1 },
+    { underlying_symbol: 'frxEURUSD', underlying_symbol_name: 'EUR/USD', market: 'forex', exchange_is_open: 0, is_trading_suspended: 0 },
+    { underlying_symbol: 'R_100', underlying_symbol_name: 'Duplicate', market: 'synthetic_index', exchange_is_open: 1, is_trading_suspended: 0 },
+  ]);
+
+  assert.deepEqual(markets.map((market) => market.symbol), ['cryBTCUSD', 'R_100']);
+});
+
+test('multiplier verification requires both actual contract directions', () => {
+  assert.equal(supportsBothMultiplierDirections([{ contract_type: 'MULTUP' }, { contract_type: 'MULTDOWN' }]), true);
+  assert.equal(supportsBothMultiplierDirections([{ contract_type: 'MULTUP' }, { contract_type: 'CALL' }]), false);
 });
