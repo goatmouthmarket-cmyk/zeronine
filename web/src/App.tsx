@@ -1,8 +1,9 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldDiagnostics, GoldModuleState, GoldRuntimeReadiness, GoldDemoAccount } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
+import { GoldTradeChart } from './GoldTradeChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
 import {
@@ -43,6 +44,9 @@ import {
   disconnectGoldOAuth,
   loadGoldDemoAccounts,
   selectGoldDemoAccount,
+  openGoldPaperTrade,
+  closeGoldPaperTrade,
+  resetGoldPaperTrade,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
@@ -3760,19 +3764,11 @@ function AccountPage(): JSX.Element {
   );
 }
 
-type GoldTab = 'research' | 'paper' | 'backtest' | 'live' | 'connection';
-
-const GOLD_TABS: Array<{ id: GoldTab; label: string }> = [
-  { id: 'research', label: 'Research' },
-  { id: 'paper', label: 'Paper Trade' },
-  { id: 'backtest', label: 'Backtest' },
-  { id: 'live', label: 'Live Bot' },
-  { id: 'connection', label: 'Account Connection' },
-];
+type GoldTab = 'trade' | 'connection';
 
 function GoldPage(): JSX.Element {
   const store = useStore();
-  const [tab, setTab] = useState<GoldTab>(() => new URLSearchParams(window.location.search).has('gold_oauth') ? 'connection' : 'research');
+  const [tab, setTab] = useState<GoldTab>(() => new URLSearchParams(window.location.search).has('gold_oauth') ? 'connection' : 'trade');
 
   useEffect(() => { void loadGoldState(); }, []);
 
@@ -3780,94 +3776,229 @@ function GoldPage(): JSX.Element {
     <header class="header gold-page-header">
       <div>
         <img class="gold-brand-logo" src="/gold-logo.png" alt="Gold" />
-        <div class="subtitle">Independent CFD research, simulation, and execution workspace</div>
+        <div class="subtitle">Active market watch · Gold paper trades · cTrader demo-first safeguards</div>
+      </div>
+      <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
+        <button class={tab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'trade'} onClick={() => setTab('trade')}>Trade</button>
+        <button class={tab === 'connection' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'connection'} onClick={() => setTab('connection')}>Connection</button>
       </div>
     </header>
 
-    <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
-      {GOLD_TABS.map((item) => <button
-        key={item.id}
-        class={tab === item.id ? 'active' : ''}
-        type="button"
-        role="tab"
-        aria-selected={tab === item.id}
-        onClick={() => setTab(item.id)}
-      >{item.label}</button>)}
-    </div>
-
     <div class="gold-workspace">
-      <GoldWorkspace tab={tab} state={store.gold} />
+      {tab === 'connection'
+        ? <GoldConnectionOnboarding state={store.gold} />
+        : <GoldTradeWorkspace state={store.gold} owner={store.owner === true} onOpenConnection={() => setTab('connection')} />}
     </div>
   </section>;
 }
 
-function GoldWorkspace({ tab, state }: { tab: GoldTab; state: GoldModuleState | null }): JSX.Element {
+function parseOptionalGoldPrice(value: string): number | null | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function goldPrice(value: number | null | undefined, digits = 2): string {
+  if (!Number.isFinite(value)) return '—';
+  return Number(value).toLocaleString(undefined, { minimumFractionDigits: Math.min(2, digits), maximumFractionDigits: Math.max(2, digits) });
+}
+
+function GoldTradeWorkspace({
+  state,
+  owner,
+  onOpenConnection,
+}: {
+  state: GoldModuleState | null;
+  owner: boolean;
+  onOpenConnection: () => void;
+}): JSX.Element {
   const diagnostics = state?.diagnostics ?? null;
-  const unavailable = diagnostics?.reason ?? 'The Gold provider readiness report has not loaded yet.';
-  const symbol = diagnostics?.symbol || 'No verified symbol';
-  const missing = diagnostics?.missing.length ? diagnostics.missing.join(', ') : null;
-  const invalid = diagnostics?.validationErrors.length ? diagnostics.validationErrors.join(' ') : null;
-  const readinessByTab: Partial<Record<GoldTab, GoldRuntimeReadiness>> = {
-    research: state?.research,
-    paper: state?.paper,
-    backtest: state?.backtest,
-  };
-  const capability = readinessByTab[tab] ?? null;
-  const capabilityReason = capability?.reason ?? unavailable;
-  const setupState = capability?.ready ? 'Validated' : 'Inactive';
+  const research = state?.research.state ?? null;
+  const paper = state?.paper.state ?? null;
+  const symbol = research?.symbol ?? null;
+  const quote = research?.quote ?? null;
+  const signal = research?.signal ?? null;
+  const sideFromSignal: GoldSide | null = signal?.direction === 'BUY' || signal?.direction === 'SELL' ? signal.direction : null;
+  const position = paper?.positions[0] ?? null;
+  const lastClosed = paper?.closedTrades.at(-1) ?? null;
+  const candles = research?.candles?.[research.timeframe ?? '5m'] ?? [];
+  const digits = Math.max(2, Math.min(5, symbol?.digits ?? 2));
+  const [side, setSide] = useState<GoldSide>(sideFromSignal ?? 'BUY');
+  const [volumeText, setVolumeText] = useState('1');
+  const [tpText, setTpText] = useState('');
+  const [slText, setSlText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const volume = Number(volumeText);
+  const takeProfit = parseOptionalGoldPrice(tpText);
+  const stopLoss = parseOptionalGoldPrice(slText);
+  const validStops = takeProfit !== undefined && stopLoss !== undefined;
+  const marketReady = state?.paper.ready === true;
+  const hasPosition = Boolean(position);
+  const canOpen = owner && marketReady && Boolean(sideFromSignal) && !hasPosition && Number.isFinite(volume) && volume > 0 && validStops;
+  const canClose = owner && marketReady && Boolean(position?.id) && !busy;
+  const entryPrice = position?.entryPrice ?? signal?.entryReference ?? quote?.mid ?? null;
+  const chartSide = position?.side ?? sideFromSignal ?? side;
+  const chartStopLoss = position?.stopLoss ?? (stopLoss === undefined ? null : stopLoss);
+  const chartTakeProfit = position?.takeProfit ?? (takeProfit === undefined ? null : takeProfit);
+  const positionPnl = position?.unrealizedPnl ?? lastClosed?.netPnl ?? null;
+  const quoteAge = quote ? Math.max(0, Date.now() - quote.receivedAt) : null;
+  const spreadText = quote ? goldPrice(quote.spread, digits) : '—';
+  const readinessReason = state?.paper.reason ?? state?.research.reason ?? diagnostics?.reason ?? 'Gold state has not loaded yet.';
+  const actionNote = busy
+    ? 'Processing Gold paper action'
+    : !owner
+      ? 'Unlock dashboard owner controls'
+      : !marketReady
+        ? readinessReason
+        : hasPosition
+          ? `Watching ${position?.side} paper position`
+          : !validStops
+            ? 'TP and SL must be positive prices when set'
+            : sideFromSignal
+              ? `${sideFromSignal} is the current Gold research side`
+              : 'No validated Gold direction yet';
 
-  if (tab === 'connection') return <GoldConnectionOnboarding state={state} />;
+  useEffect(() => {
+    if (sideFromSignal) setSide(sideFromSignal);
+  }, [sideFromSignal]);
 
-  const content: Record<GoldTab, { title: string; eyebrow: string; detail: string; safeguards: Array<[string, string]> }> = {
-    research: {
-      eyebrow: 'Read-only research',
-      title: 'Awaiting a verified Gold market feed',
-      detail: 'Quotes, spreads, candles, and signal reasons remain blank until a provider adapter has supplied normalized market data. ZeroNine will not infer a direction from configuration alone.',
-      safeguards: [['Target symbol', symbol], ['Market data', capability?.ready ? 'Validated' : 'Not connected'], ['Signal model', 'No signal'], ['Execution', 'Locked']],
-    },
-    paper: {
-      eyebrow: 'Virtual only',
-      title: 'Paper trading starts after market specifications load',
-      detail: 'No virtual balance, position, fill, or result is created yet. Paper trading will use verified bid/ask prices, spread, volume steps, margin, and a separate virtual ledger.',
-      safeguards: [['Virtual balance', 'Not created'], ['Price source', capability?.ready ? 'Validated' : 'Not connected'], ['Account funds', 'Never used'], ['Demo path', 'Required first']],
-    },
-    backtest: {
-      eyebrow: 'Historical validation',
-      title: 'No Gold candle dataset is loaded',
-      detail: 'There are no synthetic backtest results in this workspace. A run will require normalized OHLC data, explicit costs, model versioning, and a no-look-ahead evaluation.',
-      safeguards: [['Dataset', capability?.ready ? 'Validated' : 'Not loaded'], ['Model result', state?.backtest.result ? 'Recorded' : 'Not evaluated'], ['Cost model', 'Not configured'], ['Live learning', 'Not implied']],
-    },
-    live: {
-      eyebrow: 'Live execution',
-      title: 'Live Gold trading is locked',
-      detail: 'Gold live execution stays unavailable until the cTrader adapter, encrypted per-user authorization, account reconciliation, and demo validation are complete. Navigation never starts an order flow.',
-      safeguards: [['Live flag', diagnostics?.liveEnabled ? 'Still locked' : 'Disabled'], ['Execution adapter', 'Not installed'], ['Account connection', 'Not authorized'], ['Risk approval', 'Not available']],
-    },
-    connection: {
-      eyebrow: 'cTrader account connection',
-      title: diagnostics?.configured ? 'Provider configuration found, authorization unavailable' : 'cTrader authorization is not configured',
-      detail: 'This page exposes readiness only. Connecting an account will later use encrypted per-user OAuth state and tokens; credentials, account numbers, and tokens are never shown in the dashboard.',
-      safeguards: [['Provider', 'cTrader'], ['Requested mode', diagnostics?.requestedAccountMode ?? 'Demo'], ['Required settings', invalid ?? missing ?? 'Provider adapter pending'], ['Authorization', 'Not installed']],
-    },
+  useEffect(() => {
+    if (symbol?.minVolume && Number(volumeText) <= 0) setVolumeText(String(symbol.minVolume));
+  }, [symbol?.minVolume, volumeText]);
+
+  useEffect(() => {
+    if (!position && sideFromSignal && signal?.proposedTakeProfit != null && signal?.proposedStopLoss != null) {
+      setTpText(String(signal.proposedTakeProfit));
+      setSlText(String(signal.proposedStopLoss));
+    }
+  }, [position, sideFromSignal, signal?.id, signal?.proposedStopLoss, signal?.proposedTakeProfit]);
+
+  const open = async (nextSide: GoldSide) => {
+    if (!canOpen) return;
+    if (sideFromSignal && nextSide !== sideFromSignal) {
+      setSide(sideFromSignal);
+      setError(`Gold research recommends ${sideFromSignal}; the opposite side is disabled.`);
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setSide(nextSide);
+    try {
+      const result = await openGoldPaperTrade({
+        side: nextSide,
+        volume,
+        stopLoss: stopLoss ?? null,
+        takeProfit: takeProfit ?? null,
+      });
+      if (!result.accepted) setError(result.reason);
+      await loadGoldState();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
   };
-  const active = content[tab];
+
+  const close = async () => {
+    if (!position?.id || !canClose) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await closeGoldPaperTrade(position.id);
+      if (!result.closed) setError(result.reason);
+      await loadGoldState();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    if (!owner || busy || hasPosition) return;
+    setBusy(true);
+    setError('');
+    try {
+      await resetGoldPaperTrade();
+      await loadGoldState();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return <>
-    <section class="gold-empty-stage" aria-label={`${active.eyebrow} status`}>
-      <div class="gold-empty-copy">
-        <span class="gold-kicker">{active.eyebrow}</span>
-        <strong>{active.title}</strong>
-        <small>{active.detail}</small>
+    <section class="gold-trade-desk" aria-label="Gold active trade desk">
+      <div class="gold-trade-head">
+        <div>
+          <span class="gold-kicker">Gold trade</span>
+          <strong>{symbol?.displayName || diagnostics?.symbol || 'Gold market'}</strong>
+          <small>{marketReady ? `${research?.timeframe ?? '5m'} watch · paper trade enabled` : readinessReason}</small>
+        </div>
+        <div class="gold-trade-badges">
+          <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}`}>
+            <Icon name={sideFromSignal === 'SELL' ? 'arrowDown' : sideFromSignal === 'BUY' ? 'arrowUp' : 'history'} size={13} />
+            <span>Suggested side</span>
+            <strong>{sideFromSignal ? `${sideFromSignal} - ${signal?.confidence ?? 0}%` : 'WAIT'}</strong>
+          </span>
+          <button class="gold-link-button" type="button" onClick={onOpenConnection}>Connection</button>
+        </div>
       </div>
-      <div class="gold-empty-setup" role="status" aria-label="Gold provider setup state">
-        <span>Setup state</span>
-        <strong>{setupState}</strong>
-        <small>{capabilityReason}</small>
+
+      <div class="gold-trade-live">
+        <div class="gold-trade-chart-wrap">
+          <GoldTradeChart
+            candles={candles}
+            quote={quote}
+            label={`${symbol?.displayName || 'Gold'} active trade chart`}
+            entryPrice={entryPrice}
+            side={chartSide}
+            stopLoss={chartStopLoss}
+            takeProfit={chartTakeProfit}
+          />
+        </div>
+        <div class="gold-trade-readout">
+          <span>Paper equity</span>
+          <strong>{paper ? fmtMoney(paper.equity, paper.currency) : '—'}</strong>
+          <small>{paper ? `${fmtMoney(paper.freeMargin, paper.currency)} free margin` : 'Virtual book unavailable'}</small>
+        </div>
+        <div class={`gold-trade-readout ${positionPnl == null ? '' : positionPnl >= 0 ? 'up' : 'down'}`}>
+          <span>{position ? 'Live paper P&L' : 'Last paper P&L'}</span>
+          <strong>{positionPnl == null ? '—' : fmtSigned(positionPnl, paper?.currency ?? 'USD')}</strong>
+          <small>{position ? `${position.side} ${position.volume} @ ${goldPrice(position.entryPrice, digits)}` : lastClosed ? `${lastClosed.closeReason.replace('_', ' ')} @ ${goldPrice(lastClosed.exitPrice, digits)}` : 'No open Gold paper position'}</small>
+        </div>
       </div>
+
+      <div class="gold-trade-order">
+        <div class="gold-trade-direction" aria-label="Place a Gold paper trade">
+          <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canOpen || sideFromSignal !== 'BUY' || busy} onClick={() => void open('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Opening' : 'Buy'}</button>
+          <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canOpen || sideFromSignal !== 'SELL' || busy} onClick={() => void open('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Opening' : 'Sell'}</button>
+        </div>
+        <label class="gold-trade-field"><span>Volume</span><input type="number" inputMode="decimal" min={symbol?.minVolume ?? 0.01} max={symbol?.maxVolume ?? undefined} step={symbol?.volumeStep ?? 0.01} value={volumeText} disabled={busy || hasPosition} onInput={(event) => setVolumeText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>TP price</span><input type="number" inputMode="decimal" min="0.01" step={symbol?.pointSize ?? 0.01} placeholder="optional" value={tpText} disabled={busy || hasPosition} onInput={(event) => setTpText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step={symbol?.pointSize ?? 0.01} placeholder="optional" value={slText} disabled={busy || hasPosition} onInput={(event) => setSlText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <div class="gold-trade-quote">
+          <span>Bid / Ask</span>
+          <strong>{quote ? `${goldPrice(quote.bid, digits)} / ${goldPrice(quote.ask, digits)}` : '—'}</strong>
+          <small>Spread {spreadText}{quoteAge == null ? '' : ` · ${Math.round(quoteAge / 1000)}s ago`}</small>
+        </div>
+        <span class="gold-trade-action-note">{actionNote}</span>
+        {position && <button class="gold-trade-close" type="button" disabled={!canClose} onClick={() => void close()}>{busy ? 'Closing' : 'Close position'}</button>}
+        {!position && paper && paper.closedTrades.length > 0 && <button class="gold-trade-reset" type="button" disabled={!owner || busy} onClick={() => void reset()}>Reset paper</button>}
+      </div>
+
+      {signal && <div class="gold-trade-note">{signal.reasons.length ? signal.reasons.join(' · ') : signal.blockers.join(' · ') || 'Gold research is waiting for stronger evidence.'}</div>}
+      {error && <div class="tl-err">{error}</div>}
     </section>
 
-    <section class="gold-facts" aria-label="Gold module safeguards">
-      {active.safeguards.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+    <section class="gold-facts" aria-label="Gold active trade safeguards">
+      <div><span>Market data</span><strong>{state?.research.ready ? 'Validated' : 'Waiting'}</strong><small>{state?.research.reason ?? 'Live quote accepted'}</small></div>
+      <div><span>Paper trading</span><strong>{state?.paper.ready ? 'Enabled' : 'Locked'}</strong><small>{state?.paper.reason ?? 'Virtual book only'}</small></div>
+      <div><span>Execution adapter</span><strong>{diagnostics?.executionCapable ? 'Available' : 'Not live'}</strong><small>cTrader live orders remain separate</small></div>
+      <div><span>Connection</span><strong>{state?.connection?.status === 'connected_demo' ? 'Demo selected' : 'Setup'}</strong><small>{state?.connection?.message ?? diagnostics?.reason ?? 'Check connection'}</small></div>
     </section>
   </>;
 }

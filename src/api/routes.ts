@@ -233,7 +233,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
     try {
       const result = gold.openPaper({ side, volume, stopLoss, takeProfit });
-      if (!result.accepted) reply.code(409);
+      if (!result.accepted) {
+        reply.code(409);
+        return { ...result, error: result.reason };
+      }
       return result;
     } catch (error) {
       reply.code(error instanceof GoldRuntimeUnavailableError ? 409 : 400);
@@ -247,7 +250,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!positionId) { reply.code(400); return { error: 'Gold paper position id is required' }; }
     try {
       const result = gold.closePaper(positionId);
-      if (!result.closed) reply.code(409);
+      if (!result.closed) {
+        reply.code(409);
+        return { ...result, error: result.reason };
+      }
       return result;
     } catch (error) {
       reply.code(error instanceof GoldRuntimeUnavailableError ? 409 : 400);

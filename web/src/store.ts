@@ -511,12 +511,192 @@ export interface GoldDemoAccount {
   broker: string | null;
 }
 
+export type GoldSide = 'BUY' | 'SELL';
+export type GoldTimeframe = '1m' | '5m' | '15m' | '1h';
+
+export interface GoldSymbolState {
+  id: string;
+  name: string;
+  displayName: string;
+  digits: number;
+  pointSize: number;
+  pipSize: number;
+  minVolume: number;
+  maxVolume: number;
+  volumeStep: number;
+  minStopDistance: number;
+  marginRate: number | null;
+  tradingStatus: 'open' | 'closed' | 'suspended' | 'unavailable';
+}
+
+export interface GoldQuoteState {
+  symbolId: string;
+  bid: number;
+  ask: number;
+  mid: number;
+  spread: number;
+  timestamp: number;
+  receivedAt: number;
+  sequence?: number;
+}
+
+export interface GoldCandleState {
+  symbolId: string;
+  timeframe: GoldTimeframe;
+  openTime: number;
+  closeTime: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  tickVolume: number | null;
+  complete: boolean;
+}
+
+export interface GoldBacktestTrade {
+  id: string;
+  side: GoldSide;
+  volume: number;
+  reason: string | null;
+  openedAt: number;
+  closedAt: number;
+  barsHeld: number;
+  entryMid: number;
+  entryFill: number;
+  stopLoss: number;
+  takeProfit: number;
+  exitMid: number;
+  exitFill: number;
+  exitReason: 'STOP_LOSS' | 'TAKE_PROFIT' | 'END_OF_DATA';
+  grossPnl: number;
+  netPnl: number;
+  spreadCost: number;
+  slippageCost: number;
+  commission: number;
+  totalCost: number;
+}
+
+export interface GoldBacktestResult {
+  modelVersion: string;
+  symbolId: string;
+  timeframe: GoldTimeframe;
+  candlesProcessed: number;
+  trades: GoldBacktestTrade[];
+  metrics: {
+    modelVersion: string;
+    initialBalance: number;
+    finalBalance: number;
+    grossPnl: number;
+    netPnl: number;
+    totalCost: number;
+    spreadCost: number;
+    slippageCost: number;
+    commission: number;
+    tradeCount: number;
+    wins: number;
+    losses: number;
+    winRate: number | null;
+    averageWin: number;
+    averageLoss: number;
+    profitFactor: number | null;
+    expectancy: number;
+    maxDrawdown: number;
+    maxDrawdownPercent: number;
+    exposurePercent: number;
+    maxConsecutiveWins: number;
+    maxConsecutiveLosses: number;
+  };
+}
+
+export interface GoldSignalState {
+  id: string;
+  modelVersion: string;
+  symbol: string;
+  symbolId: string;
+  timeframe: GoldTimeframe;
+  direction: GoldSide | 'WAIT';
+  confidence: number;
+  score: number;
+  entryReference: number;
+  proposedStopLoss: number | null;
+  proposedTakeProfit: number | null;
+  atr: number;
+  spread: number;
+  spreadToAtr: number;
+  regime: 'TRENDING' | 'RANGING' | 'HIGH_VOLATILITY' | 'INSUFFICIENT_DATA';
+  reasons: string[];
+  blockers: string[];
+  generatedAt: number;
+  expiresAt: number;
+}
+
+export interface GoldResearchState {
+  mode: 'research';
+  symbol: GoldSymbolState | null;
+  timeframe: GoldTimeframe;
+  quote: GoldQuoteState | null;
+  candles: Partial<Record<GoldTimeframe, GoldCandleState[]>>;
+  signal: GoldSignalState | null;
+  recentSignals: GoldSignalState[];
+  lastRejectedTick: string | null;
+  updatedAt: number;
+}
+
+export interface GoldPaperPosition {
+  id: string;
+  symbolId: string;
+  symbol: string;
+  side: GoldSide;
+  volume: number;
+  entryPrice: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  entryCommission: number;
+  marginUsed: number;
+  openedAt: number;
+  updatedAt: number;
+  markPrice: number | null;
+  unrealizedPnl: number;
+}
+
+export interface GoldPaperTrade extends GoldPaperPosition {
+  exitPrice: number;
+  closedAt: number;
+  exitCommission: number;
+  grossPnl: number;
+  netPnl: number;
+  closeReason: 'manual' | 'stop_loss' | 'take_profit';
+}
+
+export interface GoldPaperState {
+  currency: string;
+  initialBalance: number;
+  balance: number;
+  equity: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+  marginUsed: number;
+  freeMargin: number;
+  peakEquity: number;
+  drawdown: number;
+  positions: GoldPaperPosition[];
+  closedTrades: GoldPaperTrade[];
+}
+
+export type GoldPaperOpenResult =
+  | { accepted: true; position: GoldPaperPosition; state: GoldPaperState }
+  | { accepted: false; reason: string; state: GoldPaperState };
+
+export type GoldPaperCloseResult =
+  | { closed: true; trade: GoldPaperTrade; state: GoldPaperState }
+  | { closed: false; reason: string; state: GoldPaperState };
+
 export interface GoldModuleState {
   diagnostics: GoldDiagnostics;
   connection?: GoldConnectionState;
-  research: GoldRuntimeReadiness & { state: Record<string, unknown> };
-  paper: GoldRuntimeReadiness & { state: Record<string, unknown> };
-  backtest: GoldRuntimeReadiness & { result: Record<string, unknown> | null };
+  research: GoldRuntimeReadiness & { state: GoldResearchState };
+  paper: GoldRuntimeReadiness & { state: GoldPaperState };
+  backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
 }
 
 export interface State {
@@ -1197,6 +1377,38 @@ export async function selectGoldDemoAccount(accountId: string): Promise<void> {
   set({ gold: state.gold ? { ...state.gold, connection: res.connection } : state.gold });
 }
 
+function updateGoldPaperState(paperState: GoldPaperState): void {
+  set({ gold: state.gold ? { ...state.gold, paper: { ...state.gold.paper, state: paperState } } : state.gold });
+}
+
+export async function openGoldPaperTrade(input: {
+  side: GoldSide;
+  volume: number;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+}): Promise<GoldPaperOpenResult> {
+  const res = await api<GoldPaperOpenResult>('/api/gold/paper/orders', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  updateGoldPaperState(res.state);
+  return res;
+}
+
+export async function closeGoldPaperTrade(positionId: string): Promise<GoldPaperCloseResult> {
+  const res = await api<GoldPaperCloseResult>(`/api/gold/paper/positions/${encodeURIComponent(positionId)}/close`, {
+    method: 'POST',
+  });
+  updateGoldPaperState(res.state);
+  return res;
+}
+
+export async function resetGoldPaperTrade(): Promise<GoldPaperState> {
+  const res = await api<{ state: GoldPaperState }>('/api/gold/paper/reset', { method: 'POST' });
+  updateGoldPaperState(res.state);
+  return res.state;
+}
+
 // Gold state is intentionally a public, diagnostic-only read. Fetching it
 // cannot authorize, subscribe to, or place an order with a broker.
 export async function loadGoldState(): Promise<GoldModuleState | null> {
@@ -1207,6 +1419,12 @@ export async function loadGoldState(): Promise<GoldModuleState | null> {
   } catch {
     return state.gold;
   }
+}
+
+export async function runGoldBacktest(): Promise<GoldBacktestResult> {
+  const res = await api<{ result: GoldBacktestResult }>('/api/gold/backtests/run', { method: 'POST' });
+  set({ gold: state.gold ? { ...state.gold, backtest: { ...state.gold.backtest, result: res.result } } : state.gold });
+  return res.result;
 }
 
 export async function focusMomentumMarket(symbol: string): Promise<MomentumState | null> {
