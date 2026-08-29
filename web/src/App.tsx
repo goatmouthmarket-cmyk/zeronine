@@ -2375,19 +2375,24 @@ function MomentumTradeDesk({
     && /momentum manual/i.test(item.reason ?? '')
     && (item.status === 'pending' || item.status === 'purchasing')
   ) ?? null;
+  const openMultiplierTrade = openAccountTrade
+    && (openAccountTrade.contract_type === 'MULTUP' || openAccountTrade.contract_type === 'MULTDOWN')
+    ? openAccountTrade
+    : null;
+  const closableMomentumTrade = openMomentumTrade ?? openMultiplierTrade;
   const closedMomentumTrade = closed?.contractId
     ? trades.find((item) => item.contract_id === closed.contractId) ?? null
     : null;
   const canPlace = canQuote && Boolean(suggestedDirection) && !openAccountTrade;
   const trade = purchase?.id == null
-    ? openMomentumTrade ?? closedMomentumTrade
-    : trades.find((item) => item.id === purchase.id) ?? openMomentumTrade ?? closedMomentumTrade;
-  const trackedContractId = purchase?.contractId ?? purchase?.contract_id ?? closed?.contractId ?? trade?.contract_id ?? '';
+    ? closableMomentumTrade ?? closedMomentumTrade
+    : trades.find((item) => item.id === purchase.id) ?? closableMomentumTrade ?? closedMomentumTrade;
+  const trackedContractId = purchase?.contractId ?? purchase?.contract_id ?? closed?.contractId ?? trade?.contract_id ?? closableMomentumTrade?.contract_id ?? '';
   const matchingContract = trackedContractId && contract?.contractId === trackedContractId ? contract : null;
   const settledTrade = trade && ['won', 'lost', 'push'].includes(trade.status) ? trade : null;
   const liveContractProfit = Number.isFinite(Number(matchingContract?.profit)) ? Number(matchingContract?.profit) : undefined;
   const contractPnl = settledTrade?.profit ?? closed?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit;
-  const canClose = Boolean(openMomentumTrade?.contract_id && !closing);
+  const canClose = Boolean(closableMomentumTrade?.contract_id && !closing);
   const actualEntryPrice = Number.isFinite(Number(trade?.entry_spot)) && Number(trade?.entry_spot) > 0
     ? Number(trade?.entry_spot)
     : Number.isFinite(Number(purchase?.entryPrice)) && Number(purchase?.entryPrice) > 0
@@ -2548,12 +2553,12 @@ function MomentumTradeDesk({
         <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
       </div>
+      {closableMomentumTrade && <button class="mom-trade-close" type="button" disabled={!canClose} onClick={() => void closeOpenTrade()}><Icon name="x" size={14} />{closing ? 'Closing' : 'Close trade'}</button>}
       <span class="mom-trade-action-note">{actionNote}</span>
-      {openMomentumTrade && <button class="mom-trade-close" type="button" disabled={!canClose} onClick={() => void closeOpenTrade()}><Icon name="x" size={14} />{closing ? 'Closing' : 'Close trade'}</button>}
     </div>
 
     {unavailableReason && <div class="mom-trade-note">{unavailableReason}</div>}
-    {(purchase || openMomentumTrade) && <div class="mom-trade-note">Demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
+    {(purchase || closableMomentumTrade) && <div class="mom-trade-note">Demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
     {error && <div class="tl-err">{error}</div>}
   </section>;
 }

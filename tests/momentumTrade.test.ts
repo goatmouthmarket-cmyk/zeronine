@@ -262,7 +262,7 @@ test('owner state resumes live tracking for an already-open Momentum contract', 
     status: 'pending',
     contract_id: '11041116359',
     purchase_id: 'momentum-resume',
-    reason: 'momentum manual UP',
+    reason: 'legacy multiplier UP',
     origin: 'manual',
   });
 
@@ -306,7 +306,7 @@ test('owner state resumes live tracking for an already-open Momentum contract', 
   await app.close();
 });
 
-test('Momentum close sells the open multiplier contract and resolves the trade', async () => {
+test('Momentum close sells the open multiplier contract even when the stored reason is legacy', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
     import('fastify'),
     import('../src/api/hub.ts'),
@@ -339,7 +339,7 @@ test('Momentum close sells the open multiplier contract and resolves the trade',
     status: 'pending',
     contract_id: '11041116359',
     purchase_id: 'momentum-close',
-    reason: 'momentum manual UP',
+    reason: 'legacy multiplier UP',
     origin: 'manual',
   });
 

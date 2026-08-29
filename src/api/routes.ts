@@ -609,10 +609,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(409);
       return { error: 'the open contract is not a Momentum multiplier trade' };
     }
-    if (!/momentum manual/i.test(openTrade.reason ?? '')) {
-      reply.code(409);
-      return { error: 'the open multiplier contract was not opened from Momentum trade controls' };
-    }
     if (!openTrade.contract_id) {
       reply.code(409);
       return { error: 'Momentum purchase outcome is unknown; reconcile at Deriv before closing locally' };
