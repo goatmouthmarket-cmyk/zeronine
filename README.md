@@ -39,6 +39,21 @@ npm run web:dev      # terminal 2: Vite on :5173 (proxies /api and /ws to :8010)
 4. **Auto Sniper**: *START* to run the strongest-market loop. On a **real** account you must *ARM 10min* first (recovery requires a 10-minute arm, demo does not).
 5. *Settings*: stake caps, drawdown limits, martingale depth, edge thresholds.
 
+## Gold Module
+
+The **Gold** tab is a separate price-market domain with its own deterministic
+research model, virtual paper engine, and OHLC backtest engine. It does not
+reuse digit statistics, recovery staking, or Deriv account balances.
+
+Gold broker execution is not enabled in this repository build. The cTrader
+foundation is OAuth-only and demo-first; it reports non-secret readiness while
+the provider adapter, PostgreSQL ownership store, idempotency, and broker
+reconciliation are deployed. Keep `GOLD_LIVE_ENABLED=0`.
+
+See [Gold cTrader and Railway deployment](docs/gold-ctrader-railway.md) for
+the required PostgreSQL schema, cTrader registration, Railway topology, and
+demo-soak requirements before any broker-connected release.
+
 ## Endpoints
 
 | Method | Path | Purpose |
