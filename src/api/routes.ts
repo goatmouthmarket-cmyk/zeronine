@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.ts';
+import { goldDiagnostics } from '../gold/config.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
@@ -119,8 +120,16 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
       paperSimulation: paperSimulator.state(),
       momentum: momentum?.state() ?? null,
+      gold: goldDiagnostics(),
     };
   });
+
+  /**
+   * Gold starts as an isolated, read-only domain. This endpoint deliberately
+   * returns configuration diagnostics only; it never initiates a broker
+   * connection and never includes credentials.
+   */
+  app.get('/api/gold/state', async () => ({ state: goldDiagnostics() }));
 
   app.get('/api/momentum/state', async () => ({ state: momentum?.state() ?? null }));
   app.post('/api/momentum/start', async (req, reply) => {

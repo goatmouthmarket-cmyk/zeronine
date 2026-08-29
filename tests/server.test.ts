@@ -46,6 +46,13 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.ok(Array.isArray(stateBody.markets ?? []));
   assert.ok(Array.isArray(stateBody.intelligence ?? []));
   assert.equal(stateBody.paperSimulation.phase, 'idle');
+  assert.equal(stateBody.gold.status, 'unconfigured');
+  assert.equal(stateBody.gold.executionCapable, false);
+
+  const gold = await app.inject({ method: 'GET', url: '/api/gold/state' });
+  assert.equal(gold.statusCode, 200);
+  assert.equal(gold.json().state.status, 'unconfigured');
+  assert.equal(gold.json().state.executionCapable, false);
 
   const ledger = await app.inject({ method: 'GET', url: '/api/ledger?limit=10' });
   assert.equal(ledger.statusCode, 200);
