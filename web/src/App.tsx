@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, PaperTrade, PaperPortfolio } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, PaperTrade, PaperPortfolio, GoldDiagnostics, GoldModuleState, GoldRuntimeReadiness } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
@@ -37,6 +37,7 @@ import {
   stopMomentumResearch,
   focusMomentumMarket,
   placeMomentumDemoTrade,
+  loadGoldState,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
@@ -3646,8 +3647,18 @@ const GOLD_TABS: Array<{ id: GoldTab; label: string }> = [
 ];
 
 function GoldPage(): JSX.Element {
+  const store = useStore();
   const [tab, setTab] = useState<GoldTab>('research');
-  const active = GOLD_TABS.find((item) => item.id === tab)!;
+  const diagnostics = store.gold?.diagnostics ?? null;
+
+  useEffect(() => { void loadGoldState(); }, []);
+
+  const modeLabel = diagnostics?.requestedAccountMode === 'live' ? 'Demo path required first' : 'Demo-first path';
+  const readiness = diagnostics
+    ? diagnostics.status === 'invalid_configuration' ? 'Configuration needs attention'
+      : diagnostics.configured ? 'Provider configuration found'
+      : 'Provider not configured'
+    : 'Checking provider readiness';
 
   return <section class="gold-page" aria-label="Gold workspace">
     <header class="header gold-page-header">
@@ -3656,7 +3667,7 @@ function GoldPage(): JSX.Element {
         <div class="page-title">Gold</div>
         <div class="subtitle">Independent CFD research, simulation, and execution workspace</div>
       </div>
-      <span class="gold-phase">Phase 1 shell</span>
+      <span class="gold-phase">{modeLabel}</span>
     </header>
 
     <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
@@ -3672,40 +3683,86 @@ function GoldPage(): JSX.Element {
 
     <div class="gold-workspace">
       <section class="gold-status" aria-live="polite">
-        <span class="gold-status-mark"><i></i>Workspace ready</span>
-        <p>{tab === 'research'
-          ? 'Gold research will open here once the market-data adapter is connected.'
-          : `${active.label} is reserved for the Gold module and is not active in this phase.`}</p>
+        <span class="gold-status-mark"><i></i>{readiness}</span>
+        <p>{diagnostics?.reason ?? 'Loading the Gold provider’s non-secret readiness report. No broker connection is opened from this page.'}</p>
       </section>
 
-      <section class="gold-research-stage">
-        <div class="gold-research-title">
-          <span class="gold-kicker">{active.label}</span>
-          <strong>{tab === 'research' ? 'XAU/USD market research' : `${active.label} workspace`}</strong>
-          <small>{tab === 'research'
-            ? 'The Gold domain remains separate from digit and multiplier strategies.'
-            : 'No orders, simulations, or account actions can be started from this shell.'}</small>
-        </div>
-        <div class="gold-chart-placeholder" aria-label="Gold market chart placeholder">
-          <span>Market chart</span>
-          <div class="gold-chart-lines" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <small>Awaiting normalized gold prices</small>
-        </div>
-        <div class="gold-readout">
-          <span>Current read</span>
-          <strong>WAIT</strong>
-          <small>No data connection</small>
-        </div>
-      </section>
-
-      <section class="gold-facts" aria-label="Gold module safeguards">
-        <div><span>Instrument</span><strong>XAU/USD</strong><small>Configured when connected</small></div>
-        <div><span>Signal model</span><strong>WAIT</strong><small>No inference before data</small></div>
-        <div><span>Execution</span><strong>Locked</strong><small>Not available in Phase 1</small></div>
-        <div><span>Account</span><strong>Not connected</strong><small>Broker connection is separate</small></div>
-      </section>
+      <GoldWorkspace tab={tab} state={store.gold} />
     </div>
   </section>;
+}
+
+function GoldWorkspace({ tab, state }: { tab: GoldTab; state: GoldModuleState | null }): JSX.Element {
+  const diagnostics = state?.diagnostics ?? null;
+  const unavailable = diagnostics?.reason ?? 'The Gold provider readiness report has not loaded yet.';
+  const symbol = diagnostics?.symbol || 'No verified symbol';
+  const missing = diagnostics?.missing.length ? diagnostics.missing.join(', ') : null;
+  const invalid = diagnostics?.validationErrors.length ? diagnostics.validationErrors.join(' ') : null;
+  const readinessByTab: Partial<Record<GoldTab, GoldRuntimeReadiness>> = {
+    research: state?.research,
+    paper: state?.paper,
+    backtest: state?.backtest,
+  };
+  const capability = readinessByTab[tab] ?? null;
+  const capabilityReason = capability?.reason ?? unavailable;
+
+  const content: Record<GoldTab, { title: string; eyebrow: string; detail: string; safeguards: Array<[string, string]> }> = {
+    research: {
+      eyebrow: 'Read-only research',
+      title: 'Awaiting a verified Gold market feed',
+      detail: 'Quotes, spreads, candles, and signal reasons remain blank until a provider adapter has supplied normalized market data. ZeroNine will not infer a direction from configuration alone.',
+      safeguards: [['Target symbol', symbol], ['Market data', capability?.ready ? 'Validated' : 'Not connected'], ['Signal model', 'No signal'], ['Execution', 'Locked']],
+    },
+    paper: {
+      eyebrow: 'Virtual only',
+      title: 'Paper trading starts after market specifications load',
+      detail: 'No virtual balance, position, fill, or result is created yet. Paper trading will use verified bid/ask prices, spread, volume steps, margin, and a separate virtual ledger.',
+      safeguards: [['Virtual balance', 'Not created'], ['Price source', capability?.ready ? 'Validated' : 'Not connected'], ['Account funds', 'Never used'], ['Demo path', 'Required first']],
+    },
+    backtest: {
+      eyebrow: 'Historical validation',
+      title: 'No Gold candle dataset is loaded',
+      detail: 'There are no synthetic backtest results in this workspace. A run will require normalized OHLC data, explicit costs, model versioning, and a no-look-ahead evaluation.',
+      safeguards: [['Dataset', capability?.ready ? 'Validated' : 'Not loaded'], ['Model result', state?.backtest.result ? 'Recorded' : 'Not evaluated'], ['Cost model', 'Not configured'], ['Live learning', 'Not implied']],
+    },
+    live: {
+      eyebrow: 'Live execution',
+      title: 'Live Gold trading is locked',
+      detail: 'Gold live execution stays unavailable until the cTrader adapter, encrypted per-user authorization, account reconciliation, and demo validation are complete. Navigation never starts an order flow.',
+      safeguards: [['Live flag', diagnostics?.liveEnabled ? 'Still locked' : 'Disabled'], ['Execution adapter', 'Not installed'], ['Account connection', 'Not authorized'], ['Risk approval', 'Not available']],
+    },
+    connection: {
+      eyebrow: 'cTrader account connection',
+      title: diagnostics?.configured ? 'Provider configuration found, authorization unavailable' : 'cTrader authorization is not configured',
+      detail: 'This page exposes readiness only. Connecting an account will later use encrypted per-user OAuth state and tokens; credentials, account numbers, and tokens are never shown in the dashboard.',
+      safeguards: [['Provider', 'cTrader'], ['Requested mode', diagnostics?.requestedAccountMode ?? 'Demo'], ['Required settings', invalid ?? missing ?? 'Provider adapter pending'], ['Authorization', 'Not installed']],
+    },
+  };
+  const active = content[tab];
+
+  return <>
+    <section class="gold-research-stage gold-inert-stage" aria-label={`${active.eyebrow} status`}>
+      <div class="gold-research-title">
+        <span class="gold-kicker">{active.eyebrow}</span>
+        <strong>{active.title}</strong>
+        <small>{active.detail}</small>
+      </div>
+      <div class="gold-empty-surface" role="status" aria-label="No Gold market data">
+        <span>Provider data</span>
+        <strong>Not available</strong>
+        <small>{capabilityReason}</small>
+      </div>
+      <div class="gold-readout">
+        <span>Trading state</span>
+        <strong>INERT</strong>
+        <small>No order controls</small>
+      </div>
+    </section>
+
+    <section class="gold-facts" aria-label="Gold module safeguards">
+      {active.safeguards.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+    </section>
+  </>;
 }
 
 function Detail({ label, value, color }: { label: string; value: string; color?: 'green' | 'red' }): JSX.Element {

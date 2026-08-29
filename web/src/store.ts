@@ -439,6 +439,41 @@ export interface MomentumTradePurchase {
   currency?: string;
 }
 
+/**
+ * Non-secret readiness information from the isolated Gold module. This is
+ * deliberately diagnostic only: it is never a broker account or price feed.
+ */
+export interface GoldDiagnostics {
+  provider: 'ctrader';
+  status: 'disabled' | 'invalid_configuration' | 'unconfigured' | 'read_only_stub';
+  symbol: string;
+  requestedAccountMode: 'demo' | 'live';
+  liveEnabled: boolean;
+  marketDataCapable: boolean;
+  executionCapable: boolean;
+  configured: boolean;
+  missing: string[];
+  validationErrors: string[];
+  reason: string;
+}
+
+/**
+ * Gold's API shape is intentionally partitioned by capability. Until adapters
+ * are installed every section is readiness information, never fabricated
+ * account, quote, or performance data.
+ */
+export interface GoldRuntimeReadiness {
+  ready: boolean;
+  reason: string | null;
+}
+
+export interface GoldModuleState {
+  diagnostics: GoldDiagnostics;
+  research: GoldRuntimeReadiness & { state: Record<string, unknown> };
+  paper: GoldRuntimeReadiness & { state: Record<string, unknown> };
+  backtest: GoldRuntimeReadiness & { result: Record<string, unknown> | null };
+}
+
 export interface State {
   publicDashboard?: boolean;
   owner?: boolean;
@@ -473,6 +508,7 @@ export interface State {
   paperSimulation: PaperSimulationState | null;
   patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
   momentum: MomentumState | null;
+  gold: GoldModuleState | null;
 }
 
 const initial: State = {
@@ -507,6 +543,7 @@ const initial: State = {
   paperSimulation: null,
   patterns: null,
   momentum: null,
+  gold: null,
 };
 
 let state: State = initial;
@@ -917,6 +954,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean
       performance: s.performance,
       paperSimulation: s.paperSimulation ?? null,
       momentum: s.momentum ?? null,
+      gold: s.gold ?? null,
       publicDashboard: Boolean(s.public_dashboard),
       owner: Boolean(s.owner),
       digits: (() => {
@@ -960,6 +998,7 @@ export async function bootstrap(): Promise<void> {
   void loadAutoBacktestStatus();
   void loadAutoPaperStatus();
   void loadMomentumState();
+  void loadGoldState();
   connectWs();
 }
 
@@ -1072,6 +1111,18 @@ export async function stopMomentumResearch(): Promise<MomentumState | null> {
   const res = await api<{ state: MomentumState | null }>('/api/momentum/stop', { method: 'POST' });
   set({ momentum: res.state });
   return res.state;
+}
+
+// Gold state is intentionally a public, diagnostic-only read. Fetching it
+// cannot authorize, subscribe to, or place an order with a broker.
+export async function loadGoldState(): Promise<GoldModuleState | null> {
+  try {
+    const res = await api<{ state: GoldModuleState }>('/api/gold/state');
+    set({ gold: res.state });
+    return res.state;
+  } catch {
+    return state.gold;
+  }
 }
 
 export async function focusMomentumMarket(symbol: string): Promise<MomentumState | null> {
