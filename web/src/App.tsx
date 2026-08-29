@@ -2327,6 +2327,8 @@ function MomentumTradeDesk({
   session,
   owner,
   suggestedDirection,
+  suggestedConfidence,
+  suggestedReason,
   trades,
   contract,
 }: {
@@ -2337,6 +2339,8 @@ function MomentumTradeDesk({
   session: ReturnType<typeof useStore>['session'];
   owner?: boolean;
   suggestedDirection?: 'up' | 'down' | null;
+  suggestedConfidence?: number | null;
+  suggestedReason?: string | null;
   trades: TradeRow[];
   contract: ContractEvt | null;
 }): JSX.Element {
@@ -2348,11 +2352,21 @@ function MomentumTradeDesk({
   const stake = Number(stakeText);
   const isDemo = session?.mode === 'demo';
   const canQuote = Boolean(symbol && owner && isDemo && Number.isFinite(stake) && stake > 0);
+  const canPlace = canQuote && Boolean(suggestedDirection);
   const trade = purchase?.id == null ? null : trades.find((item) => item.id === purchase.id) ?? null;
   const matchingContract = purchase?.contractId && contract?.contractId === purchase.contractId ? contract : null;
   const settledTrade = trade && ['won', 'lost', 'push'].includes(trade.status) ? trade : null;
   const contractPnl = settledTrade?.profit ?? (matchingContract?.result ? matchingContract.profit : undefined) ?? purchase?.pnl ?? purchase?.profit;
   const potentialProfit = purchase?.payout != null && purchase.ask != null ? purchase.payout - purchase.ask : null;
+  const suggestionTone = suggestedDirection ?? 'wait';
+  const suggestionText = suggestedDirection
+    ? `${suggestedDirection.toUpperCase()}${Number.isFinite(Number(suggestedConfidence)) ? ` - ${suggestedConfidence}%` : ''}`
+    : 'WAIT';
+  const actionNote = busy
+    ? 'Sending demo order'
+    : suggestedDirection
+      ? `${suggestedDirection.toUpperCase()} is the active Momentum side`
+      : 'Waiting for a validated research direction';
 
   useEffect(() => {
     setPurchase(null);
@@ -2365,6 +2379,15 @@ function MomentumTradeDesk({
 
   const place = async (nextDirection: 'up' | 'down') => {
     if (!canQuote) return;
+    if (!suggestedDirection) {
+      setError('Momentum research has no validated direction yet; keep observing before trading.');
+      return;
+    }
+    if (nextDirection !== suggestedDirection) {
+      setDirection(suggestedDirection);
+      setError(`Momentum research recommends ${suggestedDirection.toUpperCase()}; the opposite side is disabled.`);
+      return;
+    }
     setDirection(nextDirection);
     setBusy(true);
     setError('');
@@ -2394,12 +2417,19 @@ function MomentumTradeDesk({
         <strong>{display ?? 'No focused market'}</strong>
         <small>{symbol ? 'Live market selected from current research' : 'Research selection required'}</small>
       </div>
-      <span class={`mom-trade-account${isDemo ? ' ready' : ''}`}><Icon name="check" size={13} />{isDemo ? 'Demo account' : 'Demo required'}</span>
+      <div class="mom-trade-badges">
+        <span class={`mom-trade-suggestion ${suggestionTone}`} title={suggestedReason ?? undefined}>
+          <Icon name={suggestedDirection === 'down' ? 'arrowDown' : suggestedDirection === 'up' ? 'arrowUp' : 'history'} size={13} />
+          <span>Suggested side</span>
+          <strong>{suggestionText}</strong>
+        </span>
+        <span class={`mom-trade-account${isDemo ? ' ready' : ''}`}><Icon name="check" size={13} />{isDemo ? 'Demo account' : 'Demo required'}</span>
+      </div>
     </div>
 
     <div class="mom-trade-live">
       <div class="mom-trade-chart">
-        <MomentumPriceChart samples={samples} label={`${display ?? 'Momentum market'} live demo trade chart`} entryPrice={entryPrice} entryDirection={direction} entryLabel="Research watch entry" />
+        <MomentumPriceChart samples={samples} label={`${display ?? 'Momentum market'} live demo trade chart`} entryPrice={entryPrice} entryDirection={suggestedDirection ?? undefined} entryLabel="Research watch entry" />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
         <span>Demo balance</span>
@@ -2415,15 +2445,15 @@ function MomentumTradeDesk({
 
     <div class="mom-trade-order">
       <div class="mom-trade-direction" aria-label="Place a demo trade">
-        <button class={`up ${direction === 'up' ? 'active' : ''}`} type="button" disabled={!canQuote || busy} onClick={() => void place('up')}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
-        <button class={`down ${direction === 'down' ? 'active' : ''}`} type="button" disabled={!canQuote || busy} onClick={() => void place('down')}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
+        <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up demo trade' : 'Place up demo trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
+        <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down demo trade' : 'Place down demo trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
       <label class="mom-trade-stake"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
       <div class="mom-trade-quote">
         <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
       </div>
-      <span class="mom-trade-action-note">{busy ? 'Sending demo order' : 'A fresh Deriv proposal is checked before purchase'}</span>
+      <span class="mom-trade-action-note">{actionNote}</span>
     </div>
 
     {unavailableReason && <div class="mom-trade-note">{unavailableReason}</div>}
@@ -2477,6 +2507,7 @@ function MomentumPage(): JSX.Element {
 
   const w = momentum?.window;
   const signal = w?.signal;
+  const tradeSignal = w?.direction && w.decisionSignal ? w.decisionSignal : signal;
   const market = momentum?.markets.find((item) => item.symbol === momentum.config?.symbol);
   const watchedMarkets = momentum?.scan?.markets ?? [];
   const focusedMarket = watchedMarkets.find((item) => item.symbol === momentum?.config?.symbol) ?? null;
@@ -2547,6 +2578,8 @@ function MomentumPage(): JSX.Element {
       session={s.session}
       owner={s.owner}
       suggestedDirection={w?.direction ?? (signal?.direction === 'wait' ? null : signal?.direction)}
+      suggestedConfidence={tradeSignal?.direction === 'wait' ? null : tradeSignal?.confidence}
+      suggestedReason={tradeSignal?.reason}
       trades={s.trades}
       contract={s.contract}
     /> : showRestoring ? <section class="mom-restoring" aria-live="polite" aria-busy="true">

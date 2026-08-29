@@ -148,6 +148,63 @@ test('Momentum execution rejects real accounts and unfocused research before a p
   await app.close();
 });
 
+test('Momentum execution rejects a direction that differs from the validated signal', async () => {
+  const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
+    import('fastify'),
+    import('../src/api/hub.ts'),
+    import('../src/core/marketState.ts'),
+    import('../src/deriv/publicFeed.ts'),
+    import('../src/strategy/automation.ts'),
+    import('../src/simulation/paperSimulator.ts'),
+    import('../src/api/routes.ts'),
+    import('../src/db/store.ts'),
+    import('../src/config.ts'),
+  ]);
+  cfg.config.dashboardAdminToken = '';
+  store.setSession({
+    id: 'momentum-demo-direction', loginid: 'VRTC_DIRECTION', balance: 250, currency: 'USD', mode: 'demo', auth_kind: 'pat',
+    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+  });
+
+  const hub = new hubMod.Hub();
+  const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
+  registry.ensure('R_100');
+  const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
+  let quoteCalls = 0;
+  const client = {
+    isConnected: true,
+    getQuote: async () => ({ id: 'unused' }),
+    getMultiplierQuote: async () => { quoteCalls += 1; return { id: 'unused', askPrice: 1, payout: 2, spot: 1 }; },
+    placeBuy: async () => ({ contractId: 'unused', buyPrice: 1, payout: 2 }),
+    settleContract: async () => new Promise(() => undefined),
+  };
+  const automation = new autoMod.Automation(registry, client as never, hub);
+  const momentum = {
+    state: () => ({
+      running: true,
+      phase: 'observing',
+      config: { symbol: 'R_100', multiplier: 20, stake: 10, commissionRate: .001 },
+      window: {
+        signal: { direction: 'up', confidence: 72, reason: 'Upward returns agree across 3 of 3 horizons' },
+        decisionSignal: null,
+      },
+    }),
+  };
+  const app = Fastify();
+  routesMod.registerApi(app, {
+    registry, feed, client: client as never, hub, automation,
+    paperSimulator: new paperMod.PaperSimulator(), momentum: momentum as never,
+  });
+
+  const response = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'down', stake: 3 } });
+  assert.equal(response.statusCode, 409);
+  assert.match(response.json().error, /recommends UP/i);
+  assert.equal(quoteCalls, 0);
+
+  automation.dispose();
+  await app.close();
+});
+
 test('an uncertain Momentum buy remains locked and cannot be retried or locally cleared', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
     import('fastify'),

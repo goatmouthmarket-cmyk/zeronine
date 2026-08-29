@@ -356,6 +356,7 @@ export interface MomentumState {
     startedAt: number; endsAt: number; openPrice: number; currentPrice: number; changePct: number;
     decisionAt: number | null; decisionPrice: number | null; direction: 'up' | 'down' | null;
     signal: { direction: 'up' | 'down' | 'wait'; confidence: number; score: number; reason: string; return15s: number | null; return30s: number | null; return60s: number | null };
+    decisionSignal: { direction: 'up' | 'down' | 'wait'; confidence: number; score: number; reason: string; return15s: number | null; return30s: number | null; return60s: number | null } | null;
     estimatedGross: number; estimatedCommission: number; estimatedNet: number;
     samples?: MomentumScanSample[];
   } | null;

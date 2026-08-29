@@ -381,6 +381,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(409);
       return { error: 'Momentum research has no validated direction yet; keep observing before trading' };
     }
+    if (direction !== signal.direction) {
+      reply.code(409);
+      return { error: `Momentum research recommends ${signal.direction.toUpperCase()}; review before trading the opposite direction` };
+    }
     const reason = [
       `momentum manual ${direction.toUpperCase()}`,
       `five-minute multiplier x${current.config.multiplier}`,
