@@ -2336,6 +2336,12 @@ function MomentumPage(): JSX.Element {
       <section class={`mom-hero ${researchState}`}>
         <div class="mom-state-mark" aria-hidden="true"><i></i><i></i><i></i></div>
         <div><span class="mom-kicker">Always-on opportunity scanner</span><h2>{momentum?.phase === 'scanning' ? `Comparing ${momentum.scan?.candidates ?? 0} real markets` : momentum?.running ? market?.display ?? 'Selecting the strongest market' : 'Automatic research paused'}</h2><p>The engine verifies multiplier availability, watches up to 12 real markets for 60 seconds, and selects the strongest aligned momentum. It then tracks that direction through a five-minute research window.</p></div>
+        <div class="mom-hero-motif" aria-hidden="true">
+          <div class="mom-hero-grid"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="mom-hero-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="mom-hero-trace"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <b></b>
+        </div>
         <span class={`mom-status ${momentum?.phase ?? 'idle'}`}><i></i>{momentum?.phase ?? 'idle'}</span>
       </section>
 
