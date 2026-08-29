@@ -467,8 +467,23 @@ export interface GoldRuntimeReadiness {
   reason: string | null;
 }
 
+/**
+ * Safe per-user authorization state for Gold. It deliberately excludes broker
+ * account identifiers and all OAuth credentials.
+ */
+export interface GoldConnectionState {
+  status: 'unconfigured' | 'ready' | 'authorizing' | 'authorized_demo_pending_account_discovery' | 'error';
+  mode: 'demo';
+  configured: boolean;
+  canDisconnect: boolean;
+  /** Safe human-readable status from the server; never a broker token or account id. */
+  message: string | null;
+  authorizedAt: number | null;
+}
+
 export interface GoldModuleState {
   diagnostics: GoldDiagnostics;
+  connection?: GoldConnectionState;
   research: GoldRuntimeReadiness & { state: Record<string, unknown> };
   paper: GoldRuntimeReadiness & { state: Record<string, unknown> };
   backtest: GoldRuntimeReadiness & { result: Record<string, unknown> | null };
@@ -1111,6 +1126,18 @@ export async function stopMomentumResearch(): Promise<MomentumState | null> {
   const res = await api<{ state: MomentumState | null }>('/api/momentum/stop', { method: 'POST' });
   set({ momentum: res.state });
   return res.state;
+}
+
+/** Starts the server-owned cTrader OAuth handoff. No broker credential enters browser state. */
+export async function startGoldOAuth(): Promise<string> {
+  const res = await api<{ ok: boolean; url: string }>('/api/gold/oauth/start');
+  if (!res.url) throw new Error('cTrader authorization is not available');
+  return res.url;
+}
+
+export async function disconnectGoldOAuth(): Promise<void> {
+  const res = await api<{ ok: boolean; connection: GoldConnectionState }>('/api/gold/oauth/disconnect', { method: 'POST' });
+  set({ gold: state.gold ? { ...state.gold, connection: res.connection } : state.gold });
 }
 
 // Gold state is intentionally a public, diagnostic-only read. Fetching it

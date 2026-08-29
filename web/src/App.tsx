@@ -38,6 +38,8 @@ import {
   focusMomentumMarket,
   placeMomentumDemoTrade,
   loadGoldState,
+  startGoldOAuth,
+  disconnectGoldOAuth,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
@@ -3646,7 +3648,7 @@ const GOLD_TABS: Array<{ id: GoldTab; label: string }> = [
 
 function GoldPage(): JSX.Element {
   const store = useStore();
-  const [tab, setTab] = useState<GoldTab>('research');
+  const [tab, setTab] = useState<GoldTab>(() => new URLSearchParams(window.location.search).has('gold_oauth') ? 'connection' : 'research');
   const diagnostics = store.gold?.diagnostics ?? null;
 
   useEffect(() => { void loadGoldState(); }, []);
@@ -3705,6 +3707,8 @@ function GoldWorkspace({ tab, state }: { tab: GoldTab; state: GoldModuleState | 
   const capabilityReason = capability?.reason ?? unavailable;
   const setupState = capability?.ready ? 'Validated' : 'Inactive';
 
+  if (tab === 'connection') return <GoldConnectionOnboarding state={state} />;
+
   const content: Record<GoldTab, { title: string; eyebrow: string; detail: string; safeguards: Array<[string, string]> }> = {
     research: {
       eyebrow: 'Read-only research',
@@ -3757,6 +3761,143 @@ function GoldWorkspace({ tab, state }: { tab: GoldTab; state: GoldModuleState | 
       {active.safeguards.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
     </section>
   </>;
+}
+
+function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }): JSX.Element {
+  const diagnostics = state?.diagnostics ?? null;
+  const connection = state?.connection;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const configured = connection?.configured ?? Boolean(diagnostics?.configured);
+  const authorizedDemo = connection?.status === 'authorized_demo_pending_account_discovery';
+  const authorizing = connection?.status === 'authorizing' || busy;
+  const connectionError = connection?.status === 'error';
+  const status = authorizedDemo ? 'Demo access authorized' : authorizing ? 'Authorization in progress' : connectionError ? 'Connection needs attention' : configured ? 'Ready to authorize' : 'Provider setup needed';
+  const detail = connection?.message ?? diagnostics?.reason ?? 'Checking cTrader connection readiness.';
+  const missing = diagnostics?.missing ?? [];
+  const invalid = diagnostics?.validationErrors ?? [];
+  const canStart = connection?.status === 'ready' && !authorizing;
+  const canDisconnect = authorizedDemo && connection?.canDisconnect === true && !authorizing;
+
+  const beginAuthorization = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const url = await startGoldOAuth();
+      window.location.assign(url);
+    } catch (err) {
+      setError(String(err));
+      setBusy(false);
+    }
+  };
+
+  const disconnectAuthorization = async () => {
+    if (!window.confirm('Disconnect cTrader demo authorization? Gold research and trading remain unavailable until it is authorized again.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await disconnectGoldOAuth();
+      await loadGoldState();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const steps: Array<{ label: string; detail: string; complete: boolean; active?: boolean }> = [
+    {
+      label: 'Provider setup',
+      detail: configured ? 'OAuth application is configured on the server.' : 'A workspace administrator must configure the cTrader OAuth application.',
+      complete: configured,
+      active: !configured,
+    },
+    {
+      label: 'Secure authorization',
+      detail: authorizedDemo ? 'Demo access is stored server-side with encrypted credentials.' : authorizing ? 'Waiting for cTrader to return to ZeroNine.' : 'Authorize with cTrader in a separate secure window.',
+      complete: authorizedDemo,
+      active: configured && !authorizedDemo,
+    },
+    {
+      label: 'Demo account verification',
+      detail: authorizedDemo ? 'Demo access is authorized. Account discovery and verification are the next guarded step.' : 'Account discovery and verification occur after authorization.',
+      complete: false,
+      active: authorizedDemo,
+    },
+  ];
+
+  return <section class="gold-connection" aria-label="cTrader account onboarding">
+    <div class="gold-connection-intro">
+      <div>
+        <span class="gold-kicker"><GoldMark />cTrader account connection</span>
+        <h2>{authorizedDemo ? 'Demo cTrader access authorized' : configured ? 'Authorize cTrader demo access' : 'Prepare cTrader authorization'}</h2>
+        <p>{authorizedDemo
+          ? 'Your broker authorization is stored securely. No trading account has been selected and no Gold order path is enabled.'
+          : configured
+            ? 'Authorize directly with cTrader. ZeroNine never asks for or displays your broker password, access token, or account number.'
+            : 'OAuth is the right connection method, but the server needs its cTrader application settings before any user can begin authorization.'}</p>
+      </div>
+      <div class={`gold-connection-state${authorizedDemo ? ' is-connected' : ''}`} role="status" aria-live="polite">
+        <span>{authorizedDemo ? 'Authorization' : 'Connection status'}</span>
+        <strong>{status}</strong>
+        <small>{detail}</small>
+      </div>
+    </div>
+
+    <div class="gold-connection-body">
+      <div class="gold-onboard-steps" aria-label="Connection steps">
+        {steps.map((step, index) => <div class={`gold-onboard-step${step.complete ? ' complete' : ''}${step.active ? ' active' : ''}`} key={step.label}>
+          <span class="gold-step-number">{step.complete ? <Icon name="check" size={13} strokeWidth={2.3} /> : index + 1}</span>
+          <div><strong>{step.label}</strong><small>{step.detail}</small></div>
+        </div>)}
+      </div>
+
+      <aside class="gold-auth-action" aria-label="cTrader authorization action">
+        {canStart ? <>
+          <span class="gold-kicker">Demo-first authorization</span>
+          <strong>Continue to cTrader</strong>
+          <small>You will return here when authorization is complete.</small>
+          <button class="gold-connect-button" type="button" onClick={() => void beginAuthorization()}>
+            <Icon name="arrowUpRight" size={15} strokeWidth={2} /> Authorize cTrader demo access
+          </button>
+        </> : configured && authorizing ? <>
+          <span class="gold-kicker">Authorization open</span>
+          <strong>Complete sign-in with cTrader</strong>
+          <small>Keep this tab open. The status updates after cTrader redirects you back.</small>
+        </> : authorizedDemo ? <>
+          <span class="gold-kicker">Demo-only protection</span>
+          <strong>Demo access is authorized</strong>
+          <small>No trading account is selected yet. Live execution remains locked.</small>
+          {canDisconnect && <button class="gold-disconnect-button" type="button" onClick={() => void disconnectAuthorization()}>
+            Disconnect demo access
+          </button>}
+        </> : connectionError ? <>
+          <span class="gold-kicker">Connection unavailable</span>
+          <strong>Authorization cannot start yet</strong>
+          <small>{detail}</small>
+        </> : <>
+          <span class="gold-kicker">Administrator setup</span>
+          <strong>OAuth app details are missing</strong>
+          <small>Set the required cTrader configuration in Railway, then refresh this page to enable secure authorization.</small>
+        </>}
+        {error && <p class="gold-connect-error" role="alert">{error}</p>}
+      </aside>
+    </div>
+
+    {!configured && <section class="gold-config-guide" aria-label="Required cTrader provider configuration">
+      <div><span class="gold-kicker">Before users can connect</span><strong>Configure cTrader OAuth in Railway</strong><small>These are server environment settings. They are not entered by users and are never returned to the dashboard.</small></div>
+      <div class="gold-config-list">
+        {(invalid.length > 0 ? invalid : missing.length > 0 ? missing : ['GOLD_TOKEN_ENCRYPTION_KEY']).map((setting) => <span key={setting}>{setting}</span>)}
+      </div>
+    </section>}
+
+    <section class="gold-connection-facts" aria-label="Connection safeguards">
+      <div><span>Provider</span><strong>cTrader</strong></div>
+      <div><span>Account path</span><strong>Demo first</strong></div>
+      <div><span>Credential storage</span><strong>Encrypted server-side</strong></div>
+      <div><span>Live orders</span><strong>Locked</strong></div>
+    </section>
+  </section>;
 }
 
 function Detail({ label, value, color }: { label: string; value: string; color?: 'green' | 'red' }): JSX.Element {
