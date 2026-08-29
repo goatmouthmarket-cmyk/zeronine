@@ -1273,7 +1273,20 @@ function settleInBackground(
     const current = getTrade(tradeId, accountId);
     if (!current || (current.status !== 'pending' && current.status !== 'purchasing')) return;
     void client
-    .settleContract(contractId, (u) => hub.emit({ type: 'contract', ts: Date.now(), contractId: u.contractId, update: u, manual: true }))
+    .settleContract(contractId, (u) => hub.emit({
+      type: 'contract',
+      ts: Date.now(),
+      contractId: u.contractId,
+      tradeId,
+      phase: u.status,
+      profit: u.profit,
+      sellPrice: u.sellPrice,
+      buyPrice: u.buyPrice,
+      settled: u.settled,
+      status: u.status,
+      update: u,
+      manual: true,
+    }))
     .then((outcome) => {
       if (outcome.settled) {
         const won = outcome.status === 'won';
@@ -1298,14 +1311,38 @@ function settleInBackground(
             settled: true,
           });
         }
-        hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, result: status, profit, update: outcome });
+        hub.emit({
+          type: 'contract',
+          ts: Date.now(),
+          contractId,
+          tradeId,
+          result: status,
+          profit,
+          sellPrice: outcome.sellPrice,
+          buyPrice: outcome.buyPrice,
+          settled: outcome.settled,
+          status: outcome.status,
+          update: outcome,
+        });
       } else {
-        hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement' });
+        hub.emit({
+          type: 'contract',
+          ts: Date.now(),
+          contractId,
+          tradeId,
+          phase: 'awaiting settlement',
+          profit: outcome.profit,
+          sellPrice: outcome.sellPrice,
+          buyPrice: outcome.buyPrice,
+          settled: outcome.settled,
+          status: outcome.status,
+          update: outcome,
+        });
         retry();
       }
     })
     .catch((err) => {
-      hub.emit({ type: 'contract', ts: Date.now(), contractId, phase: 'awaiting settlement', error: String(err) });
+      hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, phase: 'awaiting settlement', error: String(err) });
       retry();
     });
   };

@@ -36,6 +36,8 @@ test('explicit Momentum trade is demo-only and records the selected research con
   });
 
   const hub = new hubMod.Hub();
+  const events: Array<Record<string, unknown>> = [];
+  hub.on((event) => events.push(event));
   const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
   registry.ensure('R_100');
   const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
@@ -52,7 +54,17 @@ test('explicit Momentum trade is demo-only and records the selected research con
       boughtProposal = proposalId;
       return { contractId: 'momentum-contract', buyPrice: 3, payout: 6 };
     },
-    settleContract: async () => new Promise(() => undefined),
+    settleContract: async (contractId: string, onUpdate: (update: Record<string, unknown>) => void) => {
+      onUpdate({
+        contractId,
+        status: 'open',
+        profit: 0.42,
+        sellPrice: 3.42,
+        buyPrice: 3,
+        settled: false,
+      });
+      return new Promise(() => undefined);
+    },
   };
   const automation = new autoMod.Automation(registry, client as never, hub);
   const momentum = {
@@ -87,6 +99,12 @@ test('explicit Momentum trade is demo-only and records the selected research con
   assert.match(trade.reason, /momentum manual UP/i);
   assert.match(trade.reason, /research UP 72%/i);
   assert.deepEqual(store.listLedgerEntries(10).map((entry) => entry.event), ['purchased', 'requested']);
+  const liveContractEvent = events.find((event) => event.type === 'contract' && event.contractId === 'momentum-contract');
+  assert.ok(liveContractEvent);
+  assert.equal(liveContractEvent.tradeId, trade.id);
+  assert.equal(liveContractEvent.profit, 0.42);
+  assert.equal(liveContractEvent.sellPrice, 3.42);
+  assert.equal(liveContractEvent.phase, 'open');
 
   const blockedByOpen = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'down', stake: 3 } });
   assert.equal(blockedByOpen.statusCode, 409);

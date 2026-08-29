@@ -85,7 +85,7 @@ export interface TradeRow {
   id: number;
   ts: number;
   market: string;
-  contract_type: 'DIGITOVER' | 'DIGITUNDER';
+  contract_type: 'DIGITOVER' | 'DIGITUNDER' | 'MULTUP' | 'MULTDOWN';
   barrier: number;
   duration: number;
   duration_unit: string;
@@ -119,7 +119,7 @@ export interface LedgerEntry {
   trade_id: number | null;
   contract_ref: string;
   market: string;
-  contract_type: 'DIGITOVER' | 'DIGITUNDER';
+  contract_type: 'DIGITOVER' | 'DIGITUNDER' | 'MULTUP' | 'MULTDOWN';
   barrier: number;
   stake: number;
   payout: number;
@@ -206,10 +206,22 @@ export interface QuoteEvt {
 
 export interface ContractEvt {
   contractId?: string;
+  tradeId?: number;
   result?: string;
   profit?: number;
+  sellPrice?: number;
+  buyPrice?: number;
+  status?: string;
+  settled?: boolean;
   phase?: string;
   error?: string;
+  update?: {
+    profit?: number;
+    sellPrice?: number;
+    buyPrice?: number;
+    settled?: boolean;
+    status?: string;
+  };
 }
 
 export interface TestRunRow {
@@ -769,18 +781,31 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       break;
     }
     case 'contract': {
+      const update = (evt.update ?? {}) as Record<string, unknown>;
+      const liveProfit = Number(evt.profit ?? update.profit);
       const c: ContractEvt = {
         contractId: evt.contractId as string | undefined,
+        tradeId: Number.isFinite(Number(evt.tradeId)) ? Number(evt.tradeId) : undefined,
         result: evt.result as string | undefined,
-        profit: evt.profit as number | undefined,
+        profit: Number.isFinite(liveProfit) ? liveProfit : undefined,
+        sellPrice: Number.isFinite(Number(evt.sellPrice)) ? Number(evt.sellPrice) : Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined,
+        buyPrice: Number.isFinite(Number(evt.buyPrice)) ? Number(evt.buyPrice) : Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined,
+        status: typeof evt.status === 'string' ? evt.status : typeof update.status === 'string' ? update.status : undefined,
+        settled: typeof evt.settled === 'boolean' ? evt.settled : typeof update.settled === 'boolean' ? update.settled : undefined,
         phase: evt.phase as string | undefined,
         error: evt.error as string | undefined,
+        update: {
+          profit: Number.isFinite(Number(update.profit)) ? Number(update.profit) : undefined,
+          sellPrice: Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined,
+          buyPrice: Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined,
+          settled: typeof update.settled === 'boolean' ? update.settled : undefined,
+          status: typeof update.status === 'string' ? update.status : undefined,
+        },
       };
       patch.contract = c;
       if (c.result) {
         const contractId = String(evt.contractId ?? '');
         const tradeId = Number(evt.tradeId ?? 0);
-        const update = (evt.update ?? {}) as Record<string, unknown>;
         patch.trades = state.trades.map((trade) => {
           if (!(tradeId > 0 ? trade.id === tradeId : contractId && trade.contract_id === contractId)) return trade;
           return {

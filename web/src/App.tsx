@@ -2352,11 +2352,35 @@ function MomentumTradeDesk({
   const stake = Number(stakeText);
   const isDemo = session?.mode === 'demo';
   const canQuote = Boolean(symbol && owner && isDemo && Number.isFinite(stake) && stake > 0);
-  const canPlace = canQuote && Boolean(suggestedDirection);
-  const trade = purchase?.id == null ? null : trades.find((item) => item.id === purchase.id) ?? null;
-  const matchingContract = purchase?.contractId && contract?.contractId === purchase.contractId ? contract : null;
+  const openAccountTrade = trades.find((item) => item.status === 'pending' || item.status === 'purchasing') ?? null;
+  const openMomentumTrade = trades.find((item) =>
+    (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
+    && /momentum manual/i.test(item.reason ?? '')
+    && (item.status === 'pending' || item.status === 'purchasing')
+  ) ?? null;
+  const canPlace = canQuote && Boolean(suggestedDirection) && !openAccountTrade;
+  const trade = purchase?.id == null
+    ? openMomentumTrade
+    : trades.find((item) => item.id === purchase.id) ?? openMomentumTrade;
+  const trackedContractId = purchase?.contractId ?? purchase?.contract_id ?? trade?.contract_id ?? '';
+  const matchingContract = trackedContractId && contract?.contractId === trackedContractId ? contract : null;
   const settledTrade = trade && ['won', 'lost', 'push'].includes(trade.status) ? trade : null;
-  const contractPnl = settledTrade?.profit ?? (matchingContract?.result ? matchingContract.profit : undefined) ?? purchase?.pnl ?? purchase?.profit;
+  const liveContractProfit = Number.isFinite(Number(matchingContract?.profit)) ? Number(matchingContract?.profit) : undefined;
+  const contractPnl = settledTrade?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit;
+  const liveSellPrice = Number.isFinite(Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice))
+    ? Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice)
+    : undefined;
+  const contractPhase = settledTrade
+    ? `Contract ${settledTrade.status}`
+    : matchingContract?.result
+      ? `Contract ${matchingContract.result}`
+      : matchingContract?.phase
+        ? `Contract ${matchingContract.phase}`
+        : trade
+          ? `Contract ${trade.status}`
+          : purchase
+            ? 'Demo contract submitted'
+            : 'No open demo contract';
   const potentialProfit = purchase?.payout != null && purchase.ask != null ? purchase.payout - purchase.ask : null;
   const suggestionTone = suggestedDirection ?? 'wait';
   const suggestionText = suggestedDirection
@@ -2364,7 +2388,9 @@ function MomentumTradeDesk({
     : 'WAIT';
   const actionNote = busy
     ? 'Sending demo order'
-    : suggestedDirection
+    : openAccountTrade
+      ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
+      : suggestedDirection
       ? `${suggestedDirection.toUpperCase()} is the active Momentum side`
       : 'Waiting for a validated research direction';
 
@@ -2406,8 +2432,10 @@ function MomentumTradeDesk({
       ? 'Connect a Deriv demo account to request a live quote.'
       : !isDemo
         ? 'Momentum execution is available on demo accounts only. Switch to demo to continue.'
-        : !owner
-          ? 'Unlock the dashboard owner controls to place a demo trade.'
+      : !owner
+        ? 'Unlock the dashboard owner controls to place a demo trade.'
+        : openAccountTrade
+          ? `Wait for open contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle before placing another Momentum trade.`
           : null;
 
   return <section class="mom-trade-desk" aria-label="Momentum demo trade">
@@ -2434,12 +2462,12 @@ function MomentumTradeDesk({
       <div class="mom-trade-readout" aria-live="polite">
         <span>Demo balance</span>
         <strong>{isDemo && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
-        <small>{settledTrade ? `Contract ${settledTrade.status}` : purchase ? 'Demo contract submitted' : 'No open demo contract'}</small>
+        <small>{contractPhase}</small>
       </div>
       <div class={`mom-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
         <span>Live contract P&amp;L</span>
         <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
-        <small>{purchase?.contractId ?? purchase?.contract_id ?? 'Awaiting a demo order'}</small>
+        <small>{liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
       </div>
     </div>
 
@@ -2457,7 +2485,7 @@ function MomentumTradeDesk({
     </div>
 
     {unavailableReason && <div class="mom-trade-note">{unavailableReason}</div>}
-    {purchase && <div class="mom-trade-note">Demo contract {purchase.contractId ?? purchase.contract_id ?? 'submitted'} is tracked against this account balance.</div>}
+    {(purchase || openMomentumTrade) && <div class="mom-trade-note">Demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
     {error && <div class="tl-err">{error}</div>}
   </section>;
 }
