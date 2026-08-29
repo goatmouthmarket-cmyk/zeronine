@@ -161,7 +161,10 @@ export async function scanPatterns(onProgress?: (done: number, total: number, me
     await sleep(0);
   }
 
-  if (all.length > 0) replacePatterns(all);
+  // A scan is a complete replacement of the evidence set. Retaining rows
+  // after no transition still qualifies would make stale knowledge influence
+  // future live and virtual-paper signals.
+  replacePatterns(all);
   return { scannedMarkets: total, inserted: all.length, confirmed, noise };
 }
 
