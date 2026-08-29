@@ -11,7 +11,7 @@ test('Gold configuration defaults to disabled, demo-first, and unconfigured', ()
   assert.equal(diagnostics.status, 'unconfigured');
   assert.equal(diagnostics.executionCapable, false);
   assert.equal(diagnostics.marketDataCapable, false);
-  assert.ok(diagnostics.missing.includes('CTRADER_ACCESS_TOKEN'));
+  assert.ok(diagnostics.missing.includes('CTRADER_REDIRECT_URI'));
 });
 
 test('Gold configuration rejects accidental live and malformed provider settings', () => {
@@ -38,8 +38,7 @@ test('live opt-in is still execution-locked and requires a live account mode', (
     CTRADER_API_URL: 'https://openapi.ctrader.com',
     CTRADER_CLIENT_ID: 'client',
     CTRADER_CLIENT_SECRET: 'secret',
-    CTRADER_ACCESS_TOKEN: 'token',
-    CTRADER_ACCOUNT_ID: 'account',
+    CTRADER_REDIRECT_URI: 'https://zeronine.example/api/gold/oauth/callback',
   });
   const diagnostics = goldDiagnostics(configured);
   assert.equal(diagnostics.status, 'disabled');

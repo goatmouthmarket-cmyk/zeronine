@@ -6,8 +6,7 @@ export interface GoldConfig {
   cTraderApiUrl: string;
   cTraderClientId: string;
   cTraderClientSecret: string;
-  cTraderAccessToken: string;
-  cTraderAccountId: string;
+  cTraderRedirectUri: string;
   accountMode: CTraderAccountMode;
   /** Requires the exact `GOLD_LIVE_ENABLED=1` opt-in. */
   liveEnabled: boolean;
@@ -80,8 +79,7 @@ export function loadGoldConfig(env: Env = process.env): GoldConfig {
     cTraderApiUrl,
     cTraderClientId: text(env, 'CTRADER_CLIENT_ID'),
     cTraderClientSecret: text(env, 'CTRADER_CLIENT_SECRET'),
-    cTraderAccessToken: text(env, 'CTRADER_ACCESS_TOKEN'),
-    cTraderAccountId: text(env, 'CTRADER_ACCOUNT_ID'),
+    cTraderRedirectUri: text(env, 'CTRADER_REDIRECT_URI'),
     accountMode,
     liveEnabled,
     validationErrors,
@@ -98,8 +96,7 @@ export function goldDiagnostics(config = loadGoldConfig()): GoldDiagnostics {
     ['CTRADER_API_URL', config.cTraderApiUrl],
     ['CTRADER_CLIENT_ID', config.cTraderClientId],
     ['CTRADER_CLIENT_SECRET', config.cTraderClientSecret],
-    ['CTRADER_ACCESS_TOKEN', config.cTraderAccessToken],
-    ['CTRADER_ACCOUNT_ID', config.cTraderAccountId],
+    ['CTRADER_REDIRECT_URI', config.cTraderRedirectUri],
   ].filter(([, value]) => !value).map(([name]) => name);
 
   if (config.validationErrors.length > 0) {
