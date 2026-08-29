@@ -46,6 +46,7 @@ import {
   listPaperTrades,
   listTestRuns,
   listTrades,
+  markTradePurchaseOutcomeUnknown,
   markTradePurchased,
   resolveTrade,
   resetPerformanceSummary,
@@ -301,6 +302,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
 
     const signal = current.window.decisionSignal ?? current.window.signal;
+    if (!signal || signal.direction === 'wait' || !Number.isFinite(signal.confidence) || !signal.reason) {
+      reply.code(409);
+      return { error: 'Momentum research has no validated direction yet; keep observing before trading' };
+    }
     const reason = [
       `momentum manual ${direction.toUpperCase()}`,
       `five-minute multiplier x${current.config.multiplier}`,
@@ -308,10 +313,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       signal.reason,
     ].join(' | ');
     let recordedTrade: ReturnType<typeof insertTrade> | null = null;
+    let stage: 'proposal' | 'reserve' | 'buy' | 'finalize' = 'proposal';
+    let buyAttempted = false;
+    let bought: { contractId: string; payout: number; buyPrice: number; purchaseTime: number } | null = null;
+    let quoteForRecovery: Awaited<ReturnType<typeof client.getMultiplierQuote>> | null = null;
     try {
       // The proposal is intentionally obtained immediately before the buy.
       // No scanner quote is reused for an account order.
-      const quote = await client.getMultiplierQuote({
+      const quote = quoteForRecovery = await client.getMultiplierQuote({
         direction,
         amount: stake,
         currency: session.currency || 'USD',
@@ -323,6 +332,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (!(quote.askPrice > 0) || !Number.isFinite(quote.askPrice)) {
         throw new Error('multiplier proposal returned an invalid purchase price');
       }
+      stage = 'reserve';
       const afterQuote = momentum.state();
       if (
         !afterQuote.running || afterQuote.phase !== 'observing' || !afterQuote.config || !afterQuote.window
@@ -355,15 +365,18 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         reason,
         origin: 'manual',
       });
-      const bought = await client.placeBuy(quote.id, quote.askPrice);
+      stage = 'buy';
+      buyAttempted = true;
+      bought = await client.placeBuy(quote.id, quote.askPrice);
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
       const entrySnapshot = registry.snapshot(current.config.symbol);
       const entrySpot = Number.isFinite(quote.spot) && quote.spot > 0 ? quote.spot : entrySnapshot.lastQuote;
+      stage = 'finalize';
       markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySpot, entrySnapshot.lastDigit);
       const purchased = getTrade(trade.id, trade.account_id) ?? trade;
-      hub.emit({ type: 'trade', ts: Date.now(), trade: purchased, manual: true, momentum: true });
       settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
+      hub.emit({ type: 'trade', ts: Date.now(), trade: purchased, manual: true, momentum: true });
       return {
         ok: true,
         trade: {
@@ -378,12 +391,88 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         },
       };
     } catch (error) {
-      if (recordedTrade) {
-        resolveTrade(recordedTrade.id, 'error', 0, recordedTrade.contract_id || '', undefined, recordedTrade.account_id);
+      const message = error instanceof Error ? error.message : String(error);
+      const logContext = {
+        stage,
+        tradeId: recordedTrade?.id ?? null,
+        accountId: recordedTrade?.account_id ?? null,
+        market: current.config.symbol,
+        direction,
+        stake,
+        buyAttempted,
+        buyConfirmed: Boolean(bought?.contractId),
+        error: message,
+      };
+
+      if (recordedTrade && buyAttempted && !bought) {
+        // A timeout or socket drop after the buy frame was sent is ambiguous:
+        // Deriv may have accepted it. Keep the purchasing lock so a retry
+        // cannot open a second contract against the same account.
+        try {
+          markTradePurchaseOutcomeUnknown(recordedTrade.id, recordedTrade.account_id);
+        } catch (persistenceError) {
+          console.error('[momentum manual] could not record uncertain purchase', {
+            ...logContext,
+            persistenceError: String(persistenceError),
+          });
+        }
+        console.warn('[momentum manual] purchase outcome unknown', logContext);
+        reply.code(503);
+        return {
+          error: 'purchase outcome unknown; the account is locked for reconciliation. Do not retry this order.',
+          code: 'purchase_outcome_unknown',
+        };
       }
-      console.warn(`[momentum manual] order failed: ${String(error)}`);
+
+      if (recordedTrade && bought) {
+        // The provider confirmed a contract. A local ledger/hub failure must
+        // never downgrade it to error or erase the contract identifier.
+        try {
+          const existing = getTrade(recordedTrade.id, recordedTrade.account_id);
+          if (existing?.contract_id !== bought.contractId) {
+            const quote = quoteForRecovery;
+            const entry = registry.snapshot(current.config.symbol);
+            markTradePurchased(
+              recordedTrade.id,
+              bought.contractId,
+              bought.buyPrice > 0 ? bought.buyPrice : quote?.askPrice ?? recordedTrade.ask_price,
+              bought.payout > 0 ? bought.payout : quote?.payout ?? recordedTrade.payout,
+              recordedTrade.account_id,
+              quote?.spot ?? entry.lastQuote,
+              entry.lastDigit,
+            );
+          }
+          const persisted = getTrade(recordedTrade.id, recordedTrade.account_id);
+          if (persisted?.contract_id === bought.contractId) {
+            settleInBackground(client, hub, persisted.id, bought.contractId, persisted.stake, persisted.payout, persisted.account_id);
+          }
+        } catch (persistenceError) {
+          console.error('[momentum manual] confirmed purchase needs reconciliation', {
+            ...logContext,
+            contractId: bought.contractId,
+            persistenceError: String(persistenceError),
+          });
+        }
+        console.error('[momentum manual] confirmed purchase finalization failed', {
+          ...logContext,
+          contractId: bought.contractId,
+        });
+        reply.code(202);
+        return {
+          ok: true,
+          warning: 'purchase was confirmed; local status is reconciling',
+          contractId: bought.contractId,
+        };
+      }
+
+      if (recordedTrade) {
+        // This failure occurred before a buy request was sent, so it cannot
+        // represent a live account contract.
+        resolveTrade(recordedTrade.id, 'error', 0, '', undefined, recordedTrade.account_id);
+      }
+      console.warn('[momentum manual] order failed before purchase', logContext);
       reply.code(502);
-      return { error: String(error) };
+      return { error: `Momentum ${stage} failed: ${message}` };
     }
   });
 
@@ -1063,6 +1152,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const openTrade = getOpenTrade();
     if (!openTrade) {
       return { ok: true, message: 'no stuck trade found' };
+    }
+    if (openTrade.status === 'purchasing' && openTrade.reason.includes('purchase outcome unknown; reconciliation required')) {
+      reply.code(409);
+      return { error: 'purchase outcome is unknown at Deriv and cannot be cleared locally; reconcile the broker account first' };
     }
     if (openTrade.contract_id) {
       reply.code(409);

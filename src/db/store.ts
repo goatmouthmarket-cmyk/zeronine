@@ -1217,6 +1217,21 @@ export function markTradePurchased(
   }
 }
 
+/**
+ * A timed-out buy can still have reached Deriv. Keep the account slot reserved
+ * until an operator has reconciled the broker outcome; never turn this into a
+ * locally-clearable failed order automatically.
+ */
+export function markTradePurchaseOutcomeUnknown(id: number, accountId = currentAccountId()): void {
+  const before = getTrade(id, accountId);
+  if (!before || before.status !== 'purchasing') return;
+  const marker = 'purchase outcome unknown; reconciliation required';
+  if (before.reason.includes(marker)) return;
+  getDb()
+    .prepare('UPDATE trades SET reason = ? WHERE id = ? AND account_id = ?')
+    .run(`${before.reason} | ${marker}`, id, accountId);
+}
+
 export function listTrades(limit = 50, accountId = currentAccountId()): TradeRow[] {
   return getDb()
     .prepare('SELECT * FROM trades WHERE account_id = ? ORDER BY id DESC LIMIT ?')
