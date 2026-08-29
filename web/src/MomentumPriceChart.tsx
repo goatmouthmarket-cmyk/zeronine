@@ -40,7 +40,7 @@ function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Ti
 }
 
 function candleData(points: LineData<Time>[]): CandlestickData<Time>[] {
-  const bucketSize = 5;
+  const bucketSize = 2;
   const candles: CandlestickData<Time>[] = [];
   for (let i = 0; i < points.length; i += bucketSize) {
     const bucket = points.slice(i, i + bucketSize);
@@ -111,7 +111,11 @@ export function MomentumPriceChart({
         horzLines: { visible: detailed, color: 'rgba(255,255,255,.06)' },
       },
       leftPriceScale: { visible: false },
-      rightPriceScale: { visible: detailed, borderVisible: false },
+      rightPriceScale: {
+        visible: detailed,
+        borderVisible: false,
+        textColor: 'rgba(219,235,255,.68)',
+      },
       timeScale: {
         visible: detailed,
         borderVisible: false,
@@ -128,7 +132,7 @@ export function MomentumPriceChart({
       handleScroll: detailed,
       handleScale: detailed,
     });
-    const series = detailed
+    const candleSeries = detailed
       ? chart.addSeries(CandlestickSeries, {
         upColor: '#75e8bd',
         downColor: '#ff5263',
@@ -136,8 +140,17 @@ export function MomentumPriceChart({
         borderDownColor: '#ff5263',
         wickUpColor: 'rgba(117,232,189,.82)',
         wickDownColor: 'rgba(255,82,99,.82)',
+        priceLineVisible: false,
+        lastValueVisible: false,
+      })
+      : null;
+    const series = detailed
+      ? chart.addSeries(LineSeries, {
+        color: '#75e8bd',
+        lineWidth: 2,
         priceLineVisible: true,
         lastValueVisible: true,
+        crosshairMarkerVisible: true,
       })
       : chart.addSeries(LineSeries, {
         color: '#75e8bd',
@@ -146,15 +159,11 @@ export function MomentumPriceChart({
         lastValueVisible: false,
         crosshairMarkerVisible: false,
       });
-    series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .14, bottom: compact ? .18 : .2 } });
+    series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .08, bottom: compact ? .18 : .12 } });
+    candleSeries?.priceScale().applyOptions({ scaleMargins: { top: .08, bottom: .12 } });
     chartRef.current = chart;
-    if (detailed) {
-      candleSeriesRef.current = series as ISeriesApi<'Candlestick'>;
-      seriesRef.current = null;
-    } else {
-      seriesRef.current = series as ISeriesApi<'Line'>;
-      candleSeriesRef.current = null;
-    }
+    seriesRef.current = series;
+    candleSeriesRef.current = candleSeries;
 
     const resize = () => chart.resize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
     const observer = new ResizeObserver(resize);
@@ -242,7 +251,7 @@ export function MomentumPriceChart({
     };
   }, [entryDirection, entryLabel, entryPrice, hasEntry]);
 
-  return <div class={`mom-price-chart${compact ? ' compact' : ''}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
+  return <div class={`mom-price-chart${compact ? ' compact' : ' detailed'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <div class="mom-price-chart-canvas" ref={containerRef} />
     {detailed && stats && <span class={`mom-chart-stats ${stats.change >= 0 ? 'up' : 'down'}`} aria-hidden="true">
       <b>{stats.change >= 0 ? '+' : ''}{displayPrice(stats.change)}</b>
