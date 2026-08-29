@@ -658,18 +658,15 @@ button {
 /* Gold is an independent research workspace. This Phase 1 surface contains
    only navigation and factual availability states; it cannot trade. */
 .gold-page { min-height: 100%; padding: 0 2px 28px; color: var(--text); }
-.gold-page-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 0 0 16px; }
+.gold-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 0 0 16px; }
 .gold-page-header .subtitle { margin-top: 6px; }
-.gold-brand-logo { display: block; width: auto; height: 40px; max-width: min(180px, 54vw); object-fit: contain; object-position: left center; }
+.gold-brand-logo { display: block; width: auto; height: 58px; max-width: min(260px, 72vw); object-fit: contain; object-position: left center; }
 .gold-kicker { display: inline-flex; align-items: center; gap: 6px; color: #f4c96b; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-.gold-phase { display: inline-flex; align-items: center; min-height: 25px; padding: 0 8px; border: 1px solid rgba(244,201,107,.26); border-radius: 99px; color: #f4c96b; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .gold-tabs { display: flex; align-items: center; gap: 3px; overflow-x: auto; padding: 0 0 11px; border-bottom: 1px solid var(--border); scrollbar-width: none; }
 .gold-tabs::-webkit-scrollbar { display: none; }
 .gold-tabs button { flex: 0 0 auto; min-height: 29px; padding: 0 10px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; font: inherit; font-size: 9px; font-weight: 800; cursor: pointer; transition: color .16s ease, background .16s ease; }
 .gold-tabs button:hover { color: var(--text); background: rgba(255,255,255,.035); }.gold-tabs button.active { color: #191206; background: #f4c96b; }.gold-tabs button:focus-visible { outline: 1px solid #f4c96b; outline-offset: 2px; }
 .gold-workspace { border-bottom: 1px solid var(--border); background: transparent; }
-.gold-status { display: flex; align-items: baseline; gap: 14px; min-height: 40px; padding: 0 2px; border-bottom: 1px solid var(--border); }
-.gold-status-mark { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 6px; color: #f4c96b; font-size: 8px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }.gold-status-mark i { width: 6px; height: 6px; border-radius: 50%; background: #f4c96b; }.gold-status p { display: flex; min-width: 0; margin: 0; color: var(--muted); font-size: 9px; line-height: 1.35; }.gold-status p strong { flex: 0 0 auto; margin-right: 7px; color: var(--text); font-size: 9px; }.gold-status p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gold-empty-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(225px, .52fr); min-height: 178px; }
 .gold-empty-copy { display: grid; align-content: center; min-width: 0; padding: 24px 26px 24px 2px; }.gold-empty-copy strong { display: block; max-width: 600px; margin-top: 6px; color: var(--text); font-size: 19px; line-height: 1.16; }.gold-empty-copy small { display: block; max-width: 660px; margin-top: 9px; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .gold-empty-setup { display: grid; align-content: center; min-width: 0; padding: 22px 20px; border-left: 1px solid var(--border); background: rgba(244,201,107,.018); }.gold-empty-setup > span { color: var(--muted-2); font-size: 8px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }.gold-empty-setup > strong { display: block; margin-top: 7px; color: #f4c96b; font-size: 15px; line-height: 1.15; }.gold-empty-setup > small { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; line-height: 1.45; }
@@ -710,7 +707,7 @@ button {
 .gold-config-list span { padding: 5px 7px; border: 1px solid rgba(244,201,107,.22); border-radius: 3px; color: #f4c96b; font-size: 8px; font-weight: 800; letter-spacing: .04em; overflow-wrap: anywhere; }
 .gold-connection-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--border); }.gold-connection-facts > div { min-width: 0; padding: 13px 14px 14px 2px; }.gold-connection-facts > div + div { padding-left: 20px; border-left: 1px solid var(--border); }.gold-connection-facts strong { display: block; margin-top: 6px; color: var(--text); font-size: 12px; line-height: 1.3; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .gold-page { padding-inline: 0; }.gold-page-header { align-items: start; padding: 0 2px 15px; }.gold-empty-stage { grid-template-columns: 1fr; min-height: 0; }.gold-empty-copy { padding: 21px 14px; }.gold-empty-setup { min-height: 104px; padding: 16px 14px; border-top: 1px solid var(--border); border-left: 0; }.gold-facts { grid-template-columns: 1fr 1fr; }.gold-facts > div { padding: 13px 14px; }.gold-facts > div:nth-child(odd) { border-left: 0; }.gold-facts > div:nth-child(-n + 2) { border-bottom: 1px solid var(--border); } }
-@media (max-width: 430px) { .gold-page-header { display: grid; gap: 10px; }.gold-phase { width: max-content; }.gold-tabs { flex-wrap: wrap; overflow: visible; }.gold-status { display: grid; gap: 3px; align-content: center; min-height: 52px; padding: 8px 2px; }.gold-status p { display: block; }.gold-status p strong { display: block; margin: 0 0 2px; }.gold-status p span { display: block; white-space: normal; }.gold-empty-copy strong { font-size: 16px; }.gold-facts strong { font-size: 12px; } }
+@media (max-width: 430px) { .gold-page-header { display: grid; gap: 10px; }.gold-brand-logo { height: 50px; }.gold-tabs { flex-wrap: wrap; overflow: visible; }.gold-empty-copy strong { font-size: 16px; }.gold-facts strong { font-size: 12px; } }
 @media (max-width: 700px) { .gold-connection-intro, .gold-connection-body, .gold-config-guide { grid-template-columns: 1fr; }.gold-connection-intro > div:first-child { padding: 22px 14px; }.gold-connection-intro h2 { font-size: 18px; }.gold-connection-state, .gold-auth-action { border-top: 1px solid var(--border); border-left: 0; }.gold-connection-state { min-height: 102px; padding: 16px 14px; }.gold-auth-action { padding: 19px 14px; }.gold-onboard-step { padding: 10px 14px; }.gold-config-guide { gap: 13px; padding: 17px 14px; }.gold-connection-facts { grid-template-columns: 1fr 1fr; }.gold-connection-facts > div { padding: 13px 14px; }.gold-connection-facts > div:nth-child(odd) { border-left: 0; }.gold-connection-facts > div:nth-child(-n + 2) { border-bottom: 1px solid var(--border); } }
 @media (max-width: 430px) { .gold-connect-button { width: 100%; }.gold-connection-intro p { font-size: 9px; }.gold-config-list { align-items: stretch; }.gold-config-list span { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .gold-tabs button { transition: none; } }
@@ -3544,6 +3541,21 @@ button.activity-row {
     display: block;
 }
 
+.gold-nav-logo {
+    display: block;
+    width: 21px;
+    height: 20px;
+    overflow: hidden;
+}
+
+.gold-nav-logo img {
+    display: block;
+    width: auto;
+    height: 22px;
+    max-width: none;
+    margin-left: -5px;
+}
+
 .nav-item.bot .nav-bot-circle {
     width: 48px;
     height: 48px;
@@ -5046,6 +5058,16 @@ button.activity-row {
     .nav-item svg {
         width: 18px;
         height: 18px;
+    }
+
+    .gold-nav-logo {
+        width: 19px;
+        height: 18px;
+    }
+
+    .gold-nav-logo img {
+        height: 20px;
+        margin-left: -4px;
     }
 
     .nav-item.bot .nav-bot-circle {

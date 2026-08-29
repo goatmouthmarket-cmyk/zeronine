@@ -3647,25 +3647,15 @@ const GOLD_TABS: Array<{ id: GoldTab; label: string }> = [
 function GoldPage(): JSX.Element {
   const store = useStore();
   const [tab, setTab] = useState<GoldTab>(() => new URLSearchParams(window.location.search).has('gold_oauth') ? 'connection' : 'research');
-  const diagnostics = store.gold?.diagnostics ?? null;
 
   useEffect(() => { void loadGoldState(); }, []);
-
-  const modeLabel = diagnostics?.requestedAccountMode === 'live' ? 'Demo path required first' : 'Demo-first path';
-  const readiness = diagnostics
-    ? diagnostics.status === 'invalid_configuration' ? 'Configuration needs attention'
-      : diagnostics.configured ? 'Provider configuration found'
-      : 'Provider not configured'
-    : 'Checking provider readiness';
 
   return <section class="gold-page" aria-label="Gold workspace">
     <header class="header gold-page-header">
       <div>
         <img class="gold-brand-logo" src="/gold-logo.png" alt="Gold" />
-        <span class="gold-kicker">Gold workspace</span>
         <div class="subtitle">Independent CFD research, simulation, and execution workspace</div>
       </div>
-      <span class="gold-phase">{modeLabel}</span>
     </header>
 
     <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
@@ -3680,11 +3670,6 @@ function GoldPage(): JSX.Element {
     </div>
 
     <div class="gold-workspace">
-      <section class="gold-status" aria-live="polite">
-        <span class="gold-status-mark"><i></i>Provider readiness</span>
-        <p><strong>{readiness}</strong><span>{diagnostics?.reason ?? 'Loading the Gold provider readiness report. No broker connection is opened from this page.'}</span></p>
-      </section>
-
       <GoldWorkspace tab={tab} state={store.gold} />
     </div>
   </section>;
@@ -3996,7 +3981,7 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
           Momentum
         </button>
         <button class={`nav-item gold${page === 'gold' ? ' active' : ''}`} onClick={() => setPage('gold')}>
-          <Icon name="stats" size={20} />
+          <span class="gold-nav-logo" aria-hidden="true"><img src="/gold-logo.png" alt="" /></span>
           Gold
         </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} onClick={() => setPage('account')}>
