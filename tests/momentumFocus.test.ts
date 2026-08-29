@@ -65,6 +65,49 @@ test('a scan with partial but usable evidence focuses the strongest observed mar
   assert.ok(sent.some((payload) => payload.ticks === 'cryBTCUSD' && payload.subscribe === 1));
 });
 
+test('automatic scan skips a stronger market when historical evidence blocks its direction', async () => {
+  const [{ Hub }, { MomentumObserver }] = await Promise.all([
+    import('../src/api/hub.ts'), import('../src/momentum/observer.ts'),
+  ]);
+  const observer = new MomentumObserver(new Hub()) as any;
+  const sent: Array<Record<string, unknown>> = [];
+  const now = Math.floor(Date.now() / 1000);
+  const ticks = (values: number[]) => values.map((quote, index) => ({ epoch: now - 60 + index * 15, quote }));
+  observer.ws = { send: (payload: string) => sent.push(JSON.parse(payload)) };
+  observer.running = true;
+  observer.phase = 'scanning';
+  observer.generation = 9;
+  observer.markets = [
+    { symbol: 'R_BAD', display: 'Strong But Bad History', market: 'synthetic_index' },
+    { symbol: 'R_OK', display: 'Cleaner Momentum', market: 'synthetic_index' },
+  ];
+  observer.scanStartedAt = now - 60;
+  observer.scanTicks = new Map([
+    ['R_BAD', ticks([100, 100.2, 100.4, 100.6, 101])],
+    ['R_OK', ticks([100, 100.08, 100.16, 100.24, 100.34])],
+  ]);
+  observer.researchProfiles = new Map([
+    ['R_BAD:up', {
+      symbol: 'R_BAD',
+      direction: 'up',
+      windows: 12,
+      wins: 3,
+      losses: 9,
+      win_rate: .25,
+      estimated_net: -4.5,
+      last_completed_at: Date.now(),
+    }],
+  ]);
+
+  observer.finishScan(9);
+
+  const state = observer.state();
+  assert.equal(state.running, true);
+  assert.equal(state.phase, 'observing');
+  assert.equal(state.config.symbol, 'R_OK');
+  assert.ok(sent.some((payload) => payload.ticks === 'R_OK' && payload.subscribe === 1));
+});
+
 test('a scan without usable ticks stays active and starts another bounded comparison', async () => {
   const [{ Hub }, { MomentumObserver }] = await Promise.all([
     import('../src/api/hub.ts'), import('../src/momentum/observer.ts'),

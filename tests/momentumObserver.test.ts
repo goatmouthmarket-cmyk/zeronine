@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   discoverMomentumMarkets,
+  momentumEntryGuard,
   momentumSignal,
   momentumVerificationPool,
   rankMomentumMarkets,
+  scoreMomentumOpportunity,
   supportsBothMultiplierDirections,
 } from '../src/momentum/observer.ts';
 
@@ -30,6 +32,53 @@ test('momentum signal identifies aligned upward and downward returns', () => {
 test('momentum signal rejects mixed short-horizon movement', () => {
   const signal = momentumSignal(series([100, 100.2, 99.9, 100.2, 100]), 60);
   assert.equal(signal.direction, 'wait');
+});
+
+test('Boom and Crash native impulses carry reversal risk for momentum entries', () => {
+  const boomTicks = series([100, 100.03, 100.05, 100.07, 100.08, 100.3]);
+  const boomSignal = momentumSignal(boomTicks, 75);
+  const boomGuard = momentumEntryGuard(
+    { symbol: 'BOOM1000', display: 'Boom 1000 Index', market: 'synthetic_index' },
+    boomSignal,
+    boomTicks,
+    null,
+  );
+  assert.equal(boomSignal.direction, 'up');
+  assert.equal(boomGuard.ok, false);
+  assert.match(boomGuard.reason ?? '', /Boom spike/i);
+
+  const crashTicks = series([100, 99.97, 99.95, 99.93, 99.92, 99.7]);
+  const crashSignal = momentumSignal(crashTicks, 75);
+  const crashGuard = momentumEntryGuard(
+    { symbol: 'CRASH1000', display: 'Crash 1000 Index', market: 'synthetic_index' },
+    crashSignal,
+    crashTicks,
+    null,
+  );
+  assert.equal(crashSignal.direction, 'down');
+  assert.equal(crashGuard.ok, false);
+  assert.match(crashGuard.reason ?? '', /Crash drop/i);
+});
+
+test('historical profile can veto a live momentum opportunity', () => {
+  const opportunity = scoreMomentumOpportunity(
+    { symbol: 'R_BAD', display: 'Weak History', market: 'synthetic_index' },
+    series([100, 100.1, 100.2, 100.3, 100.5]),
+    60,
+    {
+      symbol: 'R_BAD',
+      direction: 'up',
+      windows: 12,
+      wins: 3,
+      losses: 9,
+      win_rate: .25,
+      estimated_net: -4.5,
+      last_completed_at: Date.now(),
+    },
+  );
+  assert.equal(opportunity.signal.direction, 'wait');
+  assert.equal(opportunity.score, 0);
+  assert.match(opportunity.entryRisk ?? '', /Historical UP research/i);
 });
 
 test('automatic market ranking prefers Bitcoin then other crypto markets', () => {

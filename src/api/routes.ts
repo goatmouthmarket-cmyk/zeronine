@@ -11,6 +11,7 @@ import type { MarketRegistry } from '../core/marketState.ts';
 import type { Automation } from '../strategy/automation.ts';
 import type { PaperSimulator } from '../simulation/paperSimulator.ts';
 import type { MomentumObserver } from '../momentum/observer.ts';
+import { momentumEntryGuard } from '../momentum/observer.ts';
 import { encryptToken } from '../db/crypto.ts';
 import {
   buildAuthorizeUrl,
@@ -32,6 +33,7 @@ import {
   getAutomation as storeGetAutomation,
   getCalibration,
   getMeta,
+  getMomentumResearchProfile,
   getOpenTrade,
   getTrade,
   getPerformanceSummary,
@@ -415,6 +417,19 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (direction !== signal.direction) {
       reply.code(409);
       return { error: `Momentum research recommends ${signal.direction.toUpperCase()}; review before trading the opposite direction` };
+    }
+    const momentumMarkets = Array.isArray(current.markets) ? current.markets : [];
+    const currentMarket = momentumMarkets.find((market) => market.symbol === current.config!.symbol)
+      ?? { symbol: current.config.symbol, display: current.config.symbol, market: 'unknown' };
+    const entryGuard = momentumEntryGuard(
+      currentMarket,
+      signal,
+      current.window.samples ?? [],
+      getMomentumResearchProfile(current.config.symbol, signal.direction),
+    );
+    if (!entryGuard.ok) {
+      reply.code(409);
+      return { error: `Momentum entry blocked: ${entryGuard.reason}` };
     }
     const reason = [
       `momentum manual ${direction.toUpperCase()}`,

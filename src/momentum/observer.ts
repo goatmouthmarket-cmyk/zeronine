@@ -1,7 +1,13 @@
 import WebSocket from 'ws';
 import { config } from '../config.ts';
 import type { Hub } from '../api/hub.ts';
-import { getMomentumResearchSummary, insertMomentumResearch, type MomentumResearchSummary } from '../db/store.ts';
+import {
+  getMomentumResearchProfiles,
+  getMomentumResearchSummary,
+  insertMomentumResearch,
+  type MomentumResearchProfile,
+  type MomentumResearchSummary,
+} from '../db/store.ts';
 
 const WINDOW_SECONDS = 300;
 const DECISION_AFTER_SECONDS = 60;
@@ -17,6 +23,9 @@ const MAX_FOCUS_SAMPLES = 90;
 const UI_EMIT_INTERVAL_MS = 250;
 const MIN_FALLBACK_SCAN_SECONDS = 15;
 const AUTOMATIC_CONFIG = { multiplier: 20, stake: 10, commissionRate: .001 } as const;
+const MIN_HISTORY_WINDOWS_FOR_WEIGHT = 6;
+const MIN_HISTORY_WINDOWS_FOR_BLOCK = 12;
+const RUG_PULL_BLOCK_RISK = .82;
 
 export interface MomentumMarket { symbol: string; display: string; market: string }
 export interface MomentumSample { epoch: number; quote: number }
@@ -24,6 +33,12 @@ export interface MomentumScanMarket extends MomentumMarket {
   sampleCount: number;
   progress: number;
   signal: MomentumSignal;
+  opportunityScore: number;
+  historicalWinRate: number | null;
+  historicalWindows: number;
+  historicalAdjustment: number;
+  rugPullRisk: number;
+  entryRisk: string | null;
   samples: MomentumSample[];
 }
 export interface MomentumConfig { symbol: string; multiplier: number; stake: number; commissionRate: number }
@@ -35,6 +50,23 @@ export interface MomentumSignal {
   return15s: number | null;
   return30s: number | null;
   return60s: number | null;
+}
+export interface MomentumEntryGuard {
+  ok: boolean;
+  reason: string | null;
+  historicalAdjustment: number;
+  historicalWindows: number;
+  historicalWinRate: number | null;
+  rugPullRisk: number;
+}
+export interface MomentumOpportunity {
+  signal: MomentumSignal;
+  score: number;
+  historicalAdjustment: number;
+  historicalWindows: number;
+  historicalWinRate: number | null;
+  rugPullRisk: number;
+  entryRisk: string | null;
 }
 export interface MomentumWindow {
   startedAt: number;
@@ -75,6 +107,7 @@ type MultiplierSupport = { checkedAt: number; supported: boolean };
 
 function delay(ms: number): Promise<void> { return new Promise((resolve) => setTimeout(resolve, ms)); }
 function pct(from: number, to: number): number { return from > 0 ? (to - from) / from : 0; }
+function profileKey(symbol: string, direction: 'up' | 'down'): string { return `${symbol}:${direction}`; }
 function sampleTicks(ticks: Tick[], limit: number): MomentumSample[] {
   if (ticks.length <= limit) return ticks.map((tick) => ({ ...tick }));
   const step = (ticks.length - 1) / (limit - 1);
@@ -101,6 +134,157 @@ export function momentumSignal(ticks: Tick[], now: number): MomentumSignal {
   if (Math.abs(score) < .00015 || agreement < 2 / 3) return { direction: 'wait', confidence, score, reason: 'Returns are mixed or too small to justify a direction', return15s: r15, return30s: r30, return60s: r60 };
   const direction = score > 0 ? 'up' : 'down';
   return { direction, confidence, score, reason: `${direction === 'up' ? 'Upward' : 'Downward'} returns agree across ${Math.round(agreement * 3)} of 3 horizons`, return15s: r15, return30s: r30, return60s: r60 };
+}
+
+function boomCrashFamily(market: MomentumMarket): 'boom' | 'crash' | null {
+  const text = `${market.symbol} ${market.display}`.toLowerCase();
+  if (text.includes('boom')) return 'boom';
+  if (text.includes('crash')) return 'crash';
+  return null;
+}
+
+function historyAdjustment(profile: MomentumResearchProfile | null | undefined): number {
+  if (!profile || profile.windows < MIN_HISTORY_WINDOWS_FOR_WEIGHT || profile.win_rate == null) return 0;
+  const maturity = Math.min(1, profile.windows / 30);
+  const winRateEdge = (profile.win_rate - .5) * 2;
+  const netEdge = Math.max(-1, Math.min(1, profile.estimated_net / Math.max(1, profile.windows)));
+  return (winRateEdge * .22 + netEdge * .08) * maturity;
+}
+
+function historyBlocksEntry(profile: MomentumResearchProfile | null | undefined): string | null {
+  if (!profile || profile.windows < MIN_HISTORY_WINDOWS_FOR_BLOCK || profile.win_rate == null) return null;
+  if (profile.win_rate < .42 && profile.estimated_net < 0) {
+    return `Historical ${profile.direction.toUpperCase()} research on ${profile.symbol} is weak (${Math.round(profile.win_rate * 100)}% over ${profile.windows} windows)`;
+  }
+  return null;
+}
+
+function boomCrashRugPullRisk(market: MomentumMarket, direction: 'up' | 'down', ticks: Tick[]): { risk: number; reason: string | null } {
+  const family = boomCrashFamily(market);
+  if (!family || ticks.length < 3) return { risk: 0, reason: null };
+  const nativeDirection = family === 'boom' ? 'up' : 'down';
+  if (direction !== nativeDirection) return { risk: 0, reason: null };
+
+  const nativeSign = nativeDirection === 'up' ? 1 : -1;
+  const latest = ticks.at(-1)!;
+  const first = ticks.find((tick) => tick.epoch >= latest.epoch - 60) ?? ticks[0]!;
+  let impulsePct = 0;
+  let impulseIndex = -1;
+  for (let i = 1; i < ticks.length; i += 1) {
+    if (ticks[i]!.epoch < latest.epoch - 60) continue;
+    const move = pct(ticks[i - 1]!.quote, ticks[i]!.quote) * nativeSign;
+    if (move > impulsePct) {
+      impulsePct = move;
+      impulseIndex = i;
+    }
+  }
+  if (impulsePct < .00035 || impulseIndex < 0) return { risk: 0, reason: null };
+
+  const impulse = ticks[impulseIndex]!;
+  const postImpulseMove = pct(impulse.quote, latest.quote) * nativeSign;
+  const totalNativeMove = Math.max(Math.abs(pct(first.quote, latest.quote) * nativeSign), .00001);
+  const impulseShare = impulsePct / totalNativeMove;
+  const secondsSinceImpulse = latest.epoch - impulse.epoch;
+  let risk = Math.min(.55, impulsePct / .0015 * .45);
+  if (secondsSinceImpulse <= 20) risk += .18;
+  if (postImpulseMove <= 0) risk += .24;
+  if (impulseShare >= .65) risk += .15;
+  risk = Math.max(0, Math.min(1, risk));
+  const reason = risk >= .35
+    ? `${family === 'boom' ? 'Boom spike' : 'Crash drop'} is fresh; chasing it has elevated reversal risk`
+    : null;
+  return { risk, reason };
+}
+
+export function momentumEntryGuard(
+  market: MomentumMarket,
+  signal: MomentumSignal,
+  ticks: Tick[],
+  profile: MomentumResearchProfile | null | undefined,
+): MomentumEntryGuard {
+  const historicalAdjustment = historyAdjustment(profile);
+  const historicalReason = signal.direction === 'wait' ? null : historyBlocksEntry(profile);
+  const rugPull = signal.direction === 'wait'
+    ? { risk: 0, reason: null }
+    : boomCrashRugPullRisk(market, signal.direction, ticks);
+  const rugPullReason = rugPull.risk >= RUG_PULL_BLOCK_RISK ? rugPull.reason : null;
+  const reason = historicalReason ?? rugPullReason;
+  return {
+    ok: reason == null,
+    reason,
+    historicalAdjustment,
+    historicalWindows: profile?.windows ?? 0,
+    historicalWinRate: profile?.win_rate ?? null,
+    rugPullRisk: rugPull.risk,
+  };
+}
+
+export function scoreMomentumOpportunity(
+  market: MomentumMarket,
+  ticks: Tick[],
+  now: number,
+  profile: MomentumResearchProfile | null | undefined,
+): MomentumOpportunity {
+  const rawSignal = momentumSignal(ticks, now);
+  if (rawSignal.direction === 'wait') {
+    return {
+      signal: rawSignal,
+      score: 0,
+      historicalAdjustment: historyAdjustment(profile),
+      historicalWindows: profile?.windows ?? 0,
+      historicalWinRate: profile?.win_rate ?? null,
+      rugPullRisk: 0,
+      entryRisk: null,
+    };
+  }
+  const guard = momentumEntryGuard(market, rawSignal, ticks, profile);
+  if (!guard.ok) {
+    return {
+      signal: {
+        ...rawSignal,
+        direction: 'wait',
+        confidence: Math.min(rawSignal.confidence, 35),
+        score: 0,
+        reason: guard.reason ?? rawSignal.reason,
+      },
+      score: 0,
+      historicalAdjustment: guard.historicalAdjustment,
+      historicalWindows: guard.historicalWindows,
+      historicalWinRate: guard.historicalWinRate,
+      rugPullRisk: guard.rugPullRisk,
+      entryRisk: guard.reason,
+    };
+  }
+  const scoreFactor = 1 + guard.historicalAdjustment - guard.rugPullRisk;
+  if (scoreFactor <= 0) {
+    const reason = 'Momentum score has no positive edge after stored-history and Boom/Crash risk adjustment';
+    return {
+      signal: { ...rawSignal, direction: 'wait', confidence: Math.min(rawSignal.confidence, 35), score: 0, reason },
+      score: 0,
+      historicalAdjustment: guard.historicalAdjustment,
+      historicalWindows: guard.historicalWindows,
+      historicalWinRate: guard.historicalWinRate,
+      rugPullRisk: guard.rugPullRisk,
+      entryRisk: reason,
+    };
+  }
+  const adjustedConfidence = Math.round(Math.max(0, Math.min(100, rawSignal.confidence * (1 + guard.historicalAdjustment) * (1 - guard.rugPullRisk * .45))));
+  const adjustedScore = rawSignal.score * scoreFactor;
+  const historicalNote = guard.historicalWindows >= MIN_HISTORY_WINDOWS_FOR_WEIGHT
+    ? `; stored ${rawSignal.direction.toUpperCase()} history ${Math.round((guard.historicalWinRate ?? 0) * 100)}% over ${guard.historicalWindows} windows`
+    : '';
+  const riskNote = guard.rugPullRisk >= .25 ? `; Boom/Crash reversal risk ${Math.round(guard.rugPullRisk * 100)}%` : '';
+  const signal = { ...rawSignal, confidence: adjustedConfidence, score: adjustedScore, reason: `${rawSignal.reason}${historicalNote}${riskNote}` };
+  const adjusted = adjustedConfidence * Math.abs(adjustedScore);
+  return {
+    signal,
+    score: adjusted,
+    historicalAdjustment: guard.historicalAdjustment,
+    historicalWindows: guard.historicalWindows,
+    historicalWinRate: guard.historicalWinRate,
+    rugPullRisk: guard.rugPullRisk,
+    entryRisk: guard.reason,
+  };
 }
 
 export function rankMomentumMarkets(markets: MomentumMarket[]): MomentumMarket[] {
@@ -163,8 +347,13 @@ export class MomentumObserver {
   private generation = 0;
   private multiplierSupport = new Map<string, MultiplierSupport>();
   private nextContractCheckAt = 0;
+  private researchProfiles = new Map<string, MomentumResearchProfile>();
 
-  constructor(hub: Hub) { this.hub = hub; this.research = getMomentumResearchSummary(); }
+  constructor(hub: Hub) {
+    this.hub = hub;
+    this.research = getMomentumResearchSummary();
+    this.refreshResearchProfiles();
+  }
 
   state(): MomentumState {
     const now = Math.floor(Date.now() / 1000);
@@ -173,15 +362,22 @@ export class MomentumObserver {
       startedAt: this.scanStartedAt,
       endsAt: this.scanStartedAt + SCAN_SECONDS,
       markets: [...this.scanTicks.entries()].map(([symbol, ticks]) => {
-        const market = this.markets.find((item) => item.symbol === symbol) ?? { symbol, display: symbol, market: 'unknown' };
+        const market = this.marketFor(symbol);
+        const opportunity = this.scanOpportunity(market, ticks, now);
         return {
           ...market,
           sampleCount: ticks.length,
           progress: Math.min(1, Math.max(0, (now - this.scanStartedAt) / SCAN_SECONDS)),
-          signal: momentumSignal(ticks, now),
+          signal: opportunity.signal,
+          opportunityScore: opportunity.score,
+          historicalWinRate: opportunity.historicalWinRate,
+          historicalWindows: opportunity.historicalWindows,
+          historicalAdjustment: opportunity.historicalAdjustment,
+          rugPullRisk: opportunity.rugPullRisk,
+          entryRisk: opportunity.entryRisk,
           samples: sampleTicks(ticks, MAX_SCAN_SAMPLES),
         };
-      }).sort((a, b) => (b.signal.confidence * Math.abs(b.signal.score)) - (a.signal.confidence * Math.abs(a.signal.score))),
+      }).sort((a, b) => b.opportunityScore - a.opportunityScore),
     } : null;
     const window = this.window ? { ...this.window, samples: sampleTicks(this.window.samples, MAX_FOCUS_SAMPLES) } : null;
     return { phase: this.phase, running: this.running, markets: this.markets, config: this.config, window,
@@ -269,6 +465,7 @@ export class MomentumObserver {
       return this.state();
     }
     this.stopSubscription();
+    this.refreshResearchProfiles();
     const candidates = (await this.verifyMultiplierMarkets(momentumVerificationPool(this.markets), generation)).slice(0, MAX_SCAN_MARKETS);
     if (generation !== this.generation) return this.state();
     if (!candidates.length) throw new Error('No open real market currently offers both multiplier directions');
@@ -315,9 +512,14 @@ export class MomentumObserver {
   private finishScan(generation: number): void {
     if (generation !== this.generation || !this.running || this.phase !== 'scanning') return;
     const now = Math.floor(Date.now() / 1000);
-    const ranked = [...this.scanTicks.entries()].map(([symbol, ticks]) => ({ symbol, signal: momentumSignal(ticks, now) }))
-      .filter((item) => item.signal.direction !== 'wait')
-      .sort((a, b) => (b.signal.confidence * Math.abs(b.signal.score)) - (a.signal.confidence * Math.abs(a.signal.score)));
+    const ranked = [...this.scanTicks.entries()].map(([symbol, ticks]) => {
+      const market = this.marketFor(symbol);
+      const opportunity = this.scanOpportunity(market, ticks, now);
+      return { symbol, opportunity };
+    })
+      .filter((item) => item.opportunity.signal.direction !== 'wait')
+      .filter((item) => item.opportunity.score > 0 && !item.opportunity.entryRisk)
+      .sort((a, b) => b.opportunity.score - a.opportunity.score);
     const selected = ranked[0]?.symbol;
     if (selected) {
       this.begin({ symbol: selected, ...AUTOMATIC_CONFIG }, this.scanTicks.get(selected) ?? []);
@@ -335,11 +537,14 @@ export class MomentumObserver {
         const last = ticks.at(-1);
         const span = first && last ? last.epoch - first.epoch : 0;
         const movement = first && last ? Math.abs(pct(first.quote, last.quote)) : 0;
-        const signal = momentumSignal(ticks, now);
-        return { symbol, ticks, span, movement, signal };
+        const market = this.marketFor(symbol);
+        const opportunity = this.scanOpportunity(market, ticks, now);
+        return { symbol, ticks, span, movement, signal: opportunity.signal, opportunity };
       })
       .filter((item) => item.ticks.length >= 2 && item.span >= MIN_FALLBACK_SCAN_SECONDS)
-      .sort((a, b) => (b.signal.confidence - a.signal.confidence)
+      .filter((item) => !item.opportunity.entryRisk)
+      .sort((a, b) => (b.opportunity.score - a.opportunity.score)
+        || (b.signal.confidence - a.signal.confidence)
         || (Math.abs(b.signal.score) - Math.abs(a.signal.score))
         || (b.movement - a.movement)
         || (b.span - a.span));
@@ -385,6 +590,23 @@ export class MomentumObserver {
       if (supported) verified.push(market);
     }
     return verified;
+  }
+
+  private refreshResearchProfiles(): void {
+    this.research = getMomentumResearchSummary();
+    this.researchProfiles = new Map(getMomentumResearchProfiles().map((profile) => [profileKey(profile.symbol, profile.direction), profile]));
+  }
+
+  private marketFor(symbol: string): MomentumMarket {
+    return this.markets.find((item) => item.symbol === symbol) ?? { symbol, display: symbol, market: 'unknown' };
+  }
+
+  private scanOpportunity(market: MomentumMarket, ticks: Tick[], now: number): MomentumOpportunity {
+    const signal = momentumSignal(ticks, now);
+    const profile = signal.direction === 'wait'
+      ? null
+      : this.researchProfiles.get(profileKey(market.symbol, signal.direction));
+    return scoreMomentumOpportunity(market, ticks, now, profile);
   }
 
   private async checkMultiplierSupport(symbol: string, generation: number): Promise<boolean> {
@@ -436,7 +658,7 @@ export class MomentumObserver {
       return;
     }
     const elapsed = epoch - this.window.startedAt;
-    const signal = momentumSignal(this.ticks, epoch);
+    const signal = this.scanOpportunity(this.marketFor(this.config.symbol), this.ticks, epoch).signal;
     this.window.currentPrice = quote; this.window.changePct = pct(this.window.openPrice, quote); this.window.signal = signal;
     if (!this.window.direction && elapsed >= DECISION_AFTER_SECONDS && signal.direction !== 'wait') {
       this.window.direction = signal.direction; this.window.decisionAt = epoch; this.window.decisionPrice = quote; this.window.decisionSignal = signal; this.signalledWindows += 1;
@@ -451,8 +673,9 @@ export class MomentumObserver {
   }
 
   private newWindow(quote: number, epoch: number): MomentumWindow {
+    const signal = this.config ? this.scanOpportunity(this.marketFor(this.config.symbol), this.ticks, epoch).signal : momentumSignal(this.ticks, epoch);
     return { startedAt: epoch, endsAt: epoch + WINDOW_SECONDS, openPrice: quote, currentPrice: quote, changePct: 0,
-      decisionAt: null, decisionPrice: null, direction: null, signal: momentumSignal(this.ticks, epoch), decisionSignal: null,
+      decisionAt: null, decisionPrice: null, direction: null, signal, decisionSignal: null,
       samples: [{ quote, epoch }], estimatedGross: 0, estimatedCommission: 0, estimatedNet: 0 };
   }
 
@@ -476,6 +699,7 @@ export class MomentumObserver {
           commission_rate: this.config?.commissionRate ?? 0, estimated_net: this.window.estimatedNet, won: won ? 1 : 0,
         });
         this.research = getMomentumResearchSummary();
+        this.refreshResearchProfiles();
       } catch (error) {
         console.warn(`[momentum] failed to persist research window: ${String(error)}`);
       }

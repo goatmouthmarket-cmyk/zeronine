@@ -7,7 +7,7 @@ import test from 'node:test';
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'overunder-momentum-'));
 
 test('completed multiplier research windows persist and expose a maturity threshold', async () => {
-  const { getMomentumResearchSummary, insertMomentumResearch } = await import('../src/db/store.ts');
+  const { getMomentumResearchProfile, getMomentumResearchProfiles, getMomentumResearchSummary, insertMomentumResearch } = await import('../src/db/store.ts');
   const base = {
     completed_at: Date.now(), symbol: 'frxEURUSD', market: 'forex', direction: 'up' as const,
     confidence: 82, score: 0.002, return_15s: 0.001, return_30s: 0.0015, return_60s: 0.002,
@@ -26,4 +26,10 @@ test('completed multiplier research windows persist and expose a maturity thresh
       { symbol: 'frxEURUSD', direction: 'up', won: 1 },
     ],
   });
+
+  const profile = getMomentumResearchProfile('frxEURUSD', 'up');
+  assert.equal(profile?.windows, 1);
+  assert.equal(profile?.wins, 1);
+  assert.equal(profile?.win_rate, 1);
+  assert.ok(getMomentumResearchProfiles().some((item) => item.symbol === 'frxEURUSD' && item.direction === 'down'));
 });

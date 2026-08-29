@@ -406,6 +406,12 @@ export interface MomentumScanMarket {
   market: string;
   sampleCount: number;
   progress: number;
+  opportunityScore?: number;
+  historicalWinRate?: number | null;
+  historicalWindows?: number;
+  historicalAdjustment?: number;
+  rugPullRisk?: number;
+  entryRisk?: string | null;
   signal: {
     direction?: 'up' | 'down' | 'wait';
     confidence?: number;

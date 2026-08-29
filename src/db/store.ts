@@ -227,6 +227,17 @@ export interface MomentumResearchSummary {
   recent: MomentumResearchRow[];
 }
 
+export interface MomentumResearchProfile {
+  symbol: string;
+  direction: 'up' | 'down';
+  windows: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  estimated_net: number;
+  last_completed_at: number | null;
+}
+
 export type StrategyMode = 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
 
 /**
@@ -1720,6 +1731,79 @@ export function getMomentumResearchSummary(maturityTarget = 30): MomentumResearc
     ready_for_virtual_paper: windows >= maturityTarget,
     recent,
   };
+}
+
+function rowToMomentumResearchProfile(row: {
+  symbol: unknown;
+  direction: unknown;
+  windows: unknown;
+  wins: unknown;
+  losses: unknown;
+  estimated_net: unknown;
+  last_completed_at: unknown;
+}): MomentumResearchProfile {
+  const windows = Number(row.windows ?? 0);
+  const wins = Number(row.wins ?? 0);
+  return {
+    symbol: String(row.symbol ?? ''),
+    direction: row.direction === 'down' ? 'down' : 'up',
+    windows,
+    wins,
+    losses: Number(row.losses ?? 0),
+    win_rate: windows > 0 ? wins / windows : null,
+    estimated_net: Math.round(Number(row.estimated_net ?? 0) * 100) / 100,
+    last_completed_at: row.last_completed_at == null ? null : Number(row.last_completed_at),
+  };
+}
+
+export function getMomentumResearchProfiles(): MomentumResearchProfile[] {
+  return (getDb().prepare(
+    `SELECT symbol, direction,
+      COUNT(*) AS windows,
+      COALESCE(SUM(won), 0) AS wins,
+      COALESCE(SUM(CASE WHEN won = 0 THEN 1 ELSE 0 END), 0) AS losses,
+      COALESCE(SUM(estimated_net), 0) AS estimated_net,
+      MAX(completed_at) AS last_completed_at
+     FROM momentum_research
+     GROUP BY symbol, direction`,
+  ).all() as Array<{
+    symbol: unknown;
+    direction: unknown;
+    windows: unknown;
+    wins: unknown;
+    losses: unknown;
+    estimated_net: unknown;
+    last_completed_at: unknown;
+  }>).map(rowToMomentumResearchProfile);
+}
+
+export function getMomentumResearchProfile(symbol: string, direction: 'up' | 'down'): MomentumResearchProfile | null {
+  const row = getDb().prepare(
+    `SELECT symbol, direction,
+      COUNT(*) AS windows,
+      COALESCE(SUM(won), 0) AS wins,
+      COALESCE(SUM(CASE WHEN won = 0 THEN 1 ELSE 0 END), 0) AS losses,
+      COALESCE(SUM(estimated_net), 0) AS estimated_net,
+      MAX(completed_at) AS last_completed_at
+     FROM momentum_research
+     WHERE symbol = ? AND direction = ?
+     GROUP BY symbol, direction`,
+  ).get(symbol, direction) as {
+    symbol: unknown;
+    direction: unknown;
+    windows: unknown;
+    wins: unknown;
+    losses: unknown;
+    estimated_net: unknown;
+    last_completed_at: unknown;
+  } | undefined;
+  return row ? rowToMomentumResearchProfile(row) : null;
+}
+
+export function listMomentumResearch(limit = 240): MomentumResearchRow[] {
+  return getDb()
+    .prepare('SELECT * FROM momentum_research ORDER BY completed_at DESC LIMIT ?')
+    .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as unknown as MomentumResearchRow[];
 }
 
 export function getMeta(key: string): string | null {
