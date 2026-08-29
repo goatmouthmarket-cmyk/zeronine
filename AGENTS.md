@@ -18,6 +18,7 @@
 - Paired arbitrage feasibility execution is demo-only, owner-confirmed, globally exclusive, and must remain outside normal trades, recovery, and account P&L. Unknown buy outcomes are evidence to reconcile, never grounds for an automatic retry.
 - Keep `src/gold/` isolated from Deriv digit and Momentum execution. Gold uses normalized price/candle data, its own risk and paper/backtest engines, and never inherits martingale or recovery behavior.
 - Gold broker access is OAuth-only and demo-first: never configure a shared broker access token, expose provider tokens to the browser, or enable a live order path before the PostgreSQL ownership, idempotency, worker-lease, and reconciliation design is operational.
+- Use cTrader's documented accounts-consent flow for Gold, with server-side token exchange and encrypted storage. Only server-discovered demo accounts may be selected; OAuth authorization, account selection, market data, and execution are separate gates.
 
 ## Validation
 
