@@ -23,6 +23,17 @@ export interface PaperSignal {
   payoutRatio?: number;
   estWin?: number;
   edge?: number;
+  /**
+   * Scanner-event identity and time are optional for direct simulator users,
+   * but the server always supplies them. They prevent an old UI recommendation
+   * from becoming a stream of new virtual orders on later public ticks.
+   */
+  id?: string;
+  issuedAt?: number;
+  reason?: string;
+  evidence?: Record<string, number | null>;
+  strategyMode?: string;
+  botMode?: string;
 }
 
 export interface PaperContract {
@@ -40,6 +51,12 @@ export interface PaperContract {
   entryTickSequence: number;
   estWin?: number;
   edge?: number;
+  signalId?: string;
+  scannerIssuedAt?: number;
+  candidateReason?: string;
+  evidence?: Record<string, number | null>;
+  strategyMode?: string;
+  botMode?: string;
   status: 'open' | 'won' | 'lost' | 'cancelled';
   exitEpoch?: number;
   exitQuote?: number;
@@ -86,6 +103,8 @@ type Listener = (event: PaperSimulationEvent) => void;
 const DEFAULT_INITIAL_BALANCE = 1_000;
 const DEFAULT_STAKE = 2;
 const DEFAULT_PAYOUT_RATIO = 1.9;
+const MAX_SCANNER_SIGNAL_AGE_MS = 5_000;
+const SAME_CANDIDATE_COOLDOWN_MS = 15_000;
 
 function rounded(value: number): number {
   return Math.round(value * 100) / 100;
@@ -129,6 +148,8 @@ export class PaperSimulator {
   private readonly ticks = new Map<string, { tick: PaperTick; sequence: number }>();
   private nextTickSequence = 1;
   private readonly listeners = new Set<Listener>();
+  private readonly offeredSignalIds = new Map<string, number>();
+  private readonly lastOfferByCandidate = new Map<string, number>();
 
   constructor(options: PaperSimulatorOptions = {}) {
     this.initialBalance = finitePositive(options.initialBalance ?? DEFAULT_INITIAL_BALANCE)
@@ -212,6 +233,8 @@ export class PaperSimulator {
     this.runId = PaperSimulator.newRunId();
     this.openContract = null;
     this.lastSettled = null;
+    this.offeredSignalIds.clear();
+    this.lastOfferByCandidate.clear();
     this.emit({ type: 'reset', state: this.state() });
   }
 
@@ -240,6 +263,21 @@ export class PaperSimulator {
     }
     if (!this.validSignal(signal)) return this.skip(signal, 'invalid paper signal');
 
+    const now = Date.now();
+    const candidateKey = `${signal.market}|${signal.direction}|${signal.barrier}`;
+    if (signal.issuedAt !== undefined) {
+      if (!Number.isFinite(signal.issuedAt) || signal.issuedAt > now + 1_000 || now - signal.issuedAt > MAX_SCANNER_SIGNAL_AGE_MS) {
+        return this.skip(signal, 'scanner signal is stale');
+      }
+      if (signal.id && this.offeredSignalIds.has(signal.id)) {
+        return this.skip(signal, 'scanner signal was already offered');
+      }
+      const lastOfferAt = this.lastOfferByCandidate.get(candidateKey);
+      if (lastOfferAt !== undefined && now - lastOfferAt < SAME_CANDIDATE_COOLDOWN_MS) {
+        return this.skip(signal, 'scanner candidate cooldown');
+      }
+    }
+
     const entry = this.ticks.get(signal.market);
     if (!entry) return this.skip(signal, 'market has no public tick yet');
     const stake = rounded(signal.stake ?? this.defaultStake);
@@ -261,9 +299,20 @@ export class PaperSimulator {
       entryTickSequence: entry.sequence,
       ...(Number.isFinite(signal.estWin) ? { estWin: signal.estWin } : {}),
       ...(Number.isFinite(signal.edge) ? { edge: signal.edge } : {}),
+      ...(signal.id ? { signalId: signal.id } : {}),
+      ...(Number.isFinite(signal.issuedAt) ? { scannerIssuedAt: signal.issuedAt } : {}),
+      ...(signal.reason ? { candidateReason: signal.reason } : {}),
+      ...(signal.evidence ? { evidence: { ...signal.evidence } } : {}),
+      ...(signal.strategyMode ? { strategyMode: signal.strategyMode } : {}),
+      ...(signal.botMode ? { botMode: signal.botMode } : {}),
       status: 'open',
     };
     this.openContract = contract;
+    if (signal.issuedAt !== undefined) {
+      if (signal.id) this.offeredSignalIds.set(signal.id, now);
+      this.lastOfferByCandidate.set(candidateKey, now);
+      this.pruneOfferGuards(now);
+    }
     this.emit({ type: 'opened', contract: cloneContract(contract)!, state: this.state() });
     return cloneContract(contract);
   }
@@ -323,6 +372,15 @@ export class PaperSimulator {
     return signal.direction === 'over'
       ? signal.barrier >= 0 && signal.barrier <= 8
       : signal.barrier >= 1 && signal.barrier <= 9;
+  }
+
+  private pruneOfferGuards(now: number): void {
+    for (const [id, offeredAt] of this.offeredSignalIds) {
+      if (now - offeredAt > MAX_SCANNER_SIGNAL_AGE_MS * 3) this.offeredSignalIds.delete(id);
+    }
+    for (const [key, offeredAt] of this.lastOfferByCandidate) {
+      if (now - offeredAt > SAME_CANDIDATE_COOLDOWN_MS * 3) this.lastOfferByCandidate.delete(key);
+    }
   }
 
   private static newRunId(): string {

@@ -310,6 +310,43 @@ export interface PaperSimulationState {
   lastTick: { market: string; quote: number; digit: number; epoch: number } | null;
 }
 
+/** A contract-level virtual-paper record. It never represents Deriv account funds. */
+export interface PaperTrade {
+  contractRef: string;
+  market: string;
+  direction: 'over' | 'under';
+  barrier: number;
+  stake: number;
+  payout: number;
+  status: 'open' | 'won' | 'lost' | 'cancelled';
+  profit: number | null;
+  entryEpoch: number | null;
+  exitEpoch: number | null;
+  entryQuote: number | null;
+  exitQuote: number | null;
+  entryDigit: number | null;
+  exitDigit: number | null;
+  estimatedWin: number | null;
+  edge: number | null;
+  strategy: string | null;
+  strategySnapshot: string | null;
+  reason: string | null;
+  evidence: string | null;
+  lifecycle?: Array<{ event: string; ts: number; status: string; profit: number | null; reason: string | null }>;
+}
+
+export interface PaperPortfolio {
+  initialBalance: number;
+  balance: number;
+  availableBalance: number;
+  reservedStake: number;
+  netPnl: number;
+  wins: number;
+  losses: number;
+  totalTrades: number;
+  openTrades: number;
+}
+
 export interface MomentumState {
   phase: 'connecting' | 'scanning' | 'idle' | 'observing' | 'stopped' | 'error';
   running: boolean;
@@ -395,6 +432,8 @@ export interface State {
   trades: TradeRow[];
   ledgerEntries: LedgerEntry[];
   paperLedgerEntries: LedgerEntry[];
+  paperTrades: PaperTrade[];
+  paperPortfolio: PaperPortfolio | null;
   performance: PerformanceSummary | null;
   selected: string | null;
   signal: { signal: SignalPick; phase: string } | null;
@@ -427,6 +466,8 @@ const initial: State = {
   trades: [],
   ledgerEntries: [],
   paperLedgerEntries: [],
+  paperTrades: [],
+  paperPortfolio: null,
   performance: null,
   selected: null,
   signal: null,
@@ -1138,6 +1179,114 @@ export async function loadPaperLedgerEntries(limit = 200): Promise<void> {
     set({ paperLedgerEntries: Array.isArray(res.entries) ? res.entries.slice(0, limit) : [] });
   } catch {
     set({ paperLedgerEntries: [] });
+  }
+}
+
+type PaperTradeApi = {
+  contract_ref?: unknown;
+  opened_at?: unknown;
+  updated_at?: unknown;
+  market?: unknown;
+  direction?: unknown;
+  barrier?: unknown;
+  stake?: unknown;
+  payout?: unknown;
+  est_win?: unknown;
+  status?: unknown;
+  profit?: unknown;
+  entry_spot?: unknown;
+  exit_spot?: unknown;
+  exit_digit?: unknown;
+  strategy?: unknown;
+  lifecycle?: unknown;
+};
+
+function paperNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function paperText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function paperEvidenceText(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, raw]) => typeof raw === 'number' && Number.isFinite(raw))
+    .slice(0, 6)
+    .map(([key, raw]) => `${key.replaceAll('_', ' ')} ${(Number(raw) * 100).toFixed(1)}%`);
+  return entries.length ? entries.join(' | ') : null;
+}
+
+function paperTradeFromApi(raw: PaperTradeApi): PaperTrade | null {
+  const contractRef = paperText(raw.contract_ref);
+  const market = paperText(raw.market);
+  if (!contractRef || !market) return null;
+  const strategyRaw = raw.strategy && typeof raw.strategy === 'object' && !Array.isArray(raw.strategy)
+    ? raw.strategy as Record<string, unknown>
+    : null;
+  const direction = raw.direction === 'under' ? 'under' : 'over';
+  const statusRaw = String(raw.status ?? 'open');
+  const status: PaperTrade['status'] = statusRaw === 'won' || statusRaw === 'lost' || statusRaw === 'cancelled' ? statusRaw : 'open';
+  const lifecycle = Array.isArray(raw.lifecycle)
+    ? raw.lifecycle.map((entry) => {
+      const row = entry && typeof entry === 'object' ? entry as Record<string, unknown> : {};
+      return {
+        event: String(row.event ?? 'recorded'),
+        ts: paperNumber(row.ts) ?? 0,
+        status: String(row.status ?? ''),
+        profit: paperNumber(row.profit),
+        reason: paperText(row.reason),
+      };
+    })
+    : undefined;
+  const strategyMode = paperText(strategyRaw?.strategy_mode);
+  const botMode = paperText(strategyRaw?.bot_mode);
+  return {
+    contractRef,
+    market,
+    direction,
+    barrier: paperNumber(raw.barrier) ?? 0,
+    stake: paperNumber(raw.stake) ?? 0,
+    payout: paperNumber(raw.payout) ?? 0,
+    status,
+    profit: paperNumber(raw.profit),
+    entryEpoch: paperNumber(raw.opened_at),
+    exitEpoch: paperNumber(raw.updated_at),
+    entryQuote: paperNumber(raw.entry_spot),
+    exitQuote: paperNumber(raw.exit_spot),
+    entryDigit: null,
+    exitDigit: paperNumber(raw.exit_digit),
+    estimatedWin: paperNumber(raw.est_win),
+    edge: strategyRaw ? paperNumber((strategyRaw.evidence as Record<string, unknown> | undefined)?.edge) : null,
+    strategy: strategyMode && botMode ? `${strategyMode.replaceAll('_', ' ')} / ${botMode}` : strategyMode,
+    strategySnapshot: strategyMode && botMode ? `Shared configured scanner: ${strategyMode.replaceAll('_', ' ')} strategy in ${botMode} mode.` : null,
+    reason: paperText(strategyRaw?.candidate_reason),
+    evidence: paperEvidenceText(strategyRaw?.evidence),
+    lifecycle,
+  };
+}
+
+/** Contract-level virtual paper ledger. Older deployments may not expose this API yet. */
+export async function loadPaperTrades(limit = 200): Promise<void> {
+  try {
+    const res = await api<{ trades?: PaperTradeApi[]; portfolio?: PaperPortfolio }>(`/api/paper/trades?limit=${limit}`);
+    set({
+      paperTrades: Array.isArray(res.trades) ? res.trades.map(paperTradeFromApi).filter((trade): trade is PaperTrade => trade != null).slice(0, limit) : [],
+      paperPortfolio: res.portfolio ?? null,
+    });
+  } catch {
+    set({ paperTrades: [], paperPortfolio: null });
+  }
+}
+
+/** Detailed virtual-paper evidence for the selected contract. */
+export async function loadPaperTrade(contractRef: string): Promise<PaperTrade | null> {
+  try {
+    const res = await api<{ trade?: PaperTradeApi }>(`/api/paper/trades/${encodeURIComponent(contractRef)}`);
+    return res.trade ? paperTradeFromApi(res.trade) : null;
+  } catch {
+    return null;
   }
 }
 

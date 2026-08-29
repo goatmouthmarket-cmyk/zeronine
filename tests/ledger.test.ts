@@ -75,10 +75,45 @@ test('ledger preserves actual lifecycle entries and keeps virtual results out of
   assert.match(paperEntries[0].reason, /virtual research/);
   assert.equal(store.getPerformanceSummary().profit, 1.8, 'paper profit must not affect account performance');
 
+  const contextualContract = {
+    id: 2,
+    runId: 'context-run',
+    market: 'R_75',
+    direction: 'under' as const,
+    barrier: 9,
+    stake: 5,
+    payoutRatio: 1.9,
+    status: 'open' as const,
+    entryEpoch: 30,
+    entryQuote: 12.3,
+    entryDigit: 3,
+    estWin: 0.62,
+  };
+  store.appendPaperTradeContext(contextualContract, {
+    strategyMode: 'conservative',
+    botMode: 'balanced',
+    candidateReason: 'signal',
+    signalId: 'scanner-30',
+    signalAt: 30_000,
+    evidence: { edge: 0.04, momentum: 0.12 },
+  });
+  store.appendPaperLedgerEntry(contextualContract, 'purchased');
+  store.appendPaperLedgerEntry({ ...contextualContract, status: 'won', exitEpoch: 31, exitQuote: 12.1, exitDigit: 1, profit: 4.5 }, 'settled');
+  const grouped = store.listPaperTrades(10);
+  const contextual = grouped.find((trade) => trade.contract_ref === 'paper:context-run:2');
+  assert.ok(contextual);
+  assert.equal(contextual.status, 'won');
+  assert.equal(contextual.strategy?.strategy_mode, 'conservative');
+  assert.deepEqual(contextual.strategy?.evidence, { edge: 0.04, momentum: 0.12 });
+  assert.deepEqual(contextual.possible_outcomes, { won: { profit: 4.5, payout: 9.5 }, lost: { profit: -5 } });
+  const detail = store.getPaperTrade('paper:context-run:2');
+  assert.equal(detail?.lifecycle.length, 2);
+  assert.equal(detail?.strategy?.signal_id, 'scanner-30');
+
   login('B', 'real');
   const scoped = store.listLedgerEntries(10);
   assert.equal(scoped.length, 0, 'B cannot see paper research or A financial records');
-  assert.equal(store.listPaperLedgerEntries(10).length, 1, 'paper history remains available in its own book');
+  assert.equal(store.listPaperLedgerEntries(10).length, 3, 'paper history remains available in its own book');
 });
 
 test('paper outcome calibration is sample-gated, holdout-validated, bounded, and P&L-free', async () => {

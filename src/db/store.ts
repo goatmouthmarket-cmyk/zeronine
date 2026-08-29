@@ -91,6 +91,51 @@ export interface PaperLedgerContract {
   estWin?: number;
 }
 
+/** Immutable scanner/configuration snapshot captured when virtual research opens. */
+export interface PaperTradeContextRow {
+  contract_ref: string;
+  opened_at: number;
+  strategy_mode: string;
+  bot_mode: string;
+  candidate_reason: string;
+  signal_id: string;
+  signal_at: number | null;
+  evidence_json: string;
+}
+
+export interface PaperTradeContextInput {
+  strategyMode?: string;
+  botMode?: string;
+  candidateReason?: string;
+  signalId?: string;
+  signalAt?: number;
+  evidence?: Record<string, number | null>;
+}
+
+export interface PaperTradeStrategyContext extends Omit<PaperTradeContextRow, 'evidence_json'> {
+  evidence: Record<string, number | null>;
+}
+
+export interface PaperTradeSummary {
+  contract_ref: string;
+  opened_at: number;
+  updated_at: number;
+  market: string;
+  contract_type: 'DIGITOVER' | 'DIGITUNDER';
+  direction: 'over' | 'under';
+  barrier: number;
+  stake: number;
+  payout: number;
+  est_win: number | null;
+  status: string;
+  profit: number;
+  entry_spot: number | null;
+  exit_spot: number | null;
+  exit_digit: number | null;
+  strategy: PaperTradeStrategyContext | null;
+  possible_outcomes: { won: { profit: number; payout: number }; lost: { profit: number } };
+}
+
 export interface PerformanceSummary {
   wins: number;
   losses: number;
@@ -321,6 +366,17 @@ function migrate(d: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_trade_ledger_account_id ON trade_ledger(account_id, id DESC);
     CREATE INDEX IF NOT EXISTS idx_trade_ledger_book_id ON trade_ledger(book, id DESC);
+    CREATE TABLE IF NOT EXISTS paper_trade_context (
+      contract_ref TEXT PRIMARY KEY,
+      opened_at INTEGER NOT NULL,
+      strategy_mode TEXT NOT NULL,
+      bot_mode TEXT NOT NULL,
+      candidate_reason TEXT NOT NULL,
+      signal_id TEXT NOT NULL,
+      signal_at INTEGER,
+      evidence_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_paper_trade_context_opened ON paper_trade_context(opened_at DESC);
     CREATE TABLE IF NOT EXISTS performance_baseline (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       wins INTEGER NOT NULL DEFAULT 0,
@@ -1265,6 +1321,59 @@ export function appendPaperLedgerEntry(
     .get(`paper:${contract.runId}:${contract.id}:${event}`) as unknown as LedgerEntryRow;
 }
 
+/**
+ * Persist the scanner configuration that opened a virtual position. Context is
+ * insert-only: later setting changes must never rewrite historical evidence.
+ */
+export function appendPaperTradeContext(
+  contract: Pick<PaperLedgerContract, 'id' | 'runId' | 'entryEpoch'>,
+  context: PaperTradeContextInput,
+): PaperTradeContextRow {
+  const contractRef = `paper:${contract.runId}:${contract.id}`;
+  getDb().prepare(
+    `INSERT OR IGNORE INTO paper_trade_context
+      (contract_ref, opened_at, strategy_mode, bot_mode, candidate_reason, signal_id, signal_at, evidence_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    contractRef,
+    contract.entryEpoch * 1_000,
+    context.strategyMode || 'configured_scanner',
+    context.botMode || 'configured_mode',
+    context.candidateReason || 'shared scanner candidate',
+    context.signalId || '',
+    typeof context.signalAt === 'number' && Number.isFinite(context.signalAt) ? context.signalAt : null,
+    JSON.stringify(context.evidence ?? {}),
+  );
+  return getDb().prepare('SELECT * FROM paper_trade_context WHERE contract_ref = ?').get(contractRef) as unknown as PaperTradeContextRow;
+}
+
+/** Paper research telemetry must never interrupt a public feed callback. */
+export function appendPaperTradeContextSafely(
+  contract: Pick<PaperLedgerContract, 'id' | 'runId' | 'entryEpoch'>,
+  context: PaperTradeContextInput,
+): PaperTradeContextRow | null {
+  try {
+    return appendPaperTradeContext(contract, context);
+  } catch (err) {
+    console.warn(`[paper-ledger] failed to record strategy context: ${String(err)}`);
+    return null;
+  }
+}
+
+/** Paper research telemetry must never interrupt a public feed callback. */
+export function appendPaperLedgerEntrySafely(
+  contract: PaperLedgerContract,
+  event: Extract<LedgerEntryRow['event'], 'purchased' | 'settled' | 'cancelled'>,
+  reason = '',
+): LedgerEntryRow | null {
+  try {
+    return appendPaperLedgerEntry(contract, event, reason);
+  } catch (err) {
+    console.warn(`[paper-ledger] failed to record ${event}: ${String(err)}`);
+    return null;
+  }
+}
+
 /** Current-account financial events only. */
 export function listLedgerEntries(limit = 100, accountId = currentAccountId()): LedgerEntryRow[] {
   return getDb()
@@ -1332,6 +1441,88 @@ export function listPaperLedgerEntries(limit = 100): LedgerEntryRow[] {
   return getDb()
     .prepare("SELECT * FROM trade_ledger WHERE book = 'paper' ORDER BY id DESC LIMIT ?")
     .all(limit) as unknown as LedgerEntryRow[];
+}
+
+function possiblePaperOutcomes(stake: number, payout: number): PaperTradeSummary['possible_outcomes'] {
+  const safeStake = Number.isFinite(stake) ? stake : 0;
+  const safePayout = Number.isFinite(payout) ? payout : 0;
+  return {
+    won: { profit: Math.round((safePayout - safeStake) * 100) / 100, payout: safePayout },
+    lost: { profit: -Math.round(safeStake * 100) / 100 },
+  };
+}
+
+function paperTradeStrategyContext(row: PaperTradeContextRow | undefined): PaperTradeStrategyContext | null {
+  if (!row) return null;
+  let evidence: Record<string, number | null> = {};
+  try {
+    const parsed = JSON.parse(row.evidence_json) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      evidence = Object.fromEntries(
+        Object.entries(parsed).filter(([, value]) => value === null || (typeof value === 'number' && Number.isFinite(value))),
+      );
+    }
+  } catch { /* historical context can remain readable even if malformed */ }
+  const { evidence_json: _ignored, ...context } = row;
+  return { ...context, evidence };
+}
+
+function paperTradeSummary(
+  row: LedgerEntryRow & { opened_at: number; updated_at: number },
+  context?: PaperTradeContextRow,
+): PaperTradeSummary {
+  return {
+    contract_ref: row.contract_ref,
+    opened_at: row.opened_at,
+    updated_at: row.updated_at,
+    market: row.market,
+    contract_type: row.contract_type,
+    direction: row.contract_type === 'DIGITOVER' ? 'over' : 'under',
+    barrier: row.barrier,
+    stake: row.stake,
+    payout: row.payout,
+    est_win: row.est_win,
+    status: row.status,
+    profit: row.profit,
+    entry_spot: row.entry_spot,
+    exit_spot: row.exit_spot,
+    exit_digit: row.exit_digit,
+    strategy: paperTradeStrategyContext(context),
+    possible_outcomes: possiblePaperOutcomes(row.stake, row.payout),
+  };
+}
+
+/** Logical virtual contracts, grouped independently from their lifecycle rows. */
+export function listPaperTrades(limit = 100): PaperTradeSummary[] {
+  const rows = getDb().prepare(
+    `SELECT latest.*, grouped.opened_at, grouped.updated_at
+     FROM (
+       SELECT contract_ref, MIN(ts) AS opened_at, MAX(ts) AS updated_at, MAX(id) AS latest_id
+       FROM trade_ledger WHERE book = 'paper' GROUP BY contract_ref
+     ) grouped
+     JOIN trade_ledger latest ON latest.id = grouped.latest_id
+     ORDER BY grouped.updated_at DESC, latest.id DESC LIMIT ?`,
+  ).all(limit) as unknown as Array<LedgerEntryRow & { opened_at: number; updated_at: number }>;
+  if (!rows.length) return [];
+  const refs = rows.map((row) => row.contract_ref);
+  const placeholders = refs.map(() => '?').join(',');
+  const contexts = getDb().prepare(`SELECT * FROM paper_trade_context WHERE contract_ref IN (${placeholders})`)
+    .all(...refs) as unknown as PaperTradeContextRow[];
+  const byRef = new Map(contexts.map((context) => [context.contract_ref, context]));
+  return rows.map((row) => paperTradeSummary(row, byRef.get(row.contract_ref)));
+}
+
+export function getPaperTrade(contractRef: string): (PaperTradeSummary & { lifecycle: LedgerEntryRow[] }) | null {
+  const entries = getDb().prepare(
+    `SELECT * FROM trade_ledger WHERE book = 'paper' AND contract_ref = ? ORDER BY id ASC`,
+  ).all(contractRef) as unknown as LedgerEntryRow[];
+  if (!entries.length) return null;
+  const openedAt = Math.min(...entries.map((entry) => entry.ts));
+  const updatedAt = Math.max(...entries.map((entry) => entry.ts));
+  const latest = entries[entries.length - 1];
+  const context = getDb().prepare('SELECT * FROM paper_trade_context WHERE contract_ref = ?')
+    .get(contractRef) as unknown as PaperTradeContextRow | undefined;
+  return { ...paperTradeSummary({ ...latest, opened_at: openedAt, updated_at: updatedAt }, context), lifecycle: entries };
 }
 
 interface PerformanceTotals {

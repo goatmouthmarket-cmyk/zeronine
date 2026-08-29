@@ -86,3 +86,20 @@ test('paper simulator completes a bounded run and can only resume after reset', 
   assert.equal(simulator.state().phase, 'idle');
   assert.equal(simulator.start(), true);
 });
+
+test('paper simulator accepts each fresh scanner offer once and cools down repeated candidates', () => {
+  const simulator = new PaperSimulator({ initialBalance: 100, defaultStake: 5 });
+  const skipped: string[] = [];
+  simulator.on((event) => {
+    if (event.type === 'skipped') skipped.push(event.reason);
+  });
+  simulator.start();
+  simulator.onTick(tick(1, 1));
+  const fresh = { market: 'R_50', direction: 'over' as const, barrier: 0, id: 'scan-1', issuedAt: Date.now() };
+  assert.ok(simulator.offer(fresh));
+  simulator.onTick(tick(9, 2));
+  assert.equal(simulator.offer(fresh), null, 'the same scanner emission cannot reopen a settled contract');
+  assert.equal(simulator.offer({ ...fresh, id: 'scan-2', issuedAt: Date.now() }), null, 'a rapid repeat of the same candidate is cooled down');
+  assert.equal(simulator.offer({ ...fresh, id: 'stale', issuedAt: Date.now() - 6_000 }), null, 'an old scanner recommendation is rejected');
+  assert.deepEqual(skipped, ['scanner signal was already offered', 'scanner candidate cooldown', 'scanner signal is stale']);
+});

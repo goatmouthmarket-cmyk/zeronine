@@ -16,7 +16,8 @@ import { Automation } from './strategy/automation.ts';
 import { DecisionMemory } from './intelligence/decisionMemory.ts';
 import {
   digitFingerprint,
-  appendPaperLedgerEntry,
+  appendPaperLedgerEntrySafely,
+  appendPaperTradeContextSafely,
   getDb,
   getMeta,
   getSession,
@@ -36,8 +37,13 @@ import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimula
 import type { Direction } from './core/digitMath.ts';
 import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
 
-function paperSignalFromHubEvent(event: Record<string, unknown>, stake: number): PaperSignal | null {
-  const raw = event.signal as { holds?: unknown; candidates?: unknown } | undefined;
+function paperSignalFromHubEvent(
+  event: Record<string, unknown>,
+  stake: number,
+  strategyMode: string,
+  botMode: string,
+): PaperSignal | null {
+  const raw = event.signal as { holds?: unknown; candidates?: unknown; reason?: unknown } | undefined;
   if (raw?.holds || !Array.isArray(raw?.candidates)) return null;
   const candidate = raw.candidates[0] as Record<string, unknown> | undefined;
   if (!candidate) return null;
@@ -56,6 +62,22 @@ function paperSignalFromHubEvent(event: Record<string, unknown>, stake: number):
     stake,
     estWin: typeof candidate.estWin === 'number' ? candidate.estWin : undefined,
     edge: typeof candidate.edge === 'number' ? candidate.edge : undefined,
+    id: `${Number.isFinite(event.ts) ? event.ts : Date.now()}:${market}:${direction}:${barrier}`,
+    issuedAt: Number.isFinite(event.ts) ? Number(event.ts) : Date.now(),
+    reason: typeof raw?.reason === 'string' ? raw.reason : 'shared configured scanner candidate',
+    strategyMode,
+    botMode,
+    evidence: {
+      est_win: typeof candidate.estWin === 'number' ? candidate.estWin : null,
+      edge: typeof candidate.edge === 'number' ? candidate.edge : null,
+      expected_roi: typeof candidate.expectedROI === 'number' ? candidate.expectedROI : null,
+      consistency: typeof candidate.consistency === 'number' ? candidate.consistency : null,
+      entropy: typeof candidate.entropy === 'number' ? candidate.entropy : null,
+      momentum: typeof candidate.momentum === 'number' ? candidate.momentum : null,
+      short_long_deviation: typeof candidate.shortLongDeviation === 'number' ? candidate.shortLongDeviation : null,
+      transition_probability: typeof candidate.transitionProb === 'number' ? candidate.transitionProb : null,
+      learned_win: typeof candidate.learnedWin === 'number' ? candidate.learnedWin : null,
+    },
   };
 }
 
@@ -89,13 +111,24 @@ async function main(): Promise<void> {
   let latestPaperSignal: PaperSignal | null = null;
   hub.on((event) => {
     if (event.type !== 'signal') return;
-    latestPaperSignal = paperSignalFromHubEvent(event, getSettings().base_stake);
+    // Virtual research consumes the same configured digit scanner candidate as
+    // the bot. It does not choose, blend, or invent a separate strategy.
+    const settings = getSettings();
+    latestPaperSignal = paperSignalFromHubEvent(event, settings.base_stake, settings.strategy_mode, settings.bot_mode);
   });
   paperSimulator.on((event: PaperSimulationEvent) => {
     if (event.type === 'opened') {
-      appendPaperLedgerEntry(event.contract, 'purchased');
+      appendPaperTradeContextSafely(event.contract, {
+        strategyMode: event.contract.strategyMode,
+        botMode: event.contract.botMode,
+        candidateReason: event.contract.candidateReason,
+        signalId: event.contract.signalId,
+        signalAt: event.contract.scannerIssuedAt,
+        evidence: event.contract.evidence,
+      });
+      appendPaperLedgerEntrySafely(event.contract, 'purchased');
     } else if (event.type === 'settled') {
-      appendPaperLedgerEntry(event.contract, 'settled');
+      appendPaperLedgerEntrySafely(event.contract, 'settled');
       if (event.contract.estWin != null) {
         observeResearchOutcome({
           market: event.contract.market,
@@ -106,7 +139,7 @@ async function main(): Promise<void> {
         });
       }
     } else if (event.type === 'cancelled') {
-      appendPaperLedgerEntry(event.contract, 'cancelled', event.reason);
+      appendPaperLedgerEntrySafely(event.contract, 'cancelled', event.reason);
     }
     // Raw ticks already travel over the throttled market-tick channel. Only
     // state transitions need a separate public simulation event.
@@ -124,12 +157,22 @@ async function main(): Promise<void> {
     onTick: (snap) => {
       enqueueDigit(snap.symbol, snap.lastEpoch, snap.lastQuote, snap.lastDigit);
       decisionMemory.onTick(snap.symbol, snap.lastDigit);
+      // A scanner pick gets one matching-market entry opportunity only. This
+      // avoids opening repeated contracts from a stale "latest" candidate.
+      const paperSignal = latestPaperSignal?.market === snap.symbol
+        && latestPaperSignal.issuedAt !== undefined
+        && Date.now() - latestPaperSignal.issuedAt <= 5_000
+        ? latestPaperSignal
+        : null;
+      if (paperSignal || (latestPaperSignal?.issuedAt !== undefined && Date.now() - latestPaperSignal.issuedAt > 5_000)) {
+        latestPaperSignal = null;
+      }
       paperSimulator.onTick({
         market: snap.symbol,
         quote: snap.lastQuote,
         digit: snap.lastDigit,
         epoch: snap.lastEpoch,
-      }, latestPaperSignal);
+      }, paperSignal);
       hub.emit({
         type: 'tick',
         ts: Date.now(),

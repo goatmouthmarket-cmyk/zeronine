@@ -32,6 +32,7 @@ import {
   getOpenTrade,
   getTrade,
   getPerformanceSummary,
+  getPaperTrade,
   getRecovery,
   getSession,
   getSettings,
@@ -40,6 +41,7 @@ import {
   listDecisionEvents,
   listLedgerEntries,
   listPaperLedgerEntries,
+  listPaperTrades,
   listTestRuns,
   listTrades,
   markTradePurchased,
@@ -205,6 +207,31 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const q = req.query as { limit?: string };
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
     return { entries: listPaperLedgerEntries(limit) };
+  });
+
+  // A logical virtual contract can have purchased + settled/cancelled audit
+  // rows. Keep the dashboard API grouped, while the immutable ledger remains
+  // available for audit detail.
+  app.get('/api/paper/trades', async (req) => {
+    if (!isOwner(req)) return { trades: [] };
+    const q = req.query as { limit?: string };
+    const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
+    return { trades: listPaperTrades(limit) };
+  });
+
+  app.get('/api/paper/trades/:contractRef', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const { contractRef } = req.params as { contractRef?: string };
+    if (!contractRef || contractRef.length > 300) {
+      reply.code(400);
+      return { error: 'invalid paper contract reference' };
+    }
+    const trade = getPaperTrade(contractRef);
+    if (!trade) {
+      reply.code(404);
+      return { error: 'paper trade not found' };
+    }
+    return { trade };
   });
 
   app.get('/api/performance', async (req) =>

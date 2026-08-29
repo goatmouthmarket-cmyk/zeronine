@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
-import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, PaperTrade, PaperPortfolio } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
@@ -25,7 +25,8 @@ import {
   runPatternScan,
   refreshTrades,
   loadLedgerEntries,
-  loadPaperLedgerEntries,
+  loadPaperTrade,
+  loadPaperTrades,
   startPaperSimulation,
   stopPaperSimulation,
   resetPaperSimulation,
@@ -2901,6 +2902,9 @@ function BacktestTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => 
 function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => void }): JSX.Element {
   const s = useStore();
   const [err, setErr] = useState('');
+  const [selectedPaperTrade, setSelectedPaperTrade] = useState<PaperTrade | null>(null);
+  const [paperDetailLoading, setPaperDetailLoading] = useState(false);
+  const paperDetailRequest = useRef(0);
   const runs = s.testRuns.filter((r) => r.kind === 'paper').slice(0, 500);
   const owner = Boolean(s.owner);
   const paperSimulation = s.paperSimulation;
@@ -2931,8 +2935,30 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
     : [];
 
   useEffect(() => {
-    if (owner) void loadPaperLedgerEntries(300);
-  }, [owner, paperSimulation?.totalTrades]);
+    if (owner) void loadPaperTrades(300);
+  }, [owner, paperSimulation?.totalTrades, paperSimulation?.openContract?.id]);
+
+  const openPaperTrade = async (trade: PaperTrade) => {
+    const request = ++paperDetailRequest.current;
+    setSelectedPaperTrade(trade);
+    setPaperDetailLoading(true);
+    const detail = await loadPaperTrade(trade.contractRef);
+    if (paperDetailRequest.current !== request) return;
+    if (detail) setSelectedPaperTrade(detail);
+    setPaperDetailLoading(false);
+  };
+
+  const portfolio: PaperPortfolio | null = s.paperPortfolio ?? (paperSimulation ? {
+    initialBalance: paperSimulation.initialBalance,
+    balance: paperSimulation.balance,
+    availableBalance: paperSimulation.availableBalance,
+    reservedStake: paperSimulation.reservedStake,
+    netPnl: paperSimulation.netPnl,
+    wins: paperSimulation.wins,
+    losses: paperSimulation.losses,
+    totalTrades: paperSimulation.totalTrades,
+    openTrades: paperSimulation.openContract ? 1 : 0,
+  } : null);
 
   const run = async () => {
     setErr('');
@@ -2963,6 +2989,7 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
         latestContract={paperSimulation?.lastSettled ?? null}
         virtualBalance={paperSimulation?.balance ?? null}
       />
+      <PaperPortfolioStrip portfolio={portfolio} running={paperSimulation?.phase === 'running'} />
       <div class="paper-sim-summary">
         <span>Uses public market ticks and a virtual ledger. No Deriv balance, quote, or purchase request is used.</span>
         {paperSimulation && <span>{paperSimulation.totalTrades} virtual trades · {paperSimulation.wins}W {paperSimulation.losses}L</span>}
@@ -2983,10 +3010,137 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
       </div>
       {!owner && <div class="tl-note">Simulation controls belong to the dashboard owner. You can still watch the public tick, signal, and virtual-contract stage above.</div>}
       <TlErr err={err} />
-      <LedgerSection entries={s.paperLedgerEntries} currency="V$" />
+      <PaperTradeLedger trades={s.paperTrades} onOpen={openPaperTrade} />
       {runs.length === 0 && !busy && <div class="empty-hint">No global paper research runs have been recorded yet.</div>}
       <LabCards runs={runs} equity={s.testEquity} kind="paper" busy={busy} />
+      {selectedPaperTrade && <PaperTradeDetailModal trade={selectedPaperTrade} loading={paperDetailLoading} onClose={() => { paperDetailRequest.current += 1; setSelectedPaperTrade(null); setPaperDetailLoading(false); }} />}
     </>
+  );
+}
+
+function PaperPortfolioStrip({ portfolio, running }: { portfolio: PaperPortfolio | null; running: boolean }): JSX.Element {
+  if (!portfolio) {
+    return <div class="paper-portfolio paper-portfolio--empty"><span class="paper-portfolio-kicker">Virtual portfolio</span><span>Start the simulator to initialize virtual-only funds.</span></div>;
+  }
+  const pnlTone = portfolio.netPnl > 0 ? 'up' : portfolio.netPnl < 0 ? 'down' : undefined;
+  const resolved = portfolio.wins + portfolio.losses;
+  const winRate = resolved > 0 ? `${((portfolio.wins / resolved) * 100).toFixed(0)}%` : '--';
+  return (
+    <section class={`paper-portfolio${running ? ' running' : ''}`} aria-label="Virtual paper portfolio">
+      <div class="paper-portfolio-title"><Icon name="stats" size={15} /><span>Virtual portfolio</span><small>{running ? 'LIVE' : 'PAUSED'}</small></div>
+      <Metric label="Simulated balance" value={fmtMoney(portfolio.balance, '$')} />
+      <Metric label="Net PnL" value={fmtSigned(portfolio.netPnl, '$')} tone={pnlTone} />
+      <Metric label="Available" value={fmtMoney(portfolio.availableBalance, '$')} />
+      <Metric label="Reserved" value={fmtMoney(portfolio.reservedStake, '$')} />
+      <Metric label="Open" value={String(portfolio.openTrades)} />
+      <Metric label="W / L" value={`${portfolio.wins} / ${portfolio.losses}${winRate === '--' ? '' : ` - ${winRate}`}`} />
+    </section>
+  );
+}
+
+function paperContractLabel(trade: PaperTrade): string {
+  return `${trade.direction === 'under' ? 'Under' : 'Over'} ${trade.barrier}`;
+}
+
+function paperStatusLabel(status: PaperTrade['status']): string {
+  return status === 'open' ? 'Open' : status === 'won' ? 'Won' : status === 'lost' ? 'Lost' : 'Cancelled';
+}
+
+function paperTradeTime(epoch: number | null): string {
+  if (!epoch) return '--';
+  const value = epoch < 100_000_000_000 ? epoch * 1000 : epoch;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '--' : date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function PaperTradeLedger({ trades, onOpen }: { trades: PaperTrade[]; onOpen: (trade: PaperTrade) => void }): JSX.Element {
+  return (
+    <section class="section paper-contract-ledger">
+      <div class="section-head">
+        <div><div class="section-title">Virtual Contract Ledger</div><div class="paper-ledger-caption">One row per simulated contract. Research evidence only, never account activity.</div></div>
+        <span class="ledger-count">{trades.length} contracts</span>
+      </div>
+      <div class="paper-contract-list">
+        {trades.length === 0 && <div class="empty-hint">No virtual contracts recorded yet. Start the paper simulator to observe its first research trade.</div>}
+        {trades.map((trade) => {
+          const profit = trade.profit;
+          const tone = trade.status === 'won' ? 'win' : trade.status === 'lost' || trade.status === 'cancelled' ? 'loss' : 'open';
+          return (
+            <button class={`paper-contract-row ${tone}`} type="button" onClick={() => void onOpen(trade)} key={trade.contractRef}>
+              <span class={`paper-contract-mark ${tone}`}>{trade.status === 'open' ? 'P' : trade.status === 'won' ? 'W' : trade.status === 'lost' ? 'L' : 'C'}</span>
+              <span class="paper-contract-main">
+                <span class="paper-contract-line"><strong>{shortMarketName(trade.market)}</strong><span>{paperContractLabel(trade)}</span><span class="paper-contract-strategy">{trade.strategy || 'Scanner strategy'}</span></span>
+                <span class="paper-contract-meta"><span>{paperStatusLabel(trade.status)}</span><span>{fmtMoney(trade.stake, '$')} virtual stake</span><span>{paperTradeTime(trade.entryEpoch)}</span></span>
+              </span>
+              <span class="paper-contract-potential"><small>Potential</small><strong>+{fmtMoney(Math.max(0, trade.payout - trade.stake), '$')}</strong><span>-{fmtMoney(trade.stake, '$')}</span></span>
+              <span class={`paper-contract-pnl ${tone}`}>{profit == null ? 'Open' : fmtSigned(profit, '$')}<Icon name="arrowUpRight" size={14} /></span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PaperTradeDetailModal({ trade, loading, onClose }: { trade: PaperTrade; loading: boolean; onClose: () => void }): JSX.Element {
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [onClose]);
+
+  const potentialWin = Math.max(0, trade.payout - trade.stake);
+  const settled = trade.profit != null;
+  const strategy = trade.strategy || 'Scanner strategy';
+  const fallbackLifecycle: Array<[string, string]> = [
+    ['Signal read', trade.reason || 'Scanner context unavailable'],
+    ['Virtual entry', `${paperTradeTime(trade.entryEpoch)}${trade.entryQuote != null ? ` at ${trade.entryQuote}` : ''}`],
+    ['Virtual outcome', settled ? `${paperStatusLabel(trade.status)} ${fmtSigned(trade.profit ?? 0, '$')}` : 'Contract remains open'],
+  ];
+  const lifecycle: Array<[string, string]> = trade.lifecycle?.length
+    ? trade.lifecycle.map((entry) => [
+      entry.event.replaceAll('_', ' '),
+      `${paperTradeTime(entry.ts)}${entry.status ? ` - ${entry.status}` : ''}${entry.profit != null ? ` ${fmtSigned(entry.profit, '$')}` : ''}${entry.reason ? ` - ${entry.reason}` : ''}`,
+    ])
+    : fallbackLifecycle;
+
+  return (
+    <div class="detail-backdrop" role="presentation" onClick={onClose}>
+      <section class="activity-detail paper-trade-detail" role="dialog" aria-modal="true" aria-label="Virtual contract details" onClick={(event) => event.stopPropagation()}>
+        <div class="detail-head">
+          <div><span class="activity-source paper">Virtual paper</span><h2>{shortMarketName(trade.market)} - {paperContractLabel(trade)}</h2></div>
+          <button class="detail-close" type="button" onClick={onClose} aria-label="Close virtual contract details"><Icon name="x" size={18} /></button>
+        </div>
+        <div class="paper-detail-outcome">
+          <div><span>Virtual result</span><strong class={trade.status === 'won' ? 'won' : trade.status === 'lost' ? 'lost' : ''}>{settled ? fmtSigned(trade.profit ?? 0, '$') : 'Open'}</strong></div>
+          <div><span>Potential win</span><strong class="won">+{fmtMoney(potentialWin, '$')}</strong></div>
+          <div><span>Potential loss</span><strong class="lost">-{fmtMoney(trade.stake, '$')}</strong></div>
+        </div>
+        <div class="detail-grid">
+          <Detail label="Virtual stake" value={fmtMoney(trade.stake, '$')} />
+          <Detail label="Virtual payout" value={fmtMoney(trade.payout, '$')} />
+          <Detail label="Forecast" value={trade.estimatedWin == null ? '--' : `${(trade.estimatedWin * 100).toFixed(1)}%`} />
+          <Detail label="Model edge" value={trade.edge == null ? '--' : `${(trade.edge * 100).toFixed(1)}%`} />
+          <Detail label="Entry" value={trade.entryQuote == null ? '--' : String(trade.entryQuote)} />
+          <Detail label="Exit" value={trade.exitQuote == null ? '--' : String(trade.exitQuote)} />
+        </div>
+        <div class="paper-detail-section">
+          <span class="paper-detail-label">Strategy snapshot</span>
+          <strong>{strategy}</strong>
+          <p>{trade.strategySnapshot || 'No additional scanner snapshot was stored for this virtual contract.'}</p>
+        </div>
+        <div class="paper-detail-section">
+          <span class="paper-detail-label">Why and evidence</span>
+          <strong>{trade.reason || 'Scanner decision detail unavailable'}</strong>
+          <p>{trade.evidence || 'This record retains only the contract fields available at the time it was simulated.'}</p>
+        </div>
+        <div class="paper-detail-section paper-detail-lifecycle">
+          <span class="paper-detail-label">Lifecycle</span>
+          {lifecycle.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+        </div>
+        {loading && <div class="paper-detail-loading">Loading additional virtual research evidence...</div>}
+      </section>
+    </div>
   );
 }
 
