@@ -131,6 +131,15 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!requireOwner(req, reply)) return;
     return { state: momentum?.stop() ?? null };
   });
+  app.post('/api/momentum/focus', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    if (!momentum) { reply.code(503); return { error: 'momentum observer unavailable' }; }
+    const symbol = String((req.body as { symbol?: unknown } | undefined)?.symbol ?? '');
+    if (!symbol) { reply.code(400); return { error: 'a watched market symbol is required' }; }
+    try {
+      return { state: momentum.focus(symbol) };
+    } catch (error) { reply.code(409); return { error: String(error) }; }
+  });
 
   app.get('/api/settings', async () => getSettings());
 

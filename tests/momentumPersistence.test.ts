@@ -18,8 +18,12 @@ test('completed multiplier research windows persist and expose a maturity thresh
   insertMomentumResearch({ ...base, completed_at: base.completed_at + 1, direction: 'down', estimated_net: -0.2, won: 0 });
 
   const summary = getMomentumResearchSummary(3);
-  assert.deepEqual(summary, {
+  assert.deepEqual({ ...summary, recent: summary.recent.map((row) => ({ symbol: row.symbol, direction: row.direction, won: row.won })) }, {
     windows: 2, wins: 1, losses: 1, win_rate: 0.5, estimated_net: 0.15,
     maturity_target: 3, samples_remaining: 1, ready_for_virtual_paper: false,
+    recent: [
+      { symbol: 'frxEURUSD', direction: 'down', won: 0 },
+      { symbol: 'frxEURUSD', direction: 'up', won: 1 },
+    ],
   });
 });

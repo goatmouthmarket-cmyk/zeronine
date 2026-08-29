@@ -168,6 +168,7 @@ export interface MomentumResearchSummary {
   maturity_target: number;
   samples_remaining: number;
   ready_for_virtual_paper: boolean;
+  recent: MomentumResearchRow[];
 }
 
 export type StrategyMode = 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
@@ -1474,6 +1475,7 @@ export function getMomentumResearchSummary(maturityTarget = 30): MomentumResearc
   ).get() as unknown as { windows: number; wins: number; losses: number; estimated_net: number };
   const windows = Number(row.windows ?? 0);
   const wins = Number(row.wins ?? 0);
+  const recent = getDb().prepare('SELECT * FROM momentum_research ORDER BY completed_at DESC LIMIT 12').all() as unknown as MomentumResearchRow[];
   return {
     windows,
     wins,
@@ -1483,6 +1485,7 @@ export function getMomentumResearchSummary(maturityTarget = 30): MomentumResearc
     maturity_target: maturityTarget,
     samples_remaining: Math.max(0, maturityTarget - windows),
     ready_for_virtual_paper: windows >= maturityTarget,
+    recent,
   };
 }
 

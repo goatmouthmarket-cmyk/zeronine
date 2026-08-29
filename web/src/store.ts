@@ -320,11 +320,17 @@ export interface MomentumState {
     decisionAt: number | null; decisionPrice: number | null; direction: 'up' | 'down' | null;
     signal: { direction: 'up' | 'down' | 'wait'; confidence: number; score: number; reason: string; return15s: number | null; return30s: number | null; return60s: number | null };
     estimatedGross: number; estimatedCommission: number; estimatedNet: number;
+    samples?: MomentumScanSample[];
   } | null;
   completedWindows: number; signalledWindows: number; wins: number; losses: number; estimatedNet: number;
   lastOutcome: { direction: 'up' | 'down'; openPrice: number; decisionPrice: number; exitPrice: number; won: boolean; estimatedNet: number } | null;
   reason: string | null;
-  scan: { candidates: number; startedAt: number; endsAt: number } | null;
+  scan: {
+    candidates: number;
+    startedAt: number;
+    endsAt: number;
+    markets?: MomentumScanMarket[];
+  } | null;
   research: {
     windows: number;
     wins: number;
@@ -334,7 +340,46 @@ export interface MomentumState {
     maturity_target: number;
     samples_remaining: number;
     ready_for_virtual_paper: boolean;
+    recent?: MomentumResearchRow[];
   };
+}
+
+export interface MomentumScanSample {
+  epoch: number;
+  quote: number;
+}
+
+export interface MomentumScanMarket {
+  symbol: string;
+  display: string;
+  market: string;
+  sampleCount: number;
+  progress: number;
+  signal: {
+    direction?: 'up' | 'down' | 'wait';
+    confidence?: number;
+    score?: number;
+    reason?: string;
+    return15s?: number | null;
+    return30s?: number | null;
+    return60s?: number | null;
+  } | null;
+  samples: MomentumScanSample[];
+}
+
+export interface MomentumResearchRow {
+  id?: number;
+  symbol?: string;
+  market?: string;
+  display?: string;
+  direction?: 'up' | 'down';
+  open_price?: number;
+  decision_price?: number;
+  exit_price?: number;
+  estimated_net?: number;
+  won?: number | boolean;
+  created_at?: number;
+  ended_at?: number;
 }
 
 export interface State {
@@ -964,6 +1009,15 @@ export async function startMomentumResearch(): Promise<MomentumState> {
 
 export async function stopMomentumResearch(): Promise<MomentumState | null> {
   const res = await api<{ state: MomentumState | null }>('/api/momentum/stop', { method: 'POST' });
+  set({ momentum: res.state });
+  return res.state;
+}
+
+export async function focusMomentumMarket(symbol: string): Promise<MomentumState | null> {
+  const res = await api<{ state: MomentumState | null }>('/api/momentum/focus', {
+    method: 'POST',
+    body: JSON.stringify({ symbol }),
+  });
   set({ momentum: res.state });
   return res.state;
 }

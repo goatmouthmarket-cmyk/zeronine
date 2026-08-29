@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow } from './store';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
 import {
@@ -33,6 +33,7 @@ import {
   loadMomentumState,
   startMomentumResearch,
   stopMomentumResearch,
+  focusMomentumMarket,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
@@ -2200,10 +2201,85 @@ function momentumPct(value: number | null | undefined): string {
   return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(3)}%`;
 }
 
+function momentumProgress(value: number | null | undefined): number {
+  if (!Number.isFinite(value)) return 0;
+  const normalized = Number(value) <= 1 ? Number(value) * 100 : Number(value);
+  return Math.max(0, Math.min(100, normalized));
+}
+
+function MomentumLine({ samples, label }: { samples?: MomentumScanSample[]; label: string }): JSX.Element {
+  const points = (samples ?? []).filter((sample) => Number.isFinite(sample.quote)).slice(-72);
+  if (points.length < 2) return <div class="mom-chart-empty">Awaiting ticks</div>;
+  const quotes = points.map((point) => point.quote);
+  const min = Math.min(...quotes);
+  const max = Math.max(...quotes);
+  const range = max - min || 1;
+  const width = 160;
+  const height = 54;
+  const path = points.map((point, index) => {
+    const x = (index / (points.length - 1)) * width;
+    const y = height - ((point.quote - min) / range) * (height - 8) - 4;
+    return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(' ');
+  const up = quotes[quotes.length - 1] >= quotes[0];
+  return <svg class={`mom-chart-line${up ? ' up' : ' down'}`} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} preserveAspectRatio="none"><path d={path} pathLength={100} /></svg>;
+}
+
+function MomentumWatchboard({
+  markets,
+  selected,
+  onFocus,
+  focusing,
+}: {
+  markets: MomentumScanMarket[];
+  selected: string | null | undefined;
+  onFocus: (symbol: string) => void;
+  focusing: string | null;
+}): JSX.Element | null {
+  if (markets.length === 0) return null;
+  return <section class="mom-watchboard" aria-label="Live market watchboard">
+    <div class="mom-watchboard-head"><div><span class="mom-kicker">Live watchboard</span><strong>{markets.length} markets collecting evidence</strong></div><span>Click a market to focus its full research view</span></div>
+    <div class="mom-watchboard-list">
+      {markets.map((item) => {
+        const active = item.symbol === selected;
+        const direction = item.signal?.direction ?? 'wait';
+        const progress = momentumProgress(item.progress);
+        return <button class={`mom-watch-row${active ? ' active' : ''}`} type="button" key={item.symbol} onClick={() => onFocus(item.symbol)} disabled={Boolean(focusing)}>
+          <span class={`mom-watch-signal ${direction}`}>{direction === 'up' ? 'UP' : direction === 'down' ? 'DOWN' : 'WAIT'}</span>
+          <span class="mom-watch-market"><b>{item.display}</b><small>{item.market.replace('_', ' ')} · {item.sampleCount} ticks</small></span>
+          <span class="mom-watch-chart"><MomentumLine samples={item.samples} label={`${item.display} recent quotes`} /></span>
+          <span class="mom-watch-progress"><i><em style={{ width: `${progress}%` }}></em></i><small>{Math.round(progress)}%</small></span>
+          <span class={`mom-watch-read ${direction}`}><b>{item.signal?.confidence != null ? `${item.signal.confidence}%` : '--'}</b><small>{focusing === item.symbol ? 'Focusing' : active ? 'Focused' : direction}</small></span>
+        </button>;
+      })}
+    </div>
+  </section>;
+}
+
+function MomentumResearchLedger({ rows, currency }: { rows?: MomentumResearchRow[]; currency: string }): JSX.Element | null {
+  if (!rows?.length) return null;
+  return <section class="mom-research-ledger" aria-label="Recent stored momentum research">
+    <div class="mom-watchboard-head"><div><span class="mom-kicker">Stored research</span><strong>Recent settled windows</strong></div><span>Research only</span></div>
+    <div class="mom-ledger-list">
+      {rows.slice(0, 5).map((row, index) => {
+        const net = Number(row.estimated_net ?? 0);
+        const won = row.won === true || row.won === 1;
+        return <div class="mom-ledger-row" key={row.id ?? `${row.symbol ?? row.market}-${index}`}>
+          <span class={`mom-watch-signal ${row.direction ?? 'wait'}`}>{row.direction?.toUpperCase() ?? 'WAIT'}</span>
+          <span><b>{row.display ?? row.symbol ?? row.market ?? 'Market window'}</b><small>{row.open_price != null && row.exit_price != null ? `${row.open_price.toLocaleString()} to ${row.exit_price.toLocaleString()}` : 'Stored observation'}</small></span>
+          <span class={won ? 'up' : 'down'}>{won ? 'Directional win' : 'Directional loss'}</span>
+          <strong class={net >= 0 ? 'up' : 'down'}>{fmtSigned(net, currency)}</strong>
+        </div>;
+      })}
+    </div>
+  </section>;
+}
+
 function MomentumPage(): JSX.Element {
   const s = useStore();
   const momentum = s.momentum;
   const [busy, setBusy] = useState(false);
+  const [focusing, setFocusing] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => { void loadMomentumState(); }, []);
@@ -2215,10 +2291,18 @@ function MomentumPage(): JSX.Element {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
+  const focus = async (symbol: string) => {
+    setFocusing(symbol); setError('');
+    try { await focusMomentumMarket(symbol); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setFocusing(null); }
+  };
 
   const w = momentum?.window;
   const signal = w?.signal;
   const market = momentum?.markets.find((item) => item.symbol === momentum.config?.symbol);
+  const watchedMarkets = momentum?.scan?.markets ?? [];
+  const focusedMarket = watchedMarkets.find((item) => item.symbol === momentum?.config?.symbol) ?? null;
   const secondsLeft = w ? Math.max(0, w.endsAt - Math.floor(Date.now() / 1000)) : 300;
   const elapsed = w ? Math.max(0, 300 - secondsLeft) : 0;
   const settledSignals = (momentum?.wins ?? 0) + (momentum?.losses ?? 0);
@@ -2249,8 +2333,15 @@ function MomentumPage(): JSX.Element {
         <div class="mom-auto-settings"><div><span>Scan set</span><strong>{momentum?.scan?.candidates ?? 'Up to 12'}</strong></div><div><span>Window</span><strong>5 min</strong></div><div><span>Cost hurdle</span><strong>{momentumPct(breakEvenMove)}</strong></div></div>
         <button class={`mom-toggle ${momentum?.running ? 'stop' : ''}`} disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name={momentum?.running ? 'square' : 'play'} size={15} />{momentum?.running ? 'Pause' : 'Resume automatic scan'}</button>
       </section>
+      <MomentumWatchboard markets={watchedMarkets} selected={momentum?.config?.symbol} onFocus={(symbol) => void focus(symbol)} focusing={focusing} />
       {!s.owner && <div class="tl-note">Research starts automatically on the server. Unlock only if you need to pause or resume it.</div>}
       {error && <div class="tl-err">{error}</div>}
+
+      {(focusedMarket || w?.samples?.length) && <section class="mom-focus-stage" aria-label="Focused momentum market">
+        <div><span class="mom-kicker">Focused research</span><strong>{focusedMarket?.display ?? market?.display ?? 'Current market'}</strong><small>{focusedMarket ? `${focusedMarket.sampleCount} ticks observed · ${Math.round(momentumProgress(focusedMarket.progress))}% scan complete` : 'Live window samples'}</small></div>
+        <div class="mom-focus-chart"><MomentumLine samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} /></div>
+        <div class="mom-focus-read"><span>Current read</span><strong class={signal?.direction ?? focusedMarket?.signal?.direction ?? 'wait'}>{signal?.direction?.toUpperCase() ?? focusedMarket?.signal?.direction?.toUpperCase() ?? 'WAIT'}</strong><small>{signal?.confidence ?? focusedMarket?.signal?.confidence ?? 0}% confidence</small></div>
+      </section>}
 
       <section class="mom-window" aria-live="polite">
         <div class="mom-clock"><span>Current rolling window</span><strong>{String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:{String(secondsLeft % 60).padStart(2, '0')}</strong><div><i style={{ width: `${Math.min(100, elapsed / 3)}%` }}></i></div></div>
@@ -2281,8 +2372,9 @@ function MomentumPage(): JSX.Element {
       </section>
 
       <section class="mom-scoreboard"><div><span>Windows completed</span><strong>{momentum?.completedWindows ?? 0}</strong></div><div><span>Signals taken</span><strong>{momentum?.signalledWindows ?? 0}</strong></div><div><span>Directional wins</span><strong>{momentum?.wins ?? 0}</strong></div><div><span>Observed win rate</span><strong>{winRate == null ? '—' : `${(winRate * 100).toFixed(1)}%`}</strong></div></section>
+      <MomentumResearchLedger rows={research?.recent} currency={s.session?.currency ?? 'USD'} />
       <section class={`mom-research-rail${research?.ready_for_virtual_paper ? ' mature' : ''}`}>
-        <div><span class="mom-kicker">Stored research</span><strong>{research ? `${research.windows}/${research.maturity_target} qualified windows` : 'Loading stored evidence'}</strong></div>
+        <div><span class="mom-kicker">Stored research</span><strong>{research ? `${research.windows}/${research.maturity_target} signal windows` : 'Loading stored evidence'}</strong></div>
         <span>{research?.ready_for_virtual_paper ? 'Maturity reached. Review before any separate virtual-paper design.' : `${research?.samples_remaining ?? 30} more directional windows needed for a virtual-paper review.`}</span>
         <small>Saved globally. It does not alter digit signals, account balances, or real/demo trading.</small>
       </section>
