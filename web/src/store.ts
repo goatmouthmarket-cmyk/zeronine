@@ -325,6 +325,16 @@ export interface MomentumState {
   lastOutcome: { direction: 'up' | 'down'; openPrice: number; decisionPrice: number; exitPrice: number; won: boolean; estimatedNet: number } | null;
   reason: string | null;
   scan: { candidates: number; startedAt: number; endsAt: number } | null;
+  research: {
+    windows: number;
+    wins: number;
+    losses: number;
+    win_rate: number | null;
+    estimated_net: number;
+    maturity_target: number;
+    samples_remaining: number;
+    ready_for_virtual_paper: boolean;
+  };
 }
 
 export interface State {

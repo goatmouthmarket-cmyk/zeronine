@@ -2224,6 +2224,14 @@ function MomentumPage(): JSX.Element {
   const settledSignals = (momentum?.wins ?? 0) + (momentum?.losses ?? 0);
   const winRate = momentum && settledSignals ? momentum.wins / settledSignals : null;
   const breakEvenMove = (momentum?.config?.commissionRate ?? .001);
+  const research = momentum?.research;
+  const horizonMoves = [
+    { label: '60s', value: signal?.return60s ?? 0 },
+    { label: '30s', value: signal?.return30s ?? 0 },
+    { label: '15s', value: signal?.return15s ?? 0 },
+    { label: 'Live', value: w?.changePct ?? 0 },
+  ];
+  const movementScale = Math.max(...horizonMoves.map((move) => Math.abs(move.value)), breakEvenMove, .0001);
 
   return <>
     <header class="header">
@@ -2252,6 +2260,18 @@ function MomentumPage(): JSX.Element {
       </section>
 
       <section class="mom-evidence">
+        <div class="mom-live-trace" aria-label="Recent measured market movement">
+          <div class="mom-live-trace-head"><span>Recent measured move</span><small>Each bar is a return horizon, not a price forecast.</small></div>
+          <div class="mom-live-trace-bars">
+            {horizonMoves.map((move) => {
+              const positive = move.value >= 0;
+              const height = 18 + Math.round((Math.abs(move.value) / movementScale) * 82);
+              return <div class={`mom-trace-bar${positive ? ' up' : ' down'}`} key={move.label}>
+                <i style={{ height: `${height}%` }}></i><span>{move.label}</span>
+              </div>;
+            })}
+          </div>
+        </div>
         <div class="mom-evidence-head"><div><span class="mom-kicker">Why this direction</span><strong>{signal?.reason ?? momentum?.reason ?? 'Building live cross-market evidence'}</strong></div>{w?.direction && <span class={`mom-locked ${w.direction}`}>Research entry locked · {w.direction}</span>}</div>
         <div class="mom-horizons"><div><span>15 sec</span><strong class={(signal?.return15s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return15s)}</strong></div><div><span>30 sec</span><strong class={(signal?.return30s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return30s)}</strong></div><div><span>60 sec</span><strong class={(signal?.return60s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return60s)}</strong></div><div><span>Cost hurdle</span><strong>{momentumPct(breakEvenMove)}</strong></div></div>
       </section>
@@ -2261,6 +2281,11 @@ function MomentumPage(): JSX.Element {
       </section>
 
       <section class="mom-scoreboard"><div><span>Windows completed</span><strong>{momentum?.completedWindows ?? 0}</strong></div><div><span>Signals taken</span><strong>{momentum?.signalledWindows ?? 0}</strong></div><div><span>Directional wins</span><strong>{momentum?.wins ?? 0}</strong></div><div><span>Observed win rate</span><strong>{winRate == null ? '—' : `${(winRate * 100).toFixed(1)}%`}</strong></div></section>
+      <section class={`mom-research-rail${research?.ready_for_virtual_paper ? ' mature' : ''}`}>
+        <div><span class="mom-kicker">Stored research</span><strong>{research ? `${research.windows}/${research.maturity_target} qualified windows` : 'Loading stored evidence'}</strong></div>
+        <span>{research?.ready_for_virtual_paper ? 'Maturity reached. Review before any separate virtual-paper design.' : `${research?.samples_remaining ?? 30} more directional windows needed for a virtual-paper review.`}</span>
+        <small>Saved globally. It does not alter digit signals, account balances, or real/demo trading.</small>
+      </section>
       <div class="mom-disclaimer"><strong>Research estimate, not account P&amp;L.</strong> The 0.10% cost hurdle is a fixed assumption. Before demo execution, the system must capture Deriv’s actual proposal commission and live sell price; spot movement alone is not sufficient evidence of profitability.</div>
     </div>
   </>;

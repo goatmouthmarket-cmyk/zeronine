@@ -646,6 +646,104 @@ button {
 @media (max-width: 850px) { .mom-auto-rail { grid-template-columns: 1fr auto; }.mom-auto-settings { grid-row: 2; grid-column: 1 / -1; }.mom-window { grid-template-columns: 1fr 1fr; }.mom-window > div:nth-child(2) { border-right: 0; }.mom-window > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); } }
 @media (max-width: 560px) { .mom-hero, .mom-evidence-head { flex-direction: column; }.mom-auto-rail { grid-template-columns: 1fr; }.mom-auto-settings { grid-row: auto; grid-column: auto; }.mom-auto-rail .mom-toggle { width: 100%; }.mom-horizons, .mom-pnl, .mom-scoreboard { grid-template-columns: 1fr 1fr; }.mom-pnl > div:nth-child(2), .mom-scoreboard > div:nth-child(2) { border-right: 0; }.mom-pnl > div:nth-child(-n+2), .mom-scoreboard > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); } }
 
+/* Momentum research is one continuous work surface rather than a stack of cards. */
+.mom-layout {
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+}
+
+.mom-hero,
+.mom-auto-rail,
+.mom-window,
+.mom-evidence,
+.mom-pnl,
+.mom-scoreboard {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.mom-hero {
+    padding: 19px 20px 15px;
+    background: linear-gradient(105deg, rgba(39, 211, 154, .08), transparent 52%);
+}
+
+.mom-auto-rail,
+.mom-window,
+.mom-evidence,
+.mom-pnl,
+.mom-scoreboard {
+    border-top: 1px solid var(--border);
+}
+
+.mom-auto-rail { padding: 13px 20px; }
+.mom-window > div,
+.mom-pnl > div,
+.mom-scoreboard > div { background: transparent; }
+
+.mom-evidence {
+    display: grid;
+    grid-template-columns: minmax(205px, .85fr) minmax(190px, .72fr) minmax(270px, 1.25fr);
+    gap: 18px;
+    align-items: center;
+    padding: 15px 20px;
+}
+
+.mom-evidence-head { display: block; }
+.mom-evidence-head strong { line-height: 1.45; }
+.mom-locked { display: inline-flex; margin-top: 9px; }
+.mom-horizons { margin: 0; }
+.mom-horizons > div { padding: 8px 0; border-radius: 0; background: transparent; border-bottom: 1px solid rgba(255,255,255,.055); }
+.mom-horizons > div:last-child { border-bottom: 0; }
+.mom-horizons strong { margin-top: 2px; }
+
+.mom-live-trace { min-width: 0; padding: 0 16px; border-inline: 1px solid var(--border); }
+.mom-live-trace-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.mom-live-trace-head span { color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.mom-live-trace-head small { color: var(--muted-2); font-size: 8px; text-align: right; }
+.mom-live-trace-bars { display: grid; grid-template-columns: repeat(4, 1fr); align-items: end; gap: 7px; height: 74px; margin-top: 8px; }
+.mom-trace-bar { display: grid; grid-template-rows: 1fr auto; align-items: end; height: 100%; gap: 5px; }
+.mom-trace-bar i { display: block; min-height: 3px; width: 100%; border-radius: 3px 3px 1px 1px; transform-origin: bottom; animation: mom-trace-rise .55s cubic-bezier(.22, 1, .36, 1) both; transition: height .35s ease; }
+.mom-trace-bar.up i { background: linear-gradient(180deg, #9bf3ce, var(--green)); }
+.mom-trace-bar.down i { background: linear-gradient(180deg, #ff9caf, var(--red)); }
+.mom-trace-bar span { color: var(--muted-2); font-size: 8px; font-weight: 750; text-align: center; }
+
+.mom-pnl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mom-scoreboard { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mom-pnl > div, .mom-scoreboard > div { padding: 11px 20px; }
+.mom-scoreboard { background: rgba(255,255,255,.012); }
+.mom-research-rail { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(220px, 1fr) minmax(260px, 1.2fr); gap: 18px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border); background: rgba(117,232,189,.025); color: var(--muted); font-size: 10px; line-height: 1.45; }.mom-research-rail strong { display: block; margin-top: 3px; color: var(--text); font-size: 12px; }.mom-research-rail small { color: var(--muted-2); font-size: 9px; }.mom-research-rail.mature { background: rgba(117,232,189,.075); }.mom-research-rail.mature strong { color: #75e8bd; }
+.mom-disclaimer { margin: 0; border: 0; border-top: 1px solid rgba(244,184,75,.18); border-radius: 0; background: rgba(244,184,75,.035); }
+
+@keyframes mom-trace-rise { from { transform: scaleY(.15); opacity: .35; } to { transform: scaleY(1); opacity: 1; } }
+
+@media (max-width: 850px) {
+    .mom-evidence { grid-template-columns: 1fr 1fr; }
+    .mom-live-trace { grid-column: 1 / -1; order: -1; padding: 0 0 12px; border: 0; border-bottom: 1px solid var(--border); }
+    .mom-research-rail { grid-template-columns: 1fr 1fr; }
+    .mom-research-rail small { grid-column: 1 / -1; }
+}
+
+@media (max-width: 560px) {
+    .mom-layout { border-inline: 0; border-radius: 0; }
+    .mom-hero, .mom-auto-rail, .mom-evidence { padding-inline: 14px; }
+    .mom-window > div, .mom-pnl > div, .mom-scoreboard > div { padding-inline: 14px; }
+    .mom-evidence { display: block; }
+    .mom-live-trace { margin-bottom: 14px; }
+    .mom-live-trace-head small { max-width: 132px; }
+    .mom-horizons { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; margin-top: 14px; }
+    .mom-horizons > div:nth-last-child(-n + 2) { border-bottom: 0; }
+    .mom-research-rail { display: block; padding-inline: 14px; }.mom-research-rail > span, .mom-research-rail small { display: block; margin-top: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mom-status.observing i, .mom-trace-bar i { animation: none; }
+    .mom-trace-bar i { transition: none; }
+}
+
 /* Fluid hero: key numerals and grids scale with the viewport so the card
    rearranges cleanly across window sizes and browser zoom levels. */
 .cockpit-side,

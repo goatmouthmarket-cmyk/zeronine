@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { config } from '../config.ts';
 import type { Hub } from '../api/hub.ts';
+import { getMomentumResearchSummary, insertMomentumResearch, type MomentumResearchSummary } from '../db/store.ts';
 
 const WINDOW_SECONDS = 300;
 const DECISION_AFTER_SECONDS = 60;
@@ -30,6 +31,7 @@ export interface MomentumWindow {
   decisionPrice: number | null;
   direction: 'up' | 'down' | null;
   signal: MomentumSignal;
+  decisionSignal: MomentumSignal | null;
   estimatedGross: number;
   estimatedCommission: number;
   estimatedNet: number;
@@ -48,6 +50,7 @@ export interface MomentumState {
   lastOutcome: { direction: 'up' | 'down'; openPrice: number; decisionPrice: number; exitPrice: number; won: boolean; estimatedNet: number } | null;
   reason: string | null;
   scan: { candidates: number; startedAt: number; endsAt: number } | null;
+  research: MomentumResearchSummary;
 }
 
 type Tick = { epoch: number; quote: number };
@@ -107,14 +110,16 @@ export class MomentumObserver {
   private scanRequests = new Map<number, string>();
   private scanStartedAt = 0;
   private scanTimer: NodeJS.Timeout | null = null;
+  private research: MomentumResearchSummary;
 
-  constructor(hub: Hub) { this.hub = hub; }
+  constructor(hub: Hub) { this.hub = hub; this.research = getMomentumResearchSummary(); }
 
   state(): MomentumState {
     return { phase: this.phase, running: this.running, markets: this.markets, config: this.config, window: this.window,
       completedWindows: this.completedWindows, signalledWindows: this.signalledWindows, wins: this.wins, losses: this.losses,
       estimatedNet: this.estimatedNet, lastOutcome: this.lastOutcome, reason: this.reason,
-      scan: this.scanStartedAt ? { candidates: this.scanTicks.size, startedAt: this.scanStartedAt, endsAt: this.scanStartedAt + SCAN_SECONDS } : null };
+      scan: this.scanStartedAt ? { candidates: this.scanTicks.size, startedAt: this.scanStartedAt, endsAt: this.scanStartedAt + SCAN_SECONDS } : null,
+      research: this.research };
   }
 
   async connect(): Promise<void> {
@@ -250,7 +255,7 @@ export class MomentumObserver {
     const signal = momentumSignal(this.ticks, epoch);
     this.window.currentPrice = quote; this.window.changePct = pct(this.window.openPrice, quote); this.window.signal = signal;
     if (!this.window.direction && elapsed >= DECISION_AFTER_SECONDS && signal.direction !== 'wait') {
-      this.window.direction = signal.direction; this.window.decisionAt = epoch; this.window.decisionPrice = quote; this.signalledWindows += 1;
+      this.window.direction = signal.direction; this.window.decisionAt = epoch; this.window.decisionPrice = quote; this.window.decisionSignal = signal; this.signalledWindows += 1;
     }
     if (this.window.direction && this.window.decisionPrice) {
       const signedMove = pct(this.window.decisionPrice, quote) * (this.window.direction === 'up' ? 1 : -1);
@@ -263,7 +268,8 @@ export class MomentumObserver {
 
   private newWindow(quote: number, epoch: number): MomentumWindow {
     return { startedAt: epoch, endsAt: epoch + WINDOW_SECONDS, openPrice: quote, currentPrice: quote, changePct: 0,
-      decisionAt: null, decisionPrice: null, direction: null, signal: momentumSignal(this.ticks, epoch), estimatedGross: 0, estimatedCommission: 0, estimatedNet: 0 };
+      decisionAt: null, decisionPrice: null, direction: null, signal: momentumSignal(this.ticks, epoch), decisionSignal: null,
+      estimatedGross: 0, estimatedCommission: 0, estimatedNet: 0 };
   }
 
   private completeWindow(exitPrice: number): void {
@@ -274,6 +280,21 @@ export class MomentumObserver {
       if (won) this.wins += 1; else this.losses += 1;
       this.estimatedNet += this.window.estimatedNet;
       this.lastOutcome = { direction: this.window.direction, openPrice: this.window.openPrice, decisionPrice: this.window.decisionPrice, exitPrice, won, estimatedNet: this.window.estimatedNet };
+      const signal = this.window.decisionSignal ?? this.window.signal;
+      const market = this.markets.find((item) => item.symbol === this.config?.symbol);
+      try {
+        insertMomentumResearch({
+          completed_at: Math.floor(Date.now() / 1000), symbol: this.config?.symbol ?? 'unknown', market: market?.market ?? 'unknown',
+          direction: this.window.direction, confidence: signal.confidence, score: signal.score,
+          return_15s: signal.return15s, return_30s: signal.return30s, return_60s: signal.return60s,
+          open_price: this.window.openPrice, decision_price: this.window.decisionPrice, exit_price: exitPrice,
+          multiplier: this.config?.multiplier ?? 0, stake: this.config?.stake ?? 0,
+          commission_rate: this.config?.commissionRate ?? 0, estimated_net: this.window.estimatedNet, won: won ? 1 : 0,
+        });
+        this.research = getMomentumResearchSummary();
+      } catch (error) {
+        console.warn(`[momentum] failed to persist research window: ${String(error)}`);
+      }
     }
   }
 

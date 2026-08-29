@@ -137,6 +137,39 @@ export interface SettingsRow {
   pattern_weight_chase: number | null;
 }
 
+/** Immutable, global research evidence from the multiplier-momentum observer. */
+export interface MomentumResearchRow {
+  id: number;
+  completed_at: number;
+  symbol: string;
+  market: string;
+  direction: 'up' | 'down';
+  confidence: number;
+  score: number;
+  return_15s: number | null;
+  return_30s: number | null;
+  return_60s: number | null;
+  open_price: number;
+  decision_price: number;
+  exit_price: number;
+  multiplier: number;
+  stake: number;
+  commission_rate: number;
+  estimated_net: number;
+  won: number;
+}
+
+export interface MomentumResearchSummary {
+  windows: number;
+  wins: number;
+  losses: number;
+  win_rate: number | null;
+  estimated_net: number;
+  maturity_target: number;
+  samples_remaining: number;
+  ready_for_virtual_paper: boolean;
+}
+
 export type StrategyMode = 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
 
 /**
@@ -430,6 +463,28 @@ function migrate(d: DatabaseSync): void {
       source TEXT NOT NULL DEFAULT 'manual'
     );
     CREATE INDEX IF NOT EXISTS idx_test_runs_kind ON test_runs(kind, id DESC);
+    CREATE TABLE IF NOT EXISTS momentum_research (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      completed_at INTEGER NOT NULL,
+      symbol TEXT NOT NULL,
+      market TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('up', 'down')),
+      confidence REAL NOT NULL,
+      score REAL NOT NULL,
+      return_15s REAL,
+      return_30s REAL,
+      return_60s REAL,
+      open_price REAL NOT NULL,
+      decision_price REAL NOT NULL,
+      exit_price REAL NOT NULL,
+      multiplier REAL NOT NULL,
+      stake REAL NOT NULL,
+      commission_rate REAL NOT NULL,
+      estimated_net REAL NOT NULL,
+      won INTEGER NOT NULL CHECK (won IN (0, 1))
+    );
+    CREATE INDEX IF NOT EXISTS idx_momentum_research_completed ON momentum_research(completed_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_momentum_research_symbol ON momentum_research(symbol, completed_at DESC);
     CREATE TABLE IF NOT EXISTS pattern_stats (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       market TEXT NOT NULL,
@@ -1394,6 +1449,41 @@ export function insertTestRun(r: Omit<TestRunRow, 'id'>): TestRunRow {
       r.finished_at,
     );
   return getDb().prepare('SELECT * FROM test_runs WHERE id = ?').get(Number(info.lastInsertRowid)) as unknown as TestRunRow;
+}
+
+export function insertMomentumResearch(row: Omit<MomentumResearchRow, 'id'>): void {
+  getDb().prepare(
+    `INSERT INTO momentum_research (
+      completed_at, symbol, market, direction, confidence, score, return_15s, return_30s, return_60s,
+      open_price, decision_price, exit_price, multiplier, stake, commission_rate, estimated_net, won
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    row.completed_at, row.symbol, row.market, row.direction, row.confidence, row.score,
+    row.return_15s, row.return_30s, row.return_60s, row.open_price, row.decision_price,
+    row.exit_price, row.multiplier, row.stake, row.commission_rate, row.estimated_net, row.won,
+  );
+}
+
+export function getMomentumResearchSummary(maturityTarget = 30): MomentumResearchSummary {
+  const row = getDb().prepare(
+    `SELECT COUNT(*) AS windows,
+      COALESCE(SUM(won), 0) AS wins,
+      COALESCE(SUM(CASE WHEN won = 0 THEN 1 ELSE 0 END), 0) AS losses,
+      COALESCE(SUM(estimated_net), 0) AS estimated_net
+     FROM momentum_research`,
+  ).get() as unknown as { windows: number; wins: number; losses: number; estimated_net: number };
+  const windows = Number(row.windows ?? 0);
+  const wins = Number(row.wins ?? 0);
+  return {
+    windows,
+    wins,
+    losses: Number(row.losses ?? 0),
+    win_rate: windows > 0 ? wins / windows : null,
+    estimated_net: Math.round(Number(row.estimated_net ?? 0) * 100) / 100,
+    maturity_target: maturityTarget,
+    samples_remaining: Math.max(0, maturityTarget - windows),
+    ready_for_virtual_paper: windows >= maturityTarget,
+  };
 }
 
 export function getMeta(key: string): string | null {
