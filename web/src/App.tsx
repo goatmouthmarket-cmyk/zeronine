@@ -2343,15 +2343,13 @@ function MomentumPage(): JSX.Element {
     : momentum.phase === 'connecting' || momentum.phase === 'scanning'
       ? 'starting'
       : 'active';
-  const researchStateCopy = researchState === 'idle'
-    ? 'Research is paused. Resume to begin collecting a new market comparison.'
-    : researchState === 'starting'
-      ? 'Opening the live market feed and collecting the first comparison samples.'
-      : 'Live research is recording measured moves and retaining settled window evidence.';
   const stateReady = momentumLoaded || Boolean(momentum);
   const showRestoring = !stateReady && !firstLaunchVisit;
-  const showLaunch = firstLaunchVisit && (!stateReady || !momentum?.running);
-  const showPaused = stateReady && !momentum?.running && !firstLaunchVisit;
+  // The welcome surface is only for a genuinely untouched idle workspace.
+  // A later paused or failed server run must remain actionable, not look like
+  // a first visit because this component still has its initial storage value.
+  const showLaunch = firstLaunchVisit && (!stateReady || (!momentum?.running && momentum?.phase === 'idle'));
+  const showPaused = stateReady && !momentum?.running && !showLaunch;
 
   return <>
     <header class="header">
@@ -2365,36 +2363,40 @@ function MomentumPage(): JSX.Element {
       <div class="mom-launch-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
       <span class="mom-kicker">Research workspace</span>
       <h2>Ready to watch live momentum.</h2>
-      <p>Start a fresh comparison across verified multiplier markets. The workspace will focus the strongest measured direction and retain its finished research evidence.</p>
-      <div class="mom-launch-facts" aria-label="Research setup"><span><Icon name="stats" size={14} />Up to 12 markets</span><span><Icon name="history" size={14} />Five-minute windows</span><span><Icon name="check" size={14} />No purchases</span></div>
+      <p>Start a fresh comparison across verified multiplier markets. The scanner checks availability, measures aligned moves, and focuses the strongest direction for a five-minute research window.</p>
+      <div class="mom-launch-facts" aria-label="Research setup"><span><Icon name="stats" size={14} />Up to 12 verified markets</span><span><Icon name="history" size={14} />Five-minute windows</span><span><Icon name="check" size={14} />{momentumPct(breakEvenMove)} cost hurdle</span><span><Icon name="check" size={14} />No purchases</span></div>
       <button class="mom-launch-action" disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name="play" size={16} />Start research</button>
       {!s.owner && <small>Research is controlled by the dashboard owner.</small>}
       {error && <div class="tl-err">{error}</div>}
     </section> : showPaused ? <section class="mom-paused" aria-live="polite">
       <span class="mom-paused-mark" aria-hidden="true"><Icon name="stats" size={18} /></span>
-      <div><span class="mom-kicker">Momentum workspace</span><strong>Research is paused</strong><small>Start a new verified market comparison when you are ready.</small></div>
+      <div><span class="mom-kicker">Momentum workspace</span><strong>{momentum?.phase === 'error' ? 'Research needs attention' : 'Research is paused'}</strong><small>{momentum?.reason ?? 'Start a new verified market comparison when you are ready.'}</small></div>
       <button class="mom-paused-action" disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name="play" size={15} />Start research</button>
       {!s.owner && <small class="mom-paused-owner">Research is controlled by the dashboard owner.</small>}
       {error && <div class="tl-err">{error}</div>}
     </section> : <div class={`mom-layout ${researchState}`}>
-      <section class={`mom-hero ${researchState}`}>
-        <div class="mom-state-mark" aria-hidden="true"><i></i><i></i><i></i></div>
-        <div><span class="mom-kicker">Always-on opportunity scanner</span><h2>{momentum?.phase === 'scanning' ? `Comparing ${momentum.scan?.candidates ?? 0} real markets` : momentum?.running ? market?.display ?? 'Selecting the strongest market' : 'Automatic research paused'}</h2><p>The engine verifies multiplier availability, watches up to 12 real markets for 60 seconds, and selects the strongest aligned momentum. It then tracks that direction through a five-minute research window.</p></div>
-        <div class="mom-hero-motif" aria-hidden="true">
-          <div class="mom-hero-grid"><i></i><i></i><i></i><i></i><i></i></div>
-          <div class="mom-hero-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <div class="mom-hero-trace"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <b></b>
+      <section class="mom-evidence mom-evidence-primary">
+        <div class="mom-live-trace" aria-label="Recent measured market movement">
+          <div class="mom-live-trace-head"><span>Recent measured move</span><small>Each bar is a return horizon, not a price forecast.</small></div>
+          <div class="mom-live-trace-bars">
+            {horizonMoves.map((move) => {
+              const positive = move.value >= 0;
+              const height = 18 + Math.round((Math.abs(move.value) / movementScale) * 82);
+              return <div class={`mom-trace-bar${positive ? ' up' : ' down'}`} key={move.label}>
+                <i style={{ height: `${height}%` }}></i><span>{move.label}</span>
+              </div>;
+            })}
+          </div>
         </div>
-        <span class={`mom-status ${momentum?.phase ?? 'idle'}`}><i></i>{momentum?.phase ?? 'idle'}</span>
-      </section>
-
-      <div class={`mom-state-rail ${researchState}`}><span><i></i>{researchState === 'starting' ? 'Starting' : 'Live'}</span><p>{researchStateCopy}</p></div>
-
-      <section class="mom-auto-rail">
-        <div class="mom-auto-market"><span class="mom-kicker">Selected automatically</span><strong>{market?.display ?? (momentum?.phase === 'scanning' ? 'Live comparison in progress' : 'Waiting for market data')}</strong><small>{market ? `${market.market.replace('_', ' ')} · MULTUP + MULTDOWN verified` : momentum?.reason ?? 'Selection uses aligned momentum strength, not a fixed preferred symbol.'}</small></div>
-        <div class="mom-auto-settings"><div><span>Scan set</span><strong>{momentum?.scan?.candidates ?? 'Up to 12'}</strong></div><div><span>Window</span><strong>5 min</strong></div><div><span>Cost hurdle</span><strong>{momentumPct(breakEvenMove)}</strong></div></div>
-        <button class={`mom-toggle ${momentum?.running ? 'stop' : ''}`} disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name={momentum?.running ? 'square' : 'play'} size={15} />{momentum?.running ? 'Pause' : 'Resume automatic scan'}</button>
+        <div class="mom-evidence-head">
+          <div><span class="mom-kicker">Why this direction</span><strong>{signal?.reason ?? momentum?.reason ?? 'Building live cross-market evidence'}</strong></div>
+          <div class="mom-evidence-actions">
+            <span class={`mom-status ${momentum?.phase ?? 'idle'}`}><i></i>{momentum?.phase ?? 'idle'}</span>
+            {w?.direction && <span class={`mom-locked ${w.direction}`}>Research entry locked · {w.direction}</span>}
+            <button class={`mom-toggle ${momentum?.running ? 'stop' : ''}`} disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name={momentum?.running ? 'square' : 'play'} size={15} />{momentum?.running ? 'Pause' : 'Resume scan'}</button>
+          </div>
+        </div>
+        <div class="mom-horizons"><div><span>15 sec</span><strong class={(signal?.return15s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return15s)}</strong></div><div><span>30 sec</span><strong class={(signal?.return30s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return30s)}</strong></div><div><span>60 sec</span><strong class={(signal?.return60s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return60s)}</strong></div><div><span>Cost hurdle</span><strong>{momentumPct(breakEvenMove)}</strong></div></div>
       </section>
       <MomentumWatchboard markets={watchedMarkets} selected={momentum?.config?.symbol} onFocus={(symbol) => void focus(symbol)} focusing={focusing} />
       {!s.owner && <div class="tl-note">Research starts automatically on the server. Unlock only if you need to pause or resume it.</div>}

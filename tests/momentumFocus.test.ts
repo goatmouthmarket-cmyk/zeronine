@@ -33,3 +33,55 @@ test('focusing a watched market drops the scan feeds and retains only the select
   assert.ok(sent.some((payload) => payload.forget_all === 'ticks'));
   assert.ok(sent.some((payload) => payload.ticks === 'cryBTCUSD' && payload.subscribe === 1));
 });
+
+test('a scan with partial but usable evidence focuses the strongest observed market', async () => {
+  const [{ Hub }, { MomentumObserver }] = await Promise.all([
+    import('../src/api/hub.ts'), import('../src/momentum/observer.ts'),
+  ]);
+  const observer = new MomentumObserver(new Hub()) as any;
+  const sent: Array<Record<string, unknown>> = [];
+  const now = Math.floor(Date.now() / 1000);
+  observer.ws = { send: (payload: string) => sent.push(JSON.parse(payload)) };
+  observer.running = true;
+  observer.phase = 'scanning';
+  observer.generation = 7;
+  observer.markets = [
+    { symbol: 'cryBTCUSD', display: 'Bitcoin/USD', market: 'cryptocurrency' },
+    { symbol: 'frxEURUSD', display: 'EUR/USD', market: 'forex' },
+  ];
+  observer.scanStartedAt = now - 60;
+  observer.scanTicks = new Map([
+    ['cryBTCUSD', [{ epoch: now - 45, quote: 100 }, { epoch: now, quote: 100.1 }]],
+    ['frxEURUSD', [{ epoch: now - 45, quote: 1.08 }, { epoch: now, quote: 1.08001 }]],
+  ]);
+
+  observer.finishScan(7);
+
+  const state = observer.state();
+  assert.equal(state.running, true);
+  assert.equal(state.phase, 'observing');
+  assert.equal(state.config.symbol, 'cryBTCUSD');
+  assert.match(state.reason, /No full aligned 60-second signal yet/);
+  assert.ok(sent.some((payload) => payload.ticks === 'cryBTCUSD' && payload.subscribe === 1));
+});
+
+test('a scan without usable ticks stays active and starts another bounded comparison', async () => {
+  const [{ Hub }, { MomentumObserver }] = await Promise.all([
+    import('../src/api/hub.ts'), import('../src/momentum/observer.ts'),
+  ]);
+  const observer = new MomentumObserver(new Hub()) as any;
+  observer.ws = { send: () => undefined };
+  observer.running = true;
+  observer.phase = 'scanning';
+  observer.generation = 3;
+  observer.scanStartedAt = Math.floor(Date.now() / 1000) - 60;
+  observer.scanTicks = new Map([['cryBTCUSD', []]]);
+
+  observer.finishScan(3);
+
+  const state = observer.state();
+  assert.equal(state.running, true);
+  assert.equal(state.phase, 'scanning');
+  assert.match(state.reason, /extending the market comparison/);
+  observer.stop();
+});

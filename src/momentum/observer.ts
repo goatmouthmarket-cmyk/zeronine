@@ -15,6 +15,7 @@ const MULTIPLIER_SUPPORT_CACHE_MS = 10 * 60 * 1_000;
 const MAX_SCAN_SAMPLES = 16;
 const MAX_FOCUS_SAMPLES = 90;
 const UI_EMIT_INTERVAL_MS = 250;
+const MIN_FALLBACK_SCAN_SECONDS = 15;
 const AUTOMATIC_CONFIG = { multiplier: 20, stake: 10, commissionRate: .001 } as const;
 
 export interface MomentumMarket { symbol: string; display: string; market: string }
@@ -247,9 +248,9 @@ export class MomentumObserver {
     return this.begin(input);
   }
 
-  private begin(input: MomentumConfig, seed: Tick[] = []): MomentumState {
+  private begin(input: MomentumConfig, seed: Tick[] = [], reason: string | null = null): MomentumState {
     this.stopSubscription();
-    this.config = input; this.ticks = [...seed]; this.window = null; this.running = true; this.phase = 'observing'; this.reason = null;
+    this.config = input; this.ticks = [...seed]; this.window = null; this.running = true; this.phase = 'observing'; this.reason = reason;
     if (seed.length > 0) {
       const latest = seed.at(-1)!;
       this.window = this.newWindow(latest.quote, latest.epoch);
@@ -318,8 +319,48 @@ export class MomentumObserver {
       .filter((item) => item.signal.direction !== 'wait')
       .sort((a, b) => (b.signal.confidence * Math.abs(b.signal.score)) - (a.signal.confidence * Math.abs(a.signal.score)));
     const selected = ranked[0]?.symbol;
-    if (!selected) { this.running = false; this.phase = 'error'; this.reason = 'No market formed aligned 15/30/60-second evidence during the scan'; this.stopSubscription(); this.emit(); return; }
-    this.begin({ symbol: selected, ...AUTOMATIC_CONFIG }, this.scanTicks.get(selected) ?? []);
+    if (selected) {
+      this.begin({ symbol: selected, ...AUTOMATIC_CONFIG }, this.scanTicks.get(selected) ?? []);
+      return;
+    }
+
+    // A quote subscription can begin a few seconds after the scan timer. Do
+    // not turn an otherwise healthy scan into an error just because no market
+    // has a complete 60-second horizon on this first pass. A sufficiently
+    // observed market is still useful research evidence; it will not lock a
+    // direction until the regular observing window has enough data.
+    const fallback = [...this.scanTicks.entries()]
+      .map(([symbol, ticks]) => {
+        const first = ticks[0];
+        const last = ticks.at(-1);
+        const span = first && last ? last.epoch - first.epoch : 0;
+        const movement = first && last ? Math.abs(pct(first.quote, last.quote)) : 0;
+        const signal = momentumSignal(ticks, now);
+        return { symbol, ticks, span, movement, signal };
+      })
+      .filter((item) => item.ticks.length >= 2 && item.span >= MIN_FALLBACK_SCAN_SECONDS)
+      .sort((a, b) => (b.signal.confidence - a.signal.confidence)
+        || (Math.abs(b.signal.score) - Math.abs(a.signal.score))
+        || (b.movement - a.movement)
+        || (b.span - a.span));
+    const observed = fallback[0];
+    if (observed) {
+      this.begin(
+        { symbol: observed.symbol, ...AUTOMATIC_CONFIG },
+        observed.ticks,
+        'No full aligned 60-second signal yet; continuing research on the most observed market.',
+      );
+      return;
+    }
+
+    // Keep the existing subscriptions alive and collect another bounded scan
+    // instead of returning the UI to a stopped/landing state.
+    this.reason = 'Waiting for usable live ticks; extending the market comparison.';
+    this.scanStartedAt = now;
+    for (const [symbol] of this.scanTicks) this.scanTicks.set(symbol, []);
+    this.scanTimer = setTimeout(() => this.finishScan(generation), SCAN_SECONDS * 1_000);
+    this.scanTimer.unref();
+    this.emit();
   }
 
   private async verifyMultiplierMarkets(markets: MomentumMarket[], generation: number): Promise<MomentumMarket[]> {
@@ -386,8 +427,12 @@ export class MomentumObserver {
     }
     if (epoch >= this.window.endsAt) {
       this.completeWindow(quote);
-      this.running = false; this.phase = 'connecting'; this.reason = 'Re-scanning for the strongest next five-minute opportunity'; this.emit();
-      void this.startAutomatic().catch((error) => { this.phase = 'error'; this.reason = String(error); this.emit(); });
+      this.phase = 'connecting'; this.reason = 'Re-scanning for the strongest next five-minute opportunity'; this.emit();
+      const rescanGeneration = this.generation + 1;
+      void this.startAutomatic().catch((error) => {
+        if (this.generation !== rescanGeneration) return;
+        this.running = false; this.phase = 'error'; this.reason = String(error); this.emit();
+      });
       return;
     }
     const elapsed = epoch - this.window.startedAt;

@@ -849,6 +849,20 @@ button {
 @media (max-width: 560px) { .mom-launch { min-height: min(64vh, 520px); padding: 48px 22px; }.mom-launch-facts { display: grid; gap: 11px; margin-top: 23px; }.mom-launch-action { width: 100%; margin-top: 26px; }.mom-paused { grid-template-columns: 25px minmax(0, 1fr); row-gap: 14px; padding: 24px 22px; }.mom-paused-action { grid-column: 1 / -1; width: 100%; }.mom-paused-owner, .mom-paused .tl-err { grid-column: 1 / -1; } }
 @media (prefers-reduced-motion: reduce) { .mom-launch, .mom-restoring-mark i, .mom-state-mark i, .mom-hero-bars i, .mom-hero-motif > b, .mom-layout.active .mom-pnl > div::before, .mom-layout.active .mom-scoreboard > div::before, .mom-state-rail.active > span i { animation: none; }.mom-toggle, .mom-launch-action, .mom-paused-action { transition: none; } }
 
+/* The live workspace begins with evidence, not a second scanner introduction. */
+.mom-layout { border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
+.mom-auto-rail,
+.mom-evidence:not(.mom-evidence-primary) { display: none; }
+.mom-evidence-primary { border-top: 0; }
+.mom-evidence-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.mom-evidence-actions .mom-status { align-self: auto; }
+.mom-evidence-actions .mom-toggle { height: 32px; padding-inline: 11px; border-radius: 5px; }
+
+@media (max-width: 560px) {
+  .mom-evidence-actions { align-items: stretch; }
+  .mom-evidence-actions .mom-toggle { flex: 1 0 100%; }
+}
+
 /* Fluid hero: key numerals and grids scale with the viewport so the card
    rearranges cleanly across window sizes and browser zoom levels. */
 .cockpit-side,
