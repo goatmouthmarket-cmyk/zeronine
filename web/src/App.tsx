@@ -2316,17 +2316,39 @@ function MomentumPage(): JSX.Element {
     { label: 'Live', value: w?.changePct ?? 0 },
   ];
   const movementScale = Math.max(...horizonMoves.map((move) => Math.abs(move.value)), breakEvenMove, .0001);
+  const researchState = !momentum?.running
+    ? 'idle'
+    : momentum.phase === 'connecting' || momentum.phase === 'scanning'
+      ? 'starting'
+      : 'active';
+  const researchStateCopy = researchState === 'idle'
+    ? 'Research is paused. Resume to begin collecting a new market comparison.'
+    : researchState === 'starting'
+      ? 'Opening the live market feed and collecting the first comparison samples.'
+      : 'Live research is recording measured moves and retaining settled window evidence.';
 
   return <>
     <header class="header">
       <div class="page-title">Multiplier Momentum</div>
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
     </header>
-    <div class="mom-layout">
-      <section class="mom-hero">
+    {researchState === 'idle' ? <section class="mom-launch" aria-live="polite">
+      <div class="mom-launch-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <span class="mom-kicker">Research workspace</span>
+      <h2>Ready to watch live momentum.</h2>
+      <p>Start a fresh comparison across verified multiplier markets. The workspace will focus the strongest measured direction and retain its finished research evidence.</p>
+      <div class="mom-launch-facts" aria-label="Research setup"><span><Icon name="stats" size={14} />Up to 12 markets</span><span><Icon name="history" size={14} />Five-minute windows</span><span><Icon name="check" size={14} />No purchases</span></div>
+      <button class="mom-launch-action" disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name="play" size={16} />Start research</button>
+      {!s.owner && <small>Research is controlled by the dashboard owner.</small>}
+      {error && <div class="tl-err">{error}</div>}
+    </section> : <div class={`mom-layout ${researchState}`}>
+      <section class={`mom-hero ${researchState}`}>
+        <div class="mom-state-mark" aria-hidden="true"><i></i><i></i><i></i></div>
         <div><span class="mom-kicker">Always-on opportunity scanner</span><h2>{momentum?.phase === 'scanning' ? `Comparing ${momentum.scan?.candidates ?? 0} real markets` : momentum?.running ? market?.display ?? 'Selecting the strongest market' : 'Automatic research paused'}</h2><p>The engine verifies multiplier availability, watches up to 12 real markets for 60 seconds, and selects the strongest aligned momentum. It then tracks that direction through a five-minute research window.</p></div>
         <span class={`mom-status ${momentum?.phase ?? 'idle'}`}><i></i>{momentum?.phase ?? 'idle'}</span>
       </section>
+
+      <div class={`mom-state-rail ${researchState}`}><span><i></i>{researchState === 'starting' ? 'Starting' : 'Live'}</span><p>{researchStateCopy}</p></div>
 
       <section class="mom-auto-rail">
         <div class="mom-auto-market"><span class="mom-kicker">Selected automatically</span><strong>{market?.display ?? (momentum?.phase === 'scanning' ? 'Live comparison in progress' : 'Waiting for market data')}</strong><small>{market ? `${market.market.replace('_', ' ')} · MULTUP + MULTDOWN verified` : momentum?.reason ?? 'Selection uses aligned momentum strength, not a fixed preferred symbol.'}</small></div>
@@ -2379,7 +2401,7 @@ function MomentumPage(): JSX.Element {
         <small>Saved globally. It does not alter digit signals, account balances, or real/demo trading.</small>
       </section>
       <div class="mom-disclaimer"><strong>Research estimate, not account P&amp;L.</strong> The 0.10% cost hurdle is a fixed assumption. Before demo execution, the system must capture Deriv’s actual proposal commission and live sell price; spot movement alone is not sufficient evidence of profitability.</div>
-    </div>
+    </div>}
   </>;
 }
 
