@@ -661,6 +661,7 @@ button {
 .gold-page-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 0 0 16px; }
 .gold-page-header .page-title { margin: 6px 0 0; }
 .gold-page-header .subtitle { margin-top: 6px; }
+.gold-mark { display: block; width: 15px; height: 15px; flex: 0 0 auto; }
 .gold-kicker { display: inline-flex; align-items: center; gap: 6px; color: #f4c96b; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
 .gold-phase { display: inline-flex; align-items: center; min-height: 25px; padding: 0 8px; border: 1px solid rgba(244,201,107,.26); border-radius: 99px; color: #f4c96b; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .gold-tabs { display: flex; align-items: center; gap: 3px; overflow-x: auto; padding: 0 0 11px; border-bottom: 1px solid var(--border); scrollbar-width: none; }
@@ -3498,9 +3499,9 @@ button.activity-row {
     color: #f4c96b;
 }
 
-.nav-item.gold.active {
-    text-shadow: 0 0 12px rgba(244,201,107,.22);
-}
+.nav-item.gold .gold-mark { width: 20px; height: 20px; }
+.nav-item.gold:not(.active) .gold-mark,
+.nav-link.gold:not(.active) .gold-mark { filter: grayscale(1) brightness(.82); opacity: .72; }
 
 .nav-item.active {
     color: var(--purple-light);
@@ -3563,6 +3564,17 @@ button.activity-row {
 .nav-link.gold.active {
     color: #f4c96b;
     background: rgba(244,201,107,.1);
+}
+
+.nav-link.gold {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.nav-link.gold .gold-mark {
+    width: 14px;
+    height: 14px;
 }
 
 /* =========================================================

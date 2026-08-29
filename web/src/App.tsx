@@ -202,12 +202,6 @@ const ICON_PATHS: Record<string, JSX.Element> = {
       <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
     </>
   ),
-  gold: (
-    <>
-      <path d="m12 3 7 5-7 13L5 8l7-5Z" />
-      <path d="M5 8h14M8.5 12h7" />
-    </>
-  ),
   chevronRight: <path d="M9 6l6 6-6 6" />,
   logout: (
     <>
@@ -249,6 +243,10 @@ function Icon({
       {ICON_PATHS[name]}
     </svg>
   );
+}
+
+function GoldMark(): JSX.Element {
+  return <img class="gold-mark" src="/gold-mark.svg" alt="" aria-hidden="true" />;
 }
 
 /* ---------------- app shell ---------------- */
@@ -593,7 +591,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             <button class={`nav-link${page === 'backtest' ? ' active' : ''}`} onClick={() => onNavigate('backtest')}>Lab</button>
             <button class={`nav-link${page === 'bot' ? ' active' : ''}`} onClick={() => onNavigate('bot')}>Bot</button>
             <button class={`nav-link${page === 'momentum' ? ' active' : ''}`} onClick={() => onNavigate('momentum')}>Momentum</button>
-            <button class={`nav-link gold${page === 'gold' ? ' active' : ''}`} onClick={() => onNavigate('gold')}>Gold</button>
+            <button class={`nav-link gold${page === 'gold' ? ' active' : ''}`} onClick={() => onNavigate('gold')}><GoldMark />Gold</button>
             <button class={`nav-link${page === 'account' ? ' active' : ''}`} onClick={() => onNavigate('account')}>Account</button>
           </nav>
           <div class="balance">
@@ -3663,7 +3661,7 @@ function GoldPage(): JSX.Element {
   return <section class="gold-page" aria-label="Gold workspace">
     <header class="header gold-page-header">
       <div>
-        <span class="gold-kicker"><Icon name="gold" size={14} />Gold workspace</span>
+        <span class="gold-kicker"><GoldMark />Gold workspace</span>
         <div class="page-title">Gold</div>
         <div class="subtitle">Independent CFD research, simulation, and execution workspace</div>
       </div>
@@ -3802,7 +3800,7 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
           Momentum
         </button>
         <button class={`nav-item gold${page === 'gold' ? ' active' : ''}`} onClick={() => setPage('gold')}>
-          <Icon name="gold" size={20} />
+          <GoldMark />
           Gold
         </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} onClick={() => setPage('account')}>
