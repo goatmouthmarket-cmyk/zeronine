@@ -705,11 +705,14 @@ button {
 .mom-live-trace-head span { color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
 .mom-live-trace-head small { color: var(--muted-2); font-size: 8px; text-align: right; }
 .mom-live-trace-bars { display: grid; grid-template-columns: repeat(4, 1fr); align-items: end; gap: 7px; height: 74px; margin-top: 8px; }
-.mom-trace-bar { display: grid; grid-template-rows: 1fr auto; align-items: end; height: 100%; gap: 5px; }
+.mom-trace-bar { display: grid; grid-template-rows: minmax(3px, 1fr) auto auto auto; align-items: end; height: 100%; gap: 2px; }
 .mom-trace-bar i { display: block; min-height: 3px; width: 100%; border-radius: 3px 3px 1px 1px; transform-origin: bottom; animation: mom-trace-rise .55s cubic-bezier(.22, 1, .36, 1) both; transition: height .35s ease; }
 .mom-trace-bar.up i { background: var(--green); }
 .mom-trace-bar.down i { background: var(--red); }
-.mom-trace-bar span { color: var(--muted-2); font-size: 8px; font-weight: 750; text-align: center; }
+.mom-trace-bar.neutral i { background: var(--muted); }
+.mom-trace-bar b { display: block; overflow: hidden; color: var(--text); font-size: 8px; font-variant-numeric: tabular-nums; line-height: 1.15; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.mom-trace-bar span { color: var(--muted-2); font-size: 8px; font-weight: 750; line-height: 1.15; text-align: center; }
+.mom-trace-bar small { display: block; overflow: hidden; color: var(--muted); font-size: 7px; line-height: 1.15; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 
 .mom-pnl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .mom-scoreboard { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -922,7 +925,7 @@ button {
 }
 
 .mom-evidence-primary .mom-live-trace-bars {
-  height: 58px;
+  height: 66px;
   margin-top: 9px;
 }
 

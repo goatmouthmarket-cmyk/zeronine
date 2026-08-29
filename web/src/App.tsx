@@ -2223,6 +2223,12 @@ function momentumPct(value: number | null | undefined): string {
   return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(3)}%`;
 }
 
+function momentumPrice(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return '--';
+  const maximumFractionDigits = value >= 10_000 ? 2 : value >= 100 ? 3 : value >= 1 ? 5 : 8;
+  return value.toLocaleString(undefined, { maximumFractionDigits });
+}
+
 function momentumProgress(value: number | null | undefined): number {
   if (!Number.isFinite(value)) return 0;
   const normalized = Number(value) <= 1 ? Number(value) * 100 : Number(value);
@@ -2447,13 +2453,34 @@ function MomentumPage(): JSX.Element {
   const winRate = momentum && settledSignals ? momentum.wins / settledSignals : null;
   const breakEvenMove = (momentum?.config?.commissionRate ?? .001);
   const research = momentum?.research;
-  const horizonMoves = [
-    { label: '60s', value: signal?.return60s ?? 0 },
-    { label: '30s', value: signal?.return30s ?? 0 },
-    { label: '15s', value: signal?.return15s ?? 0 },
-    { label: 'Live', value: w?.changePct ?? 0 },
+  const observedPrices = [
+    w?.openPrice,
+    ...(w?.samples ?? focusedMarket?.samples ?? []).map((sample) => sample.quote),
+    w?.currentPrice,
+  ].filter((price): price is number => price != null && Number.isFinite(price) && price > 0);
+  const watchEntry = (w?.openPrice && w.openPrice > 0) ? w.openPrice : observedPrices[0] ?? 0;
+  const currentPrice = (w?.currentPrice && w.currentPrice > 0) ? w.currentPrice : observedPrices.at(-1) ?? watchEntry;
+  const highestPrice = observedPrices.length ? Math.max(...observedPrices) : watchEntry;
+  const lowestPrice = observedPrices.length ? Math.min(...observedPrices) : watchEntry;
+  const relativeMove = (price: number): number => watchEntry > 0 ? (price - watchEntry) / watchEntry : 0;
+  const currentMove = relativeMove(currentPrice);
+  const priceRange = highestPrice - lowestPrice;
+  const currentPosition = observedPrices.length < 2
+    ? 'Collecting prices'
+    : priceRange <= Math.max(watchEntry * .000001, .00000001)
+      ? 'At watch entry'
+      : currentPrice >= highestPrice - priceRange * .2
+        ? 'Near the high'
+        : currentPrice <= lowestPrice + priceRange * .2
+          ? 'Near the low'
+          : currentMove >= 0 ? 'Above entry' : 'Below entry';
+  const priceStory = [
+    { label: 'Watch entry', price: watchEntry, detail: 'Starting price', tone: 'neutral' },
+    { label: 'Highest since', price: highestPrice, detail: `${momentumPct(relativeMove(highestPrice))} from entry`, tone: 'up' },
+    { label: 'Current position', price: currentPrice, detail: currentPosition, tone: currentMove >= 0 ? 'up' : 'down' },
+    { label: 'Lowest since', price: lowestPrice, detail: `${momentumPct(relativeMove(lowestPrice))} from entry`, tone: 'down' },
   ];
-  const movementScale = Math.max(...horizonMoves.map((move) => Math.abs(move.value)), breakEvenMove, .0001);
+  const movementScale = Math.max(...priceStory.map((point) => Math.abs(relativeMove(point.price))), .0001);
   const researchState = !momentum?.running
     ? 'idle'
     : momentum.phase === 'connecting' || momentum.phase === 'scanning'
@@ -2508,14 +2535,13 @@ function MomentumPage(): JSX.Element {
       {error && <div class="tl-err">{error}</div>}
     </section> : <div class={`mom-layout ${researchState}`}>
       <section class="mom-evidence mom-evidence-primary">
-        <div class="mom-live-trace" aria-label="Recent measured market movement">
-          <div class="mom-live-trace-head"><span>Recent measured move</span><small>Each bar is a return horizon, not a price forecast.</small></div>
+        <div class="mom-live-trace" aria-label="Price story since this market watch began">
+          <div class="mom-live-trace-head"><span>Price story since watch began</span><small>Start, high, current position, and low. Not a forecast.</small></div>
           <div class="mom-live-trace-bars">
-            {horizonMoves.map((move) => {
-              const positive = move.value >= 0;
-              const height = 18 + Math.round((Math.abs(move.value) / movementScale) * 82);
-              return <div class={`mom-trace-bar${positive ? ' up' : ' down'}`} key={move.label}>
-                <i style={{ height: `${height}%` }}></i><span>{move.label}</span>
+            {priceStory.map((point) => {
+              const height = 18 + Math.round((Math.abs(relativeMove(point.price)) / movementScale) * 82);
+              return <div class={`mom-trace-bar ${point.tone}`} key={point.label}>
+                <i style={{ height: `${height}%` }}></i><b>{momentumPrice(point.price)}</b><span>{point.label}</span><small>{point.detail}</small>
               </div>;
             })}
           </div>
@@ -2548,14 +2574,13 @@ function MomentumPage(): JSX.Element {
       </section>
 
       <section class="mom-evidence">
-        <div class="mom-live-trace" aria-label="Recent measured market movement">
-          <div class="mom-live-trace-head"><span>Recent measured move</span><small>Each bar is a return horizon, not a price forecast.</small></div>
+        <div class="mom-live-trace" aria-label="Price story since this market watch began">
+          <div class="mom-live-trace-head"><span>Price story since watch began</span><small>Start, high, current position, and low. Not a forecast.</small></div>
           <div class="mom-live-trace-bars">
-            {horizonMoves.map((move) => {
-              const positive = move.value >= 0;
-              const height = 18 + Math.round((Math.abs(move.value) / movementScale) * 82);
-              return <div class={`mom-trace-bar${positive ? ' up' : ' down'}`} key={move.label}>
-                <i style={{ height: `${height}%` }}></i><span>{move.label}</span>
+            {priceStory.map((point) => {
+              const height = 18 + Math.round((Math.abs(relativeMove(point.price)) / movementScale) * 82);
+              return <div class={`mom-trace-bar ${point.tone}`} key={point.label}>
+                <i style={{ height: `${height}%` }}></i><b>{momentumPrice(point.price)}</b><span>{point.label}</span><small>{point.detail}</small>
               </div>;
             })}
           </div>
