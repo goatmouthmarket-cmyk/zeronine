@@ -173,6 +173,7 @@ const ICON_PATHS: Record<string, JSX.Element> = {
   ),
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   arrowUpRight: <path d="M7 17 17 7M8.5 7H17v8.5" />,
+  arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
   arrowUp: <path d="M12 19V5m0 0-5.5 5.5M12 5l5.5 5.5" />,
   arrowDown: <path d="M12 5v14m0 0 5.5-5.5M12 19 6.5 13.5" />,
   dots: <path d="M6 12h.01M12 12h.01M18 12h.01" />,
@@ -2280,12 +2281,19 @@ function MomentumPage(): JSX.Element {
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setFocusing(null); }
   };
+  const returnToWatchboard = async () => {
+    setBusy(true); setError('');
+    try { await startMomentumResearch(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
+  };
 
   const w = momentum?.window;
   const signal = w?.signal;
   const market = momentum?.markets.find((item) => item.symbol === momentum.config?.symbol);
   const watchedMarkets = momentum?.scan?.markets ?? [];
   const focusedMarket = watchedMarkets.find((item) => item.symbol === momentum?.config?.symbol) ?? null;
+  const canReturnToWatchboard = Boolean(momentum?.running && momentum.phase === 'observing' && momentum.config?.symbol);
   const secondsLeft = w ? Math.max(0, w.endsAt - Math.floor(Date.now() / 1000)) : 300;
   const elapsed = w ? Math.max(0, 300 - secondsLeft) : 0;
   const settledSignals = (momentum?.wins ?? 0) + (momentum?.losses ?? 0);
@@ -2344,6 +2352,7 @@ function MomentumPage(): JSX.Element {
 
       {(focusedMarket || w?.samples?.length) && <section class="mom-focus-stage" aria-label="Focused momentum market">
         <div><span class="mom-kicker">Focused research</span><strong>{focusedMarket?.display ?? market?.display ?? 'Current market'}</strong><small>{focusedMarket ? `${focusedMarket.sampleCount} ticks observed · ${Math.round(momentumProgress(focusedMarket.progress))}% scan complete` : 'Live window samples'}</small></div>
+        {canReturnToWatchboard && <button class="mom-return-watch" type="button" disabled={busy || !s.owner} onClick={() => void returnToWatchboard()} aria-label="Return to full market watchboard and begin a new scan" title="Return to market watchboard"><Icon name="arrowLeft" size={13} />Back to watchboard</button>}
         <div class="mom-focus-chart"><MomentumPriceChart samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} /></div>
         <div class="mom-focus-read"><span>Current read</span><strong class={signal?.direction ?? focusedMarket?.signal?.direction ?? 'wait'}>{signal?.direction?.toUpperCase() ?? focusedMarket?.signal?.direction?.toUpperCase() ?? 'WAIT'}</strong><small>{signal?.confidence ?? focusedMarket?.signal?.confidence ?? 0}% confidence</small></div>
       </section>}
