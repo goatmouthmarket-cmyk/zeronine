@@ -2198,6 +2198,24 @@ function Bar({ label, rate, count, tone }: { label: string; rate: number; count:
 
 /* ---------------- real-market multiplier momentum ---------------- */
 
+const MOMENTUM_LAUNCH_SEEN_KEY = 'zeronine:momentum-launch-seen:v1';
+
+function hasSeenMomentumLaunch(): boolean {
+  try {
+    return window.localStorage.getItem(MOMENTUM_LAUNCH_SEEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberMomentumLaunch(): void {
+  try {
+    window.localStorage.setItem(MOMENTUM_LAUNCH_SEEN_KEY, '1');
+  } catch {
+    // Storage may be unavailable in a private or restricted browser context.
+  }
+}
+
 function momentumPct(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(3)}%`;
@@ -2265,8 +2283,21 @@ function MomentumPage(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [focusing, setFocusing] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [momentumLoaded, setMomentumLoaded] = useState(Boolean(momentum));
+  const [firstLaunchVisit] = useState(() => !hasSeenMomentumLaunch());
 
-  useEffect(() => { void loadMomentumState(); }, []);
+  useEffect(() => {
+    let mounted = true;
+    if (firstLaunchVisit) rememberMomentumLaunch();
+    void loadMomentumState()
+      .catch((cause) => {
+        if (mounted) setError(cause instanceof Error ? cause.message : String(cause));
+      })
+      .finally(() => {
+        if (mounted) setMomentumLoaded(true);
+      });
+    return () => { mounted = false; };
+  }, [firstLaunchVisit]);
   const toggle = async () => {
     setBusy(true); setError('');
     try {
@@ -2317,13 +2348,20 @@ function MomentumPage(): JSX.Element {
     : researchState === 'starting'
       ? 'Opening the live market feed and collecting the first comparison samples.'
       : 'Live research is recording measured moves and retaining settled window evidence.';
+  const stateReady = momentumLoaded || Boolean(momentum);
+  const showRestoring = !stateReady && !firstLaunchVisit;
+  const showLaunch = firstLaunchVisit && (!stateReady || !momentum?.running);
+  const showPaused = stateReady && !momentum?.running && !firstLaunchVisit;
 
   return <>
     <header class="header">
       <div class="page-title">Multiplier Momentum</div>
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
     </header>
-    {researchState === 'idle' ? <section class="mom-launch" aria-live="polite">
+    {showRestoring ? <section class="mom-restoring" aria-live="polite" aria-busy="true">
+      <span class="mom-restoring-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div><span class="mom-kicker">Momentum workspace</span><strong>Restoring live research state</strong><small>Checking the latest scanner status.</small></div>
+    </section> : showLaunch ? <section class="mom-launch" aria-live="polite">
       <div class="mom-launch-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
       <span class="mom-kicker">Research workspace</span>
       <h2>Ready to watch live momentum.</h2>
@@ -2331,6 +2369,12 @@ function MomentumPage(): JSX.Element {
       <div class="mom-launch-facts" aria-label="Research setup"><span><Icon name="stats" size={14} />Up to 12 markets</span><span><Icon name="history" size={14} />Five-minute windows</span><span><Icon name="check" size={14} />No purchases</span></div>
       <button class="mom-launch-action" disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name="play" size={16} />Start research</button>
       {!s.owner && <small>Research is controlled by the dashboard owner.</small>}
+      {error && <div class="tl-err">{error}</div>}
+    </section> : showPaused ? <section class="mom-paused" aria-live="polite">
+      <span class="mom-paused-mark" aria-hidden="true"><Icon name="stats" size={18} /></span>
+      <div><span class="mom-kicker">Momentum workspace</span><strong>Research is paused</strong><small>Start a new verified market comparison when you are ready.</small></div>
+      <button class="mom-paused-action" disabled={busy || !s.owner} onClick={() => void toggle()}><Icon name="play" size={15} />Start research</button>
+      {!s.owner && <small class="mom-paused-owner">Research is controlled by the dashboard owner.</small>}
       {error && <div class="tl-err">{error}</div>}
     </section> : <div class={`mom-layout ${researchState}`}>
       <section class={`mom-hero ${researchState}`}>
