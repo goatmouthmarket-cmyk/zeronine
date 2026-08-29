@@ -2,6 +2,7 @@ import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow } from './store';
+import { MomentumPriceChart } from './MomentumPriceChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
 import {
@@ -2207,24 +2208,6 @@ function momentumProgress(value: number | null | undefined): number {
   return Math.max(0, Math.min(100, normalized));
 }
 
-function MomentumLine({ samples, label }: { samples?: MomentumScanSample[]; label: string }): JSX.Element {
-  const points = (samples ?? []).filter((sample) => Number.isFinite(sample.quote)).slice(-72);
-  if (points.length < 2) return <div class="mom-chart-empty">Awaiting ticks</div>;
-  const quotes = points.map((point) => point.quote);
-  const min = Math.min(...quotes);
-  const max = Math.max(...quotes);
-  const range = max - min || 1;
-  const width = 160;
-  const height = 54;
-  const path = points.map((point, index) => {
-    const x = (index / (points.length - 1)) * width;
-    const y = height - ((point.quote - min) / range) * (height - 8) - 4;
-    return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
-  }).join(' ');
-  const up = quotes[quotes.length - 1] >= quotes[0];
-  return <svg class={`mom-chart-line${up ? ' up' : ' down'}`} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} preserveAspectRatio="none"><path d={path} pathLength={100} /></svg>;
-}
-
 function MomentumWatchboard({
   markets,
   selected,
@@ -2247,7 +2230,7 @@ function MomentumWatchboard({
         return <button class={`mom-watch-row${active ? ' active' : ''}`} type="button" key={item.symbol} onClick={() => onFocus(item.symbol)} disabled={Boolean(focusing)}>
           <span class={`mom-watch-signal ${direction}`}>{direction === 'up' ? 'UP' : direction === 'down' ? 'DOWN' : 'WAIT'}</span>
           <span class="mom-watch-market"><b>{item.display}</b><small>{item.market.replace('_', ' ')} · {item.sampleCount} ticks</small></span>
-          <span class="mom-watch-chart"><MomentumLine samples={item.samples} label={`${item.display} recent quotes`} /></span>
+          <span class="mom-watch-chart"><MomentumPriceChart compact samples={item.samples} label={`${item.display} recent quotes`} /></span>
           <span class="mom-watch-progress"><i><em style={{ width: `${progress}%` }}></em></i><small>{Math.round(progress)}%</small></span>
           <span class={`mom-watch-read ${direction}`}><b>{item.signal?.confidence != null ? `${item.signal.confidence}%` : '--'}</b><small>{focusing === item.symbol ? 'Focusing' : active ? 'Focused' : direction}</small></span>
         </button>;
@@ -2361,7 +2344,7 @@ function MomentumPage(): JSX.Element {
 
       {(focusedMarket || w?.samples?.length) && <section class="mom-focus-stage" aria-label="Focused momentum market">
         <div><span class="mom-kicker">Focused research</span><strong>{focusedMarket?.display ?? market?.display ?? 'Current market'}</strong><small>{focusedMarket ? `${focusedMarket.sampleCount} ticks observed · ${Math.round(momentumProgress(focusedMarket.progress))}% scan complete` : 'Live window samples'}</small></div>
-        <div class="mom-focus-chart"><MomentumLine samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} /></div>
+        <div class="mom-focus-chart"><MomentumPriceChart samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} /></div>
         <div class="mom-focus-read"><span>Current read</span><strong class={signal?.direction ?? focusedMarket?.signal?.direction ?? 'wait'}>{signal?.direction?.toUpperCase() ?? focusedMarket?.signal?.direction?.toUpperCase() ?? 'WAIT'}</strong><small>{signal?.confidence ?? focusedMarket?.signal?.confidence ?? 0}% confidence</small></div>
       </section>}
 
