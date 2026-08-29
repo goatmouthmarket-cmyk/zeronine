@@ -2393,13 +2393,14 @@ function MomentumTradeDesk({
   const liveContractProfit = Number.isFinite(Number(matchingContract?.profit)) ? Number(matchingContract?.profit) : undefined;
   const contractPnl = settledTrade?.profit ?? closed?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit;
   const canClose = Boolean(closableMomentumTrade?.contract_id && !closing);
+  const hasActiveTradeEntry = Boolean(closableMomentumTrade || (purchase && !closed && !settledTrade));
   const actualEntryPrice = Number.isFinite(Number(trade?.entry_spot)) && Number(trade?.entry_spot) > 0
     ? Number(trade?.entry_spot)
     : Number.isFinite(Number(purchase?.entryPrice)) && Number(purchase?.entryPrice) > 0
       ? Number(purchase?.entryPrice)
       : undefined;
-  const chartEntryPrice = actualEntryPrice ?? entryPrice;
-  const chartEntryLabel = actualEntryPrice ? 'Trade entry' : 'Research watch entry';
+  const chartEntryPrice = hasActiveTradeEntry ? actualEntryPrice ?? entryPrice : undefined;
+  const chartEntryLabel = 'Trade entry';
   const liveSellPrice = Number.isFinite(Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice))
     ? Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice)
     : undefined;
