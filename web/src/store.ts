@@ -1221,6 +1221,9 @@ export async function focusMomentumMarket(symbol: string): Promise<MomentumState
 export async function placeMomentumDemoTrade(input: {
   direction: 'up' | 'down';
   stake: number;
+  multiplier: number;
+  takeProfit?: number;
+  stopLoss?: number;
 }): Promise<MomentumTradePurchase> {
   const res = await api<{ trade?: MomentumTradePurchase; session?: SessionInfo }>('/api/momentum/trade', {
     method: 'POST',

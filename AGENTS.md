@@ -12,6 +12,7 @@
 - Preserve trading risk gates, single-open-contract semantics, demo and real-account safeguards, and recovery-state behavior unless a change explicitly intends to alter them.
 - When changing settings, update the typed settings row, SQLite schema/default and migration handling in `src/db/store.ts`, API validation and routes, config and environment defaults where appropriate, and dashboard state and UI as needed.
 - Keep browser API and WebSocket contract changes aligned across `src/api/`, server event emitters, and `web/src/store.ts` and `web/src/App.tsx`.
+- Keep Momentum Trade controls flat: no pill wrappers or bordered direction controls; use plain inline status where possible.
 - Keep sensitive tokens encrypted through the existing session and crypto flow; never log or return PATs or OAuth tokens.
 - Keep virtual-paper outcomes explicitly separate from Deriv account balances, risk, recovery, stake sizing, and execution. They may be retained only as clearly-labelled research evidence unless an explicit, validated calibration contract is added.
 - Keep audit, ledger, analytics, and research persistence out of the execution critical path. A failure to record telemetry must never prevent a Deriv quote, purchase, settlement, or stop request.

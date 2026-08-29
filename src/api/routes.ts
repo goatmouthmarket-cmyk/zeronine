@@ -322,12 +322,26 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       return { error: 'stop the bot before placing a Momentum trade' };
     }
 
-    const body = (req.body ?? {}) as { direction?: unknown; stake?: unknown };
+    const body = (req.body ?? {}) as { direction?: unknown; stake?: unknown; multiplier?: unknown; takeProfit?: unknown; stopLoss?: unknown };
     const direction = body.direction === 'up' || body.direction === 'down' ? body.direction : null;
     const stake = Number(body.stake);
+    const requestedMultiplier = Number(body.multiplier);
+    const multiplier = Number.isFinite(requestedMultiplier) && requestedMultiplier > 0
+      ? Math.floor(requestedMultiplier)
+      : undefined;
+    const takeProfit = Number(body.takeProfit);
+    const stopLoss = Number(body.stopLoss);
     if (!direction || !Number.isFinite(stake) || stake <= 0) {
       reply.code(400);
       return { error: 'an up/down direction and a positive stake are required' };
+    }
+    if (multiplier === undefined || multiplier <= 0) {
+      reply.code(400);
+      return { error: 'a positive multiplier is required' };
+    }
+    if ((Number.isFinite(takeProfit) && takeProfit <= 0) || (Number.isFinite(stopLoss) && stopLoss <= 0)) {
+      reply.code(400);
+      return { error: 'take profit and stop loss must be positive when provided' };
     }
 
     const research = momentum.state();
@@ -398,10 +412,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
     const reason = [
       `momentum manual ${direction.toUpperCase()}`,
-      `five-minute multiplier x${current.config.multiplier}`,
+      `five-minute multiplier x${multiplier}`,
+      Number.isFinite(takeProfit) ? `TP ${takeProfit}` : null,
+      Number.isFinite(stopLoss) ? `SL ${stopLoss}` : null,
       `research ${signal.direction.toUpperCase()} ${signal.confidence}%`,
       signal.reason,
-    ].join(' | ');
+    ].filter(Boolean).join(' | ');
     let recordedTrade: ReturnType<typeof insertTrade> | null = null;
     let stage: 'proposal' | 'reserve' | 'buy' | 'finalize' = 'proposal';
     let buyAttempted = false;
@@ -415,7 +431,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         amount: stake,
         currency: session.currency || 'USD',
         symbol: current.config.symbol,
-        multiplier: current.config.multiplier,
+        multiplier,
+        takeProfit: Number.isFinite(takeProfit) ? takeProfit : undefined,
+        stopLoss: Number.isFinite(stopLoss) ? stopLoss : undefined,
       });
       if (!(quote.askPrice > 0) || !Number.isFinite(quote.askPrice)) {
         throw new Error('multiplier proposal returned an invalid purchase price');
@@ -475,7 +493,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
           ask: actualStake,
           payout: actualPayout,
           duration: '5m',
-          multiplier: current.config.multiplier,
+          multiplier,
+          entryPrice: entrySpot,
         },
       };
     } catch (error) {

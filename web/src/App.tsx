@@ -2325,6 +2325,7 @@ function MomentumTradeDesk({
   display,
   samples,
   entryPrice,
+  configuredMultiplier,
   session,
   owner,
   suggestedDirection,
@@ -2337,6 +2338,7 @@ function MomentumTradeDesk({
   display?: string;
   samples?: MomentumScanSample[];
   entryPrice?: number;
+  configuredMultiplier?: number | null;
   session: ReturnType<typeof useStore>['session'];
   owner?: boolean;
   suggestedDirection?: 'up' | 'down' | null;
@@ -2347,14 +2349,22 @@ function MomentumTradeDesk({
 }): JSX.Element {
   const [direction, setDirection] = useState<'up' | 'down'>(suggestedDirection ?? 'up');
   const [stakeText, setStakeText] = useState('1');
+  const [multiplierText, setMultiplierText] = useState(String(configuredMultiplier ?? 20));
+  const [takeProfitText, setTakeProfitText] = useState('');
+  const [stopLossText, setStopLossText] = useState('');
   const [purchase, setPurchase] = useState<MomentumTradePurchase | null>(null);
   const [closed, setClosed] = useState<MomentumTradeClose | null>(null);
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
   const stake = Number(stakeText);
+  const selectedMultiplier = Number(multiplierText);
+  const takeProfit = takeProfitText.trim() ? Number(takeProfitText) : undefined;
+  const stopLoss = stopLossText.trim() ? Number(stopLossText) : undefined;
   const isDemo = session?.mode === 'demo';
-  const canQuote = Boolean(symbol && owner && isDemo && Number.isFinite(stake) && stake > 0);
+  const hasValidLimits = (takeProfit === undefined || (Number.isFinite(takeProfit) && takeProfit > 0))
+    && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
+  const canQuote = Boolean(symbol && owner && isDemo && Number.isFinite(stake) && stake > 0 && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && hasValidLimits);
   const openAccountTrade = trades.find((item) => item.status === 'pending' || item.status === 'purchasing') ?? null;
   const openMomentumTrade = trades.find((item) =>
     (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
@@ -2374,6 +2384,13 @@ function MomentumTradeDesk({
   const liveContractProfit = Number.isFinite(Number(matchingContract?.profit)) ? Number(matchingContract?.profit) : undefined;
   const contractPnl = settledTrade?.profit ?? closed?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit;
   const canClose = Boolean(openMomentumTrade?.contract_id && !closing);
+  const actualEntryPrice = Number.isFinite(Number(trade?.entry_spot)) && Number(trade?.entry_spot) > 0
+    ? Number(trade?.entry_spot)
+    : Number.isFinite(Number(purchase?.entryPrice)) && Number(purchase?.entryPrice) > 0
+      ? Number(purchase?.entryPrice)
+      : undefined;
+  const chartEntryPrice = actualEntryPrice ?? entryPrice;
+  const chartEntryLabel = actualEntryPrice ? 'Trade entry' : 'Research watch entry';
   const liveSellPrice = Number.isFinite(Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice))
     ? Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice)
     : undefined;
@@ -2401,6 +2418,12 @@ function MomentumTradeDesk({
       ? 'Closing demo contract'
     : openAccountTrade
       ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
+      : !(Number.isFinite(stake) && stake > 0)
+        ? 'Enter a positive demo stake'
+      : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
+        ? 'Select a valid multiplier'
+      : !hasValidLimits
+        ? 'TP and stop loss must be positive when set'
       : suggestedDirection
       ? `${suggestedDirection.toUpperCase()} is the active Momentum side`
       : 'Waiting for a validated research direction';
@@ -2409,11 +2432,15 @@ function MomentumTradeDesk({
     setPurchase(null);
     setClosed(null);
     setError('');
-  }, [symbol, direction, stakeText]);
+  }, [symbol, direction, stakeText, multiplierText, takeProfitText, stopLossText]);
 
   useEffect(() => {
     if (suggestedDirection) setDirection(suggestedDirection);
   }, [suggestedDirection]);
+
+  useEffect(() => {
+    if (configuredMultiplier) setMultiplierText(String(configuredMultiplier));
+  }, [configuredMultiplier]);
 
   const place = async (nextDirection: 'up' | 'down') => {
     if (!canQuote) return;
@@ -2430,7 +2457,13 @@ function MomentumTradeDesk({
     setBusy(true);
     setError('');
     try {
-      setPurchase(await placeMomentumDemoTrade({ direction: nextDirection, stake }));
+      setPurchase(await placeMomentumDemoTrade({
+        direction: nextDirection,
+        stake,
+        multiplier: selectedMultiplier,
+        takeProfit,
+        stopLoss,
+      }));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -2484,7 +2517,7 @@ function MomentumTradeDesk({
 
     <div class="mom-trade-live">
       <div class="mom-trade-chart">
-        <MomentumPriceChart samples={samples} label={`${display ?? 'Momentum market'} live demo trade chart`} entryPrice={entryPrice} entryDirection={suggestedDirection ?? undefined} entryLabel="Research watch entry" />
+        <MomentumPriceChart samples={samples} label={`${display ?? 'Momentum market'} live demo trade chart`} entryPrice={chartEntryPrice} entryDirection={suggestedDirection ?? undefined} entryLabel={chartEntryLabel} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
         <span>Demo balance</span>
@@ -2503,7 +2536,10 @@ function MomentumTradeDesk({
         <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up demo trade' : 'Place up demo trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
         <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down demo trade' : 'Place down demo trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
-      <label class="mom-trade-stake"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-stake"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-multiplier"><span>Multiplier</span><select value={multiplierText} disabled={busy || Boolean(openAccountTrade)} onChange={(event) => setMultiplierText((event.currentTarget as HTMLSelectElement).value)}><option value="10">x10</option><option value="20">x20</option><option value="30">x30</option><option value="50">x50</option><option value="100">x100</option><option value="200">x200</option><option value="500">x500</option></select></label>
+      <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
       <div class="mom-trade-quote">
         <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
@@ -2631,6 +2667,7 @@ function MomentumPage(): JSX.Element {
       display={focusedMarket?.display ?? market?.display}
       samples={w?.samples ?? focusedMarket?.samples}
       entryPrice={w?.openPrice}
+      configuredMultiplier={momentum?.config?.multiplier}
       session={s.session}
       owner={s.owner}
       suggestedDirection={w?.direction ?? (signal?.direction === 'wait' ? null : signal?.direction)}

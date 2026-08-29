@@ -66,6 +66,8 @@ export interface MultiplierProposalArgs {
   currency: string;
   symbol: string;
   multiplier: number;
+  takeProfit?: number;
+  stopLoss?: number;
   reqId: number;
   basis?: 'stake' | 'payout';
 }
@@ -86,7 +88,7 @@ export function proposal(args: ProposalArgs): Record<string, unknown> {
 }
 
 export function multiplierProposal(args: MultiplierProposalArgs): Record<string, unknown> {
-  return {
+  const msg: Record<string, unknown> = {
     proposal: 1,
     req_id: args.reqId,
     amount: Math.round(args.amount * 100) / 100,
@@ -96,6 +98,11 @@ export function multiplierProposal(args: MultiplierProposalArgs): Record<string,
     underlying_symbol: args.symbol,
     multiplier: args.multiplier,
   };
+  const limitOrder: Record<string, number> = {};
+  if (Number.isFinite(args.takeProfit) && Number(args.takeProfit) > 0) limitOrder.take_profit = Math.round(Number(args.takeProfit) * 100) / 100;
+  if (Number.isFinite(args.stopLoss) && Number(args.stopLoss) > 0) limitOrder.stop_loss = Math.round(Number(args.stopLoss) * 100) / 100;
+  if (Object.keys(limitOrder).length) msg.limit_order = limitOrder;
+  return msg;
 }
 
 export function buy(proposalId: string | number, price: number, reqId: number): Record<string, unknown> {

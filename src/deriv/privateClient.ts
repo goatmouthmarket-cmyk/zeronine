@@ -336,6 +336,8 @@ export class DerivPrivateClient {
     currency: string;
     symbol: string;
     multiplier: number;
+    takeProfit?: number;
+    stopLoss?: number;
     basis?: 'stake' | 'payout';
   }): Promise<MultiplierQuoteResult> {
     const requestSentAt = Date.now();

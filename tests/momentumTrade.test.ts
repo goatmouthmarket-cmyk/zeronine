@@ -10,10 +10,11 @@ process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
 test('Momentum multiplier proposal uses a multiplier contract without a digit barrier', async () => {
   const { multiplierProposal } = await import('../src/core/digitMath.ts');
   assert.deepEqual(multiplierProposal({
-    direction: 'down', amount: 3.25, currency: 'USD', symbol: 'R_100', multiplier: 20, reqId: 44,
+    direction: 'down', amount: 3.25, currency: 'USD', symbol: 'R_100', multiplier: 50, takeProfit: 1.25, stopLoss: 0.5, reqId: 44,
   }), {
     proposal: 1, req_id: 44, amount: 3.25, basis: 'stake', contract_type: 'MULTDOWN',
-    currency: 'USD', underlying_symbol: 'R_100', multiplier: 20,
+    currency: 'USD', underlying_symbol: 'R_100', multiplier: 50,
+    limit_order: { take_profit: 1.25, stop_loss: 0.5 },
   });
 });
 
@@ -84,12 +85,14 @@ test('explicit Momentum trade is demo-only and records the selected research con
     paperSimulator: new paperMod.PaperSimulator(), momentum: momentum as never,
   });
 
-  const response = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3 } });
+  const response = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 50, takeProfit: 1.25, stopLoss: 0.5 } });
   assert.equal(response.statusCode, 200);
   assert.equal(boughtProposal, 'multiplier-proposal');
   assert.deepEqual(quoteArgs, {
-    direction: 'up', amount: 3, currency: 'USD', symbol: 'R_100', multiplier: 20,
+    direction: 'up', amount: 3, currency: 'USD', symbol: 'R_100', multiplier: 50, takeProfit: 1.25, stopLoss: 0.5,
   });
+  assert.equal(response.json().trade.multiplier, 50);
+  assert.equal(response.json().trade.entryPrice, 750.5);
   const trade = store.getOpenTrade();
   assert.ok(trade);
   assert.equal(trade.contract_type, 'MULTUP');
@@ -98,6 +101,9 @@ test('explicit Momentum trade is demo-only and records the selected research con
   assert.equal(trade.duration_unit, 'm');
   assert.match(trade.reason, /momentum manual UP/i);
   assert.match(trade.reason, /research UP 72%/i);
+  assert.match(trade.reason, /x50/i);
+  assert.match(trade.reason, /TP 1.25/i);
+  assert.match(trade.reason, /SL 0.5/i);
   assert.deepEqual(store.listLedgerEntries(10).map((entry) => entry.event), ['purchased', 'requested']);
   const liveContractEvent = events.find((event) => event.type === 'contract' && event.contractId === 'momentum-contract');
   assert.ok(liveContractEvent);
@@ -106,7 +112,7 @@ test('explicit Momentum trade is demo-only and records the selected research con
   assert.equal(liveContractEvent.sellPrice, 3.42);
   assert.equal(liveContractEvent.phase, 'open');
 
-  const blockedByOpen = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'down', stake: 3 } });
+  const blockedByOpen = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'down', stake: 3, multiplier: 50 } });
   assert.equal(blockedByOpen.statusCode, 409);
   assert.match(blockedByOpen.json().error, /open contract/i);
 
@@ -151,14 +157,14 @@ test('Momentum execution rejects real accounts and unfocused research before a p
     id: 'momentum-real', loginid: 'CR_MOMENTUM', balance: 250, currency: 'USD', mode: 'real', auth_kind: 'pat',
     token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
   });
-  const real = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3 } });
+  const real = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 20 } });
   assert.equal(real.statusCode, 403);
 
   store.setSession({
     id: 'momentum-demo-unfocused', loginid: 'VRTC_UNFOCUSED', balance: 250, currency: 'USD', mode: 'demo', auth_kind: 'pat',
     token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
   });
-  const unfocused = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3 } });
+  const unfocused = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 20 } });
   assert.equal(unfocused.statusCode, 409);
   assert.equal(quoteCalls, 0);
 
@@ -214,7 +220,7 @@ test('Momentum execution rejects a direction that differs from the validated sig
     paperSimulator: new paperMod.PaperSimulator(), momentum: momentum as never,
   });
 
-  const response = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'down', stake: 3 } });
+  const response = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'down', stake: 3, multiplier: 20 } });
   assert.equal(response.statusCode, 409);
   assert.match(response.json().error, /recommends UP/i);
   assert.equal(quoteCalls, 0);
@@ -435,7 +441,7 @@ test('an uncertain Momentum buy remains locked and cannot be retried or locally 
     paperSimulator: new paperMod.PaperSimulator(), momentum: momentum as never,
   });
 
-  const first = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3 } });
+  const first = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 20 } });
   assert.equal(first.statusCode, 503);
   assert.equal(first.json().code, 'purchase_outcome_unknown');
   assert.equal(buyCalls, 1);
@@ -444,7 +450,7 @@ test('an uncertain Momentum buy remains locked and cannot be retried or locally 
   assert.equal(uncertain.status, 'purchasing');
   assert.match(uncertain.reason, /purchase outcome unknown/i);
 
-  const retry = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3 } });
+  const retry = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 20 } });
   assert.equal(retry.statusCode, 409);
   assert.equal(buyCalls, 1);
   const clear = await app.inject({ method: 'POST', url: '/api/trade/clear-stuck' });
