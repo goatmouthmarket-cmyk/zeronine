@@ -249,10 +249,6 @@ function Icon({
   );
 }
 
-function GoldMark(): JSX.Element {
-  return <img class="gold-mark" src="/gold-mark.svg" alt="" aria-hidden="true" />;
-}
-
 /* ---------------- app shell ---------------- */
 
 export function App(): JSX.Element {
@@ -595,7 +591,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             <button class={`nav-link${page === 'backtest' ? ' active' : ''}`} onClick={() => onNavigate('backtest')}>Lab</button>
             <button class={`nav-link${page === 'bot' ? ' active' : ''}`} onClick={() => onNavigate('bot')}>Bot</button>
             <button class={`nav-link${page === 'momentum' ? ' active' : ''}`} onClick={() => onNavigate('momentum')}>Momentum</button>
-            <button class={`nav-link gold${page === 'gold' ? ' active' : ''}`} onClick={() => onNavigate('gold')}><GoldMark />Gold</button>
+            <button class={`nav-link gold${page === 'gold' ? ' active' : ''}`} onClick={() => onNavigate('gold')}>Gold</button>
             <button class={`nav-link${page === 'account' ? ' active' : ''}`} onClick={() => onNavigate('account')}>Account</button>
           </nav>
           <div class="balance">
@@ -3665,8 +3661,8 @@ function GoldPage(): JSX.Element {
   return <section class="gold-page" aria-label="Gold workspace">
     <header class="header gold-page-header">
       <div>
-        <span class="gold-kicker"><GoldMark />Gold workspace</span>
-        <div class="page-title">Gold</div>
+        <img class="gold-brand-logo" src="/gold-logo.png" alt="Gold" />
+        <span class="gold-kicker">Gold workspace</span>
         <div class="subtitle">Independent CFD research, simulation, and execution workspace</div>
       </div>
       <span class="gold-phase">{modeLabel}</span>
@@ -3871,7 +3867,7 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
   return <section class="gold-connection" aria-label="cTrader account onboarding">
     <div class="gold-connection-intro">
       <div>
-        <span class="gold-kicker"><GoldMark />cTrader account connection</span>
+        <span class="gold-kicker">cTrader account connection</span>
         <h2>{connectedDemo ? 'Demo account selected' : authorizedDemo ? 'Choose a cTrader demo account' : configured ? 'Authorize cTrader demo access' : 'Prepare cTrader authorization'}</h2>
         <p>{connectedDemo
           ? 'This demo account was returned and verified by cTrader. It is connected for read-only setup only; no Gold order path is enabled.'
@@ -4000,7 +3996,7 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
           Momentum
         </button>
         <button class={`nav-item gold${page === 'gold' ? ' active' : ''}`} onClick={() => setPage('gold')}>
-          <GoldMark />
+          <Icon name="stats" size={20} />
           Gold
         </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} onClick={() => setPage('account')}>
