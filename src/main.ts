@@ -33,6 +33,7 @@ import { runBacktest } from './testlab/backtest.ts';
 import { runPaperSweep } from './testlab/paper.ts';
 import { scanPatterns } from './testlab/patterns.ts';
 import { PaperSimulator } from './simulation/paperSimulator.ts';
+import { GoldRuntime } from './gold/runtime.ts';
 import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimulator.ts';
 import type { Direction } from './core/digitMath.ts';
 import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
@@ -199,6 +200,7 @@ async function main(): Promise<void> {
 
   const automation = new Automation(registry, client, hub, decisionMemory);
   const momentum = new MomentumObserver(hub);
+  const gold = new GoldRuntime();
   const startMomentumResearch = (): void => {
     void momentum.startAutomatic().catch((error) => {
       console.warn(`[momentum] automatic research start failed; retrying in 30 seconds: ${String(error)}`);
@@ -208,7 +210,7 @@ async function main(): Promise<void> {
   };
   startMomentumResearch();
 
-  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, momentum });
+  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, momentum, gold });
   await registerWs(app, hub, registry);
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.ts';
-import { goldDiagnostics } from '../gold/config.ts';
+import { GoldRuntime, GoldRuntimeUnavailableError } from '../gold/runtime.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
@@ -62,10 +62,12 @@ export interface ApiDeps {
   automation: Automation;
   paperSimulator: PaperSimulator;
   momentum?: MomentumObserver;
+  gold?: GoldRuntime;
 }
 
 export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const { registry, feed, client, hub, automation, paperSimulator, momentum } = deps;
+  const gold = deps.gold ?? new GoldRuntime();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
 
   app.get('/health', async () => ({
@@ -120,16 +122,75 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
       paperSimulation: paperSimulator.state(),
       momentum: momentum?.state() ?? null,
-      gold: goldDiagnostics(),
+      gold: gold.state(),
     };
   });
 
   /**
-   * Gold starts as an isolated, read-only domain. This endpoint deliberately
-   * returns configuration diagnostics only; it never initiates a broker
-   * connection and never includes credentials.
+   * Gold is a separate, virtual-first workspace. State contains no OAuth
+   * material and this request never opens a cTrader connection.
    */
-  app.get('/api/gold/state', async () => ({ state: goldDiagnostics() }));
+  app.get('/api/gold/state', async () => ({ state: gold.state() }));
+
+  // These routes are deliberately virtual-only. The runtime's readiness gate
+  // rejects every command until a reviewed adapter has supplied fresh, valid
+  // broker market data. There is no cTrader order route in this service.
+  app.post('/api/gold/paper/orders', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const body = req.body as { side?: unknown; volume?: unknown; stopLoss?: unknown; takeProfit?: unknown } | undefined;
+    const side = body?.side;
+    const volume = Number(body?.volume);
+    const stopLoss = body?.stopLoss == null ? null : Number(body.stopLoss);
+    const takeProfit = body?.takeProfit == null ? null : Number(body.takeProfit);
+    if ((side !== 'BUY' && side !== 'SELL') || !Number.isFinite(volume) || volume <= 0
+      || (stopLoss !== null && (!Number.isFinite(stopLoss) || stopLoss <= 0))
+      || (takeProfit !== null && (!Number.isFinite(takeProfit) || takeProfit <= 0))) {
+      reply.code(400);
+      return { error: 'side (BUY or SELL), positive volume, and valid optional stops are required' };
+    }
+    try {
+      const result = gold.openPaper({ side, volume, stopLoss, takeProfit });
+      if (!result.accepted) reply.code(409);
+      return result;
+    } catch (error) {
+      reply.code(error instanceof GoldRuntimeUnavailableError ? 409 : 400);
+      return { error: String(error instanceof Error ? error.message : error) };
+    }
+  });
+
+  app.post('/api/gold/paper/positions/:id/close', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const positionId = String((req.params as { id?: unknown }).id ?? '').trim();
+    if (!positionId) { reply.code(400); return { error: 'Gold paper position id is required' }; }
+    try {
+      const result = gold.closePaper(positionId);
+      if (!result.closed) reply.code(409);
+      return result;
+    } catch (error) {
+      reply.code(error instanceof GoldRuntimeUnavailableError ? 409 : 400);
+      return { error: String(error instanceof Error ? error.message : error) };
+    }
+  });
+
+  app.post('/api/gold/paper/reset', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    try {
+      return { state: gold.resetPaper() };
+    } catch (error) {
+      reply.code(error instanceof GoldRuntimeUnavailableError ? 409 : 400);
+      return { error: String(error instanceof Error ? error.message : error) };
+    }
+  });
+
+  app.post('/api/gold/backtests/run', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    try {
+      return { result: gold.runBaselineBacktest() };
+    } catch (error) {
+      reply.code(error instanceof GoldRuntimeUnavailableError ? 409 : 400);
+      return { error: String(error instanceof Error ? error.message : error) };
+    }
+  });
 
   app.get('/api/momentum/state', async () => ({ state: momentum?.state() ?? null }));
   app.post('/api/momentum/start', async (req, reply) => {

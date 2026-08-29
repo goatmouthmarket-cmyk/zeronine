@@ -46,13 +46,29 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.ok(Array.isArray(stateBody.markets ?? []));
   assert.ok(Array.isArray(stateBody.intelligence ?? []));
   assert.equal(stateBody.paperSimulation.phase, 'idle');
-  assert.equal(stateBody.gold.status, 'unconfigured');
-  assert.equal(stateBody.gold.executionCapable, false);
+  assert.equal(stateBody.gold.diagnostics.status, 'unconfigured');
+  assert.equal(stateBody.gold.diagnostics.executionCapable, false);
+  assert.equal(stateBody.gold.paper.ready, false);
 
   const gold = await app.inject({ method: 'GET', url: '/api/gold/state' });
   assert.equal(gold.statusCode, 200);
-  assert.equal(gold.json().state.status, 'unconfigured');
-  assert.equal(gold.json().state.executionCapable, false);
+  assert.equal(gold.json().state.diagnostics.status, 'unconfigured');
+  assert.equal(gold.json().state.diagnostics.executionCapable, false);
+  assert.equal(gold.json().state.research.ready, false);
+  assert.equal(gold.json().state.paper.ready, false);
+  assert.equal(gold.json().state.backtest.ready, false);
+
+  const blockedGoldPaper = await app.inject({
+    method: 'POST',
+    url: '/api/gold/paper/orders',
+    payload: { side: 'BUY', volume: 1 },
+  });
+  assert.equal(blockedGoldPaper.statusCode, 409);
+  assert.match(blockedGoldPaper.json().error, /not validated/i);
+
+  const blockedGoldBacktest = await app.inject({ method: 'POST', url: '/api/gold/backtests/run' });
+  assert.equal(blockedGoldBacktest.statusCode, 409);
+  assert.match(blockedGoldBacktest.json().error, /not validated/i);
 
   const ledger = await app.inject({ method: 'GET', url: '/api/ledger?limit=10' });
   assert.equal(ledger.statusCode, 200);

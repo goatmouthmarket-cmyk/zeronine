@@ -21,7 +21,8 @@ export interface GoldDiagnostics {
   symbol: string;
   requestedAccountMode: CTraderAccountMode;
   liveEnabled: boolean;
-  marketDataCapable: false;
+  /** False until a reviewed broker market-data adapter is installed. */
+  marketDataCapable: boolean;
   executionCapable: false;
   configured: boolean;
   missing: string[];
