@@ -472,13 +472,20 @@ export interface GoldRuntimeReadiness {
  * account identifiers and all OAuth credentials.
  */
 export interface GoldConnectionState {
-  status: 'unconfigured' | 'ready' | 'authorizing' | 'authorized_demo_pending_account_discovery' | 'error';
+  status: 'unconfigured' | 'ready' | 'authorizing' | 'authorized_demo_pending_account_discovery' | 'connected_demo' | 'error';
   mode: 'demo';
   configured: boolean;
   canDisconnect: boolean;
   /** Safe human-readable status from the server; never a broker token or account id. */
   message: string | null;
   authorizedAt: number | null;
+  accountLabel?: string;
+}
+
+/** Safe fields from the broker-verified demo account discovery response. */
+export interface GoldDemoAccount {
+  id: string;
+  broker: string | null;
 }
 
 export interface GoldModuleState {
@@ -1137,6 +1144,19 @@ export async function startGoldOAuth(): Promise<string> {
 
 export async function disconnectGoldOAuth(): Promise<void> {
   const res = await api<{ ok: boolean; connection: GoldConnectionState }>('/api/gold/oauth/disconnect', { method: 'POST' });
+  set({ gold: state.gold ? { ...state.gold, connection: res.connection } : state.gold });
+}
+
+export async function loadGoldDemoAccounts(): Promise<GoldDemoAccount[]> {
+  const res = await api<{ accounts: GoldDemoAccount[] }>('/api/gold/oauth/accounts');
+  return Array.isArray(res.accounts) ? res.accounts : [];
+}
+
+export async function selectGoldDemoAccount(accountId: string): Promise<void> {
+  const res = await api<{ ok: boolean; connection: GoldConnectionState }>('/api/gold/oauth/accounts/select', {
+    method: 'POST',
+    body: JSON.stringify({ accountId }),
+  });
   set({ gold: state.gold ? { ...state.gold, connection: res.connection } : state.gold });
 }
 

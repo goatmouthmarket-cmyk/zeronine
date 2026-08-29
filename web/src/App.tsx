@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, PaperTrade, PaperPortfolio, GoldDiagnostics, GoldModuleState, GoldRuntimeReadiness } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, PaperTrade, PaperPortfolio, GoldDiagnostics, GoldModuleState, GoldRuntimeReadiness, GoldDemoAccount } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
@@ -40,6 +40,8 @@ import {
   loadGoldState,
   startGoldOAuth,
   disconnectGoldOAuth,
+  loadGoldDemoAccounts,
+  selectGoldDemoAccount,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
@@ -3768,16 +3770,41 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
   const connection = state?.connection;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [accounts, setAccounts] = useState<GoldDemoAccount[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [selectingAccountId, setSelectingAccountId] = useState<string | null>(null);
   const configured = connection?.configured ?? Boolean(diagnostics?.configured);
   const authorizedDemo = connection?.status === 'authorized_demo_pending_account_discovery';
+  const connectedDemo = connection?.status === 'connected_demo';
   const authorizing = connection?.status === 'authorizing' || busy;
   const connectionError = connection?.status === 'error';
-  const status = authorizedDemo ? 'Demo access authorized' : authorizing ? 'Authorization in progress' : connectionError ? 'Connection needs attention' : configured ? 'Ready to authorize' : 'Provider setup needed';
+  const status = connectedDemo ? 'Demo account selected' : authorizedDemo ? 'Demo access authorized' : authorizing ? 'Authorization in progress' : connectionError ? 'Connection needs attention' : configured ? 'Ready to authorize' : 'Provider setup needed';
   const detail = connection?.message ?? diagnostics?.reason ?? 'Checking cTrader connection readiness.';
   const missing = diagnostics?.missing ?? [];
   const invalid = diagnostics?.validationErrors ?? [];
   const canStart = connection?.status === 'ready' && !authorizing;
-  const canDisconnect = authorizedDemo && connection?.canDisconnect === true && !authorizing;
+  const canDisconnect = (authorizedDemo || connectedDemo) && connection?.canDisconnect === true && !authorizing && !selectingAccountId;
+
+  const refreshAccounts = async () => {
+    setAccountsLoading(true);
+    setError('');
+    try {
+      setAccounts(await loadGoldDemoAccounts());
+    } catch (err) {
+      setAccounts([]);
+      setError(String(err));
+    } finally {
+      setAccountsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!authorizedDemo) {
+      setAccounts([]);
+      return;
+    }
+    void refreshAccounts();
+  }, [authorizedDemo]);
 
   const beginAuthorization = async () => {
     setBusy(true);
@@ -3805,6 +3832,21 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
     }
   };
 
+  const selectDemoAccount = async (account: GoldDemoAccount) => {
+    const label = account.broker ? `${account.broker} demo account ${account.id}` : `demo account ${account.id}`;
+    if (!window.confirm(`Use ${label}? ZeroNine will verify this server-discovered demo account. No live account or Gold order path will be enabled.`)) return;
+    setSelectingAccountId(account.id);
+    setError('');
+    try {
+      await selectGoldDemoAccount(account.id);
+      await loadGoldState();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSelectingAccountId(null);
+    }
+  };
+
   const steps: Array<{ label: string; detail: string; complete: boolean; active?: boolean }> = [
     {
       label: 'Provider setup',
@@ -3814,14 +3856,14 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
     },
     {
       label: 'Secure authorization',
-      detail: authorizedDemo ? 'Demo access is stored server-side with encrypted credentials.' : authorizing ? 'Waiting for cTrader to return to ZeroNine.' : 'Authorize with cTrader in a separate secure window.',
-      complete: authorizedDemo,
-      active: configured && !authorizedDemo,
+      detail: authorizedDemo || connectedDemo ? 'Demo access is stored server-side with encrypted credentials.' : authorizing ? 'Waiting for cTrader to return to ZeroNine.' : 'Authorize with cTrader in a separate secure window.',
+      complete: authorizedDemo || connectedDemo,
+      active: configured && !authorizedDemo && !connectedDemo,
     },
     {
       label: 'Demo account verification',
-      detail: authorizedDemo ? 'Demo access is authorized. Account discovery and verification are the next guarded step.' : 'Account discovery and verification occur after authorization.',
-      complete: false,
+      detail: connectedDemo ? 'The selected server-verified demo account remains read-only.' : authorizedDemo ? 'Choose a verified demo account to continue the guarded setup.' : 'Account discovery and verification occur after authorization.',
+      complete: connectedDemo,
       active: authorizedDemo,
     },
   ];
@@ -3830,15 +3872,17 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
     <div class="gold-connection-intro">
       <div>
         <span class="gold-kicker"><GoldMark />cTrader account connection</span>
-        <h2>{authorizedDemo ? 'Demo cTrader access authorized' : configured ? 'Authorize cTrader demo access' : 'Prepare cTrader authorization'}</h2>
-        <p>{authorizedDemo
+        <h2>{connectedDemo ? 'Demo account selected' : authorizedDemo ? 'Choose a cTrader demo account' : configured ? 'Authorize cTrader demo access' : 'Prepare cTrader authorization'}</h2>
+        <p>{connectedDemo
+          ? 'This demo account was returned and verified by cTrader. It is connected for read-only setup only; no Gold order path is enabled.'
+          : authorizedDemo
           ? 'Your broker authorization is stored securely. No trading account has been selected and no Gold order path is enabled.'
           : configured
             ? 'Authorize directly with cTrader. ZeroNine never asks for or displays your broker password, access token, or account number.'
             : 'OAuth is the right connection method, but the server needs its cTrader application settings before any user can begin authorization.'}</p>
       </div>
-      <div class={`gold-connection-state${authorizedDemo ? ' is-connected' : ''}`} role="status" aria-live="polite">
-        <span>{authorizedDemo ? 'Authorization' : 'Connection status'}</span>
+      <div class={`gold-connection-state${authorizedDemo || connectedDemo ? ' is-connected' : ''}`} role="status" aria-live="polite">
+        <span>{authorizedDemo || connectedDemo ? 'Authorization' : 'Connection status'}</span>
         <strong>{status}</strong>
         <small>{detail}</small>
       </div>
@@ -3866,8 +3910,23 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
           <small>Keep this tab open. The status updates after cTrader redirects you back.</small>
         </> : authorizedDemo ? <>
           <span class="gold-kicker">Demo-only protection</span>
-          <strong>Demo access is authorized</strong>
-          <small>No trading account is selected yet. Live execution remains locked.</small>
+          <strong>Choose a verified demo account</strong>
+          <small>Only cTrader accounts returned for this authorization can be selected. Live accounts are excluded.</small>
+          <div class="gold-account-choices" aria-live="polite">
+            <div class="gold-account-choices-head"><span>{accountsLoading ? 'Loading demo accounts' : accounts.length ? 'Available demo accounts' : 'No demo accounts found'}</span><button type="button" onClick={() => void refreshAccounts()} disabled={accountsLoading || selectingAccountId !== null}>Refresh</button></div>
+            {accounts.map((account) => <button class="gold-account-option" type="button" key={account.id} disabled={selectingAccountId !== null} onClick={() => void selectDemoAccount(account)}>
+              <span><strong>{account.broker || 'cTrader demo account'}</strong><small>Demo account {account.id}</small></span>
+              <span class="gold-account-select">{selectingAccountId === account.id ? 'Verifying' : 'Select'} <Icon name="chevronRight" size={13} strokeWidth={2} /></span>
+            </button>)}
+            {!accountsLoading && accounts.length === 0 && <small class="gold-account-empty">Refresh to retry account discovery, or disconnect and authorize again if cTrader access changed.</small>}
+          </div>
+          {canDisconnect && <button class="gold-disconnect-button" type="button" onClick={() => void disconnectAuthorization()}>
+            Disconnect demo access
+          </button>}
+        </> : connectedDemo ? <>
+          <span class="gold-kicker">Demo-only protection</span>
+          <strong>{connection?.accountLabel || 'Demo account selected'}</strong>
+          <small>Verified demo account. Market data and trading remain unavailable until their independent safeguards are complete.</small>
           {canDisconnect && <button class="gold-disconnect-button" type="button" onClick={() => void disconnectAuthorization()}>
             Disconnect demo access
           </button>}
