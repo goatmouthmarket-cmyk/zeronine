@@ -850,7 +850,7 @@ button {
 @media (prefers-reduced-motion: reduce) { .mom-launch, .mom-restoring-mark i, .mom-state-mark i, .mom-hero-bars i, .mom-hero-motif > b, .mom-layout.active .mom-pnl > div::before, .mom-layout.active .mom-scoreboard > div::before, .mom-state-rail.active > span i { animation: none; }.mom-toggle, .mom-launch-action, .mom-paused-action { transition: none; } }
 
 /* The live workspace begins with evidence, not a second scanner introduction. */
-.mom-layout { border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
+.mom-layout { border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; container-type: inline-size; container-name: momentum-workspace; }
 .mom-auto-rail,
 .mom-evidence:not(.mom-evidence-primary) { display: none; }
 .mom-evidence-primary { border-top: 0; }
@@ -948,12 +948,23 @@ button {
 
 .mom-focus-chart {
   height: 96px;
+  /* Keep the Lightweight Chart series clear of the workspace edge. */
+  padding: 4px 16px 4px 4px;
 }
 
-@media (max-width: 1040px) {
+/* The desktop research surface is intentionally capped. Reflow against the
+   usable workspace width rather than the outer browser width or zoom level. */
+@container momentum-workspace (max-width: 1080px) {
   .mom-evidence-primary {
-    grid-template-columns: minmax(210px, .8fr) minmax(240px, 1fr) minmax(320px, 1.1fr);
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
     gap: 16px;
+  }
+
+  .mom-evidence-primary .mom-live-trace {
+    grid-column: 1 / -1;
+    padding: 0 0 13px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   .mom-evidence-primary .mom-horizons > div {
