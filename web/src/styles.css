@@ -863,6 +863,169 @@ button {
   .mom-evidence-actions .mom-toggle { flex: 1 0 100%; }
 }
 
+/* Keep the live decision surface dense: the evidence, controls, and horizons
+   are one reading row instead of three loosely related blocks. */
+.mom-evidence-primary {
+  display: grid;
+  grid-template-columns: minmax(230px, .85fr) minmax(270px, 1fr) minmax(410px, 1.35fr);
+  gap: 20px;
+  align-items: stretch;
+  padding-block: 18px;
+}
+
+.mom-evidence-primary .mom-live-trace {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 102px;
+  padding: 0 20px 0 0;
+  border-left: 0;
+  border-right: 1px solid var(--border);
+}
+
+.mom-evidence-primary .mom-live-trace-head {
+  display: block;
+}
+
+.mom-evidence-primary .mom-live-trace-head small {
+  display: block;
+  margin-top: 4px;
+  text-align: left;
+}
+
+.mom-evidence-primary .mom-live-trace-bars {
+  height: 58px;
+  margin-top: 9px;
+}
+
+.mom-evidence-primary .mom-evidence-head {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+}
+
+.mom-evidence-primary .mom-evidence-head strong {
+  max-width: 38ch;
+}
+
+.mom-evidence-primary .mom-evidence-actions {
+  margin-top: 10px;
+}
+
+.mom-evidence-primary .mom-horizons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 0;
+  min-height: 102px;
+  margin: 0;
+}
+
+.mom-evidence-primary .mom-horizons > div {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+  padding: 0 12px;
+  border-bottom: 0;
+  border-left: 1px solid var(--border);
+}
+
+.mom-evidence-primary .mom-horizons > div:first-child {
+  border-left: 0;
+}
+
+.mom-evidence-primary .mom-horizons strong {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+/* The detailed decision belongs in the rolling-window row, so the focused
+   research strip only contains market identity, navigation, and the chart. */
+.mom-focus-stage {
+  grid-template-columns: minmax(220px, .72fr) max-content minmax(0, 2.5fr);
+  gap: 20px;
+  padding-block: 16px;
+}
+
+.mom-focus-chart {
+  height: 96px;
+}
+
+@media (max-width: 1040px) {
+  .mom-evidence-primary {
+    grid-template-columns: minmax(210px, .8fr) minmax(240px, 1fr) minmax(320px, 1.1fr);
+    gap: 16px;
+  }
+
+  .mom-evidence-primary .mom-horizons > div {
+    padding-inline: 9px;
+  }
+}
+
+@media (max-width: 850px) {
+  .mom-evidence-primary {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .mom-evidence-primary .mom-live-trace {
+    grid-column: 1 / -1;
+    padding: 0 0 13px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .mom-evidence-primary .mom-horizons {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .mom-focus-stage {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: 10px 14px;
+  }
+
+  .mom-focus-stage .mom-return-watch {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .mom-focus-stage .mom-focus-chart {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: 72px;
+  }
+}
+
+@media (max-width: 560px) {
+  .mom-evidence-primary {
+    display: block;
+    padding-block: 16px;
+  }
+
+  .mom-evidence-primary .mom-live-trace {
+    min-height: 0;
+    margin-bottom: 16px;
+  }
+
+  .mom-evidence-primary .mom-evidence-head {
+    display: block;
+  }
+
+  .mom-evidence-primary .mom-horizons {
+    min-height: 0;
+  }
+
+  .mom-evidence-primary .mom-horizons > div {
+    padding: 10px 0;
+    border-left: 0;
+    border-bottom: 1px solid rgba(255,255,255,.055);
+  }
+
+  .mom-evidence-primary .mom-horizons > div:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
 /* Fluid hero: key numerals and grids scale with the viewport so the card
    rearranges cleanly across window sizes and browser zoom levels. */
 .cockpit-side,

@@ -2406,7 +2406,6 @@ function MomentumPage(): JSX.Element {
         <div><span class="mom-kicker">Focused research</span><strong>{focusedMarket?.display ?? market?.display ?? 'Current market'}</strong><small>{focusedMarket ? `${focusedMarket.sampleCount} ticks observed · ${Math.round(momentumProgress(focusedMarket.progress))}% scan complete` : 'Live window samples'}</small></div>
         {canReturnToWatchboard && <button class="mom-return-watch" type="button" disabled={busy || !s.owner} onClick={() => void returnToWatchboard()} aria-label="Return to full market watchboard and begin a new scan" title="Return to market watchboard"><Icon name="arrowLeft" size={13} />Back to watchboard</button>}
         <div class="mom-focus-chart"><MomentumPriceChart samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} /></div>
-        <div class="mom-focus-read"><span>Current read</span><strong class={signal?.direction ?? focusedMarket?.signal?.direction ?? 'wait'}>{signal?.direction?.toUpperCase() ?? focusedMarket?.signal?.direction?.toUpperCase() ?? 'WAIT'}</strong><small>{signal?.confidence ?? focusedMarket?.signal?.confidence ?? 0}% confidence</small></div>
       </section>}
 
       <section class="mom-window" aria-live="polite">
