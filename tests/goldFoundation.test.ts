@@ -39,6 +39,7 @@ test('live opt-in is still execution-locked and requires a live account mode', (
     CTRADER_CLIENT_ID: 'client',
     CTRADER_CLIENT_SECRET: 'secret',
     CTRADER_REDIRECT_URI: 'https://zeronine.example/api/gold/oauth/callback',
+    GOLD_TOKEN_ENCRYPTION_KEY: 'a-demo-only-test-gold-encryption-secret',
   });
   const diagnostics = goldDiagnostics(configured);
   assert.equal(diagnostics.status, 'disabled');

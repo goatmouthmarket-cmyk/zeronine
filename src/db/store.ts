@@ -91,6 +91,17 @@ export interface PaperLedgerContract {
   estWin?: number;
 }
 
+export interface GoldDemoConnectionRow {
+  owner_key: string;
+  status: 'authorized_demo_pending_account_discovery';
+  token_cipher: string;
+  token_expires_at: number;
+  authorized_at: number;
+  updated_at: number;
+  account_id: string | null;
+  account_label: string | null;
+}
+
 /** Immutable scanner/configuration snapshot captured when virtual research opens. */
 export interface PaperTradeContextRow {
   contract_ref: string;
@@ -376,6 +387,16 @@ function migrate(d: DatabaseSync): void {
       signal_at INTEGER,
       evidence_json TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS gold_demo_connections (
+      owner_key TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK (status = 'authorized_demo_pending_account_discovery'),
+      token_cipher TEXT NOT NULL,
+      token_expires_at INTEGER NOT NULL,
+      authorized_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      account_id TEXT,
+      account_label TEXT
+    );
     CREATE INDEX IF NOT EXISTS idx_paper_trade_context_opened ON paper_trade_context(opened_at DESC);
     CREATE TABLE IF NOT EXISTS performance_baseline (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -571,6 +592,9 @@ function migrate(d: DatabaseSync): void {
   if (!cols.has('account_id')) d.exec(`ALTER TABLE trades ADD COLUMN account_id TEXT NOT NULL DEFAULT '__legacy__'`);
   if (!cols.has('account_mode')) d.exec(`ALTER TABLE trades ADD COLUMN account_mode TEXT NOT NULL DEFAULT 'unknown'`);
   if (!cols.has('origin')) d.exec(`ALTER TABLE trades ADD COLUMN origin TEXT NOT NULL DEFAULT 'bot'`);
+  const goldConnectionCols = new Set((d.prepare('PRAGMA table_info(gold_demo_connections)').all() as Array<{ name: string }>).map((column) => column.name));
+  if (!goldConnectionCols.has('account_id')) d.exec(`ALTER TABLE gold_demo_connections ADD COLUMN account_id TEXT`);
+  if (!goldConnectionCols.has('account_label')) d.exec(`ALTER TABLE gold_demo_connections ADD COLUMN account_label TEXT`);
   d.exec(`UPDATE trades SET account_id = '${LEGACY_ACCOUNT_ID}' WHERE account_id IS NULL OR account_id = ''`);
   d.exec(`CREATE INDEX IF NOT EXISTS idx_trades_account_id ON trades(account_id, id DESC)`);
   const ledgerCols = new Set(
@@ -1871,4 +1895,28 @@ export function listDecisionEvents(limit = 100): DecisionEventRow[] {
   return getDb()
     .prepare(`SELECT * FROM decision_events ORDER BY id DESC LIMIT ?`)
     .all(Math.max(1, Math.min(1000, limit))) as unknown as DecisionEventRow[];
+}
+
+export function getGoldDemoConnection(ownerKey: string): GoldDemoConnectionRow | null {
+  const row = getDb().prepare('SELECT * FROM gold_demo_connections WHERE owner_key = ?').get(ownerKey) as unknown as GoldDemoConnectionRow | undefined;
+  return row ?? null;
+}
+
+export function upsertGoldDemoConnection(row: GoldDemoConnectionRow): void {
+  getDb().prepare(`
+    INSERT INTO gold_demo_connections (owner_key, status, token_cipher, token_expires_at, authorized_at, updated_at, account_id, account_label)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(owner_key) DO UPDATE SET
+      status=excluded.status,
+      token_cipher=excluded.token_cipher,
+      token_expires_at=excluded.token_expires_at,
+      authorized_at=excluded.authorized_at,
+      updated_at=excluded.updated_at,
+      account_id=excluded.account_id,
+      account_label=excluded.account_label
+  `).run(row.owner_key, row.status, row.token_cipher, row.token_expires_at, row.authorized_at, row.updated_at, row.account_id, row.account_label);
+}
+
+export function deleteGoldDemoConnection(ownerKey: string): void {
+  getDb().prepare('DELETE FROM gold_demo_connections WHERE owner_key = ?').run(ownerKey);
 }

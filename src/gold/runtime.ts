@@ -10,14 +10,19 @@ import {
 import { runGoldBacktest, type GoldBacktestConfig, type GoldBacktestResult, type GoldBacktestStrategy } from './backtest.ts';
 import { GoldPaperEngine, type GoldPaperCloseResult, type GoldPaperOpenResult, type GoldPaperState } from './paper.ts';
 import { GoldResearchService, type GoldResearchState } from './researchService.ts';
+import { GoldOAuthOnboarding, type GoldConnectionState } from './onboarding.ts';
+import type { CTraderAuthorizedAccount } from './ctraderAccountDiscovery.ts';
 
 export interface GoldRuntimeReadiness {
   ready: boolean;
   reason: string | null;
 }
 
+export type { GoldConnectionState } from './onboarding.ts';
+
 export interface GoldRuntimeState {
   diagnostics: GoldDiagnostics;
+  connection: GoldConnectionState;
   research: GoldRuntimeReadiness & { state: GoldResearchState };
   paper: GoldRuntimeReadiness & { state: GoldPaperState };
   backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
@@ -48,6 +53,7 @@ export class GoldRuntime {
   private readonly adapter: GoldMarketDataAdapter;
   private readonly research: GoldResearchService;
   private readonly paper: GoldPaperEngine;
+  private readonly onboarding: GoldOAuthOnboarding;
   private readonly now: () => number;
   private lastBacktest: GoldBacktestResult | null = null;
 
@@ -56,6 +62,7 @@ export class GoldRuntime {
     this.adapter = options.adapter ?? createCTraderGoldClient(config);
     this.research = options.research ?? new GoldResearchService({ now: options.now });
     this.paper = options.paper ?? new GoldPaperEngine({ initialBalance: 10_000 });
+    this.onboarding = new GoldOAuthOnboarding(config);
     this.now = options.now ?? Date.now;
   }
 
@@ -67,10 +74,35 @@ export class GoldRuntime {
       : readiness;
     return {
       diagnostics: this.diagnostics(),
+      connection: this.connectionState(),
       research: { ...readiness, state: researchState },
       paper: { ...readiness, state: this.paper.state() },
       backtest: { ...backtestReadiness, result: this.lastBacktest },
     };
+  }
+
+  connectionState(): GoldConnectionState {
+    return this.onboarding.state();
+  }
+
+  beginOAuthAuthorization(): { url: string; nonce: string } {
+    return this.onboarding.begin();
+  }
+
+  completeOAuthAuthorization(code: string): Promise<GoldConnectionState> {
+    return this.onboarding.complete(code);
+  }
+
+  disconnectOAuthAuthorization(): GoldConnectionState {
+    return this.onboarding.disconnect();
+  }
+
+  listOAuthDemoAccounts(): Promise<CTraderAuthorizedAccount[]> {
+    return this.onboarding.listDemoAccounts();
+  }
+
+  selectOAuthDemoAccount(accountId: string): Promise<GoldConnectionState> {
+    return this.onboarding.selectDemoAccount(accountId);
   }
 
   /** Adapter ingress only. It does not cause any order or connection attempt. */

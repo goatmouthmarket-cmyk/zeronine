@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.ts';
 import { GoldRuntime, GoldRuntimeUnavailableError } from '../gold/runtime.ts';
+import { GoldOAuthError } from '../gold/onboarding.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
@@ -132,6 +133,80 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
    * material and this request never opens a cTrader connection.
    */
   app.get('/api/gold/state', async () => ({ state: gold.state() }));
+
+  /** Gold OAuth is distinct from Deriv OAuth and remains demo/read-only. */
+  app.get('/api/gold/onboarding', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    return { connection: gold.connectionState() };
+  });
+
+  app.post('/api/gold/oauth/start', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    try {
+      const authorization = gold.beginOAuthAuthorization();
+      reply.setCookie('zeronine_gold_oauth_nonce', authorization.nonce, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/api/gold/oauth',
+        secure: config.nodeEnv === 'production',
+        signed: true,
+        maxAge: 10 * 60,
+      });
+      return { ok: true, url: authorization.url };
+    } catch (error) {
+      const connection = gold.connectionState();
+      reply.code(error instanceof GoldOAuthError ? error.statusCode : 500);
+      return { error: connection.message ?? 'Gold OAuth onboarding is unavailable.', connection };
+    }
+  });
+
+  app.get('/api/gold/oauth/callback', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const nonce = req.cookies?.zeronine_gold_oauth_nonce;
+    const validNonce = nonce ? req.unsignCookie(nonce).valid : false;
+    reply.clearCookie?.('zeronine_gold_oauth_nonce', { path: '/api/gold/oauth' });
+    const query = (req.query ?? {}) as Record<string, unknown>;
+    const code = typeof query.code === 'string' ? query.code : '';
+    if (!validNonce || !code) {
+      reply.redirect('/gold?gold_oauth=error', 303);
+      return;
+    }
+    try {
+      await gold.completeOAuthAuthorization(code);
+      reply.redirect('/gold?gold_oauth=authorized', 303);
+    } catch {
+      // OAuth codes and provider details must never reach the browser or logs.
+      reply.redirect('/gold?gold_oauth=error', 303);
+    }
+  });
+
+  app.post('/api/gold/oauth/disconnect', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    return { ok: true, connection: gold.disconnectOAuthAuthorization() };
+  });
+
+  app.get('/api/gold/oauth/accounts', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    try {
+      return { accounts: await gold.listOAuthDemoAccounts() };
+    } catch (error) {
+      reply.code(error instanceof GoldOAuthError ? error.statusCode : 502);
+      return { error: error instanceof GoldOAuthError ? error.message : 'cTrader demo account discovery failed.' };
+    }
+  });
+
+  app.post('/api/gold/oauth/accounts/select', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const accountId = typeof (req.body as { accountId?: unknown } | undefined)?.accountId === 'string'
+      ? (req.body as { accountId: string }).accountId
+      : '';
+    try {
+      return { ok: true, connection: await gold.selectOAuthDemoAccount(accountId) };
+    } catch (error) {
+      reply.code(error instanceof GoldOAuthError ? error.statusCode : 502);
+      return { error: error instanceof GoldOAuthError ? error.message : 'cTrader demo account selection failed.' };
+    }
+  });
 
   // These routes are deliberately virtual-only. The runtime's readiness gate
   // rejects every command until a reviewed adapter has supplied fresh, valid

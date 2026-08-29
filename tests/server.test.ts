@@ -49,6 +49,14 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.equal(stateBody.gold.diagnostics.status, 'unconfigured');
   assert.equal(stateBody.gold.diagnostics.executionCapable, false);
   assert.equal(stateBody.gold.paper.ready, false);
+  assert.deepEqual(stateBody.gold.connection, {
+    status: 'unconfigured',
+    mode: 'demo',
+    configured: false,
+    canDisconnect: false,
+    authorizedAt: null,
+    message: 'Configure CTRADER_API_URL, CTRADER_CLIENT_ID, CTRADER_CLIENT_SECRET, and CTRADER_REDIRECT_URI in Railway before connecting cTrader.',
+  });
 
   const gold = await app.inject({ method: 'GET', url: '/api/gold/state' });
   assert.equal(gold.statusCode, 200);
@@ -57,6 +65,19 @@ test('HTTP shell boots and serves health + settings', async () => {
   assert.equal(gold.json().state.research.ready, false);
   assert.equal(gold.json().state.paper.ready, false);
   assert.equal(gold.json().state.backtest.ready, false);
+
+  const goldOnboarding = await app.inject({ method: 'GET', url: '/api/gold/onboarding' });
+  assert.equal(goldOnboarding.statusCode, 200);
+  assert.equal(goldOnboarding.json().connection.status, 'unconfigured');
+
+  const blockedGoldOAuth = await app.inject({ method: 'POST', url: '/api/gold/oauth/start' });
+  assert.equal(blockedGoldOAuth.statusCode, 409);
+  assert.equal(blockedGoldOAuth.json().connection.mode, 'demo');
+  assert.match(blockedGoldOAuth.json().error, /configure CTRADER_API_URL/i);
+
+  const goldCallback = await app.inject({ method: 'GET', url: '/api/gold/oauth/callback?code=never-log-this' });
+  assert.equal(goldCallback.statusCode, 303);
+  assert.equal(goldCallback.headers.location, '/gold?gold_oauth=error');
 
   const blockedGoldPaper = await app.inject({
     method: 'POST',

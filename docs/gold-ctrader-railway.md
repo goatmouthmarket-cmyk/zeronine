@@ -43,6 +43,15 @@ marks it consumed, then stores the encrypted token and updates the connection.
 An update affecting zero rows is a rejected replay. The schema alone does not
 provide that behavior.
 
+The deployed application provides a single-dashboard-owner demo authorization
+flow. It stores the returned cTrader token encrypted under the separate
+`GOLD_TOKEN_ENCRYPTION_KEY` Railway secret and reports only
+`authorized_demo_pending_account_discovery` to the browser. OAuth alone does
+not select or validate a broker account: account discovery, owner binding, and
+the reviewed market-data adapter remain the next gate. The current flow has no
+execution capability. Do not add a generic OAuth/PKCE URL as a substitute for
+the cTrader Open API consent grant.
+
 ## Required environment variables
 
 These variables are for the future Gold runtime and should be configured in
