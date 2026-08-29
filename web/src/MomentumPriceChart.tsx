@@ -148,8 +148,8 @@ export function MomentumPriceChart({
       ? chart.addSeries(LineSeries, {
         color: '#75e8bd',
         lineWidth: 2,
-        priceLineVisible: true,
-        lastValueVisible: true,
+        priceLineVisible: false,
+        lastValueVisible: false,
         crosshairMarkerVisible: true,
       })
       : chart.addSeries(LineSeries, {
@@ -238,7 +238,7 @@ export function MomentumPriceChart({
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       lineVisible: true,
-      axisLabelVisible: false,
+      axisLabelVisible: true,
       title: entryLabel,
     });
     entryLineRef.current = priceLine;
