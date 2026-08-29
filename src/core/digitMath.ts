@@ -64,8 +64,6 @@ export interface MultiplierProposalArgs {
   direction: MultiplierDirection;
   amount: number;
   currency: string;
-  duration: number;
-  durationUnit: 'm' | 's';
   symbol: string;
   multiplier: number;
   reqId: number;
@@ -95,8 +93,6 @@ export function multiplierProposal(args: MultiplierProposalArgs): Record<string,
     basis: args.basis ?? 'stake',
     contract_type: args.direction === 'up' ? 'MULTUP' : 'MULTDOWN',
     currency: args.currency,
-    duration: args.duration,
-    duration_unit: args.durationUnit,
     underlying_symbol: args.symbol,
     multiplier: args.multiplier,
   };

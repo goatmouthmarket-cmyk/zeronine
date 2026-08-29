@@ -10,11 +10,10 @@ process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
 test('Momentum multiplier proposal uses a multiplier contract without a digit barrier', async () => {
   const { multiplierProposal } = await import('../src/core/digitMath.ts');
   assert.deepEqual(multiplierProposal({
-    direction: 'down', amount: 3.25, currency: 'USD', duration: 5, durationUnit: 'm',
-    symbol: 'R_100', multiplier: 20, reqId: 44,
+    direction: 'down', amount: 3.25, currency: 'USD', symbol: 'R_100', multiplier: 20, reqId: 44,
   }), {
     proposal: 1, req_id: 44, amount: 3.25, basis: 'stake', contract_type: 'MULTDOWN',
-    currency: 'USD', duration: 5, duration_unit: 'm', underlying_symbol: 'R_100', multiplier: 20,
+    currency: 'USD', underlying_symbol: 'R_100', multiplier: 20,
   });
 });
 
@@ -77,7 +76,7 @@ test('explicit Momentum trade is demo-only and records the selected research con
   assert.equal(response.statusCode, 200);
   assert.equal(boughtProposal, 'multiplier-proposal');
   assert.deepEqual(quoteArgs, {
-    direction: 'up', amount: 3, currency: 'USD', duration: 5, durationUnit: 'm', symbol: 'R_100', multiplier: 20,
+    direction: 'up', amount: 3, currency: 'USD', symbol: 'R_100', multiplier: 20,
   });
   const trade = store.getOpenTrade();
   assert.ok(trade);

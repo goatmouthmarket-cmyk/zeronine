@@ -334,8 +334,6 @@ export class DerivPrivateClient {
     direction: MultiplierDirection;
     amount: number;
     currency: string;
-    duration: number;
-    durationUnit: 'm' | 's';
     symbol: string;
     multiplier: number;
     basis?: 'stake' | 'payout';

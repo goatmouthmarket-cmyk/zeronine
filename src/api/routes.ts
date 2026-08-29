@@ -399,8 +399,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         direction,
         amount: stake,
         currency: session.currency || 'USD',
-        duration: 5,
-        durationUnit: 'm',
         symbol: current.config.symbol,
         multiplier: current.config.multiplier,
       });
