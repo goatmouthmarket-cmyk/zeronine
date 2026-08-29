@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { config } from '../config.ts';
-import { balanceSubscribe, getPrecision, ping, proposal, buy, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
-import type { Direction } from '../core/digitMath.ts';
+import { balanceSubscribe, getPrecision, ping, proposal, multiplierProposal, buy, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
+import type { Direction, MultiplierDirection } from '../core/digitMath.ts';
 import { updateSessionBalance } from '../db/store.ts';
 
 const REST_BASE = 'https://api.derivws.com/trading/v1/options';
@@ -64,6 +64,19 @@ export interface QuoteResult {
   spot: number;
   barrier: number;
   direction: Direction;
+  requestSentAt: number;
+  receivedAt: number;
+  roundTripMs: number;
+  basis: 'stake' | 'payout';
+}
+
+export interface MultiplierQuoteResult {
+  id: string;
+  askPrice: number;
+  payout: number;
+  spot: number;
+  direction: MultiplierDirection;
+  multiplier: number;
   requestSentAt: number;
   receivedAt: number;
   roundTripMs: number;
@@ -310,6 +323,38 @@ export class DerivPrivateClient {
       spot: Number(p.spot ?? 0),
       barrier: args.barrier,
       direction: args.direction,
+      requestSentAt,
+      receivedAt: Date.now(),
+      roundTripMs: Date.now() - requestSentAt,
+      basis: args.basis ?? 'stake',
+    };
+  }
+
+  async getMultiplierQuote(args: {
+    direction: MultiplierDirection;
+    amount: number;
+    currency: string;
+    duration: number;
+    durationUnit: 'm' | 's';
+    symbol: string;
+    multiplier: number;
+    basis?: 'stake' | 'payout';
+  }): Promise<MultiplierQuoteResult> {
+    const requestSentAt = Date.now();
+    const msg = (await this.request(
+      multiplierProposal({ ...args, reqId: 0 }),
+      'multiplier proposal',
+      10000,
+    )) as any;
+    const p = msg?.proposal;
+    if (!p?.id) throw new Error('multiplier proposal unavailable');
+    return {
+      id: String(p.id),
+      askPrice: Number(p.ask_price),
+      payout: Number(p.payout),
+      spot: Number(p.spot ?? 0),
+      direction: args.direction,
+      multiplier: args.multiplier,
       requestSentAt,
       receivedAt: Date.now(),
       roundTripMs: Date.now() - requestSentAt,

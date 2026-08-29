@@ -419,6 +419,26 @@ export interface MomentumResearchRow {
   ended_at?: number;
 }
 
+/** Server-confirmed outcome of a Momentum demo purchase. */
+export interface MomentumTradePurchase {
+  id?: number;
+  contractId?: string;
+  contract_id?: string;
+  market?: string;
+  contractType?: string;
+  ask?: number | null;
+  payout?: number | null;
+  duration?: string;
+  multiplier?: number | null;
+  status?: 'open' | 'pending' | 'won' | 'lost' | 'cancelled' | 'error';
+  profit?: number | null;
+  pnl?: number | null;
+  entryPrice?: number | null;
+  exitPrice?: number | null;
+  balance?: number | null;
+  currency?: string;
+}
+
 export interface State {
   publicDashboard?: boolean;
   owner?: boolean;
@@ -1061,6 +1081,19 @@ export async function focusMomentumMarket(symbol: string): Promise<MomentumState
   });
   set({ momentum: res.state });
   return res.state;
+}
+
+export async function placeMomentumDemoTrade(input: {
+  direction: 'up' | 'down';
+  stake: number;
+}): Promise<MomentumTradePurchase> {
+  const res = await api<{ trade?: MomentumTradePurchase; session?: SessionInfo }>('/api/momentum/trade', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (res.session) set({ session: res.session });
+  if (!res.trade) throw new Error('The demo order service did not confirm a purchase.');
+  return res.trade;
 }
 export async function unlockDashboard(token: string): Promise<void> {
   await api('/api/auth/owner', { method: 'POST', body: JSON.stringify({ token }) });

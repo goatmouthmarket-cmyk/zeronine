@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, PaperTrade, PaperPortfolio } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, PaperTrade, PaperPortfolio } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
 import { MarketPulseChart } from './MarketPulseChart';
@@ -36,6 +36,7 @@ import {
   startMomentumResearch,
   stopMomentumResearch,
   focusMomentumMarket,
+  placeMomentumDemoTrade,
 } from './store';
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
@@ -2278,9 +2279,123 @@ function MomentumResearchLedger({ rows, currency }: { rows?: MomentumResearchRow
   </section>;
 }
 
+function MomentumTradeDesk({
+  symbol,
+  display,
+  samples,
+  entryPrice,
+  session,
+  owner,
+  suggestedDirection,
+  trades,
+  contract,
+}: {
+  symbol?: string;
+  display?: string;
+  samples?: MomentumScanSample[];
+  entryPrice?: number;
+  session: ReturnType<typeof useStore>['session'];
+  owner?: boolean;
+  suggestedDirection?: 'up' | 'down' | null;
+  trades: TradeRow[];
+  contract: ContractEvt | null;
+}): JSX.Element {
+  const [direction, setDirection] = useState<'up' | 'down'>(suggestedDirection ?? 'up');
+  const [stakeText, setStakeText] = useState('1');
+  const [purchase, setPurchase] = useState<MomentumTradePurchase | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const stake = Number(stakeText);
+  const isDemo = session?.mode === 'demo';
+  const canQuote = Boolean(symbol && owner && isDemo && Number.isFinite(stake) && stake > 0);
+  const trade = purchase?.id == null ? null : trades.find((item) => item.id === purchase.id) ?? null;
+  const matchingContract = purchase?.contractId && contract?.contractId === purchase.contractId ? contract : null;
+  const settledTrade = trade && ['won', 'lost', 'push'].includes(trade.status) ? trade : null;
+  const contractPnl = settledTrade?.profit ?? (matchingContract?.result ? matchingContract.profit : undefined) ?? purchase?.pnl ?? purchase?.profit;
+  const potentialProfit = purchase?.payout != null && purchase.ask != null ? purchase.payout - purchase.ask : null;
+
+  useEffect(() => {
+    setPurchase(null);
+    setError('');
+  }, [symbol, direction, stakeText]);
+
+  useEffect(() => {
+    if (suggestedDirection) setDirection(suggestedDirection);
+  }, [suggestedDirection]);
+
+  const place = async (nextDirection: 'up' | 'down') => {
+    if (!canQuote) return;
+    setDirection(nextDirection);
+    setBusy(true);
+    setError('');
+    try {
+      setPurchase(await placeMomentumDemoTrade({ direction: nextDirection, stake }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unavailableReason = !symbol
+    ? 'Focus a research market before placing a demo trade.'
+    : !session
+      ? 'Connect a Deriv demo account to request a live quote.'
+      : !isDemo
+        ? 'Momentum execution is available on demo accounts only. Switch to demo to continue.'
+        : !owner
+          ? 'Unlock the dashboard owner controls to place a demo trade.'
+          : null;
+
+  return <section class="mom-trade-desk" aria-label="Momentum demo trade">
+    <div class="mom-trade-head">
+      <div>
+        <span class="mom-kicker">Momentum trade</span>
+        <strong>{display ?? 'No focused market'}</strong>
+        <small>{symbol ? 'Live market selected from current research' : 'Research selection required'}</small>
+      </div>
+      <span class={`mom-trade-account${isDemo ? ' ready' : ''}`}><Icon name="check" size={13} />{isDemo ? 'Demo account' : 'Demo required'}</span>
+    </div>
+
+    <div class="mom-trade-live">
+      <div class="mom-trade-chart">
+        <MomentumPriceChart samples={samples} label={`${display ?? 'Momentum market'} live demo trade chart`} entryPrice={entryPrice} entryDirection={direction} entryLabel="Research watch entry" />
+      </div>
+      <div class="mom-trade-readout" aria-live="polite">
+        <span>Demo balance</span>
+        <strong>{isDemo && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
+        <small>{settledTrade ? `Contract ${settledTrade.status}` : purchase ? 'Demo contract submitted' : 'No open demo contract'}</small>
+      </div>
+      <div class={`mom-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
+        <span>Live contract P&amp;L</span>
+        <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
+        <small>{purchase?.contractId ?? purchase?.contract_id ?? 'Awaiting a demo order'}</small>
+      </div>
+    </div>
+
+    <div class="mom-trade-order">
+      <div class="mom-trade-direction" aria-label="Place a demo trade">
+        <button class={`up ${direction === 'up' ? 'active' : ''}`} type="button" disabled={!canQuote || busy} onClick={() => void place('up')}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
+        <button class={`down ${direction === 'down' ? 'active' : ''}`} type="button" disabled={!canQuote || busy} onClick={() => void place('down')}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
+      </div>
+      <label class="mom-trade-stake"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <div class="mom-trade-quote">
+        <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
+        <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
+      </div>
+      <span class="mom-trade-action-note">{busy ? 'Sending demo order' : 'A fresh Deriv proposal is checked before purchase'}</span>
+    </div>
+
+    {unavailableReason && <div class="mom-trade-note">{unavailableReason}</div>}
+    {purchase && <div class="mom-trade-note">Demo contract {purchase.contractId ?? purchase.contract_id ?? 'submitted'} is tracked against this account balance.</div>}
+    {error && <div class="tl-err">{error}</div>}
+  </section>;
+}
+
 function MomentumPage(): JSX.Element {
   const s = useStore();
   const momentum = s.momentum;
+  const [activeTab, setActiveTab] = useState<'research' | 'trade'>('research');
   const [busy, setBusy] = useState(false);
   const [focusing, setFocusing] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -2353,11 +2468,27 @@ function MomentumPage(): JSX.Element {
   const showPaused = stateReady && !momentum?.running && !showLaunch;
 
   return <>
-    <header class="header">
+    <header class="header mom-page-header">
+      <div class="mom-page-heading">
       <div class="page-title">Multiplier Momentum</div>
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
+      </div>
+      <div class="mom-tabs" role="tablist" aria-label="Momentum workspace">
+        <button class={activeTab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'research'} onClick={() => setActiveTab('research')}>Research</button>
+        <button class={activeTab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'trade'} onClick={() => setActiveTab('trade')}>Trade</button>
+      </div>
     </header>
-    {showRestoring ? <section class="mom-restoring" aria-live="polite" aria-busy="true">
+    {activeTab === 'trade' ? <MomentumTradeDesk
+      symbol={momentum?.config?.symbol}
+      display={focusedMarket?.display ?? market?.display}
+      samples={w?.samples ?? focusedMarket?.samples}
+      entryPrice={w?.openPrice}
+      session={s.session}
+      owner={s.owner}
+      suggestedDirection={w?.direction ?? (signal?.direction === 'wait' ? null : signal?.direction)}
+      trades={s.trades}
+      contract={s.contract}
+    /> : showRestoring ? <section class="mom-restoring" aria-live="polite" aria-busy="true">
       <span class="mom-restoring-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <div><span class="mom-kicker">Momentum workspace</span><strong>Restoring live research state</strong><small>Checking the latest scanner status.</small></div>
     </section> : showLaunch ? <section class="mom-launch" aria-live="polite">

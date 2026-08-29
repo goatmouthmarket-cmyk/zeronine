@@ -20,6 +20,7 @@ import {
 import type { TokenSet } from '../deriv/oauth.ts';
 import type { Direction } from '../core/digitMath.ts';
 import { contractProfit } from '../strategy/pnl.ts';
+import { buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { runBacktest, TEST_MODES, TEST_STRATEGIES } from '../testlab/backtest.ts';
 import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
@@ -141,6 +142,179 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     try {
       return { state: momentum.focus(symbol) };
     } catch (error) { reply.code(409); return { error: String(error) }; }
+  });
+
+  /**
+   * An explicit, demo-only order against the market currently focused by
+   * Momentum research. Momentum itself is observation-only: this endpoint is
+   * the only path that can convert a user click into a multiplier purchase.
+   */
+  app.post('/api/momentum/trade', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    if (!momentum) {
+      reply.code(503);
+      return { error: 'momentum observer unavailable' };
+    }
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'connect a Deriv demo account to place a Momentum trade' };
+    }
+    if (session.mode !== 'demo') {
+      reply.code(403);
+      return { error: 'Momentum trades are restricted to a Deriv demo account' };
+    }
+    if (automation.isRunning()) {
+      reply.code(409);
+      return { error: 'stop the bot before placing a Momentum trade' };
+    }
+
+    const body = (req.body ?? {}) as { direction?: unknown; stake?: unknown };
+    const direction = body.direction === 'up' || body.direction === 'down' ? body.direction : null;
+    const stake = Number(body.stake);
+    if (!direction || !Number.isFinite(stake) || stake <= 0) {
+      reply.code(400);
+      return { error: 'an up/down direction and a positive stake are required' };
+    }
+
+    const research = momentum.state();
+    if (!research.running || research.phase !== 'observing' || !research.config || !research.window) {
+      reply.code(409);
+      return { error: 'focus an active Momentum research market before placing a trade' };
+    }
+    const settings = getSettings();
+    if (stake > settings.max_stake) {
+      reply.code(400);
+      return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
+    }
+    if (getOpenTrade()) {
+      reply.code(409);
+      return { error: 'wait for the open contract to settle before placing a Momentum trade' };
+    }
+    const gate = riskCheck({
+      stake,
+      settings,
+      balance: session.balance,
+      context: buildRecoveryContext(settings),
+      lastTradeAt: listTrades(1)[0]?.ts ?? 0,
+      tradeGapMs: config.tradeGapMs,
+      now: Date.now(),
+    });
+    if (!gate.ok) {
+      reply.code(409);
+      return { error: `Momentum trade blocked: ${gate.reason}` };
+    }
+
+    if (!client.isConnected) {
+      try {
+        const token = await resolveStoredToken();
+        const connected = await client.reconnect(token, session.loginid);
+        if (connected.mode !== 'demo') {
+          reply.code(403);
+          return { error: 'Momentum trades are restricted to a Deriv demo account' };
+        }
+      } catch (error) {
+        reply.code(409);
+        return { error: `socket reconnect failed: ${String(error)}` };
+      }
+    }
+
+    // A scan can complete while a user is deciding. Re-read the focus state so
+    // the proposal cannot be pointed at a stale or automatically changed market.
+    const current = momentum.state();
+    if (
+      !current.running || current.phase !== 'observing' || !current.config || !current.window
+      || current.config.symbol !== research.config.symbol
+    ) {
+      reply.code(409);
+      return { error: 'Momentum research changed; review the focused market before trading' };
+    }
+
+    const signal = current.window.decisionSignal ?? current.window.signal;
+    const reason = [
+      `momentum manual ${direction.toUpperCase()}`,
+      `five-minute multiplier x${current.config.multiplier}`,
+      `research ${signal.direction.toUpperCase()} ${signal.confidence}%`,
+      signal.reason,
+    ].join(' | ');
+    let recordedTrade: ReturnType<typeof insertTrade> | null = null;
+    try {
+      // The proposal is intentionally obtained immediately before the buy.
+      // No scanner quote is reused for an account order.
+      const quote = await client.getMultiplierQuote({
+        direction,
+        amount: stake,
+        currency: session.currency || 'USD',
+        duration: 5,
+        durationUnit: 'm',
+        symbol: current.config.symbol,
+        multiplier: current.config.multiplier,
+      });
+      if (!(quote.askPrice > 0) || !Number.isFinite(quote.askPrice)) {
+        throw new Error('multiplier proposal returned an invalid purchase price');
+      }
+      const afterQuote = momentum.state();
+      if (
+        !afterQuote.running || afterQuote.phase !== 'observing' || !afterQuote.config || !afterQuote.window
+        || afterQuote.config.symbol !== current.config.symbol
+      ) {
+        reply.code(409);
+        return { error: 'Momentum research changed while the quote was loading; review it before trading' };
+      }
+      // This synchronous insert reserves the shared account contract slot
+      // before the buy. Concurrent click handlers cannot create a second order.
+      if (getOpenTrade()) {
+        reply.code(409);
+        return { error: 'another account contract opened while the Momentum quote was loading' };
+      }
+      const trade = recordedTrade = insertTrade({
+        ts: Date.now(),
+        market: current.config.symbol,
+        contract_type: direction === 'up' ? 'MULTUP' : 'MULTDOWN',
+        barrier: 0,
+        duration: 5,
+        duration_unit: 'm',
+        stake,
+        ask_price: quote.askPrice,
+        payout: quote.payout,
+        est_win: 0,
+        profit: 0,
+        status: 'purchasing',
+        contract_id: '',
+        purchase_id: `momentum-manual-${Date.now()}`,
+        reason,
+        origin: 'manual',
+      });
+      const bought = await client.placeBuy(quote.id, quote.askPrice);
+      const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice;
+      const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
+      const entrySnapshot = registry.snapshot(current.config.symbol);
+      const entrySpot = Number.isFinite(quote.spot) && quote.spot > 0 ? quote.spot : entrySnapshot.lastQuote;
+      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySpot, entrySnapshot.lastDigit);
+      const purchased = getTrade(trade.id, trade.account_id) ?? trade;
+      hub.emit({ type: 'trade', ts: Date.now(), trade: purchased, manual: true, momentum: true });
+      settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
+      return {
+        ok: true,
+        trade: {
+          id: trade.id,
+          contractId: bought.contractId,
+          market: current.config.symbol,
+          contractType: trade.contract_type,
+          ask: actualStake,
+          payout: actualPayout,
+          duration: '5m',
+          multiplier: current.config.multiplier,
+        },
+      };
+    } catch (error) {
+      if (recordedTrade) {
+        resolveTrade(recordedTrade.id, 'error', 0, recordedTrade.contract_id || '', undefined, recordedTrade.account_id);
+      }
+      console.warn(`[momentum manual] order failed: ${String(error)}`);
+      reply.code(502);
+      return { error: String(error) };
+    }
   });
 
   app.get('/api/settings', async () => getSettings());

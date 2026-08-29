@@ -1,4 +1,5 @@
 export type Direction = 'over' | 'under';
+export type MultiplierDirection = 'up' | 'down';
 
 export const CONTRACT_TYPE: Record<Direction, 'DIGITOVER' | 'DIGITUNDER'> = {
   over: 'DIGITOVER',
@@ -53,6 +54,24 @@ export interface ProposalArgs {
   basis?: 'stake' | 'payout';
 }
 
+/**
+ * Multiplier contracts have a different proposal shape from digit contracts:
+ * there is no barrier and the requested multiplier is part of the contract.
+ * Keep this separate so digit callers cannot accidentally create a multiplier
+ * proposal by changing only a direction label.
+ */
+export interface MultiplierProposalArgs {
+  direction: MultiplierDirection;
+  amount: number;
+  currency: string;
+  duration: number;
+  durationUnit: 'm' | 's';
+  symbol: string;
+  multiplier: number;
+  reqId: number;
+  basis?: 'stake' | 'payout';
+}
+
 export function proposal(args: ProposalArgs): Record<string, unknown> {
   return {
     proposal: 1,
@@ -65,6 +84,21 @@ export function proposal(args: ProposalArgs): Record<string, unknown> {
     duration_unit: args.durationUnit,
     underlying_symbol: args.symbol,
     barrier: String(args.barrier),
+  };
+}
+
+export function multiplierProposal(args: MultiplierProposalArgs): Record<string, unknown> {
+  return {
+    proposal: 1,
+    req_id: args.reqId,
+    amount: Math.round(args.amount * 100) / 100,
+    basis: args.basis ?? 'stake',
+    contract_type: args.direction === 'up' ? 'MULTUP' : 'MULTDOWN',
+    currency: args.currency,
+    duration: args.duration,
+    duration_unit: args.durationUnit,
+    underlying_symbol: args.symbol,
+    multiplier: args.multiplier,
   };
 }
 

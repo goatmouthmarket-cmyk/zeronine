@@ -22,7 +22,7 @@ export interface TradeRow {
   account_mode?: 'demo' | 'real' | 'unknown';
   ts: number;
   market: string;
-  contract_type: 'DIGITOVER' | 'DIGITUNDER';
+  contract_type: 'DIGITOVER' | 'DIGITUNDER' | 'MULTUP' | 'MULTDOWN';
   barrier: number;
   duration: number;
   duration_unit: string;
@@ -59,7 +59,7 @@ export interface LedgerEntryRow {
   trade_id: number | null;
   contract_ref: string;
   market: string;
-  contract_type: 'DIGITOVER' | 'DIGITUNDER';
+  contract_type: 'DIGITOVER' | 'DIGITUNDER' | 'MULTUP' | 'MULTDOWN';
   barrier: number;
   stake: number;
   payout: number;
@@ -1471,13 +1471,16 @@ function paperTradeSummary(
   row: LedgerEntryRow & { opened_at: number; updated_at: number },
   context?: PaperTradeContextRow,
 ): PaperTradeSummary {
+  // Paper simulation only creates digit contracts. Keep this narrowing local
+  // now that the shared account ledger can also carry multiplier contracts.
+  const contractType: PaperTradeSummary['contract_type'] = row.contract_type === 'DIGITOVER' ? 'DIGITOVER' : 'DIGITUNDER';
   return {
     contract_ref: row.contract_ref,
     opened_at: row.opened_at,
     updated_at: row.updated_at,
     market: row.market,
-    contract_type: row.contract_type,
-    direction: row.contract_type === 'DIGITOVER' ? 'over' : 'under',
+    contract_type: contractType,
+    direction: contractType === 'DIGITOVER' ? 'over' : 'under',
     barrier: row.barrier,
     stake: row.stake,
     payout: row.payout,
