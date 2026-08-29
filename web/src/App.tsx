@@ -41,9 +41,24 @@ import {
 import './marketChooser.css';
 import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
 
-type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'account';
+type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'gold' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
 type ActivityDetail = { type: 'trade'; trade: TradeRow } | { type: 'run'; run: TestRunRow };
+
+const PAGE_PATHS: Record<Page, string> = {
+  home: '/',
+  history: '/history',
+  backtest: '/lab',
+  bot: '/bot',
+  momentum: '/momentum',
+  gold: '/gold',
+  account: '/account',
+};
+
+function pageFromPath(pathname: string): Page {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  return (Object.entries(PAGE_PATHS).find(([, path]) => path === normalized)?.[0] ?? 'home') as Page;
+}
 
 function sourceForTrade(trade: TradeRow): ActivitySource {
   if (trade.origin === 'manual' || trade.reason === 'manual') return 'manual';
@@ -186,6 +201,12 @@ const ICON_PATHS: Record<string, JSX.Element> = {
       <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
     </>
   ),
+  gold: (
+    <>
+      <path d="m12 3 7 5-7 13L5 8l7-5Z" />
+      <path d="M5 8h14M8.5 12h7" />
+    </>
+  ),
   chevronRight: <path d="M9 6l6 6-6 6" />,
   logout: (
     <>
@@ -232,7 +253,19 @@ function Icon({
 /* ---------------- app shell ---------------- */
 
 export function App(): JSX.Element {
-  const [page, setPage] = useState<Page>('home');
+  const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
+
+  useEffect(() => {
+    const handlePopState = () => setPage(pageFromPath(window.location.pathname));
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigate = useCallback((nextPage: Page) => {
+    const nextPath = PAGE_PATHS[nextPage];
+    if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath);
+    setPage(nextPage);
+  }, []);
 
   useEffect(() => {
     if (page === 'history') void refreshTrades(200);
@@ -242,17 +275,18 @@ export function App(): JSX.Element {
     <>
       <main class="app" data-page={page}>
         <div class="view view-home">
-          <HomePage page={page} active={page === 'home'} onNavigate={setPage} />
+          <HomePage page={page} active={page === 'home'} onNavigate={navigate} />
         </div>
         <div class="desk-side">
           {page === 'bot' && <div class="view view-bot"><BotPage /></div>}
           {page === 'history' && <div class="view view-history"><HistoryPage /></div>}
           {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
           {page === 'momentum' && <div class="view view-momentum"><MomentumPage /></div>}
+          {page === 'gold' && <div class="view view-gold"><GoldPage /></div>}
           {page === 'account' && <div class="view view-account"><AccountPage /></div>}
         </div>
       </main>
-      <BottomNav page={page} setPage={setPage} />
+      <BottomNav page={page} setPage={navigate} />
     </>
   );
 }
@@ -555,9 +589,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           <nav class="desktop-nav">
             <button class={`nav-link${page === 'home' ? ' active' : ''}`} onClick={() => onNavigate('home')}>Home</button>
             <button class={`nav-link${page === 'history' ? ' active' : ''}`} onClick={() => onNavigate('history')}>History</button>
+            <button class={`nav-link${page === 'backtest' ? ' active' : ''}`} onClick={() => onNavigate('backtest')}>Lab</button>
             <button class={`nav-link${page === 'bot' ? ' active' : ''}`} onClick={() => onNavigate('bot')}>Bot</button>
-            <button class={`nav-link${page === 'backtest' ? ' active' : ''}`} onClick={() => onNavigate('backtest')}>Backtest</button>
             <button class={`nav-link${page === 'momentum' ? ' active' : ''}`} onClick={() => onNavigate('momentum')}>Momentum</button>
+            <button class={`nav-link gold${page === 'gold' ? ' active' : ''}`} onClick={() => onNavigate('gold')}>Gold</button>
             <button class={`nav-link${page === 'account' ? ' active' : ''}`} onClick={() => onNavigate('account')}>Account</button>
           </nav>
           <div class="balance">
@@ -3600,6 +3635,79 @@ function AccountPage(): JSX.Element {
   );
 }
 
+type GoldTab = 'research' | 'paper' | 'backtest' | 'live' | 'connection';
+
+const GOLD_TABS: Array<{ id: GoldTab; label: string }> = [
+  { id: 'research', label: 'Research' },
+  { id: 'paper', label: 'Paper Trade' },
+  { id: 'backtest', label: 'Backtest' },
+  { id: 'live', label: 'Live Bot' },
+  { id: 'connection', label: 'Account Connection' },
+];
+
+function GoldPage(): JSX.Element {
+  const [tab, setTab] = useState<GoldTab>('research');
+  const active = GOLD_TABS.find((item) => item.id === tab)!;
+
+  return <section class="gold-page" aria-label="Gold workspace">
+    <header class="header gold-page-header">
+      <div>
+        <span class="gold-kicker"><Icon name="gold" size={14} />Gold workspace</span>
+        <div class="page-title">Gold</div>
+        <div class="subtitle">Independent CFD research, simulation, and execution workspace</div>
+      </div>
+      <span class="gold-phase">Phase 1 shell</span>
+    </header>
+
+    <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
+      {GOLD_TABS.map((item) => <button
+        key={item.id}
+        class={tab === item.id ? 'active' : ''}
+        type="button"
+        role="tab"
+        aria-selected={tab === item.id}
+        onClick={() => setTab(item.id)}
+      >{item.label}</button>)}
+    </div>
+
+    <div class="gold-workspace">
+      <section class="gold-status" aria-live="polite">
+        <span class="gold-status-mark"><i></i>Workspace ready</span>
+        <p>{tab === 'research'
+          ? 'Gold research will open here once the market-data adapter is connected.'
+          : `${active.label} is reserved for the Gold module and is not active in this phase.`}</p>
+      </section>
+
+      <section class="gold-research-stage">
+        <div class="gold-research-title">
+          <span class="gold-kicker">{active.label}</span>
+          <strong>{tab === 'research' ? 'XAU/USD market research' : `${active.label} workspace`}</strong>
+          <small>{tab === 'research'
+            ? 'The Gold domain remains separate from digit and multiplier strategies.'
+            : 'No orders, simulations, or account actions can be started from this shell.'}</small>
+        </div>
+        <div class="gold-chart-placeholder" aria-label="Gold market chart placeholder">
+          <span>Market chart</span>
+          <div class="gold-chart-lines" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <small>Awaiting normalized gold prices</small>
+        </div>
+        <div class="gold-readout">
+          <span>Current read</span>
+          <strong>WAIT</strong>
+          <small>No data connection</small>
+        </div>
+      </section>
+
+      <section class="gold-facts" aria-label="Gold module safeguards">
+        <div><span>Instrument</span><strong>XAU/USD</strong><small>Configured when connected</small></div>
+        <div><span>Signal model</span><strong>WAIT</strong><small>No inference before data</small></div>
+        <div><span>Execution</span><strong>Locked</strong><small>Not available in Phase 1</small></div>
+        <div><span>Account</span><strong>Not connected</strong><small>Broker connection is separate</small></div>
+      </section>
+    </div>
+  </section>;
+}
+
 function Detail({ label, value, color }: { label: string; value: string; color?: 'green' | 'red' }): JSX.Element {
   return (
     <div class="detail-row">
@@ -3626,19 +3734,23 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
           <Icon name="history" size={20} />
           History
         </button>
+        <button class={`nav-item${page === 'backtest' ? ' active' : ''}`} onClick={() => setPage('backtest')}>
+          <Icon name="stats" size={20} />
+          Lab
+        </button>
         <button class={`nav-item bot${page === 'bot' ? ' active' : ''}`} onClick={() => setPage('bot')}>
           <span class="nav-bot-circle">
             <Icon name={automation ? 'square' : 'play'} size={15} strokeWidth={2.4} />
           </span>
           Bot
         </button>
-        <button class={`nav-item${page === 'backtest' ? ' active' : ''}`} onClick={() => setPage('backtest')}>
-          <Icon name="stats" size={20} />
-          Lab
-        </button>
         <button class={`nav-item${page === 'momentum' ? ' active' : ''}`} onClick={() => setPage('momentum')}>
           <Icon name="crosshair" size={20} />
           Momentum
+        </button>
+        <button class={`nav-item gold${page === 'gold' ? ' active' : ''}`} onClick={() => setPage('gold')}>
+          <Icon name="gold" size={20} />
+          Gold
         </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} onClick={() => setPage('account')}>
           <Icon name="account" size={20} />
