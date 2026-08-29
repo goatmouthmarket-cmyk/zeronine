@@ -223,6 +223,83 @@ test('Momentum execution rejects a direction that differs from the validated sig
   await app.close();
 });
 
+test('owner state resumes live tracking for an already-open Momentum contract', async () => {
+  const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
+    import('fastify'),
+    import('../src/api/hub.ts'),
+    import('../src/core/marketState.ts'),
+    import('../src/deriv/publicFeed.ts'),
+    import('../src/strategy/automation.ts'),
+    import('../src/simulation/paperSimulator.ts'),
+    import('../src/api/routes.ts'),
+    import('../src/db/store.ts'),
+    import('../src/config.ts'),
+  ]);
+  cfg.config.dashboardAdminToken = '';
+  store.setSession({
+    id: 'momentum-demo-resume', loginid: 'VRTC_RESUME', balance: 250, currency: 'USD', mode: 'demo', auth_kind: 'pat',
+    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+  });
+
+  const trade = store.insertTrade({
+    ts: Date.now(),
+    market: 'R_100',
+    contract_type: 'MULTUP',
+    barrier: 0,
+    duration: 5,
+    duration_unit: 'm',
+    stake: 3,
+    ask_price: 3,
+    payout: 6,
+    est_win: 0,
+    profit: 0,
+    status: 'pending',
+    contract_id: '11041116359',
+    purchase_id: 'momentum-resume',
+    reason: 'momentum manual UP',
+    origin: 'manual',
+  });
+
+  const hub = new hubMod.Hub();
+  const events: Array<Record<string, unknown>> = [];
+  hub.on((event) => events.push(event));
+  const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
+  const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
+  let settleCalls = 0;
+  const client = {
+    isConnected: true,
+    getQuote: async () => ({ id: 'unused' }),
+    getMultiplierQuote: async () => ({ id: 'unused', askPrice: 1, payout: 2, spot: 1 }),
+    placeBuy: async () => ({ contractId: 'unused', buyPrice: 1, payout: 2 }),
+    settleContract: async (contractId: string, onUpdate: (update: Record<string, unknown>) => void) => {
+      settleCalls += 1;
+      onUpdate({ contractId, status: 'open', profit: 0.42, sellPrice: 3.42, buyPrice: 3, settled: false });
+      return new Promise(() => undefined);
+    },
+  };
+  const automation = new autoMod.Automation(registry, client as never, hub);
+  const app = Fastify();
+  routesMod.registerApi(app, {
+    registry, feed, client: client as never, hub, automation,
+    paperSimulator: new paperMod.PaperSimulator(),
+  });
+
+  const first = await app.inject({ method: 'GET', url: '/api/state' });
+  assert.equal(first.statusCode, 200);
+  const second = await app.inject({ method: 'GET', url: '/api/state' });
+  assert.equal(second.statusCode, 200);
+  assert.equal(settleCalls, 1);
+  const liveContractEvent = events.find((event) => event.type === 'contract' && event.contractId === '11041116359');
+  assert.ok(liveContractEvent);
+  assert.equal(liveContractEvent.tradeId, trade.id);
+  assert.equal(liveContractEvent.profit, 0.42);
+  assert.equal(liveContractEvent.sellPrice, 3.42);
+  assert.equal(liveContractEvent.phase, 'open');
+
+  automation.dispose();
+  await app.close();
+});
+
 test('an uncertain Momentum buy remains locked and cannot be retried or locally cleared', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
     import('fastify'),

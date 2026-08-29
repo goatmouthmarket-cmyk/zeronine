@@ -71,6 +71,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const { registry, feed, client, hub, automation, paperSimulator, momentum } = deps;
   const gold = deps.gold ?? new GoldRuntime();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
+  const resumeOpenTradeSettlement = (): void => {
+    if (!client.isConnected) return;
+    const openTrade = getOpenTrade();
+    if (!openTrade?.contract_id) return;
+    settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
+  };
 
   app.get('/health', async () => ({
     ok: true,
@@ -100,6 +106,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   app.get('/api/state', async (req) => {
     const owner = isOwner(req);
     const session = getSession();
+    if (owner) resumeOpenTradeSettlement();
     return {
       feed: feed.status(),
       markets: registry.allSnapshots(),
@@ -333,7 +340,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    if (getOpenTrade()) {
+    const openTrade = getOpenTrade();
+    if (openTrade) {
+      if (openTrade.contract_id) {
+        settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
+      }
       reply.code(409);
       return { error: 'wait for the open contract to settle before placing a Momentum trade' };
     }
@@ -1254,6 +1265,8 @@ function parseTestConfigs(entries: string[]): TestConfig[] {
   return out;
 }
 
+const activeSettlements = new Set<string>();
+
 function settleInBackground(
   client: DerivPrivateClient,
   hub: Hub,
@@ -1263,6 +1276,9 @@ function settleInBackground(
   payout: number,
   accountId?: string,
 ): void {
+  const settlementKey = `${accountId ?? 'current'}:${tradeId}:${contractId}`;
+  if (activeSettlements.has(settlementKey)) return;
+  activeSettlements.add(settlementKey);
   let attempts = 0;
   const retry = (): void => {
     attempts += 1;
@@ -1271,7 +1287,10 @@ function settleInBackground(
   };
   const settle = (): void => {
     const current = getTrade(tradeId, accountId);
-    if (!current || (current.status !== 'pending' && current.status !== 'purchasing')) return;
+    if (!current || (current.status !== 'pending' && current.status !== 'purchasing')) {
+      activeSettlements.delete(settlementKey);
+      return;
+    }
     void client
     .settleContract(contractId, (u) => hub.emit({
       type: 'contract',
@@ -1289,6 +1308,7 @@ function settleInBackground(
     }))
     .then((outcome) => {
       if (outcome.settled) {
+        activeSettlements.delete(settlementKey);
         const won = outcome.status === 'won';
         const status = won ? ('won' as const) : ('lost' as const);
         const profit = contractProfit(won, stake, payout, outcome);
