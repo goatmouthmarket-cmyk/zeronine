@@ -3683,8 +3683,8 @@ function GoldPage(): JSX.Element {
 
     <div class="gold-workspace">
       <section class="gold-status" aria-live="polite">
-        <span class="gold-status-mark"><i></i>{readiness}</span>
-        <p>{diagnostics?.reason ?? 'Loading the Gold provider’s non-secret readiness report. No broker connection is opened from this page.'}</p>
+        <span class="gold-status-mark"><i></i>Provider readiness</span>
+        <p><strong>{readiness}</strong><span>{diagnostics?.reason ?? 'Loading the Gold provider readiness report. No broker connection is opened from this page.'}</span></p>
       </section>
 
       <GoldWorkspace tab={tab} state={store.gold} />
@@ -3705,6 +3705,7 @@ function GoldWorkspace({ tab, state }: { tab: GoldTab; state: GoldModuleState | 
   };
   const capability = readinessByTab[tab] ?? null;
   const capabilityReason = capability?.reason ?? unavailable;
+  const setupState = capability?.ready ? 'Validated' : 'Inactive';
 
   const content: Record<GoldTab, { title: string; eyebrow: string; detail: string; safeguards: Array<[string, string]> }> = {
     research: {
@@ -3741,21 +3742,16 @@ function GoldWorkspace({ tab, state }: { tab: GoldTab; state: GoldModuleState | 
   const active = content[tab];
 
   return <>
-    <section class="gold-research-stage gold-inert-stage" aria-label={`${active.eyebrow} status`}>
-      <div class="gold-research-title">
+    <section class="gold-empty-stage" aria-label={`${active.eyebrow} status`}>
+      <div class="gold-empty-copy">
         <span class="gold-kicker">{active.eyebrow}</span>
         <strong>{active.title}</strong>
         <small>{active.detail}</small>
       </div>
-      <div class="gold-empty-surface" role="status" aria-label="No Gold market data">
-        <span>Provider data</span>
-        <strong>Not available</strong>
+      <div class="gold-empty-setup" role="status" aria-label="Gold provider setup state">
+        <span>Setup state</span>
+        <strong>{setupState}</strong>
         <small>{capabilityReason}</small>
-      </div>
-      <div class="gold-readout">
-        <span>Trading state</span>
-        <strong>INERT</strong>
-        <small>No order controls</small>
       </div>
     </section>
 
