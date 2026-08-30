@@ -5152,7 +5152,7 @@ function GoldSentimentPanel({ state }: { state: GoldModuleState | null }): JSX.E
   const signalSentiment = state?.research.state?.signal?.sentiment ?? null;
   if (!snapshot && !worker) return null;
   const lean = snapshot?.combinedScore ? (snapshot.combinedScore >= 0.15 ? 'BULLISH' : snapshot.combinedScore <= -0.15 ? 'BEARISH' : 'NEUTRAL') : 'NEUTRAL';
-  const leanColor = lean === 'BULLISH' ? 'var(--green)' : lean === 'BEARISH' ? 'var(--red)' : 'var(--muted)';
+  const leanClass = lean.toLowerCase();
 
   const formatAge = (ms: number): string => {
     if (!Number.isFinite(ms)) return '—';
@@ -5173,7 +5173,7 @@ function GoldSentimentPanel({ state }: { state: GoldModuleState | null }): JSX.E
     <section class="gold-sentiment-panel" aria-label="Gold news and social sentiment">
       <div class="gold-sentiment-head">
         <span class="gold-kicker">News & social sentiment</span>
-        <span class="gold-sentiment-lean" style={{ color: leanColor }}>{lean}</span>
+        <span class={`gold-sentiment-lean ${leanClass}`}>{lean}</span>
         <span class="gold-sentiment-freshness">{worker ? `worker ${worker.running ? 'running' : 'stopped'}` : 'from research'} · updated {formatAge(Date.now() - (snapshot?.generatedAt ?? Date.now()))} ago</span>
       </div>
       <div class="gold-sentiment-grid">
