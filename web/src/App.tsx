@@ -4820,7 +4820,7 @@ function GoldDerivTradeWorkspace({
     ? (settledGoldTrades.filter((trade) => trade.status === 'won' || Number(trade.profit ?? 0) > 0).length / settledGoldTrades.length) * 100
     : null;
   const backtest = state?.backtest.result;
-  const modelWeights = [
+const modelWeights = [
     ['Momentum', .25],
     ['Timeframe agreement', .20],
     ['EMA alignment', .15],
@@ -4828,7 +4828,9 @@ function GoldDerivTradeWorkspace({
     ['Candle bodies', .10],
     ['Volatility fit', .10],
     ['Tick volume', .05],
-  ];
+    ['News sentiment', .10],
+    ['Social sentiment', .05],
+];
   const activeStrategy = settings ? STRATEGY_META[settings.strategy_mode]?.label ?? settings.strategy_mode : 'Manual guarded';
   const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
   const suggestionText = sideFromSignal ? `${sideFromSignal} - ${signal?.confidence ?? 0}%` : 'WAIT';
@@ -4977,12 +4979,17 @@ function GoldDerivTradeWorkspace({
           <strong>{symbol?.displayName || deriv?.display || 'Gold / US Dollar'}</strong>
           <small>{marketReady ? `${chartTimeframe} candlestick watch - Deriv demo multipliers` : state?.research.reason ?? 'Waiting for Deriv Gold feed'}</small>
         </div>
-        <div class="gold-trade-badges">
+<div class="gold-trade-badges">
           <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}`}>
             <Icon name={sideFromSignal === 'SELL' ? 'arrowDown' : sideFromSignal === 'BUY' ? 'arrowUp' : 'history'} size={13} />
             <span>Suggested side</span>
             <strong>{suggestionText}</strong>
           </span>
+          {signal?.sentiment?.perfectSetup && (
+            <span class="gold-perfect-badge" title="Price, news, and social sentiment fully align">
+              <Icon name="award" size={12} /><span>Perfect setup</span>
+            </span>
+          )}
           <span class={`mom-trade-account${demoConnected ? ' ready' : ''}`}><Icon name="check" size={13} />{demoConnected ? 'Deriv demo' : 'Demo required'}</span>
           <button class="gold-link-button" type="button" onClick={onOpenResearch}>Research</button>
         </div>
@@ -5013,13 +5020,15 @@ function GoldDerivTradeWorkspace({
           <span>Demo balance</span>
           <strong>{demoConnected && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
           <small>{phase}</small>
-        </div>
+</div>
         <div class={`gold-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
-          <span>Live contract P&amp;L</span>
+          <span>Live contract P&L</span>
           <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
           <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, currency)}` : liveSellPrice == null ? trackedContractId || 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, currency)}`}</small>
         </div>
       </div>
+
+      <GoldSentimentPanel state={state} />
 
       <div class="gold-trade-order">
         <div class="gold-trade-direction" aria-label="Place a Deriv Gold demo trade">
@@ -5135,6 +5144,102 @@ function GoldDerivConnectionOnboarding({
     </section>
     {session.mode !== 'demo' && <div class="tl-err">Gold API trading is demo-only. Open Account and switch to a demo account before placing a Gold trade.</div>}
   </section>;
+}
+
+function GoldSentimentPanel({ state }: { state: GoldModuleState | null }): JSX.Element | null {
+  const worker = state?.sentiment ?? null;
+  const snapshot = worker?.snapshot ?? state?.research.state?.sentiment ?? null;
+  const signalSentiment = state?.research.state?.signal?.sentiment ?? null;
+  if (!snapshot && !worker) return null;
+  const lean = snapshot?.combinedScore ? (snapshot.combinedScore >= 0.15 ? 'BULLISH' : snapshot.combinedScore <= -0.15 ? 'BEARISH' : 'NEUTRAL') : 'NEUTRAL';
+  const leanColor = lean === 'BULLISH' ? 'var(--green)' : lean === 'BEARISH' ? 'var(--red)' : 'var(--muted)';
+
+  const formatAge = (ms: number): string => {
+    if (!Number.isFinite(ms)) return '—';
+    const mins = Math.round(ms / 60_000);
+    if (mins < 1) return '< 1m';
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours}h`;
+    return `${Math.round(hours / 24)}d`;
+  };
+
+  const formatScore = (score: number): string => `${score >= 0 ? '+' : ''}${(score * 100).toFixed(1)}%`;
+
+  const alignment = signalSentiment?.alignment ?? 'NEUTRAL';
+  const perfectSetup = signalSentiment?.perfectSetup ?? false;
+
+  return (
+    <section class="gold-sentiment-panel" aria-label="Gold news and social sentiment">
+      <div class="gold-sentiment-head">
+        <span class="gold-kicker">News & social sentiment</span>
+        <span class="gold-sentiment-lean" style={{ color: leanColor }}>{lean}</span>
+        <span class="gold-sentiment-freshness">{worker ? `worker ${worker.running ? 'running' : 'stopped'}` : 'from research'} · updated {formatAge(Date.now() - (snapshot?.generatedAt ?? Date.now()))} ago</span>
+      </div>
+      <div class="gold-sentiment-grid">
+        <div class="gold-sentiment-score">
+          <span class="gold-sentiment-label">Combined</span>
+          <strong>{formatScore(snapshot?.combinedScore ?? 0)}</strong>
+        </div>
+        <div class="gold-sentiment-score">
+          <span class="gold-sentiment-label">News ({snapshot?.newsCount ?? 0})</span>
+          <strong>{formatScore(snapshot?.newsScore ?? 0)}</strong>
+          <small>{formatAge(snapshot?.newsFreshnessMs ?? 0)} ago</small>
+        </div>
+        <div class="gold-sentiment-score">
+          <span class="gold-sentiment-label">Social ({snapshot?.socialCount ?? 0})</span>
+          <strong>{formatScore(snapshot?.socialScore ?? 0)}</strong>
+          <small>{formatAge(snapshot?.socialFreshnessMs ?? 0)} ago</small>
+        </div>
+        <div class="gold-sentiment-score">
+          <span class="gold-sentiment-label">Alignment</span>
+          <strong>{alignment}</strong>
+          {perfectSetup && <span class="gold-perfect-inline">Perfect setup</span>}
+        </div>
+      </div>
+      {snapshot?.drivers?.length && (
+        <div class="gold-sentiment-drivers">
+          <span class="gold-kicker">Top drivers</span>
+          {snapshot.drivers.slice(0, 6).map((driver, index) => (
+            <span key={index} class="gold-sentiment-driver">{driver}</span>
+          ))}
+        </div>
+      )}
+      {snapshot?.topItems?.length && (
+        <div class="gold-sentiment-headlines">
+          <span class="gold-kicker">Latest headlines</span>
+          {snapshot.topItems.slice(0, 4).map((item, index) => (
+            <div key={index} class="gold-sentiment-item">
+              <a href={item.url ?? '#'} target="_blank" rel="noopener noreferrer" class="gold-sentiment-title">{item.title}</a>
+              <div class="gold-sentiment-meta">
+                <span class="gold-sentiment-source">{item.source}</span>
+                <span class="gold-sentiment-age">{formatAge(Date.now() - item.publishedAt)}</span>
+                <span class="gold-sentiment-score" style={{ color: item.score >= 0.1 ? 'var(--green)' : item.score <= -0.1 ? 'var(--red)' : 'var(--muted)' }}>
+                  {formatScore(item.score)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {worker && (
+        <details class="gold-sentiment-sources">
+          <summary>Sources & status</summary>
+          <div class="gold-sources-list">
+            {worker.sources.map((src, index) => (
+              <div key={index} class={`gold-source ${src.ok ? 'ok' : 'error'}`}>
+                <span class="gold-source-kind">{src.kind}</span>
+                <span class="gold-source-name">{src.source}</span>
+                <span class="gold-source-items">{src.items} items</span>
+                <span class="gold-source-time">{src.lastFetchAt ? formatAge(Date.now() - src.lastFetchAt) : '—'}</span>
+                {src.error && <span class="gold-source-error" title={src.error}>⚠</span>}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+    </section>
+  );
 }
 
 function GoldTradeWorkspace({

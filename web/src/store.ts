@@ -652,8 +652,65 @@ export interface GoldSignalState {
   regime: 'TRENDING' | 'RANGING' | 'HIGH_VOLATILITY' | 'INSUFFICIENT_DATA';
   reasons: string[];
   blockers: string[];
+  sentiment: GoldSignalSentimentState | null;
   generatedAt: number;
   expiresAt: number;
+}
+
+export interface GoldSignalSentimentState {
+  newsScore: number;
+  socialScore: number;
+  combinedScore: number;
+  newsCount: number;
+  socialCount: number;
+  alignment: 'ALIGNED' | 'CONFLICTING' | 'NEUTRAL';
+  perfectSetup: boolean;
+  drivers: string[];
+  generatedAt: number;
+}
+
+export interface GoldSentimentItemState {
+  id: string;
+  kind: 'news' | 'social';
+  source: string;
+  title: string;
+  url: string | null;
+  publishedAt: number;
+  score: number;
+  drivers: string[];
+  fetchedAt: number;
+}
+
+export interface GoldSentimentSourceState {
+  kind: 'news' | 'social';
+  source: string;
+  ok: boolean;
+  items: number;
+  lastFetchAt: number;
+  error: string | null;
+}
+
+export interface GoldSentimentSnapshotState {
+  newsScore: number;
+  socialScore: number;
+  combinedScore: number;
+  newsCount: number;
+  socialCount: number;
+  newsFreshnessMs: number;
+  socialFreshnessMs: number;
+  drivers: string[];
+  topItems: GoldSentimentItemState[];
+  sources: GoldSentimentSourceState[];
+  generatedAt: number;
+}
+
+export interface GoldSentimentWorkerState {
+  running: boolean;
+  intervalMs: number;
+  lastPollAt: number;
+  nextPollAt: number;
+  sources: GoldSentimentSourceState[];
+  snapshot: GoldSentimentSnapshotState | null;
 }
 
 export interface GoldResearchState {
@@ -665,6 +722,7 @@ export interface GoldResearchState {
   signal: GoldSignalState | null;
   recentSignals: GoldSignalState[];
   lastRejectedTick: string | null;
+  sentiment: GoldSentimentSnapshotState | null;
   updatedAt: number;
 }
 
@@ -774,6 +832,7 @@ export interface GoldModuleState {
   research: GoldRuntimeReadiness & { state: GoldResearchState };
   paper: GoldRuntimeReadiness & { state: GoldPaperState };
   backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
+  sentiment: GoldSentimentWorkerState | null;
 }
 
 export interface State {

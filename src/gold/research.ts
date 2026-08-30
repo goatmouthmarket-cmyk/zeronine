@@ -6,9 +6,11 @@ import {
   type GoldSymbol,
   type GoldTimeframe,
 } from './domain.ts';
+import type { GoldSentimentSnapshot } from './sentiment.ts';
 
 export type GoldSignalDirection = 'BUY' | 'SELL' | 'WAIT';
 export type GoldRegime = 'TRENDING' | 'RANGING' | 'HIGH_VOLATILITY' | 'INSUFFICIENT_DATA';
+export type GoldSentimentAlignment = 'ALIGNED' | 'CONFLICTING' | 'NEUTRAL';
 
 export interface GoldModelWeights {
   momentum: number;
@@ -18,6 +20,23 @@ export interface GoldModelWeights {
   candleConsistency: number;
   volatilitySuitability: number;
   volumeConfirmation: number;
+  /** News-headline sentiment weight; only active while a fresh snapshot exists. */
+  newsSentiment: number;
+  /** Social-post sentiment weight; only active while a fresh snapshot exists. */
+  socialSentiment: number;
+}
+
+export interface GoldSignalSentiment {
+  newsScore: number;
+  socialScore: number;
+  combinedScore: number;
+  newsCount: number;
+  socialCount: number;
+  alignment: GoldSentimentAlignment;
+  /** True only when price evidence, news, and social all agree strongly. */
+  perfectSetup: boolean;
+  drivers: string[];
+  generatedAt: number;
 }
 
 export interface GoldResearchConfig {
@@ -36,6 +55,11 @@ export interface GoldResearchConfig {
   stopAtrMultiple: number;
   targetAtrMultiple: number;
   signalTtlMs: number;
+  /** A snapshot older than this is ignored entirely by the model. */
+  maxSentimentAgeMs: number;
+  sentimentPerfectNewsMin: number;
+  sentimentPerfectSocialMin: number;
+  sentimentPerfectScoreMin: number;
 }
 
 export interface GoldSignal {
@@ -58,6 +82,7 @@ export interface GoldSignal {
   regime: GoldRegime;
   reasons: string[];
   blockers: string[];
+  sentiment: GoldSignalSentiment | null;
   generatedAt: number;
   expiresAt: number;
 }
@@ -70,6 +95,7 @@ export interface GoldResearchInput {
   candles: Partial<Record<GoldTimeframe, GoldCandle[]>>;
   now: number;
   config?: Partial<GoldResearchConfig>;
+  sentiment?: GoldSentimentSnapshot | null;
 }
 
 export const DEFAULT_GOLD_RESEARCH_CONFIG: GoldResearchConfig = {
@@ -82,6 +108,8 @@ export const DEFAULT_GOLD_RESEARCH_CONFIG: GoldResearchConfig = {
     candleConsistency: .10,
     volatilitySuitability: .10,
     volumeConfirmation: .05,
+    newsSentiment: .10,
+    socialSentiment: .05,
   },
   buyThreshold: .40,
   sellThreshold: -.40,
@@ -96,6 +124,10 @@ export const DEFAULT_GOLD_RESEARCH_CONFIG: GoldResearchConfig = {
   stopAtrMultiple: 1.5,
   targetAtrMultiple: 2.25,
   signalTtlMs: 30_000,
+  maxSentimentAgeMs: 20 * 60_000,
+  sentimentPerfectNewsMin: .35,
+  sentimentPerfectSocialMin: .20,
+  sentimentPerfectScoreMin: .55,
 };
 
 function clamp(value: number, min = -1, max = 1): number {
@@ -126,6 +158,12 @@ function resolveConfig(patch?: Partial<GoldResearchConfig>): GoldResearchConfig 
   }
   if (!Number.isInteger(config.minCandles) || config.minCandles < 2 || config.maxQuoteAgeMs <= 0 || config.maxSpreadToAtr <= 0 || config.maxNormalizedAtr <= 0) {
     throw new Error('Gold research configuration is invalid');
+  }
+  if (config.maxSentimentAgeMs <= 0
+    || !finite(config.sentimentPerfectNewsMin) || config.sentimentPerfectNewsMin <= 0 || config.sentimentPerfectNewsMin > 1
+    || !finite(config.sentimentPerfectSocialMin) || config.sentimentPerfectSocialMin <= 0 || config.sentimentPerfectSocialMin > 1
+    || !finite(config.sentimentPerfectScoreMin) || config.sentimentPerfectScoreMin <= 0 || config.sentimentPerfectScoreMin > 1) {
+    throw new Error('Gold sentiment configuration is invalid');
   }
   return config;
 }
@@ -222,7 +260,7 @@ function marketBlocker(status: GoldMarketStatus): string | null {
   return 'Market is unavailable';
 }
 
-function waitSignal(input: GoldResearchInput, config: GoldResearchConfig, blockers: string[], primary: GoldCandle[] = []): GoldSignal {
+function waitSignal(input: GoldResearchInput, config: GoldResearchConfig, blockers: string[], primary: GoldCandle[] = [], sentiment: GoldSentimentSnapshot | null): GoldSignal {
   const quote = input.quote;
   const currentAtr = primary.length >= 2 ? atr(primary, config.atrPeriod) : 0;
   const spread = quote?.spread ?? 0;
@@ -244,9 +282,44 @@ function waitSignal(input: GoldResearchInput, config: GoldResearchConfig, blocke
     regime: primary.length >= config.minCandles ? 'RANGING' : 'INSUFFICIENT_DATA',
     reasons: [],
     blockers,
+    sentiment: sentiment ? summarizeSentiment(sentiment, 'NEUTRAL', false) : null,
     generatedAt: input.now,
     expiresAt: input.now + config.signalTtlMs,
   };
+}
+
+function summarizeSentiment(
+  sentiment: GoldSentimentSnapshot,
+  alignment: GoldSentimentAlignment,
+  perfectSetup: boolean,
+): GoldSignalSentiment {
+  return {
+    newsScore: sentiment.newsScore,
+    socialScore: sentiment.socialScore,
+    combinedScore: sentiment.combinedScore,
+    newsCount: sentiment.newsCount,
+    socialCount: sentiment.socialCount,
+    alignment,
+    perfectSetup,
+    drivers: [...sentiment.drivers],
+    generatedAt: sentiment.generatedAt,
+  };
+}
+
+/**
+ * Sentiment participates only while a fresh, non-empty snapshot exists. A
+ * missing, stale, or empty snapshot leaves the price model byte-identical,
+ * which keeps historical backtests and offline research deterministic.
+ */
+function usableSentiment(input: GoldResearchInput, config: GoldResearchConfig): GoldSentimentSnapshot | null {
+  const sentiment = input.sentiment ?? null;
+  if (!sentiment) return null;
+  if (!Number.isFinite(sentiment.generatedAt) || input.now - sentiment.generatedAt > config.maxSentimentAgeMs) return null;
+  if (sentiment.newsCount <= 0 && sentiment.socialCount <= 0) return null;
+  const newsScore = Number(sentiment.newsScore);
+  const socialScore = Number(sentiment.socialScore);
+  if (!finite(newsScore) || Math.abs(newsScore) > 1 || !finite(socialScore) || Math.abs(socialScore) > 1) return null;
+  return sentiment;
 }
 
 /**
@@ -257,6 +330,7 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   const config = resolveConfig(input.config);
   const quote = input.quote;
   const blockers: string[] = [];
+  const sentiment = usableSentiment(input, config);
   const primaryRaw = input.candles[input.timeframe] ?? [];
   const confirmationTimeframe: GoldTimeframe = input.timeframe === '15m' || input.timeframe === '1h' ? input.timeframe : '15m';
   const confirmationRaw = input.candles[confirmationTimeframe] ?? [];
@@ -276,7 +350,7 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   if (confirmation && confirmation.length < config.minCandles) blockers.push(`Insufficient ${confirmationTimeframe} candle history`);
   if (primary && hasMissingIntervals(primary, input.timeframe)) blockers.push(`Missing ${input.timeframe} candle intervals`);
   if (confirmation && hasMissingIntervals(confirmation, confirmationTimeframe)) blockers.push(`Missing ${confirmationTimeframe} candle intervals`);
-  if (blockers.length > 0) return waitSignal(input, config, blockers, primary ?? []);
+  if (blockers.length > 0) return waitSignal(input, config, blockers, primary ?? [], sentiment);
 
   const candles = primary!;
   const confirmationCandles = confirmation!;
@@ -286,7 +360,7 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   if (!finite(currentAtr) || currentAtr <= 0) blockers.push('ATR is unavailable');
   if (spreadToAtr > config.maxSpreadToAtr) blockers.push('Spread is too wide relative to recent movement');
   if (normalizedAtr > config.maxNormalizedAtr) blockers.push('Volatility exceeds the configured safety limit');
-  if (blockers.length > 0) return waitSignal(input, config, blockers, candles);
+  if (blockers.length > 0) return waitSignal(input, config, blockers, candles, sentiment);
 
   const momentum = returnScore(candles, 5, currentAtr);
   const confirmationMomentum = returnScore(confirmationCandles, 5, atr(confirmationCandles, config.atrPeriod));
@@ -299,21 +373,26 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   const structure = structureScore(candles, config.structurePeriod, currentAtr);
   const candleConsistency = directionalCandleScore(candles);
   const volume = volumeScore(candles, momentum);
-  const components: Array<[number, number]> = [
-    [momentum, config.weights.momentum],
-    [agreement, config.weights.timeframeAgreement],
-    [emaAlignment, config.weights.emaAlignment],
-    [structure, config.weights.structure],
-    [candleConsistency, config.weights.candleConsistency],
+  const components: Array<{ value: number; weight: number; directional: boolean }> = [
+    { value: momentum, weight: config.weights.momentum, directional: true },
+    { value: agreement, weight: config.weights.timeframeAgreement, directional: true },
+    { value: emaAlignment, weight: config.weights.emaAlignment, directional: true },
+    { value: structure, weight: config.weights.structure, directional: true },
+    { value: candleConsistency, weight: config.weights.candleConsistency, directional: true },
     // The suitability component is a quality multiplier, not directional alpha.
-    [1, config.weights.volatilitySuitability],
-    [volume ?? 0, config.weights.volumeConfirmation],
+    { value: 1, weight: config.weights.volatilitySuitability, directional: false },
+    { value: volume ?? 0, weight: config.weights.volumeConfirmation, directional: true },
   ];
-  const activeWeight = components.reduce((sum, [, weight]) => sum + weight, 0);
-  const directionalWeight = activeWeight - config.weights.volatilitySuitability;
+  if (sentiment) {
+    components.push({ value: sentiment.newsScore, weight: config.weights.newsSentiment, directional: true });
+    components.push({ value: sentiment.socialScore, weight: config.weights.socialSentiment, directional: true });
+  }
+  const directionalWeight = components
+    .filter((component) => component.directional)
+    .reduce((sum, component) => sum + component.weight, 0);
   const signedDirectional = components
-    .filter(([, weight], index) => index !== 5 && weight > 0)
-    .reduce((sum, [value, weight]) => sum + value * weight, 0) / Math.max(directionalWeight, Number.EPSILON);
+    .filter((component) => component.directional && component.weight > 0)
+    .reduce((sum, component) => sum + component.value * component.weight, 0) / Math.max(directionalWeight, Number.EPSILON);
   const quality = clamp(1 - (spreadToAtr / config.maxSpreadToAtr), 0, 1) * clamp(1 - (normalizedAtr / config.maxNormalizedAtr), 0, 1);
   const score = clamp(signedDirectional * (.55 + quality * .45));
   const reasons: string[] = [];
@@ -329,6 +408,28 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   else if (score <= config.sellThreshold) direction = 'SELL';
   else blockers.push('Evidence does not exceed the configured directional threshold');
   if (direction === 'WAIT' && reasons.length === 0) reasons.push('Price structure is mixed');
+
+  let signalSentiment: GoldSignalSentiment | null = null;
+  if (sentiment) {
+    const priceSign = Math.sign(score) || (direction === 'BUY' ? 1 : direction === 'SELL' ? -1 : 0);
+    const combinedSign = Math.sign(sentiment.combinedScore);
+    const alignment: GoldSentimentAlignment = Math.abs(sentiment.combinedScore) < .15 || priceSign === 0
+      ? 'NEUTRAL'
+      : combinedSign === priceSign ? 'ALIGNED' : 'CONFLICTING';
+    const newsAligned = priceSign !== 0 && Math.sign(sentiment.newsScore) === priceSign && Math.abs(sentiment.newsScore) >= .25;
+    const socialAligned = priceSign !== 0 && Math.sign(sentiment.socialScore) === priceSign && Math.abs(sentiment.socialScore) >= .15;
+    const newsConflicts = priceSign !== 0 && Math.sign(sentiment.newsScore) === -priceSign && Math.abs(sentiment.newsScore) >= .25;
+    if (newsAligned) reasons.push('News sentiment supports the move');
+    if (socialAligned) reasons.push('Social sentiment supports the move');
+    if (newsConflicts) reasons.push('News sentiment conflicts with the price evidence');
+    const perfectSetup = direction !== 'WAIT'
+      && priceSign !== 0
+      && Math.sign(sentiment.newsScore) === priceSign && Math.abs(sentiment.newsScore) >= config.sentimentPerfectNewsMin
+      && Math.sign(sentiment.socialScore) === priceSign && Math.abs(sentiment.socialScore) >= config.sentimentPerfectSocialMin
+      && Math.abs(score) >= config.sentimentPerfectScoreMin;
+    if (perfectSetup) reasons.push('Price, news, and social sentiment fully agree: perfect setup');
+    signalSentiment = summarizeSentiment(sentiment, alignment, perfectSetup);
+  }
 
   const entryReference = direction === 'BUY' ? quote!.ask : direction === 'SELL' ? quote!.bid : quote!.mid;
   const minStop = Math.max(input.symbol.minStopDistance, currentAtr * config.stopAtrMultiple);
@@ -351,6 +452,7 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
     regime: normalizedAtr > config.maxNormalizedAtr * .7 ? 'HIGH_VOLATILITY' : Math.abs(emaAlignment) >= .2 ? 'TRENDING' : 'RANGING',
     reasons,
     blockers,
+    sentiment: signalSentiment,
     generatedAt: input.now,
     expiresAt: input.now + config.signalTtlMs,
   };

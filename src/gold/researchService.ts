@@ -7,6 +7,7 @@ import {
   type GoldTimeframe,
 } from './domain.ts';
 import { evaluateGoldResearch, type GoldResearchConfig, type GoldSignal } from './research.ts';
+import type { GoldSentimentSnapshot } from './sentiment.ts';
 
 export interface GoldResearchState {
   mode: 'research';
@@ -17,6 +18,7 @@ export interface GoldResearchState {
   signal: GoldSignal | null;
   recentSignals: GoldSignal[];
   lastRejectedTick: string | null;
+  sentiment: GoldSentimentSnapshot | null;
   updatedAt: number;
 }
 
@@ -39,6 +41,12 @@ function cloneSignal(signal: GoldSignal | null): GoldSignal | null {
   return signal ? { ...signal, reasons: [...signal.reasons], blockers: [...signal.blockers] } : null;
 }
 
+function cloneSentiment(snapshot: GoldSentimentSnapshot | null): GoldSentimentSnapshot | null {
+  return snapshot
+    ? { ...snapshot, topItems: [...snapshot.topItems], sources: [...snapshot.sources] }
+    : null;
+}
+
 /**
  * Stateful, broker-neutral research coordinator. Adapters feed normalized
  * market data into this service; it never connects to a broker or submits an
@@ -54,6 +62,7 @@ export class GoldResearchService {
   private signal: GoldSignal | null = null;
   private recentSignals: GoldSignal[] = [];
   private lastRejectedTick: string | null = null;
+  private sentiment: GoldSentimentSnapshot | null = null;
   private updatedAt = 0;
 
   constructor(options: GoldResearchServiceOptions = {}) {
@@ -72,6 +81,7 @@ export class GoldResearchService {
       signal: cloneSignal(this.signal),
       recentSignals: this.recentSignals.map((signal) => cloneSignal(signal)!),
       lastRejectedTick: this.lastRejectedTick,
+      sentiment: cloneSentiment(this.sentiment),
       updatedAt: this.updatedAt,
     };
   }
@@ -128,6 +138,13 @@ export class GoldResearchService {
     return this.state();
   }
 
+  /** Sentiment ingress from the news/social worker. It never fetches alone. */
+  setSentiment(snapshot: GoldSentimentSnapshot | null): GoldResearchState {
+    this.sentiment = cloneSentiment(snapshot);
+    this.recompute();
+    return this.state();
+  }
+
   private recompute(): void {
     this.updatedAt = this.now();
     if (!this.symbol) return;
@@ -138,6 +155,7 @@ export class GoldResearchService {
       candles: this.candles,
       now: this.updatedAt,
       config: this.config,
+      sentiment: this.sentiment,
     });
     // A signal history starts only once there is a market quote to anchor its
     // entry reference. Candle loading alone may produce a provisional WAIT.

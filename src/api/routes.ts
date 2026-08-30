@@ -135,6 +135,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   };
   const isGoldDerivTrade = (trade: { contract_type?: string; reason?: string | null } | null | undefined): boolean =>
     Boolean(trade && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN') && /gold deriv manual/i.test(trade.reason ?? ''));
+  const fmtSentimentPct = (score: number): string => `${score >= 0 ? '+' : ''}${Math.round(score * 100)}%`;
   const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
     const openTrade = owner ? getOpenTrade() : null;
     return {
@@ -502,6 +503,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         Number.isFinite(takeProfit) ? `TP ${takeProfit}` : null,
         Number.isFinite(stopLoss) ? `SL ${stopLoss}` : null,
         `research ${signal.direction} ${signal.confidence}%`,
+        signal.sentiment
+          ? `sentiment news ${fmtSentimentPct(signal.sentiment.newsScore)} social ${fmtSentimentPct(signal.sentiment.socialScore)}`
+            + (signal.sentiment.perfectSetup ? ' perfect' : signal.sentiment.alignment === 'CONFLICTING' ? ' conflicting' : '')
+          : null,
         signal.reasons[0] ?? signal.blockers[0] ?? 'Gold research signal',
       ].filter(Boolean).join(' | ');
       const trade = recordedTrade = insertTrade({

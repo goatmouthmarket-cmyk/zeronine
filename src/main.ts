@@ -37,6 +37,7 @@ import { GoldRuntime } from './gold/runtime.ts';
 import { DerivGoldMarketDataAdapter } from './gold/deriv.ts';
 import { DerivGoldFeed } from './gold/derivFeed.ts';
 import { GoldResearchService } from './gold/researchService.ts';
+import { GoldSentimentWorker, DEFAULT_GOLD_SENTIMENT_FEEDS, type GoldSentimentFeedConfig } from './gold/sentimentWorker.ts';
 import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimulator.ts';
 import type { Direction } from './core/digitMath.ts';
 import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
@@ -203,13 +204,25 @@ async function main(): Promise<void> {
 
   const automation = new Automation(registry, client, hub, decisionMemory);
   const momentum = new MomentumObserver(hub);
+  // News/social sentiment is research evidence only: it feeds the Gold signal
+  // weights and the perfect-setup indicator, never order placement itself.
+  const goldSentimentFeeds: GoldSentimentFeedConfig[] = config.goldSentimentNewsFeeds.length > 0
+    ? config.goldSentimentNewsFeeds.map((url, index) => ({ kind: 'news' as const, source: `custom-news-${index + 1}`, url, format: 'rss' as const }))
+    : [...DEFAULT_GOLD_SENTIMENT_FEEDS];
+  const goldSentiment = new GoldSentimentWorker({
+    intervalMs: config.goldSentimentIntervalMs,
+    timeoutMs: config.goldSentimentTimeoutMs,
+    feeds: goldSentimentFeeds,
+  });
   const gold = new GoldRuntime({
     adapter: new DerivGoldMarketDataAdapter(),
     research: new GoldResearchService({
       timeframe: '1m',
       config: { minCandles: 12, maxSpreadToAtr: .5 },
     }),
+    sentimentWorker: goldSentiment,
   });
+  if (config.goldSentimentEnabled) goldSentiment.start();
   const goldFeed = new DerivGoldFeed(gold);
   goldFeed.start();
   const startMomentumResearch = (): void => {
@@ -368,6 +381,8 @@ async function main(): Promise<void> {
     automation.dispose();
     client.disconnect();
     feed.stop();
+    goldSentiment.stop();
+    goldFeed.stop();
     flushDigitQueue();
     await app.close();
     process.exit(0);

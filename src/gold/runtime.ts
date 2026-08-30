@@ -10,6 +10,8 @@ import {
 import { runGoldBacktest, type GoldBacktestConfig, type GoldBacktestResult, type GoldBacktestStrategy } from './backtest.ts';
 import { GoldPaperEngine, type GoldPaperCloseResult, type GoldPaperOpenResult, type GoldPaperState } from './paper.ts';
 import { GoldResearchService, type GoldResearchState } from './researchService.ts';
+import type { GoldSentimentSnapshot } from './sentiment.ts';
+import type { GoldSentimentWorker, GoldSentimentWorkerState } from './sentimentWorker.ts';
 import { GoldOAuthOnboarding, type GoldConnectionState } from './onboarding.ts';
 import type { CTraderAuthorizedAccount } from './ctraderAccountDiscovery.ts';
 
@@ -26,6 +28,8 @@ export interface GoldRuntimeState {
   research: GoldRuntimeReadiness & { state: GoldResearchState };
   paper: GoldRuntimeReadiness & { state: GoldPaperState };
   backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
+  /** News/social sentiment worker status; null when no worker is attached. */
+  sentiment: GoldSentimentWorkerState | null;
 }
 
 export interface GoldRuntimeOptions {
@@ -33,6 +37,7 @@ export interface GoldRuntimeOptions {
   adapter?: GoldMarketDataAdapter;
   research?: GoldResearchService;
   paper?: GoldPaperEngine;
+  sentimentWorker?: GoldSentimentWorker;
   now?: () => number;
 }
 
@@ -54,6 +59,7 @@ export class GoldRuntime {
   private readonly research: GoldResearchService;
   private readonly paper: GoldPaperEngine;
   private readonly onboarding: GoldOAuthOnboarding;
+  private readonly sentimentWorker: GoldSentimentWorker | null;
   private readonly now: () => number;
   private lastBacktest: GoldBacktestResult | null = null;
 
@@ -63,6 +69,10 @@ export class GoldRuntime {
     this.research = options.research ?? new GoldResearchService({ now: options.now });
     this.paper = options.paper ?? new GoldPaperEngine({ initialBalance: 10_000 });
     this.onboarding = new GoldOAuthOnboarding(config);
+    this.sentimentWorker = options.sentimentWorker ?? null;
+    // The runtime is the wiring point: worker snapshots become research input.
+    // Starting/stopping the worker stays with the process lifecycle in main.
+    this.sentimentWorker?.setOnSnapshot((snapshot) => this.ingestSentiment(snapshot));
     this.now = options.now ?? Date.now;
   }
 
@@ -76,6 +86,7 @@ export class GoldRuntime {
       research: { ...readiness, state: researchState },
       paper: { ...readiness, state: this.paper.state() },
       backtest: { ...backtestReadiness, result: this.lastBacktest },
+      sentiment: this.sentimentWorker?.state() ?? null,
     };
   }
 
@@ -120,6 +131,11 @@ export class GoldRuntime {
     // position exists, every newer research quote marks or settles it.
     if (next.quote && this.paper.state().positions.length > 0) this.paper.onQuote(next.quote);
     return next;
+  }
+
+  /** Sentiment-worker ingress only. It never places, gates, or blocks an order. */
+  ingestSentiment(snapshot: GoldSentimentSnapshot): GoldResearchState {
+    return this.research.setSentiment(snapshot);
   }
 
   openPaper(input: { side: GoldSide; volume: number; stopLoss?: number | null; takeProfit?: number | null }): GoldPaperOpenResult {

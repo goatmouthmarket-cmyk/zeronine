@@ -47,6 +47,11 @@ export interface AppConfig {
   autoTuneFreshnessMs: number;
   goldDerivSymbol: string;
   goldDerivDisplay: string;
+  goldSentimentEnabled: boolean;
+  goldSentimentIntervalMs: number;
+  goldSentimentTimeoutMs: number;
+  /** Optional comma-separated override of the default Gold news RSS feeds. */
+  goldSentimentNewsFeeds: string[];
 }
 
 function loadEnvFile(file: string): void {
@@ -136,6 +141,15 @@ export function loadConfig(): AppConfig {
     autoTuneFreshnessMs: num('AUTO_TUNE_FRESHNESS_MS', 48 * 60 * 60 * 1000),
     goldDerivSymbol: process.env.GOLD_DERIV_SYMBOL || 'frxXAUUSD',
     goldDerivDisplay: process.env.GOLD_DERIV_DISPLAY || 'Gold / US Dollar',
+    // News/social sentiment worker for Gold research. Enabled by default; a
+    // total fetch failure only leaves sentiment absent, never blocks trading.
+    goldSentimentEnabled: process.env.GOLD_SENTIMENT_ENABLED !== '0',
+    goldSentimentIntervalMs: Math.max(30_000, num('GOLD_SENTIMENT_INTERVAL_MS', 300_000)),
+    goldSentimentTimeoutMs: Math.max(1_000, num('GOLD_SENTIMENT_TIMEOUT_MS', 10_000)),
+    goldSentimentNewsFeeds: (process.env.GOLD_SENTIMENT_NEWS_FEEDS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 }
 
