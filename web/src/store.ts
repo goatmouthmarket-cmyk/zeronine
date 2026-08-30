@@ -1046,21 +1046,30 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
     }
     case 'contract': {
       const update = (evt.update ?? {}) as Record<string, unknown>;
+      const previous = state.contract;
+      const contractId = evt.contractId as string | undefined;
+      const sameContract = Boolean(contractId && previous?.contractId === contractId);
+      const eventSettled = typeof evt.settled === 'boolean' ? evt.settled : typeof update.settled === 'boolean' ? update.settled : undefined;
+      const eventResult = evt.result as string | undefined;
       const liveProfit = Number(evt.profit ?? update.profit);
+      const sellPrice = Number.isFinite(Number(evt.sellPrice)) ? Number(evt.sellPrice) : Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined;
+      const buyPrice = Number.isFinite(Number(evt.buyPrice)) ? Number(evt.buyPrice) : Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined;
+      const informativeProfit = Number.isFinite(liveProfit)
+        && (liveProfit !== 0 || eventSettled === true || Boolean(eventResult) || (sellPrice != null && sellPrice > 0) || (buyPrice != null && buyPrice > 0));
       const c: ContractEvt = {
-        contractId: evt.contractId as string | undefined,
+        contractId,
         tradeId: Number.isFinite(Number(evt.tradeId)) ? Number(evt.tradeId) : undefined,
-        result: evt.result as string | undefined,
-        profit: Number.isFinite(liveProfit) ? liveProfit : undefined,
-        sellPrice: Number.isFinite(Number(evt.sellPrice)) ? Number(evt.sellPrice) : Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined,
-        buyPrice: Number.isFinite(Number(evt.buyPrice)) ? Number(evt.buyPrice) : Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined,
+        result: eventResult,
+        profit: informativeProfit ? liveProfit : sameContract ? previous?.profit : undefined,
+        sellPrice: sellPrice ?? (sameContract ? previous?.sellPrice : undefined),
+        buyPrice: buyPrice ?? (sameContract ? previous?.buyPrice : undefined),
         status: typeof evt.status === 'string' ? evt.status : typeof update.status === 'string' ? update.status : undefined,
-        settled: typeof evt.settled === 'boolean' ? evt.settled : typeof update.settled === 'boolean' ? update.settled : undefined,
+        settled: eventSettled,
         sold: typeof evt.sold === 'boolean' ? evt.sold : undefined,
         phase: evt.phase as string | undefined,
         error: evt.error as string | undefined,
         update: {
-          profit: Number.isFinite(Number(update.profit)) ? Number(update.profit) : undefined,
+          profit: informativeProfit ? liveProfit : sameContract ? previous?.profit : undefined,
           sellPrice: Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined,
           buyPrice: Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined,
           settled: typeof update.settled === 'boolean' ? update.settled : undefined,

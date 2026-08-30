@@ -1756,7 +1756,28 @@ function rowToMomentumResearchProfile(row: {
   };
 }
 
+function momentumProfileSourceSql(accountId = currentAccountId()): { sql: string; params: string[] } {
+  return {
+    sql: `
+      SELECT symbol, direction, estimated_net, won, completed_at FROM momentum_research
+      UNION ALL
+      SELECT
+        market AS symbol,
+        CASE WHEN contract_type = 'MULTDOWN' THEN 'down' ELSE 'up' END AS direction,
+        profit AS estimated_net,
+        CASE WHEN status = 'won' AND profit > 0 THEN 1 ELSE 0 END AS won,
+        COALESCE(NULLIF(resolved_at, 0), ts) AS completed_at
+      FROM trades
+      WHERE account_id = ?
+        AND contract_type IN ('MULTUP', 'MULTDOWN')
+        AND reason LIKE '%momentum manual%'
+        AND status IN ('won', 'lost', 'push', 'expired', 'timeout')`,
+    params: [accountId],
+  };
+}
+
 export function getMomentumResearchProfiles(): MomentumResearchProfile[] {
+  const source = momentumProfileSourceSql();
   return (getDb().prepare(
     `SELECT symbol, direction,
       COUNT(*) AS windows,
@@ -1764,9 +1785,9 @@ export function getMomentumResearchProfiles(): MomentumResearchProfile[] {
       COALESCE(SUM(CASE WHEN won = 0 THEN 1 ELSE 0 END), 0) AS losses,
       COALESCE(SUM(estimated_net), 0) AS estimated_net,
       MAX(completed_at) AS last_completed_at
-     FROM momentum_research
+     FROM (${source.sql})
      GROUP BY symbol, direction`,
-  ).all() as Array<{
+  ).all(...source.params) as Array<{
     symbol: unknown;
     direction: unknown;
     windows: unknown;
@@ -1778,6 +1799,7 @@ export function getMomentumResearchProfiles(): MomentumResearchProfile[] {
 }
 
 export function getMomentumResearchProfile(symbol: string, direction: 'up' | 'down'): MomentumResearchProfile | null {
+  const source = momentumProfileSourceSql();
   const row = getDb().prepare(
     `SELECT symbol, direction,
       COUNT(*) AS windows,
@@ -1785,10 +1807,10 @@ export function getMomentumResearchProfile(symbol: string, direction: 'up' | 'do
       COALESCE(SUM(CASE WHEN won = 0 THEN 1 ELSE 0 END), 0) AS losses,
       COALESCE(SUM(estimated_net), 0) AS estimated_net,
       MAX(completed_at) AS last_completed_at
-     FROM momentum_research
+     FROM (${source.sql})
      WHERE symbol = ? AND direction = ?
      GROUP BY symbol, direction`,
-  ).get(symbol, direction) as {
+  ).get(...source.params, symbol, direction) as {
     symbol: unknown;
     direction: unknown;
     windows: unknown;

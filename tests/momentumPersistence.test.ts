@@ -33,3 +33,42 @@ test('completed multiplier research windows persist and expose a maturity thresh
   assert.equal(profile?.win_rate, 1);
   assert.ok(getMomentumResearchProfiles().some((item) => item.symbol === 'frxEURUSD' && item.direction === 'down'));
 });
+
+test('settled manual Momentum bets contribute to future market direction profiles', async () => {
+  const { getMomentumResearchProfile, insertTrade, setSession } = await import('../src/db/store.ts');
+  setSession({
+    id: 'momentum-evidence-demo',
+    loginid: 'VRTC_MOM_EVIDENCE',
+    balance: 1000,
+    currency: 'USD',
+    mode: 'demo',
+    auth_kind: 'pat',
+    token_cipher: 'x',
+    created_at: Date.now(),
+    updated_at: Date.now(),
+  });
+  insertTrade({
+    ts: Date.now() - 60_000,
+    market: 'R_100',
+    contract_type: 'MULTUP',
+    barrier: 0,
+    duration: 5,
+    duration_unit: 'm',
+    stake: 1,
+    ask_price: 1,
+    payout: 2.5,
+    est_win: 0,
+    profit: 1.5,
+    status: 'won',
+    contract_id: 'momentum-evidence-contract',
+    purchase_id: 'momentum-evidence-purchase',
+    reason: 'momentum manual UP | five-minute multiplier x1000',
+    origin: 'manual',
+    resolved_at: Date.now(),
+  });
+
+  const profile = getMomentumResearchProfile('R_100', 'up');
+  assert.equal(profile?.windows, 1);
+  assert.equal(profile?.wins, 1);
+  assert.equal(profile?.estimated_net, 1.5);
+});

@@ -124,6 +124,21 @@ function fmtSigned(n: number, currency = ''): string {
   return `${n >= 0 ? '+' : '-'}${symbol}${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function fmtElapsed(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = seconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
+    : `${minutes}:${String(remaining).padStart(2, '0')}`;
+}
+
+function tradeDurationLabel(trade?: Pick<TradeRow, 'duration' | 'duration_unit'> | null): string {
+  if (!trade || !(trade.duration > 0) || !trade.duration_unit) return '--';
+  return `${trade.duration}${trade.duration_unit}`;
+}
+
 function shortMarketName(display: string): string {
   return display.split('(')[0].trim().replace(/\s*Index$/, '');
 }
@@ -2417,10 +2432,12 @@ function MomentumTradeDesk({
   const [closed, setClosed] = useState<MomentumTradeClose | null>(null);
   const [chartSnapshot, setChartSnapshot] = useState<{ symbol: string; display: string; samples: MomentumScanSample[]; entryPrice?: number; direction?: 'up' | 'down' | null } | null>(null);
   const [lastKnownPnl, setLastKnownPnl] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
   const manualMultiplierRef = useRef(false);
+  const localPurchaseTimeRef = useRef<number | null>(null);
   const incomingSamples = useMemo(() => samples ?? [], [samples]);
   const stake = Number(stakeText);
   const selectedMultiplier = Number(multiplierText);
@@ -2462,6 +2479,28 @@ function MomentumTradeDesk({
   const hasActiveTradeEntry = Boolean(closableMomentumTrade || (purchase && !closed && !settledTrade));
   const contractPnl = settledTrade?.profit ?? closed?.profit ?? liveContractProfit ?? (hasActiveTradeEntry ? undefined : purchase?.pnl ?? purchase?.profit);
   const displayContractPnl = contractPnl ?? (hasActiveTradeEntry ? lastKnownPnl : purchase?.pnl ?? purchase?.profit);
+  const reasonMultiplier = Number((trade?.reason ?? '').match(/multiplier x(\d+)/i)?.[1] ?? NaN);
+  const tradeMultiplier = purchase?.multiplier ?? (Number.isFinite(reasonMultiplier) ? reasonMultiplier : selectedMultiplier);
+  const tradeStake = trade?.stake ?? purchase?.ask ?? stake;
+  const tradePayout = trade?.payout ?? purchase?.payout ?? null;
+  const tradePotential = tradePayout != null && Number.isFinite(tradePayout) ? tradePayout - tradeStake : null;
+  const tradeExposure = Number.isFinite(tradeMultiplier) && Number.isFinite(tradeStake) ? tradeStake * tradeMultiplier : null;
+  const reasonTakeProfit = Number((trade?.reason ?? '').match(/TP ([0-9.]+)/i)?.[1] ?? NaN);
+  const reasonStopLoss = Number((trade?.reason ?? '').match(/SL ([0-9.]+)/i)?.[1] ?? NaN);
+  const detailTakeProfit = takeProfit ?? (Number.isFinite(reasonTakeProfit) ? reasonTakeProfit : undefined);
+  const detailStopLoss = stopLoss ?? (Number.isFinite(reasonStopLoss) ? reasonStopLoss : undefined);
+  if (purchase && localPurchaseTimeRef.current == null) localPurchaseTimeRef.current = Date.now();
+  if (!purchase && !hasActiveTradeEntry) localPurchaseTimeRef.current = null;
+  const openedAt = trade?.ts ?? localPurchaseTimeRef.current ?? 0;
+  const elapsedText = openedAt ? fmtElapsed((settledTrade?.resolved_at ?? nowMs) - openedAt) : '--';
+  const openedText = openedAt ? new Date(openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--';
+  const evidenceStatus = settledTrade
+    ? 'Added to Momentum model evidence'
+    : hasActiveTradeEntry
+      ? 'Will feed model after settlement'
+      : closed
+        ? 'Close result is being refreshed into history'
+        : 'No tracked bet yet';
   const actualEntryPrice = Number.isFinite(Number(trade?.entry_spot)) && Number(trade?.entry_spot) > 0
     ? Number(trade?.entry_spot)
     : Number.isFinite(Number(purchase?.entryPrice)) && Number(purchase?.entryPrice) > 0
@@ -2569,6 +2608,12 @@ function MomentumTradeDesk({
     if (contractPnl != null && Number.isFinite(contractPnl)) setLastKnownPnl(contractPnl);
     if (!hasActiveTradeEntry && closed) setLastKnownPnl(null);
   }, [closed, contractPnl, hasActiveTradeEntry]);
+
+  useEffect(() => {
+    if (!hasActiveTradeEntry) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveTradeEntry]);
 
   useEffect(() => {
     const nextSymbol = chartSymbol;
@@ -2686,6 +2731,19 @@ function MomentumTradeDesk({
         <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
       </div>
     </div>
+
+    {(trade || purchase || closed) && <div class="mom-trade-details" aria-label="Active Momentum bet details">
+      <div><span>Stake</span><strong>{fmtMoney(tradeStake, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
+      <div><span>Opened</span><strong>{openedText}</strong></div>
+      <div><span>Elapsed</span><strong>{elapsedText}</strong></div>
+      <div><span>Duration</span><strong>{tradeDurationLabel(trade) || '5m'}</strong></div>
+      <div><span>Multiplier</span><strong>x{tradeMultiplier || '--'}</strong></div>
+      <div><span>Exposure</span><strong>{tradeExposure == null ? '--' : fmtMoney(tradeExposure, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
+      <div><span>Potential</span><strong>{tradePotential == null ? '--' : fmtSigned(tradePotential, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
+      <div><span>TP / SL</span><strong>{detailTakeProfit ? fmtMoney(detailTakeProfit, purchase?.currency ?? session?.currency ?? 'USD') : '--'} / {detailStopLoss ? fmtMoney(detailStopLoss, purchase?.currency ?? session?.currency ?? 'USD') : '--'}</strong></div>
+      <div><span>Entry spot</span><strong>{chartFrozenEntry == null ? '--' : chartFrozenEntry.toLocaleString(undefined, { maximumFractionDigits: 8 })}</strong></div>
+      <div><span>Evidence</span><strong>{evidenceStatus}</strong></div>
+    </div>}
 
     <div class="mom-trade-order">
       <div class="mom-trade-direction" aria-label="Place a demo trade">
