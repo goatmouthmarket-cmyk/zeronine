@@ -1381,6 +1381,10 @@ async function refreshCoreState(): Promise<void> {
   return stateRefresh;
 }
 
+export async function syncCoreState(): Promise<void> {
+  await refreshCoreState();
+}
+
 export async function bootstrap(): Promise<void> {
   signalStabilizer.reset();
   if (state.markets.length === 0) {

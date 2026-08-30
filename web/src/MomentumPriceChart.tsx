@@ -63,7 +63,23 @@ export function MomentumPriceChart({
   const pointsRef = useRef<LineData<Time>[]>(points);
   const fittedRef = useRef(false);
   const hasEntry = !compact && Number.isFinite(entryPrice);
-  const entryRef = useRef({ hasEntry, entryPrice, entryDirection, entryLabel });
+  const entryViewport = useMemo(() => {
+    if (!hasEntry || entryPrice == null || points.length < 2) {
+      return { showLine: hasEntry, offscreen: false, side: 'onscreen' as const };
+    }
+    const values = points.map((point) => point.value).filter(Number.isFinite);
+    if (values.length < 2) return { showLine: hasEntry, offscreen: false, side: 'onscreen' as const };
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const last = values[values.length - 1] ?? entryPrice;
+    const visibleRange = Math.max(max - min, Math.abs(last) * 0.00001, 0.00001);
+    const offscreenPadding = visibleRange * 0.85;
+    if (entryPrice > max + offscreenPadding) return { showLine: false, offscreen: true, side: 'above' as const };
+    if (entryPrice < min - offscreenPadding) return { showLine: false, offscreen: true, side: 'below' as const };
+    return { showLine: true, offscreen: false, side: 'onscreen' as const };
+  }, [entryPrice, hasEntry, points]);
+  const showEntryLine = hasEntry && entryViewport.showLine;
+  const entryRef = useRef({ showEntryLine, entryPrice, entryDirection, entryLabel });
   const tradeView = !compact;
 
   useEffect(() => {
@@ -71,8 +87,8 @@ export function MomentumPriceChart({
   }, [points]);
 
   useEffect(() => {
-    entryRef.current = { hasEntry, entryPrice, entryDirection, entryLabel };
-  }, [entryDirection, entryLabel, entryPrice, hasEntry]);
+    entryRef.current = { showEntryLine, entryPrice, entryDirection, entryLabel };
+  }, [entryDirection, entryLabel, entryPrice, showEntryLine]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -130,7 +146,7 @@ export function MomentumPriceChart({
         fittedRef.current = true;
       }
       const entry = entryRef.current;
-      if (entry.hasEntry && entry.entryPrice != null) {
+      if (entry.showEntryLine && entry.entryPrice != null) {
         entryLineRef.current = series.createPriceLine({
           price: entry.entryPrice,
           color: entry.entryDirection === 'down' ? 'rgba(255, 82, 99, .9)' : 'rgba(117, 232, 189, .9)',
@@ -200,10 +216,11 @@ export function MomentumPriceChart({
     if (!series) return;
 
     // Price lines do not extend Lightweight Charts' automatic range by
-    // themselves. Include the entry in autoscaling so the barrier remains
-    // visible even after a sharp move away from the starting price.
+    // themselves. Include the entry only while it is near the current move.
+    // A far-away entry is shown as an out-of-view marker so live movement
+    // stays readable instead of collapsing into a flat line.
     series.applyOptions({
-      autoscaleInfoProvider: hasEntry && entryPrice != null
+      autoscaleInfoProvider: showEntryLine && entryPrice != null
         ? (baseImplementation: () => AutoscaleInfo | null) => {
           const base = baseImplementation();
           if (!base?.priceRange) return { priceRange: { minValue: entryPrice, maxValue: entryPrice } };
@@ -217,7 +234,7 @@ export function MomentumPriceChart({
         }
         : undefined,
     });
-  }, [entryPrice, hasEntry]);
+  }, [entryPrice, showEntryLine]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -228,7 +245,7 @@ export function MomentumPriceChart({
       series.removePriceLine(previous);
       entryLineRef.current = null;
     }
-    if (!hasEntry || entryPrice == null) return;
+    if (!showEntryLine || entryPrice == null) return;
 
     const priceLine = series.createPriceLine({
       price: entryPrice,
@@ -247,11 +264,12 @@ export function MomentumPriceChart({
         entryLineRef.current = null;
       }
     };
-  }, [entryDirection, entryLabel, entryPrice, hasEntry]);
+  }, [entryDirection, entryLabel, entryPrice, showEntryLine]);
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {hasEntry && entryPrice != null && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
+    {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
+    {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
     {points.length < 2 && <span class="mom-chart-empty">Awaiting ticks</span>}
   </span>;
 }

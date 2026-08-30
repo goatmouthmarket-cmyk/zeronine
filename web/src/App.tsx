@@ -25,6 +25,8 @@ import {
   runTestBacktest,
   runPatternScan,
   refreshTrades,
+  clearStuckTrade,
+  syncCoreState,
   loadLedgerEntries,
   loadPaperTrade,
   loadPaperTrades,
@@ -132,6 +134,21 @@ function fmtElapsed(ms: number): string {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
     : `${minutes}:${String(remaining).padStart(2, '0')}`;
+}
+
+function isOpenAccountTrade(trade: TradeRow): boolean {
+  return trade.origin !== 'paper' && (trade.status === 'pending' || trade.status === 'purchasing');
+}
+
+function openTradeLockMessage(trade: TradeRow | null | undefined): string {
+  if (!trade) return '';
+  const label = tradeContractLabel(trade);
+  const age = fmtElapsed(Date.now() - trade.ts);
+  const reference = trade.contract_id || trade.purchase_id || String(trade.id);
+  if (trade.contract_id) {
+    return `${label} contract ${reference} is still open (${age} old); settlement recovery is active.`;
+  }
+  return `${label} order ${reference} is stuck locally (${age} old); verify no Deriv contract was created before clearing it.`;
 }
 
 function tradeDurationLabel(trade?: Pick<TradeRow, 'duration' | 'duration_unit'> | null): string {
@@ -450,6 +467,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const [startError, setStartError] = useState('');
+  const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
   const [manualError, setManualError] = useState(false);
@@ -472,6 +490,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const guest = !s.session;
   const decision = automation ? s.decision?.decision : undefined;
   const digitTrades = useMemo(() => s.trades.filter(isDigitTrade), [s.trades]);
+  const openAccountTrade = useMemo(() => s.trades.find(isOpenAccountTrade) ?? null, [s.trades]);
+  const accountLockMessage = openTradeLockMessage(openAccountTrade);
+  const startLocked = Boolean(openAccountTrade);
 
   const fallbackPerformance = useMemo(() => ({
     wins: digitTrades.filter((t) => t.status === 'won').length,
@@ -539,6 +560,12 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       return;
     }
     if (cooldownLeft > 0) return;
+    if (openAccountTrade) {
+      setStartError(accountLockMessage);
+      await syncCoreState();
+      await refreshTrades();
+      return;
+    }
     try {
       const stake = Math.max(0.1, s.settings?.base_stake ?? 1);
       await startAutomation({ strategyMode: s.settings?.strategy_mode ?? 'conservative', baseStake: stake });
@@ -553,6 +580,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     marketSymbol = market?.symbol,
   ): Promise<boolean> => {
     if (guest || !marketSymbol || manualBusy) return false;
+    if (openAccountTrade) {
+      setManualError(true);
+      setManualMsg(accountLockMessage);
+      await syncCoreState();
+      await refreshTrades();
+      return false;
+    }
     setManualBusy(true);
     setManualMsg('');
     setManualError(false);
@@ -576,6 +610,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
 
   const placeManualBasket = async (setups: ManualSetup[]): Promise<boolean> => {
     if (guest || manualBusy || automation || setups.length !== 5) return false;
+    if (openAccountTrade) {
+      setManualError(true);
+      setManualMsg(accountLockMessage);
+      await syncCoreState();
+      await refreshTrades();
+      return false;
+    }
     setManualBusy(true);
     setManualMsg('');
     setManualError(false);
@@ -607,6 +648,21 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       await resetPerformance();
     } finally {
       setResettingPerformance(false);
+    }
+  };
+
+  const recoverOpenTrade = async () => {
+    if (!openAccountTrade || settlementBusy) return;
+    setSettlementBusy(true);
+    setStartError('');
+    try {
+      if (!openAccountTrade.contract_id) await clearStuckTrade();
+      await syncCoreState();
+      await refreshTrades();
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSettlementBusy(false);
     }
   };
 
@@ -696,7 +752,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                 <div class="side-selector">
                   <button
                     class={`side-btn over${manualDirection === 'over' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy}
+                    disabled={guest || !market || manualBusy || startLocked}
                     onClick={() => void placeManual('over', manualOverBarrier)}
                   >
                     <span class="side-name">Over {manualOverBarrier}</span>
@@ -704,7 +760,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                   </button>
                   <button
                     class={`side-btn under${manualDirection === 'under' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy}
+                    disabled={guest || !market || manualBusy || startLocked}
                     onClick={() => void placeManual('under', manualUnderBarrier)}
                   >
                     <span class="side-name">Under {manualUnderBarrier}</span>
@@ -715,11 +771,20 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               )}
             </div>
 
-            {startError && <div class="bot-feedback" aria-live="polite"><div class="bot-error">{startError}</div></div>}
+            {(startError || accountLockMessage) && (
+              <div class="bot-feedback" aria-live="polite">
+                <div class="bot-error">{startError || accountLockMessage}</div>
+                {openAccountTrade && (
+                  <button class="bot-inline-action" type="button" disabled={settlementBusy} onClick={() => void recoverOpenTrade()}>
+                    {settlementBusy ? 'Checking...' : openAccountTrade.contract_id ? 'Refresh settlement' : 'Clear stuck local order'}
+                  </button>
+                )}
+              </div>
+            )}
 
-            <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && cooldownLeft > 0 && !guest} onClick={() => void toggleBot()}>
+            <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && !guest && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
-              <span>{automation ? 'Stop Bot' : guest ? 'Connect Deriv to trade' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
+              <span>{automation ? 'Stop Bot' : guest ? 'Connect Deriv to trade' : startLocked ? 'Settlement recovery active' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
             </button>
           </section>
         </div>
@@ -1806,8 +1871,12 @@ function BotPage(): JSX.Element {
   const [mode, setMode] = useState<Settings['bot_mode']>(s.settings?.bot_mode ?? 'balanced');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState('');
+  const [settlementBusy, setSettlementBusy] = useState(false);
   const cooldownLeft = useBotCooldown();
   const automation = s.automation?.running ?? false;
+  const openAccountTrade = useMemo(() => s.trades.find(isOpenAccountTrade) ?? null, [s.trades]);
+  const accountLockMessage = openTradeLockMessage(openAccountTrade);
+  const startLocked = Boolean(openAccountTrade);
 
   if (!s.session) {
     return (
@@ -1862,6 +1931,12 @@ function BotPage(): JSX.Element {
         return;
       }
       if (cooldownLeft > 0) return;
+      if (openAccountTrade) {
+        setError(accountLockMessage);
+        await syncCoreState();
+        await refreshTrades();
+        return;
+      }
       const stake = Math.max(0.1, Number(stakeText) || 0);
       const maxTrades = Math.max(0, Math.floor(Number(maxTradesText) || 0));
       await startAutomation({
@@ -1871,6 +1946,21 @@ function BotPage(): JSX.Element {
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const recoverOpenTrade = async () => {
+    if (!openAccountTrade || settlementBusy) return;
+    setSettlementBusy(true);
+    setError('');
+    try {
+      if (!openAccountTrade.contract_id) await clearStuckTrade();
+      await syncCoreState();
+      await refreshTrades();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSettlementBusy(false);
     }
   };
 
@@ -2020,11 +2110,20 @@ function BotPage(): JSX.Element {
           </div>
         )}
 
-        {error && <div class="bot-error">{error}</div>}
+        {(error || accountLockMessage) && (
+          <div class="bot-feedback bot-settings-feedback" aria-live="polite">
+            <div class="bot-error">{error || accountLockMessage}</div>
+            {openAccountTrade && (
+              <button class="bot-inline-action" type="button" disabled={settlementBusy} onClick={() => void recoverOpenTrade()}>
+                {settlementBusy ? 'Checking...' : openAccountTrade.contract_id ? 'Refresh settlement' : 'Clear stuck local order'}
+              </button>
+            )}
+          </div>
+        )}
 
-        <button class="bot-control" disabled={!automation && cooldownLeft > 0} onClick={() => void toggleBot()}>
+        <button class="bot-control" disabled={!automation && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
           <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
-          <span>{automation ? 'Stop Bot' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
+          <span>{automation ? 'Stop Bot' : startLocked ? 'Settlement recovery active' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
         </button>
       </div>
     </>
@@ -2480,7 +2579,7 @@ function MomentumTradeDesk({
     : [10, 20, 30, 50, 100, 200, 500, 1000];
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
-  const openAccountTrade = trades.find((item) => item.status === 'pending' || item.status === 'purchasing') ?? null;
+  const openAccountTrade = trades.find(isOpenAccountTrade) ?? null;
   const openMomentumTrade = trades.find((item) =>
     (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
     && /momentum manual/i.test(item.reason ?? '')
@@ -2669,17 +2768,19 @@ function MomentumTradeDesk({
     }
     setChartSnapshot((current) => {
       const sameTrade = current?.symbol === nextSymbol;
-      const entrySample = hasActiveTradeEntry && chartEntryPrice != null && openedAt
-        ? { epoch: Math.floor(openedAt / 1000), quote: chartEntryPrice }
-        : null;
+      const openedEpoch = openedAt ? Math.floor(openedAt / 1000) : 0;
       const currentSpotSample = hasActiveTradeEntry && contractCurrentSpot != null
         ? { epoch: contractCurrentEpoch, quote: contractCurrentSpot }
         : null;
+      const incomingMatchesChart = !hasActiveTradeEntry || !symbol || symbol === nextSymbol;
+      const activeFeedSamples = hasActiveTradeEntry && incomingMatchesChart
+        ? incomingSamples.filter((sample) => !openedEpoch || sample.epoch >= openedEpoch - 5)
+        : hasActiveTradeEntry ? [] : incomingSamples;
       const seededSamples = hasActiveTradeEntry
-        ? (sameTrade ? current.samples : incomingSamples.filter((sample) => !openedAt || sample.epoch >= Math.floor(openedAt / 1000) - 5))
+        ? mergeMomentumSamples(sameTrade ? [...current.samples, ...activeFeedSamples] : activeFeedSamples, null)
         : incomingSamples;
       const nextSamples = mergeMomentumSamples(
-        entrySample ? [entrySample, ...seededSamples] : seededSamples,
+        seededSamples,
         currentSpotSample,
       );
       if (hasActiveTradeEntry) {
@@ -2802,7 +2903,7 @@ function MomentumTradeDesk({
           <div><span>Potential</span><strong>{tradePotential == null ? '--' : fmtSigned(tradePotential, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
           <div><span>TP / SL</span><strong>{detailTakeProfit ? fmtMoney(detailTakeProfit, purchase?.currency ?? session?.currency ?? 'USD') : '--'} / {detailStopLoss ? fmtMoney(detailStopLoss, purchase?.currency ?? session?.currency ?? 'USD') : '--'}</strong></div>
           <div><span>Entry</span><strong>{chartFrozenEntry == null ? '--' : chartFrozenEntry.toLocaleString(undefined, { maximumFractionDigits: 8 })}</strong></div>
-          <div><span>Evidence</span><strong>{evidenceStatus}</strong></div>
+          <div class="mom-evidence-detail"><span>Evidence</span><strong title={evidenceStatus}>{evidenceStatus}</strong></div>
         </div>}
       </div>
     </div>
