@@ -4017,10 +4017,11 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
   const [accounts, setAccounts] = useState<GoldDemoAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [selectingAccountId, setSelectingAccountId] = useState<string | null>(null);
+  const [authWindowOpen, setAuthWindowOpen] = useState(false);
   const configured = connection?.configured ?? Boolean(diagnostics?.configured);
   const authorizedDemo = connection?.status === 'authorized_demo_pending_account_discovery';
   const connectedDemo = connection?.status === 'connected_demo';
-  const authorizing = connection?.status === 'authorizing' || busy;
+  const authorizing = connection?.status === 'authorizing' || busy || authWindowOpen;
   const connectionError = connection?.status === 'error';
   const status = connectedDemo ? 'Demo account selected' : authorizedDemo ? 'Demo access authorized' : authorizing ? 'Authorization in progress' : connectionError ? 'Connection needs attention' : configured ? 'Ready to authorize' : 'Provider setup needed';
   const detail = connection?.message ?? diagnostics?.reason ?? 'Checking cTrader connection readiness.';
@@ -4051,12 +4052,26 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
   }, [authorizedDemo]);
 
   const beginAuthorization = async () => {
+    let authWindow: Window | null = null;
     setBusy(true);
     setError('');
+    setAuthWindowOpen(false);
     try {
+      authWindow = window.open('', '_blank');
+      if (authWindow) {
+        authWindow.opener = null;
+        authWindow.document.title = 'Opening cTrader authorization';
+      }
       const url = await startGoldOAuth();
+      if (authWindow && !authWindow.closed) {
+        authWindow.location.assign(url);
+        setAuthWindowOpen(true);
+        setBusy(false);
+        return;
+      }
       window.location.assign(url);
     } catch (err) {
+      if (authWindow && !authWindow.closed) authWindow.close();
       setError(String(err));
       setBusy(false);
     }
