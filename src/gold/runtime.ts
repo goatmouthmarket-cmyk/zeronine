@@ -69,9 +69,7 @@ export class GoldRuntime {
   state(): GoldRuntimeState {
     const readiness = this.marketDataReadiness();
     const researchState = this.research.state();
-    const backtestReadiness = readiness.ready
-      ? this.backtestReadiness(researchState)
-      : readiness;
+    const backtestReadiness = this.backtestReadiness(researchState);
     return {
       diagnostics: this.diagnostics(),
       connection: this.connectionState(),
@@ -188,7 +186,7 @@ export class GoldRuntime {
 
   private backtestReadiness(research: GoldResearchState): GoldRuntimeReadiness {
     const candles = research.candles[research.timeframe] ?? [];
-    if (candles.length === 0) return { ready: false, reason: 'Gold backtest is unavailable: no validated historical candles are loaded.' };
+    if (candles.length === 0) return { ready: false, reason: 'Gold backtest is not validated: no historical candles are loaded.' };
     if (candles.some((candle) => !candle.complete)) return { ready: false, reason: 'Gold backtest is unavailable: historical candles must be complete.' };
     return { ready: true, reason: null };
   }
@@ -202,7 +200,6 @@ export class GoldRuntime {
   }
 
   private requireBacktestData(): GoldResearchState {
-    this.requireMarketData();
     const state = this.research.state();
     const readiness = this.backtestReadiness(state);
     if (!readiness.ready) throw new GoldRuntimeUnavailableError(readiness.reason ?? 'Gold backtest is unavailable');

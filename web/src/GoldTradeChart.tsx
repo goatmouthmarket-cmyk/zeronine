@@ -157,6 +157,7 @@ export function GoldTradeChart({
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
+    <div class="gold-chart-kind" aria-hidden="true">Gold candlesticks / wicks / TradingView</div>
     <div class="gold-chart-readout" aria-hidden="true">
       <span>{lastPrice == null ? 'No live price' : displayPrice(lastPrice, digits)}</span>
       <small>{high == null || low == null ? 'Awaiting candles' : `H ${displayPrice(high, digits)} · L ${displayPrice(low, digits)}`}</small>
