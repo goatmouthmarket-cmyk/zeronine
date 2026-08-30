@@ -20,6 +20,11 @@ export interface GoldModelWeights {
   candleConsistency: number;
   volatilitySuitability: number;
   volumeConfirmation: number;
+  rsi: number;
+  macd: number;
+  bollinger: number;
+  stochastic: number;
+  adx: number;
   /** News-headline sentiment weight; only active while a fresh snapshot exists. */
   newsSentiment: number;
   /** Social-post sentiment weight; only active while a fresh snapshot exists. */
@@ -82,6 +87,14 @@ export interface GoldSignal {
   regime: GoldRegime;
   reasons: string[];
   blockers: string[];
+  /** Classic indicator values for dashboard display and evidence. */
+  indicators: {
+    rsi: number;
+    macd: number;
+    bollinger: number;
+    stochastic: number;
+    adx: number;
+  };
   sentiment: GoldSignalSentiment | null;
   generatedAt: number;
   expiresAt: number;
@@ -101,13 +114,18 @@ export interface GoldResearchInput {
 export const DEFAULT_GOLD_RESEARCH_CONFIG: GoldResearchConfig = {
   modelVersion: 'gold-momentum-v1',
   weights: {
-    momentum: .25,
-    timeframeAgreement: .20,
-    emaAlignment: .15,
-    structure: .15,
-    candleConsistency: .10,
-    volatilitySuitability: .10,
-    volumeConfirmation: .05,
+    momentum: .20,
+    timeframeAgreement: .15,
+    emaAlignment: .12,
+    structure: .12,
+    candleConsistency: .08,
+    volatilitySuitability: .08,
+    volumeConfirmation: .04,
+    rsi: .06,
+    macd: .05,
+    bollinger: .04,
+    stochastic: .03,
+    adx: .03,
     newsSentiment: .10,
     socialSentiment: .05,
   },
@@ -253,6 +271,105 @@ function volumeScore(candles: GoldCandle[], directionHint: number): number | nul
   return clamp(((latest / baseline) - 1) * Math.sign(directionHint));
 }
 
+/** RSI: Relative Strength Index (14). Returns normalized [-1, 1] from 50 midpoint. */
+function rsi(candles: GoldCandle[], period = 14): number {
+  if (candles.length < period + 1) return 0;
+  const changes = candles.slice(1).map((candle, index) => candle.close - candles[index]!.close);
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    const change = changes[i];
+    if (change >= 0) avgGain += change;
+    else avgLoss -= change;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  for (let i = period; i < changes.length; i++) {
+    const change = changes[i];
+    if (change >= 0) {
+      avgGain = (avgGain * (period - 1) + change) / period;
+      avgLoss = (avgLoss * (period - 1)) / period;
+    } else {
+      avgGain = (avgGain * (period - 1)) / period;
+      avgLoss = (avgLoss * (period - 1) - change) / period;
+    }
+  }
+  if (avgLoss === 0) return 1;
+  const rs = avgGain / avgLoss;
+  const rsiValue = 100 - 100 / (1 + rs);
+  return clamp((rsiValue - 50) / 50);
+}
+
+/** MACD: (12,26,9) -> histogram normalized by ATR. Returns signed [-1, 1]. */
+function macd(candles: GoldCandle[], currentAtr: number): number {
+  if (candles.length < 26) return 0;
+  const fast = ema(candles, 12);
+  const slow = ema(candles, 26);
+  const macdLine = fast.map((v, i) => v - slow[i]);
+  const signal = ema(macdLine.map(v => ({ close: v }) as GoldCandle), 9);
+  const hist = macdLine.at(-1)! - signal.at(-1)!;
+  return currentAtr > 0 ? clamp(hist / currentAtr) : 0;
+}
+
+/** Bollinger Bands: (20,2) -> position of close within bands [-1, 1]. */
+function bollingerPosition(candles: GoldCandle[], period = 20, mult = 2): number {
+  if (candles.length < period) return 0;
+  const tail = candles.slice(-period);
+  const closes = tail.map(c => c.close);
+  const mean = closes.reduce((a, b) => a + b, 0) / period;
+  const std = Math.sqrt(closes.reduce((sum, c) => sum + (c - mean) ** 2, 0) / period);
+  if (std === 0) return 0;
+  const upper = mean + mult * std;
+  const lower = mean - mult * std;
+  const lastClose = closes.at(-1)!;
+  return clamp((lastClose - mean) / (upper - lower) * 2);
+}
+
+/** Stochastic %K (14,3): normalized to [-1, 1] from 50 midpoint. */
+function stochastic(candles: GoldCandle[], kPeriod = 14, dPeriod = 3): number {
+  if (candles.length < kPeriod + dPeriod) return 0;
+  const tail = candles.slice(-(kPeriod + dPeriod - 1));
+  const kValues: number[] = [];
+  for (let i = 0; i <= tail.length - kPeriod; i++) {
+    const window = tail.slice(i, i + kPeriod);
+    const high = Math.max(...window.map(c => c.high));
+    const low = Math.min(...window.map(c => c.low));
+    const close = window.at(-1)!.close;
+    const range = high - low;
+    kValues.push(range > 0 ? (close - low) / range * 100 : 50);
+  }
+  const dValues: number[] = [];
+  for (let i = 0; i <= kValues.length - dPeriod; i++) {
+    dValues.push(kValues.slice(i, i + dPeriod).reduce((a, b) => a + b, 0) / dPeriod);
+  }
+  const stochD = dValues.at(-1)!;
+  return clamp((stochD - 50) / 50);
+}
+
+/** ADX (14): trend strength normalized. Returns 0-1 (strong trend > 0.4). */
+function adx(candles: GoldCandle[], period = 14): number {
+  if (candles.length < period + 1) return 0;
+  const trs: number[] = [];
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const cur = candles[i];
+    const prev = candles[i - 1];
+    const tr = Math.max(cur.high - cur.low, Math.abs(cur.high - prev.close), Math.abs(cur.low - prev.close));
+    trs.push(tr);
+    const up = cur.high - prev.high;
+    const down = prev.low - cur.low;
+    plusDM.push(up > down && up > 0 ? up : 0);
+    minusDM.push(down > up && down > 0 ? down : 0);
+  }
+  const atrVal = atr(candles, period);
+  if (atrVal === 0) return 0;
+  const plusDI = (plusDM.slice(-period).reduce((a, b) => a + b, 0) / period) / atrVal * 100;
+  const minusDI = (minusDM.slice(-period).reduce((a, b) => a + b, 0) / period) / atrVal * 100;
+  const dx = plusDI + minusDI === 0 ? 0 : Math.abs(plusDI - minusDI) / (plusDI + minusDI) * 100;
+  return clamp(dx / 50);
+}
+
 function marketBlocker(status: GoldMarketStatus): string | null {
   if (status === 'open') return null;
   if (status === 'closed') return 'Market is closed';
@@ -282,6 +399,7 @@ function waitSignal(input: GoldResearchInput, config: GoldResearchConfig, blocke
     regime: primary.length >= config.minCandles ? 'RANGING' : 'INSUFFICIENT_DATA',
     reasons: [],
     blockers,
+    indicators: { rsi: 0, macd: 0, bollinger: 0, stochastic: 0, adx: 0 },
     sentiment: sentiment ? summarizeSentiment(sentiment, 'NEUTRAL', false) : null,
     generatedAt: input.now,
     expiresAt: input.now + config.signalTtlMs,
@@ -373,6 +491,11 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   const structure = structureScore(candles, config.structurePeriod, currentAtr);
   const candleConsistency = directionalCandleScore(candles);
   const volume = volumeScore(candles, momentum);
+  const rsiValue = rsi(candles, 14);
+  const macdValue = macd(candles, currentAtr);
+  const bollingerValue = bollingerPosition(candles, 20, 2);
+  const stochasticValue = stochastic(candles, 14, 3);
+  const adxValue = adx(candles, 14);
   const components: Array<{ value: number; weight: number; directional: boolean }> = [
     { value: momentum, weight: config.weights.momentum, directional: true },
     { value: agreement, weight: config.weights.timeframeAgreement, directional: true },
@@ -382,6 +505,11 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
     // The suitability component is a quality multiplier, not directional alpha.
     { value: 1, weight: config.weights.volatilitySuitability, directional: false },
     { value: volume ?? 0, weight: config.weights.volumeConfirmation, directional: true },
+    { value: rsiValue, weight: config.weights.rsi, directional: true },
+    { value: macdValue, weight: config.weights.macd, directional: true },
+    { value: bollingerValue, weight: config.weights.bollinger, directional: true },
+    { value: stochasticValue, weight: config.weights.stochastic, directional: true },
+    { value: adxValue, weight: config.weights.adx, directional: true },
   ];
   if (sentiment) {
     components.push({ value: sentiment.newsScore, weight: config.weights.newsSentiment, directional: true });
@@ -452,6 +580,7 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
     regime: normalizedAtr > config.maxNormalizedAtr * .7 ? 'HIGH_VOLATILITY' : Math.abs(emaAlignment) >= .2 ? 'TRENDING' : 'RANGING',
     reasons,
     blockers,
+    indicators: { rsi: rsiValue, macd: macdValue, bollinger: bollingerValue, stochastic: stochasticValue, adx: adxValue },
     sentiment: signalSentiment,
     generatedAt: input.now,
     expiresAt: input.now + config.signalTtlMs,
