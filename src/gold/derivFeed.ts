@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { config } from '../config.ts';
 import { ping } from '../core/digitMath.ts';
-import { GOLD_TIMEFRAME_MS, type GoldCandle, type GoldSymbol, type GoldTimeframe } from './domain.ts';
+import { GOLD_TIMEFRAME_MS, type GoldCandle, type GoldMarketStatus, type GoldSymbol, type GoldTimeframe } from './domain.ts';
 import type { GoldRuntime } from './runtime.ts';
 
 interface GoldTick {
@@ -16,7 +16,7 @@ const PING_INTERVAL_MS = 30_000;
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_MAX_MS = 30_000;
 
-function goldSymbol(): GoldSymbol {
+function goldSymbol(status: GoldMarketStatus = 'open'): GoldSymbol {
   return {
     id: config.goldDerivSymbol,
     name: config.goldDerivSymbol,
@@ -29,7 +29,7 @@ function goldSymbol(): GoldSymbol {
     volumeStep: 0.01,
     minStopDistance: 0,
     marginRate: null,
-    tradingStatus: 'open',
+    tradingStatus: status,
     sessions: [],
   };
 }
@@ -85,6 +85,7 @@ export class DerivGoldFeed {
   private reconnectAttempt = 0;
   private stopped = false;
   private lastMessageAt = 0;
+  private marketStatus: GoldMarketStatus = 'open';
 
   constructor(runtime: GoldRuntime) {
     this.runtime = runtime;
@@ -92,7 +93,7 @@ export class DerivGoldFeed {
 
   start(): void {
     this.stopped = false;
-    this.runtime.setSymbol(goldSymbol());
+    this.runtime.setSymbol(goldSymbol(this.marketStatus));
     this.ensureSocket();
   }
 
@@ -154,6 +155,7 @@ export class DerivGoldFeed {
       style: 'ticks',
       count: HISTORY_COUNT,
       end: 'latest',
+      adjust_start_time: 1,
       req_id: this.historyReq,
     }));
     this.ws.send(JSON.stringify({ ticks: config.goldDerivSymbol, subscribe: 1, req_id: this.tickReq }));
@@ -165,6 +167,7 @@ export class DerivGoldFeed {
     if (msg.error) {
       if (reqId === this.historyReq || reqId === this.tickReq) {
         console.warn(`[gold-deriv] ${config.goldDerivSymbol} feed rejected: ${msg.error.message ?? msg.error.code ?? 'unknown error'}`);
+        if (this.isMarketClosedError(msg.error)) this.setMarketStatus('closed');
       }
       return;
     }
@@ -180,6 +183,7 @@ export class DerivGoldFeed {
       return;
     }
     if (msg.msg_type === 'tick' && reqId === this.tickReq) {
+      this.setMarketStatus('open');
       const quote = Number(msg.tick?.quote);
       const epochMs = Number(msg.tick?.epoch ?? Math.floor(Date.now() / 1000)) * 1000;
       this.ticks = uniqueSortedTicks([...this.ticks, { quote, epochMs }]);
@@ -187,10 +191,23 @@ export class DerivGoldFeed {
     }
   }
 
+  private isMarketClosedError(error: Record<string, any>): boolean {
+    const text = `${error.code ?? ''} ${error.message ?? ''}`.toLowerCase();
+    return text.includes('market') && text.includes('closed');
+  }
+
+  private setMarketStatus(status: GoldMarketStatus): void {
+    if (this.marketStatus === status) return;
+    this.marketStatus = status;
+    this.runtime.setSymbol(goldSymbol(status));
+    if (this.ticks.length > 0) this.publish();
+  }
+
   private publish(): void {
     const symbolId = config.goldDerivSymbol;
     const latest = this.ticks.at(-1);
     if (!latest) return;
+    this.runtime.setSymbol(goldSymbol(this.marketStatus));
     for (const timeframe of GOLD_TIMEFRAMES) {
       this.runtime.replaceCandles(timeframe, candlesFromTicks(symbolId, timeframe, this.ticks));
     }
