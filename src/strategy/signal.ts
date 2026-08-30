@@ -11,10 +11,12 @@ export interface SignalCandidate {
   market: string;
   direction: Direction;
   barrier: number;
+  baseWin: number;
   estWin: number;
   estPayout: number;
   edge: number;
   expectedROI: number;
+  quality: number;
   consistency: number;
   entropy: number;
   momentum: number;
@@ -40,20 +42,63 @@ export function clampBarrier(direction: Direction, barrier: number): number {
   return Math.max(1, Math.min(9, barrier));
 }
 
+export function theoreticalDigitWinRate(direction: Direction, barrier: number): number {
+  const safeBarrier = clampBarrier(direction, barrier);
+  return direction === 'over' ? (9 - safeBarrier) / 10 : safeBarrier / 10;
+}
+
+const MIN_SENSIBLE_BASE_WIN = 0.45;
+const LOW_BASE_EXCEPTION_WIN = 0.62;
+const LOW_BASE_EXCEPTION_ROI = 0.16;
+
+export function isSensibleDigitCandidate(candidate: Pick<SignalCandidate, 'baseWin' | 'estWin' | 'edge' | 'expectedROI'>): boolean {
+  if (candidate.baseWin >= MIN_SENSIBLE_BASE_WIN) return true;
+  return candidate.estWin >= LOW_BASE_EXCEPTION_WIN
+    && candidate.edge >= 0.08
+    && candidate.expectedROI >= LOW_BASE_EXCEPTION_ROI;
+}
+
+export function digitCandidateQuality(
+  candidate: Pick<SignalCandidate, 'baseWin' | 'estWin' | 'edge' | 'expectedROI' | 'consistency' | 'entropy' | 'momentum' | 'learnedWin'>,
+): number {
+  const lowBaseGap = Math.max(0, MIN_SENSIBLE_BASE_WIN - candidate.baseWin);
+  const lowBasePenalty = isSensibleDigitCandidate(candidate) ? lowBaseGap * 0.45 : lowBaseGap * 6.5;
+  const learned = candidate.learnedWin ?? candidate.estWin;
+  const learnedAgreement = 1 - Math.min(1, Math.abs(learned - candidate.estWin));
+  const stability = (candidate.consistency * 0.12) + (candidate.entropy * 0.04) + (learnedAgreement * 0.04);
+  const momentumLift = Math.max(-0.1, Math.min(0.1, candidate.momentum - candidate.baseWin));
+  return candidate.expectedROI
+    + (candidate.edge * 0.75)
+    + stability
+    + (momentumLift * 0.45)
+    - lowBasePenalty;
+}
+
 function toCandidate(
   symbol: string,
   display: string,
   f: BarrierFeatures,
 ): SignalCandidate {
   const estPayout = estimatePayoutRatio(f.direction, f.barrier);
-  return {
+  const base = {
     market: symbol,
     direction: f.direction,
     barrier: f.barrier,
+    baseWin: f.theoreticalWin,
     estWin: f.estimatedWin,
     estPayout,
     edge: f.estimatedWin - breakevenWinRate(1, estPayout),
     expectedROI: f.estimatedWin * estPayout - 1,
+  };
+  return {
+    ...base,
+    quality: digitCandidateQuality({
+      ...base,
+      consistency: f.consistency,
+      entropy: f.entropy,
+      momentum: f.momentum,
+      learnedWin: f.learnedWin,
+    }),
     consistency: f.consistency,
     entropy: f.entropy,
     momentum: f.momentum,
@@ -71,9 +116,10 @@ export function normalizedDist(snap: MarketSnapshot): number[] {
 
 /**
  * Scan every fresh market across all rolling windows and return the top-N
- * shortlist of (market, direction, barrier) candidates ranked by edge.
+ * shortlist of (market, direction, barrier) candidates ranked by quality.
  * Hit-rate is never profitability: probability above the floor alone is not
- * enough - the model edge must clear minEdge to be eligible for a quote.
+ * enough - the model edge must clear minEdge and the setup must be sensible
+ * enough to avoid repeatedly buying low-base, high-variance barriers.
  */
 export function pickSignal(
   registry: MarketRegistry,
@@ -110,8 +156,15 @@ export function pickSignalFromSnapshot(
   if (all.length === 0) {
     return { candidates: [], holds: true, reason: 'no candidate above the probability floor' };
   }
-  all.sort((a, b) => b.edge - a.edge || b.expectedROI - a.expectedROI || b.estWin - a.estWin);
-  const candidates = all.slice(0, maxCandidates);
+  const sensible = all.filter(isSensibleDigitCandidate);
+  if (sensible.length === 0) {
+    const candidates = [...all]
+      .sort((a, b) => b.quality - a.quality || b.estWin - a.estWin || b.expectedROI - a.expectedROI)
+      .slice(0, maxCandidates);
+    return { candidates, holds: true, reason: 'no sensible candidate above the probability floor' };
+  }
+  sensible.sort((a, b) => b.quality - a.quality || b.expectedROI - a.expectedROI || b.estWin - a.estWin);
+  const candidates = sensible.slice(0, maxCandidates);
   const best = candidates[0];
   if (best.edge < minEdge) {
     // The best candidate is not credible enough yet. WAIT is a valid outcome:

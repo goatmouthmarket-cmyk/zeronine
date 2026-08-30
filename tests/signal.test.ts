@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MarketRegistry } from '../src/core/marketState.ts';
-import { pickSignal, buildQuotePlan } from '../src/strategy/signal.ts';
+import { digitCandidateQuality, isSensibleDigitCandidate, pickSignal, buildQuotePlan } from '../src/strategy/signal.ts';
 import { scanMarket, featureFor } from '../src/strategy/scanner.ts';
 import type { PatternInput } from '../src/strategy/scanner.ts';
 import { patternWeightForStrategy } from '../src/db/store.ts';
@@ -61,9 +61,34 @@ test('pickSignal shortlists an edge candidate when the regime is skewed', () => 
 test('pickSignal ranks best candidate first and caps the shortlist', () => {
   const { registry, digits } = pushingRegistry([7, 8, 9]);
   const pick = pickSignal(registry, 0.35, 0.01, (sym) => digits.get(sym) ?? []);
-  const sorted = [...pick.candidates].sort((a, b) => b.edge - a.edge);
-  assert.equal(pick.candidates[0].edge, sorted[0].edge);
+  const sorted = [...pick.candidates].sort((a, b) => b.quality - a.quality);
+  assert.equal(pick.candidates[0].quality, sorted[0].quality);
   assert.ok(pick.candidates.length <= 5);
+});
+
+test('signal quality avoids spammy low-base Over 6 unless evidence is exceptional', () => {
+  const sensible = {
+    baseWin: 0.5,
+    estWin: 0.57,
+    edge: 0.044,
+    expectedROI: 0.083,
+    consistency: 0.8,
+    entropy: 0.95,
+    momentum: 0.56,
+    learnedWin: null,
+  };
+  const lowBase = {
+    baseWin: 0.3,
+    estWin: 0.58,
+    edge: 0.264,
+    expectedROI: 0.837,
+    consistency: 0.7,
+    entropy: 0.9,
+    momentum: 0.58,
+    learnedWin: null,
+  };
+  assert.equal(isSensibleDigitCandidate(lowBase), false);
+  assert.ok(digitCandidateQuality(sensible) > digitCandidateQuality(lowBase));
 });
 
 test('buildQuotePlan covers the shortlist with unique per-market options', () => {

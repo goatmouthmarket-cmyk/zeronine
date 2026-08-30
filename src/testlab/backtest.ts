@@ -16,7 +16,7 @@ import {
   transitionRecoveryObservation,
 } from '../intelligence/recoveryObservation.ts';
 import type { RecoveryObservationState } from '../intelligence/recoveryObservation.ts';
-import { pickSignalFromSnapshot } from '../strategy/signal.ts';
+import { digitCandidateQuality, isSensibleDigitCandidate, pickSignalFromSnapshot } from '../strategy/signal.ts';
 import { config } from '../config.ts';
 import { digitHistory, getQuoteStats, getSettings, insertTestRun, listMarkets, listTestRuns, patternRowsByPrev, patternWeightForStrategy } from '../db/store.ts';
 import type { TestRunRow } from '../db/store.ts';
@@ -171,6 +171,27 @@ interface PendingReplayContract {
   epoch: number;
 }
 
+function replayQuoteQuality(quote: {
+  baseWin: number;
+  estWin: number;
+  realEdge: number;
+  realEV: number;
+  consistency: number;
+  entropy: number;
+  momentum: number;
+}): number {
+  return digitCandidateQuality({
+    baseWin: quote.baseWin,
+    estWin: quote.estWin,
+    edge: quote.realEdge,
+    expectedROI: quote.realEV,
+    consistency: quote.consistency,
+    entropy: quote.entropy,
+    momentum: quote.momentum,
+    learnedWin: null,
+  });
+}
+
 function replayRiskAllowed(st: ReplayState, settings: Parameters<typeof replayOne>[2], stake: number): boolean {
   if (!(stake > 0) || stake > st.balance * 0.9) return false;
   if (st.streak + 1 > settings.max_consecutive_losses) return false;
@@ -294,7 +315,13 @@ function replayOne(
         ? quotes.filter((quote) => quote.estWin >= Math.max(gates.minWin, config.minExtremeWin))
           .sort((a, b) => b.estWin - a.estWin || b.realEV - a.realEV)
         : quotes.filter((quote) => quote.estWin >= gates.minWin && quote.realEdge >= gates.minEdge)
-          .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
+          .filter((quote) => isSensibleDigitCandidate({
+            baseWin: quote.baseWin,
+            estWin: quote.estWin,
+            edge: quote.realEdge,
+            expectedROI: quote.realEV,
+          }))
+          .sort((a, b) => replayQuoteQuality(b) - replayQuoteQuality(a) || b.realEV - a.realEV || b.estWin - a.estWin);
       const best = eligible[0];
       if (best) decision = { ...best, stake: baseStake };
     } else {

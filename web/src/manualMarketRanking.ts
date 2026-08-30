@@ -21,6 +21,31 @@ export interface ManualSetup {
   confidence: number;
 }
 
+const MIN_SENSIBLE_BASE_WIN = 0.45;
+const LOW_BASE_EXCEPTION_WIN = 0.62;
+const LOW_BASE_EXCEPTION_EDGE = 0.08;
+
+export function theoreticalWinForSetup(direction: ManualDirection, barrier: number): number {
+  const safeBarrier = direction === 'over'
+    ? Math.max(0, Math.min(8, Math.trunc(barrier)))
+    : Math.max(1, Math.min(9, Math.trunc(barrier)));
+  return direction === 'over' ? (9 - safeBarrier) / 10 : safeBarrier / 10;
+}
+
+export function isSensibleManualSetup(direction: ManualDirection, barrier: number, estWin: number, edge = 0): boolean {
+  const base = theoreticalWinForSetup(direction, barrier);
+  if (base >= MIN_SENSIBLE_BASE_WIN) return true;
+  return estWin >= LOW_BASE_EXCEPTION_WIN && edge >= LOW_BASE_EXCEPTION_EDGE;
+}
+
+export function manualSetupScore(direction: ManualDirection, barrier: number, estWin: number, edge = 0): number {
+  const base = theoreticalWinForSetup(direction, barrier);
+  const lowBaseGap = Math.max(0, MIN_SENSIBLE_BASE_WIN - base);
+  const lowBasePenalty = isSensibleManualSetup(direction, barrier, estWin, edge) ? lowBaseGap * 0.45 : lowBaseGap * 6.5;
+  const lift = Math.max(-0.1, Math.min(0.1, estWin - base));
+  return (edge * 0.9) + (estWin * 0.35) + (lift * 0.45) - lowBasePenalty;
+}
+
 export function strongestManualSetups(
   markets: ManualMarket[],
   candidates: ManualSignalCandidate[],
@@ -35,7 +60,7 @@ export function strongestManualSetups(
 
 export function confidenceForSetup(market: ManualMarket, direction: ManualDirection, barrier: number): number {
   const digits = market.recentDigits.filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
-  const theoretical = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
+  const theoretical = theoreticalWinForSetup(direction, barrier);
   if (!digits.length) return theoretical;
   const wins = digits.filter((digit) => direction === 'over' ? digit > barrier : digit < barrier).length;
   return (wins + theoretical * 20) / (digits.length + 20);
@@ -73,8 +98,10 @@ export function strongestManualSetup(
 ): ManualSetup | null {
   const symbols = new Set(markets.map((market) => market.symbol));
   const candidate = [...candidates]
-    .filter((item) => symbols.has(item.market))
-    .sort((a, b) => b.estWin - a.estWin || b.edge - a.edge)[0];
+    .filter((item) => symbols.has(item.market) && isSensibleManualSetup(item.direction, item.barrier, item.estWin, item.edge))
+    .sort((a, b) => manualSetupScore(b.direction, b.barrier, b.estWin, b.edge) - manualSetupScore(a.direction, a.barrier, a.estWin, a.edge)
+      || b.estWin - a.estWin
+      || b.edge - a.edge)[0];
   if (candidate) {
     return {
       market: candidate.market,
@@ -92,7 +119,10 @@ export function strongestManualSetup(
         : [1, 2, 3, 4, 5, 6, 7, 8, 9];
       for (const candidateBarrier of barriers) {
         const confidence = confidenceForSetup(market, direction, candidateBarrier);
-        if (!strongest || confidence > strongest.confidence) {
+        if (!isSensibleManualSetup(direction, candidateBarrier, confidence)) continue;
+        const score = manualSetupScore(direction, candidateBarrier, confidence);
+        const strongestScore = strongest ? manualSetupScore(strongest.direction, strongest.barrier, strongest.confidence) : -Infinity;
+        if (!strongest || score > strongestScore || (score === strongestScore && confidence > strongest.confidence)) {
           strongest = { market: market.symbol, direction, barrier: candidateBarrier, confidence };
         }
       }
@@ -113,7 +143,9 @@ export function strongestManualSetupForBarrier(
   const symbols = new Set(markets.map((market) => market.symbol));
   const candidate = [...candidates]
     .filter((item) => symbols.has(item.market) && item.barrier === barrier && directions.includes(item.direction))
-    .sort((a, b) => b.estWin - a.estWin || b.edge - a.edge)[0];
+    .sort((a, b) => manualSetupScore(b.direction, b.barrier, b.estWin, b.edge) - manualSetupScore(a.direction, a.barrier, a.estWin, a.edge)
+      || b.estWin - a.estWin
+      || b.edge - a.edge)[0];
   if (candidate) {
     return { market: candidate.market, direction: candidate.direction, barrier, confidence: candidate.estWin };
   }
@@ -122,7 +154,9 @@ export function strongestManualSetupForBarrier(
   for (const market of markets) {
     for (const direction of directions) {
       const confidence = confidenceForSetup(market, direction, barrier);
-      if (!strongest || confidence > strongest.confidence) {
+      const score = manualSetupScore(direction, barrier, confidence);
+      const strongestScore = strongest ? manualSetupScore(strongest.direction, strongest.barrier, strongest.confidence) : -Infinity;
+      if (!strongest || score > strongestScore || (score === strongestScore && confidence > strongest.confidence)) {
         strongest = { market: market.symbol, direction, barrier, confidence };
       }
     }

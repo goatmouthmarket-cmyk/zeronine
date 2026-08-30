@@ -147,3 +147,15 @@ test('paper outcome calibration is sample-gated, holdout-validated, bounded, and
   assert.ok(calibrated.probability > 0.6 && calibrated.probability <= 0.63);
   assert.equal(calibration.calibrateResearchProbability('R_25', 'over', 0, 0.6).applied, false);
 });
+
+test('outcome calibration downgrades repeatedly losing setups during a run', async () => {
+  const calibration = await import('../src/intelligence/researchCalibration.ts');
+  calibration.resetResearchCalibrationForTests();
+  for (let i = 0; i < 12; i += 1) {
+    calibration.observeResearchOutcome({ market: 'R_50', direction: 'over', barrier: 6, predicted: 0.58, won: false });
+  }
+  const calibrated = calibration.calibrateResearchProbability('R_50', 'over', 6, 0.58);
+  assert.equal(calibrated.applied, true);
+  assert.equal(calibrated.samples, 12);
+  assert.ok(calibrated.probability <= 0.49, `expected a meaningful downgrade, got ${calibrated.probability}`);
+});

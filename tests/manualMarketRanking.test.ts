@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { confidenceForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
+import { confidenceForSetup, isSensibleManualSetup, manualSetupScore, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
 import type { ManualMarket, ManualSignalCandidate } from '../web/src/manualMarketRanking.ts';
 
 function market(symbol: string, digits: number[]): ManualMarket {
@@ -21,11 +21,24 @@ test('manual market confidence and ranking change with direction and barrier', (
 test('strongest setup selects market, direction, and barrier together', () => {
   const markets = [market('A', [9, 9, 9]), market('B', [0, 0, 0])];
   const candidates: ManualSignalCandidate[] = [
-    { market: 'A', direction: 'over', barrier: 7, estWin: 0.72, edge: 0.04 },
-    { market: 'B', direction: 'under', barrier: 3, estWin: 0.84, edge: 0.06 },
+    { market: 'A', direction: 'over', barrier: 4, estWin: 0.72, edge: 0.04 },
+    { market: 'B', direction: 'under', barrier: 5, estWin: 0.84, edge: 0.06 },
   ];
   assert.deepEqual(strongestManualSetup(markets, candidates), {
-    market: 'B', direction: 'under', barrier: 3, confidence: 0.84,
+    market: 'B', direction: 'under', barrier: 5, confidence: 0.84,
+  });
+});
+
+test('best overall skips low-base Over 6 unless the scanner evidence is exceptional', () => {
+  const markets = [market('A', [9, 9, 9, 9]), market('B', [4, 5, 6, 4])];
+  const candidates: ManualSignalCandidate[] = [
+    { market: 'A', direction: 'over', barrier: 6, estWin: 0.58, edge: 0.26 },
+    { market: 'B', direction: 'over', barrier: 4, estWin: 0.57, edge: 0.04 },
+  ];
+  assert.equal(isSensibleManualSetup('over', 6, 0.58, 0.26), false);
+  assert.ok(manualSetupScore('over', 4, 0.57, 0.04) > manualSetupScore('over', 6, 0.58, 0.26));
+  assert.deepEqual(strongestManualSetup(markets, candidates), {
+    market: 'B', direction: 'over', barrier: 4, confidence: 0.57,
   });
 });
 

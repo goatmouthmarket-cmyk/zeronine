@@ -4,7 +4,7 @@ import type { MarketRegistry } from '../core/marketState.ts';
 import type { DerivPrivateClient, ContractUpdate } from '../deriv/privateClient.ts';
 import type { LadderOption, RecoveryDecision } from '../strategy/recovery.ts';
 import { planRecovery } from '../strategy/recovery.ts';
-import { pickSignalFromSnapshot } from '../strategy/signal.ts';
+import { digitCandidateQuality, isSensibleDigitCandidate, pickSignalFromSnapshot, theoreticalDigitWinRate } from '../strategy/signal.ts';
 import { IntelligenceEngine } from '../intelligence/engine.ts';
 import type { IntelligenceSnapshot } from '../intelligence/engine.ts';
 import { DecisionMemory } from '../intelligence/decisionMemory.ts';
@@ -36,7 +36,7 @@ import {
   saveRecovery,
   setAutomation,
 } from '../db/store.ts';
-import { calibrateResearchProbability } from '../intelligence/researchCalibration.ts';
+import { calibrateResearchProbability, observeResearchOutcome } from '../intelligence/researchCalibration.ts';
 import { SignalConfirmationGate, confirmationTicksForMode } from './signalConfirmation.ts';
 
 const HOLD = 'hold';
@@ -63,6 +63,7 @@ interface QuotedOption {
   market: string;
   direction: Direction;
   barrier: number;
+  baseWin: number;
   estWin: number;
   consistency: number;
   entropy: number;
@@ -71,10 +72,24 @@ interface QuotedOption {
   payout: number;
   realEdge: number;
   realEV: number;
+  quality: number;
 }
 
 function coolKey(o: { market: string; direction: Direction; barrier: number }): string {
   return `${o.market}|${o.direction}|${o.barrier}`;
+}
+
+function quoteQuality(o: Omit<QuotedOption, 'quality'>): number {
+  return digitCandidateQuality({
+    baseWin: o.baseWin,
+    estWin: o.estWin,
+    edge: o.realEdge,
+    expectedROI: o.realEV,
+    consistency: o.consistency,
+    entropy: o.entropy,
+    momentum: o.momentum,
+    learnedWin: null,
+  });
 }
 
 type RecoveryStake = RecoveryDecision & { market: string };
@@ -438,10 +453,11 @@ export class Automation {
           symbol: c.market,
         });
         const ratio = q.askPrice > 0 ? q.payout / q.askPrice : 0;
-        quotes.push({
+        const option = {
           market: c.market,
           direction: c.direction,
           barrier: c.barrier,
+          baseWin: c.baseWin,
           estWin,
           consistency: c.consistency,
           entropy: c.entropy,
@@ -450,7 +466,8 @@ export class Automation {
           payout: q.payout,
           realEdge: estWin - (ratio > 0 ? 1 / ratio : 0),
           realEV: estWin * ratio - 1,
-        });
+        };
+        quotes.push({ ...option, quality: quoteQuality(option) });
         recordQuote(c.market, c.direction, c.barrier, ratio);
         this.emit({
           type: 'quote',
@@ -507,6 +524,7 @@ export class Automation {
           realEdge: quotes[idx].estWin - (ratio > 0 ? 1 / ratio : 0),
           realEV: quotes[idx].estWin * ratio - 1,
         };
+        quotes[idx].quality = quoteQuality(quotes[idx]);
         recordQuote(top.market, top.direction, top.barrier, ratio);
       } catch {
         // fresh top quote unavailable: the in-ladder proposal is still valid
@@ -517,7 +535,15 @@ export class Automation {
     let decision: RecoveryStake = recoveryHold();
     if (recovering) {
       const now = Date.now();
-      const ladderSrc = conservative ? quotes.filter((o) => !this.cooled(o, now)) : quotes;
+      const ladderSrc = conservative
+        ? quotes.filter((o) => !this.cooled(o, now))
+        : quotes.filter((o) => isSensibleDigitCandidate({
+            baseWin: o.baseWin,
+            estWin: o.estWin,
+            edge: o.realEdge,
+            expectedROI: o.realEV,
+          }))
+          .sort((a, b) => b.quality - a.quality || b.estWin - a.estWin);
       const ladder: LadderOption[] = ladderSrc.map((o) => ({
         market: o.market,
         direction: o.direction,
@@ -564,8 +590,15 @@ export class Automation {
             .filter((o) => o.estWin >= Math.max(minWin, config.minExtremeWin) && !this.cooled(o, now))
             .sort((a, b) => b.estWin - a.estWin || b.realEV - a.realEV)
         : quotes
-            .filter((o) => o.estWin >= minWin && o.realEdge >= minEdge)
-            .sort((a, b) => b.realEV - a.realEV || b.realEdge - a.realEdge);
+            .filter((o) => o.estWin >= minWin
+              && o.realEdge >= minEdge
+              && isSensibleDigitCandidate({
+                baseWin: o.baseWin || theoreticalDigitWinRate(o.direction, o.barrier),
+                estWin: o.estWin,
+                edge: o.realEdge,
+                expectedROI: o.realEV,
+              }))
+            .sort((a, b) => b.quality - a.quality || b.realEV - a.realEV || b.estWin - a.estWin);
       if (eligible.length === 0) {
         this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
         this.emit({ type: HOLD, ts: Date.now(), reason: conservative ? 'extreme digit too hot' : 'no live quote available' });
@@ -798,6 +831,13 @@ export class Automation {
         exitDigit: outcome.exitDigit,
       };
       resolveTrade(trade.id, status, profit, bought.contractId, exitDetails, accountId);
+      observeResearchOutcome({
+        market: decision.market,
+        direction: decision.direction,
+        barrier: decision.barrier,
+        predicted: decision.estWin,
+        won,
+      });
       const settledTrade = getTrade(trade.id, accountId);
       if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(accountId), settled: true });
       if (!won && conservative) this.markLoss(decision.market, decision.direction, decision.barrier);
@@ -859,6 +899,15 @@ export class Automation {
             exitSpot: outcome.exitSpot,
             exitDigit: outcome.exitDigit,
           }, t.account_id);
+          if (t.est_win != null) {
+            observeResearchOutcome({
+              market: t.market,
+              direction: t.contract_type === 'DIGITOVER' ? 'over' : 'under',
+              barrier: t.barrier,
+              predicted: t.est_win,
+              won,
+            });
+          }
           const settledTrade = getTrade(t.id, t.account_id);
           if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(t.account_id), settled: true, reconciled: true });
           if (t.purchase_id.startsWith('auto-')) {

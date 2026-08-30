@@ -32,7 +32,10 @@ export function observeResearchOutcome(outcome: ResearchOutcome): void {
 
 /**
  * Two interleaved folds must agree on the direction of prediction error. The
- * agreed correction is sample-shrunk and capped at three percentage points.
+ * agreed correction is sample-shrunk. Positive boosts stay capped at three
+ * percentage points; negative corrections are allowed to be stronger so a
+ * repeatedly losing setup is downgraded during the run instead of being
+ * selected again on stale confidence.
  * No P&L, balance, stake, recovery, or account data enters this model.
  */
 export function calibrateResearchProbability(
@@ -42,7 +45,7 @@ export function calibrateResearchProbability(
   probability: number,
 ): ResearchCalibration {
   const rows = outcomes.get(keyOf(market, direction, barrier)) ?? [];
-  if (rows.length < 30) return { probability, correction: 0, samples: rows.length, applied: false };
+  if (rows.length < 12) return { probability, correction: 0, samples: rows.length, applied: false };
   const errors = [0, 1].map((fold) => {
     const sample = rows.filter((_, index) => index % 2 === fold);
     const actual = sample.reduce((sum, row) => sum + (row.won ? 1 : 0), 0) / sample.length;
@@ -53,7 +56,10 @@ export function calibrateResearchProbability(
     return { probability, correction: 0, samples: rows.length, applied: false };
   }
   const agreed = Math.sign(errors[0]) * Math.min(Math.abs(errors[0]), Math.abs(errors[1]));
-  const correction = Math.max(-0.03, Math.min(0.03, agreed * (rows.length / (rows.length + 100))));
+  const rawCorrection = agreed * (rows.length / (rows.length + 60));
+  const correction = rawCorrection < 0
+    ? Math.max(-0.12, rawCorrection)
+    : Math.min(0.03, rawCorrection);
   return {
     probability: Math.max(0.01, Math.min(0.99, probability + correction)),
     correction,
