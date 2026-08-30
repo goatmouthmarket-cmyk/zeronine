@@ -93,6 +93,7 @@ export class DerivPublicFeed {
 
     ws.on('close', () => {
       this.clearTimers();
+      this.rejectPending(new Error('public feed disconnected'));
       this.subSymbols.clear();
       this.histSymbols.clear();
       this.onStatus(this.status());
@@ -255,6 +256,14 @@ export class DerivPublicFeed {
     this.reconnectTimer = null;
   }
 
+  private rejectPending(error: Error): void {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+    this.pending.clear();
+  }
+
   private scheduleReconnect(): void {
     if (this.stopped) return;
     this.reconnectAttempt++;
@@ -292,6 +301,7 @@ export class DerivPublicFeed {
   stop(): void {
     this.stopped = true;
     this.clearTimers();
+    this.rejectPending(new Error('public feed stopped'));
     if (this.ws) {
       try {
         this.ws.close();

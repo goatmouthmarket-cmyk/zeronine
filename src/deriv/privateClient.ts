@@ -117,6 +117,7 @@ export class DerivPrivateClient {
   private contractSubs = new Map<string, Set<(u: ContractUpdate) => void>>();
   private pingTimer: NodeJS.Timeout | null = null;
   private lastMessageAt = 0;
+  private reconnectPromise: Promise<SessionInfo> | null = null;
   onSession: ((s: SessionInfo) => void) | null = null;
   onBalance: ((balance: number) => void) | null = null;
   onDisconnect: (() => void) | null = null;
@@ -459,10 +460,16 @@ export class DerivPrivateClient {
   }
 
   async reconnect(token: string, accountId?: string): Promise<SessionInfo> {
-    this.disconnect();
-    // Small delay to ensure old socket is fully closed
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    return this.connect(token, accountId);
+    if (this.reconnectPromise) return this.reconnectPromise;
+    this.reconnectPromise = (async () => {
+      this.disconnect();
+      // Small delay to ensure old socket is fully closed
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return this.connect(token, accountId);
+    })().finally(() => {
+      this.reconnectPromise = null;
+    });
+    return this.reconnectPromise;
   }
 
   private startPing(): void {

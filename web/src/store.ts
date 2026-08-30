@@ -846,7 +846,14 @@ function notifyListeners(): void {
 }
 
 function set(patch: Partial<State>, notify = true): void {
-  state = { ...state, ...patch };
+  let changed = false;
+  const next = { ...state };
+  for (const [key, value] of Object.entries(patch) as Array<[keyof State, State[keyof State]]>) {
+    if (state[key] !== value) changed = true;
+    (next as Record<keyof State, State[keyof State]>)[key] = value;
+  }
+  if (!changed) return;
+  state = next;
   if (notify) notifyListeners();
 }
 
@@ -863,7 +870,17 @@ export function useStore(): State {
 export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { ...((init?.headers as Record<string, string>) ?? {}) };
   if (init?.body != null) headers['Content-Type'] = 'application/json';
-  const res = await fetch(path, { ...init, cache: 'no-store', headers });
+  const timeoutController = init?.signal ? null : new AbortController();
+  const timeout = timeoutController ? window.setTimeout(() => timeoutController.abort(), 15_000) : null;
+  let res: Response;
+  try {
+    res = await fetch(path, { ...init, cache: 'no-store', headers, signal: init?.signal ?? timeoutController?.signal });
+  } catch (error) {
+    if (timeout) window.clearTimeout(timeout);
+    if (error instanceof DOMException && error.name === 'AbortError' && !init?.signal) throw new Error('request timed out');
+    throw error;
+  }
+  if (timeout) window.clearTimeout(timeout);
   let body: unknown = null;
   try {
     body = await res.json();
@@ -1139,11 +1156,14 @@ function dispatchEvent(evt: Record<string, unknown>): void {
 let ws: WebSocket | null = null;
 let wsTimer: number | null = null;
 let retry = 0;
+let wsGeneration = 0;
 let lastWsMessageAt = 0;
 let lastStateSyncAt = 0;
 let stateRefresh: Promise<void> | null = null;
+let stateRefreshController: AbortController | null = null;
 
 function resetWsConnection(): void {
+  wsGeneration += 1;
   if (wsTimer) window.clearTimeout(wsTimer);
   wsTimer = null;
   if (ws) {
@@ -1155,22 +1175,34 @@ function resetWsConnection(): void {
   }
   ws = null;
   retry = 0;
+  stateRefreshController?.abort();
+  stateRefreshController = null;
+  stateRefresh = null;
   connectWs();
 }
 
 export function connectWs(): void {
-  if (ws) return;
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+  if (wsTimer) {
+    window.clearTimeout(wsTimer);
+    wsTimer = null;
+  }
+  wsGeneration += 1;
+  const generation = wsGeneration;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  const socket = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = socket;
   set({ ws: 'connecting' });
 
-  ws.onopen = () => {
+  socket.onopen = () => {
+    if (generation !== wsGeneration || ws !== socket) return;
     retry = 0;
     lastWsMessageAt = Date.now();
     set({ ws: 'open' });
   };
 
-  ws.onmessage = (msg) => {
+  socket.onmessage = (msg) => {
+    if (generation !== wsGeneration || ws !== socket) return;
     lastWsMessageAt = Date.now();
     try {
       dispatchEvent(JSON.parse(String(msg.data)));
@@ -1179,7 +1211,8 @@ export function connectWs(): void {
     }
   };
 
-  ws.onclose = () => {
+  socket.onclose = () => {
+    if (generation !== wsGeneration || ws !== socket) return;
     ws = null;
     set({ ws: 'closed' });
     const delay = Math.min(15000, 1000 * 2 ** retry) + Math.floor(Math.random() * 350);
@@ -1188,9 +1221,10 @@ export function connectWs(): void {
     wsTimer = window.setTimeout(connectWs, delay);
   };
 
-  ws.onerror = () => {
+  socket.onerror = () => {
+    if (generation !== wsGeneration || ws !== socket) return;
     try {
-      ws?.close();
+      socket.close();
     } catch {
       // ignore
     }
@@ -1258,14 +1292,22 @@ function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean
 
 async function refreshCoreState(): Promise<void> {
   if (stateRefresh) return stateRefresh;
-  stateRefresh = (async () => {
+  stateRefreshController?.abort();
+  const controller = new AbortController();
+  stateRefreshController = controller;
+  const refresh = (async () => {
     try {
-      const snapshot = (await api('/api/state')) as State & { public_dashboard?: boolean; owner?: boolean };
+      const snapshot = (await api('/api/state', { signal: controller.signal })) as State & { public_dashboard?: boolean; owner?: boolean };
+      if (controller.signal.aborted || stateRefreshController !== controller) return;
       applyCoreState(snapshot);
     } catch {
       // Keep the last good state. WebSocket recovery continues independently.
     }
-  })().finally(() => { stateRefresh = null; });
+  })().finally(() => {
+    if (stateRefreshController === controller) stateRefreshController = null;
+    if (stateRefresh === refresh) stateRefresh = null;
+  });
+  stateRefresh = refresh;
   return stateRefresh;
 }
 
@@ -1611,12 +1653,23 @@ export async function clearStuckTrade(): Promise<void> {
 
 const tradeRefreshes = new Map<number, Promise<void>>();
 
+function mergeTradeRefreshRows(rows: TradeRow[], requestedLimit: number): TradeRow[] {
+  const next = rows.slice(0, requestedLimit);
+  const byId = new Set(next.map((trade) => trade.id));
+  const keepLimit = Math.max(requestedLimit, state.trades.length);
+  for (const existing of state.trades) {
+    if (next.length >= keepLimit) break;
+    if (!byId.has(existing.id)) next.push(existing);
+  }
+  return next.sort((a, b) => b.id - a.id).slice(0, keepLimit);
+}
+
 export async function refreshTrades(limit = 50): Promise<void> {
   const current = tradeRefreshes.get(limit);
   if (current) return current;
   const refresh = (async () => { try {
     const res = await api<{ trades: TradeRow[]; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
-    if (Array.isArray(res.trades)) set({ trades: res.trades.slice(0, limit), performance: res.performance ?? state.performance });
+    if (Array.isArray(res.trades)) set({ trades: mergeTradeRefreshRows(res.trades, limit), performance: res.performance ?? state.performance });
   } catch {
     // best-effort refresh; stale list is fine
   } })().finally(() => tradeRefreshes.delete(limit));

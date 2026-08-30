@@ -22,6 +22,8 @@ const MAX_SCAN_SAMPLES = 16;
 const MAX_FOCUS_SAMPLES = 90;
 const UI_EMIT_INTERVAL_MS = 250;
 const MIN_FALLBACK_SCAN_SECONDS = 15;
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
 const AUTOMATIC_CONFIG = { multiplier: 20, stake: 10, commissionRate: .001 } as const;
 const MIN_HISTORY_WINDOWS_FOR_WEIGHT = 6;
 const MIN_HISTORY_WINDOWS_FOR_BLOCK = 12;
@@ -344,6 +346,8 @@ export class MomentumObserver {
   private research: MomentumResearchSummary;
   private lastEmitAt = 0;
   private emitTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempt = 0;
   private generation = 0;
   private multiplierSupport = new Map<string, MultiplierSupport>();
   private nextContractCheckAt = 0;
@@ -388,15 +392,33 @@ export class MomentumObserver {
   }
 
   async connect(): Promise<void> {
-    if (this.ws) return;
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.ws = null;
     this.phase = 'connecting'; this.emit();
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(config.derivPublicUrl, { perMessageDeflate: false, handshakeTimeout: 15_000 });
       this.ws = ws;
-      const timer = setTimeout(() => { this.ws = null; ws.terminate(); reject(new Error('momentum market discovery timed out')); }, 15_000);
-      ws.on('open', () => ws.send(JSON.stringify({ active_symbols: 'brief', req_id: this.req++ })));
+      let settled = false;
+      const finishReject = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.ws === ws) this.ws = null;
+        reject(error);
+      };
+      const timer = setTimeout(() => { try { ws.terminate(); } catch { /* already closed */ } finishReject(new Error('momentum market discovery timed out')); }, 15_000);
+      ws.on('open', () => {
+        try {
+          ws.send(JSON.stringify({ active_symbols: 'brief', req_id: this.req++ }));
+        } catch (error) {
+          finishReject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
       ws.on('message', (raw) => {
         try {
+          if (this.ws !== ws) return;
           const msg = JSON.parse(raw.toString()) as Record<string, any>;
           const requestId = Number(msg.req_id);
           const pending = this.pending.get(requestId);
@@ -409,7 +431,14 @@ export class MomentumObserver {
           if (msg.msg_type === 'active_symbols') {
             const rows = (msg.active_symbols ?? []) as Array<Record<string, any>>;
             this.markets = discoverMomentumMarkets(rows);
-            clearTimeout(timer); this.phase = this.running ? 'observing' : 'idle'; this.emit(); resolve();
+            if (!settled) {
+              settled = true;
+              clearTimeout(timer);
+              this.reconnectAttempt = 0;
+              this.phase = this.running ? 'observing' : 'idle';
+              this.emit();
+              resolve();
+            }
           } else if (msg.msg_type === 'tick' && msg.tick) {
             const scanSymbol = this.scanRequests.get(Number(msg.req_id));
             if (scanSymbol) this.onScanTick(scanSymbol, Number(msg.tick.quote), Number(msg.tick.epoch));
@@ -417,12 +446,23 @@ export class MomentumObserver {
           }
         } catch { /* malformed provider frame */ }
       });
-      ws.on('error', (error) => { clearTimeout(timer); this.ws = null; this.reason = error.message; this.phase = 'error'; this.emit(); reject(error); });
+      ws.on('error', (error) => {
+        finishReject(error);
+        this.reason = error.message;
+        this.phase = 'error';
+        this.emit();
+      });
       ws.on('close', () => {
-        this.ws = null;
-        for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('real-market feed disconnected')); }
-        this.pending.clear();
-        if (this.running) { this.phase = 'error'; this.reason = 'Real-market feed disconnected'; this.emit(); }
+        clearTimeout(timer);
+        if (this.ws === ws) this.ws = null;
+        this.rejectPending(new Error('real-market feed disconnected'));
+        if (!settled) finishReject(new Error('real-market feed disconnected'));
+        if (this.running) {
+          this.phase = 'connecting';
+          this.reason = 'Real-market feed disconnected; reconnecting momentum research';
+          this.emit();
+          this.scheduleReconnect();
+        }
       });
     });
   }
@@ -489,14 +529,54 @@ export class MomentumObserver {
     return this.begin({ symbol, ...AUTOMATIC_CONFIG }, seed);
   }
 
-  stop(): MomentumState { this.generation += 1; this.running = false; this.phase = 'stopped'; this.stopSubscription(); this.emit(); return this.state(); }
+  stop(): MomentumState {
+    this.generation += 1;
+    this.running = false;
+    this.phase = 'stopped';
+    this.stopSubscription();
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.emit();
+    return this.state();
+  }
 
   private stopSubscription(): void {
     if (this.scanTimer) clearTimeout(this.scanTimer);
     this.scanTimer = null; this.scanStartedAt = 0; this.scanTicks.clear(); this.scanRequests.clear();
-    if (this.ws && this.tickReq) this.ws.send(JSON.stringify({ forget_all: 'ticks', req_id: this.req++ }));
-    else if (this.ws) this.ws.send(JSON.stringify({ forget_all: 'ticks', req_id: this.req++ }));
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === undefined)) {
+      try {
+        this.ws.send(JSON.stringify({ forget_all: 'ticks', req_id: this.req++ }));
+      } catch {
+        // socket is closing
+      }
+    }
     this.tickReq = 0;
+  }
+
+  private rejectPending(error: Error): void {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.pending.clear();
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.running || this.reconnectTimer) return;
+    this.reconnectAttempt += 1;
+    const wait = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** Math.min(8, this.reconnectAttempt - 1));
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.running) return;
+      void this.startAutomatic().catch((error) => {
+        if (!this.running) return;
+        this.phase = 'error';
+        this.reason = String(error);
+        this.emit();
+        this.scheduleReconnect();
+      });
+    }, wait);
+    this.reconnectTimer.unref();
   }
 
   private onScanTick(symbol: string, quote: number, epoch: number): void {

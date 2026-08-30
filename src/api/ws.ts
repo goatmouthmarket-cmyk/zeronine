@@ -26,50 +26,77 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
 
   app.get('/ws', { websocket: true }, (socket: WebSocket, req) => {
     const owner = isOwner(req);
-    socket.send(
-      JSON.stringify({
-        type: 'hello',
-        ts: Date.now(),
-        markets: registry.allSnapshots(),
-      }),
-    );
-    if (lastSignal) socket.send(JSON.stringify(lastSignal));
-    if (owner && lastHold) socket.send(JSON.stringify(lastHold));
-    if (lastIntelligence) socket.send(JSON.stringify(lastIntelligence));
-    if (lastPaperSimulation) socket.send(JSON.stringify(lastPaperSimulation));
-
     const lastTickSent = new Map<string, number>();
     const pendingTicks = new Map<string, Record<string, unknown>>();
     let tickTimer: NodeJS.Timeout | null = null;
-    const heartbeatTimer = setInterval(() => {
-      if (socket.readyState === socket.OPEN && socket.bufferedAmount < MAX_BUFFER) {
-        socket.send(JSON.stringify({ type: 'heartbeat', ts: Date.now() }));
+    let closed = false;
+    let unsubscribe = (): void => {};
+    let heartbeatTimer: NodeJS.Timeout | null = null;
+    const cleanup = (): void => {
+      if (closed) return;
+      closed = true;
+      unsubscribe();
+      if (tickTimer) clearTimeout(tickTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      tickTimer = null;
+      heartbeatTimer = null;
+      pendingTicks.clear();
+    };
+    const safeSend = (evt: unknown, mustDeliver = false): boolean => {
+      if (closed || socket.readyState !== socket.OPEN) return false;
+      if (socket.bufferedAmount >= (mustDeliver ? MAX_BUFFER * 4 : MAX_BUFFER)) {
+        cleanup();
+        try { socket.close(1013, 'slow client'); } catch { /* already closing */ }
+        return false;
       }
+      try {
+        socket.send(JSON.stringify(evt));
+        return true;
+      } catch {
+        cleanup();
+        try { socket.terminate(); } catch { /* already closed */ }
+        return false;
+      }
+    };
+
+    safeSend({
+      type: 'hello',
+      ts: Date.now(),
+      markets: registry.allSnapshots(),
+    }, true);
+    if (lastSignal) safeSend(lastSignal, true);
+    if (owner && lastHold) safeSend(lastHold, true);
+    if (lastIntelligence) safeSend(lastIntelligence, true);
+    if (lastPaperSimulation) safeSend(lastPaperSimulation, true);
+
+    heartbeatTimer = setInterval(() => {
+      safeSend({ type: 'heartbeat', ts: Date.now() });
     }, HEARTBEAT_INTERVAL_MS);
 
     const flushTicks = (): void => {
       tickTimer = null;
-      if (socket.readyState !== socket.OPEN) return;
+      if (closed || socket.readyState !== socket.OPEN) return;
       const now = Date.now();
       for (const [symbol, tick] of pendingTicks) {
         if (socket.bufferedAmount >= MAX_BUFFER) break;
-        socket.send(JSON.stringify(tick));
+        if (!safeSend(tick)) break;
         pendingTicks.delete(symbol);
         lastTickSent.set(symbol, now);
       }
       if (pendingTicks.size > 0) tickTimer = setTimeout(flushTicks, TICK_INTERVAL_MS);
     };
 
-    const unsubscribe = hub.on((evt) => {
-      if (socket.readyState !== socket.OPEN) return;
+    unsubscribe = hub.on((evt) => {
+      if (closed || socket.readyState !== socket.OPEN) return;
       if (!owner && !PUBLIC_EVENTS.has(evt.type)) return;
 
       if (evt.type === 'tick') {
         const symbol = typeof evt.symbol === 'string' ? evt.symbol : '';
+        if (!symbol) return;
         const now = Date.now();
         const lastSent = lastTickSent.get(symbol) ?? 0;
         if (now - lastSent >= TICK_INTERVAL_MS && socket.bufferedAmount < MAX_BUFFER) {
-          socket.send(JSON.stringify(evt));
+          if (!safeSend(evt)) return;
           lastTickSent.set(symbol, now);
         } else {
           pendingTicks.set(symbol, evt);
@@ -81,20 +108,10 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       // Account lifecycle events must never be dropped: losing a settlement
       // leaves an otherwise completed trade displayed as Open until reload.
       // Tick traffic is already bounded above and can wait behind this send.
-      socket.send(JSON.stringify(evt));
+      safeSend(evt, true);
     });
 
-    socket.on('close', () => {
-      unsubscribe();
-      if (tickTimer) clearTimeout(tickTimer);
-      clearInterval(heartbeatTimer);
-      pendingTicks.clear();
-    });
-    socket.on('error', () => {
-      unsubscribe();
-      if (tickTimer) clearTimeout(tickTimer);
-      clearInterval(heartbeatTimer);
-      pendingTicks.clear();
-    });
+    socket.on('close', cleanup);
+    socket.on('error', cleanup);
   });
 }
