@@ -704,7 +704,7 @@ button {
 .gold-perfect-inline { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 3px; font-size: 7px; font-weight: 850; color: #191206; background: #f4c96b; text-transform: uppercase; letter-spacing: .04em; }
 .gold-sentiment-drivers { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px 12px; }
 .gold-sentiment-drivers .gold-kicker { margin-right: 8px; }
-.gold-sentiment-driver { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid rgba(244,201,107,.18); border-radius: 999px; color: #f4c96b; font-size: 8px; font-weight: 700; background: rgba(244,201,107,.04); }
+.gold-sentiment-driver { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; color: #f4c96b; font-size: 8px; font-weight: 600; background: transparent; }
 .gold-sentiment-headlines { border-top: 1px solid rgba(255,255,255,.04); padding-top: 12px; margin-top: 4px; }
 .gold-sentiment-headlines .gold-kicker { display: block; margin-bottom: 10px; }
 .gold-sentiment-item { padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.03); }
