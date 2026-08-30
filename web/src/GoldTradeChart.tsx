@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef } from 'preact/hooks';
 import {
-  CandlestickSeries,
   ColorType,
+  LineSeries,
   LineStyle,
   createChart,
-  type CandlestickData,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type LineData,
   type Time,
 } from 'lightweight-charts';
 import type { GoldCandleState, GoldQuoteState, GoldSide } from './store';
@@ -28,20 +28,14 @@ function toChartTime(ms: number): Time {
   return Math.trunc(ms / 1000) as Time;
 }
 
-function candleData(candles: GoldCandleState[]): CandlestickData<Time>[] {
+function lineData(candles: GoldCandleState[]): LineData<Time>[] {
   return candles
     .filter((candle) => Number.isFinite(candle.openTime)
-      && Number.isFinite(candle.open)
-      && Number.isFinite(candle.high)
-      && Number.isFinite(candle.low)
       && Number.isFinite(candle.close))
     .slice(-140)
     .map((candle) => ({
       time: toChartTime(candle.openTime),
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
+      value: candle.close,
     }));
 }
 
@@ -62,13 +56,13 @@ export function GoldTradeChart({
 }: GoldTradeChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const linesRef = useRef<IPriceLine[]>([]);
-  const data = useMemo(() => candleData(candles ?? []), [candles]);
-  const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.close ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
-  const lastPrice = quote?.mid ?? data.at(-1)?.close ?? null;
-  const high = data.length ? Math.max(...data.map((point) => point.high)) : null;
-  const low = data.length ? Math.min(...data.map((point) => point.low)) : null;
+  const data = useMemo(() => lineData(candles ?? []), [candles]);
+  const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.value ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
+  const lastPrice = quote?.mid ?? data.at(-1)?.value ?? null;
+  const high = data.length ? Math.max(...data.map((point) => point.value)) : null;
+  const low = data.length ? Math.min(...data.map((point) => point.value)) : null;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -102,15 +96,12 @@ export function GoldTradeChart({
       handleScroll: true,
       handleScale: true,
     });
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#f4c96b',
-      downColor: '#ff5263',
-      borderUpColor: '#f4c96b',
-      borderDownColor: '#ff5263',
-      wickUpColor: 'rgba(244,201,107,.86)',
-      wickDownColor: 'rgba(255,82,99,.82)',
-      priceLineVisible: true,
-      lastValueVisible: true,
+    const series = chart.addSeries(LineSeries, {
+      color: 'transparent',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
     });
     series.priceScale().applyOptions({ scaleMargins: { top: .1, bottom: .14 } });
     chartRef.current = chart;
@@ -140,23 +131,15 @@ export function GoldTradeChart({
     const series = seriesRef.current;
     if (!series) return;
     series.applyOptions(muted ? {
-      upColor: 'rgba(145,151,166,.38)',
-      downColor: 'rgba(96,103,119,.34)',
-      borderUpColor: 'rgba(145,151,166,.48)',
-      borderDownColor: 'rgba(96,103,119,.44)',
-      wickUpColor: 'rgba(145,151,166,.5)',
-      wickDownColor: 'rgba(96,103,119,.48)',
+      color: 'transparent',
+      lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: true,
+      lastValueVisible: false,
     } : {
-      upColor: '#f4c96b',
-      downColor: '#ff5263',
-      borderUpColor: '#f4c96b',
-      borderDownColor: '#ff5263',
-      wickUpColor: 'rgba(244,201,107,.86)',
-      wickDownColor: 'rgba(255,82,99,.82)',
-      priceLineVisible: true,
-      lastValueVisible: true,
+      color: 'transparent',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
     });
   }, [muted]);
 
@@ -185,12 +168,12 @@ export function GoldTradeChart({
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
-    <div class="gold-chart-kind" aria-hidden="true">Gold candlesticks / wicks / TradingView</div>
+    <div class="gold-chart-kind" aria-hidden="true">Gold price lines / TradingView</div>
     {lockLabel && <div class="gold-chart-lock-badge" role="status">Locked · {lockLabel}</div>}
     <div class="gold-chart-readout" aria-hidden="true">
       <span>{lastPrice == null ? 'No live price' : displayPrice(lastPrice, digits)}</span>
       <small>{high == null || low == null ? 'Awaiting candles' : `H ${displayPrice(high, digits)} · L ${displayPrice(low, digits)}`}</small>
     </div>
-    {data.length < 2 && <span class="gold-chart-empty">Awaiting validated Gold candles</span>}
+    {data.length < 2 && <span class="gold-chart-empty">Awaiting Gold price data</span>}
   </div>;
 }
