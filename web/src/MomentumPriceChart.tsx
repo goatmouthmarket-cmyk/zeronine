@@ -41,6 +41,12 @@ function displayPrice(value: number) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 8 });
 }
 
+function measuredSize(element: HTMLElement): { width: number; height: number } | null {
+  const width = Math.floor(element.clientWidth);
+  const height = Math.floor(element.clientHeight);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
 export function MomentumPriceChart({
   samples,
   label,
@@ -49,71 +55,103 @@ export function MomentumPriceChart({
   entryLabel = 'Watch entry',
   entryDirection,
 }: MomentumPriceChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLSpanElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const entryLineRef = useRef<IPriceLine | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
+  const pointsRef = useRef<LineData<Time>[]>(points);
   const hasEntry = !compact && Number.isFinite(entryPrice);
+  const entryRef = useRef({ hasEntry, entryPrice, entryDirection, entryLabel });
   const tradeView = !compact;
+
+  useEffect(() => {
+    pointsRef.current = points;
+  }, [points]);
+
+  useEffect(() => {
+    entryRef.current = { hasEntry, entryPrice, entryDirection, entryLabel };
+  }, [entryDirection, entryLabel, entryPrice, hasEntry]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const chart = createChart(container, {
-      width: Math.max(1, container.clientWidth),
-      height: Math.max(1, container.clientHeight),
-      layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: tradeView ? 'rgba(219,235,255,.62)' : 'rgba(255,255,255,0)',
-        attributionLogo: false,
-      },
-      grid: {
-        vertLines: { visible: tradeView, color: 'rgba(255,255,255,.045)' },
-        horzLines: { visible: tradeView, color: 'rgba(255,255,255,.06)' },
-      },
-      leftPriceScale: { visible: false },
-      rightPriceScale: {
-        visible: tradeView,
-        borderVisible: false,
-        textColor: 'rgba(219,235,255,.68)',
-      },
-      timeScale: {
-        visible: tradeView,
-        borderVisible: false,
-        fixLeftEdge: true,
-        fixRightEdge: true,
-        rightOffset: tradeView ? 4 : 0,
-        timeVisible: tradeView,
-        secondsVisible: tradeView,
-      },
-      crosshair: {
-        vertLine: { visible: tradeView, labelVisible: tradeView, color: 'rgba(255,255,255,.18)' },
-        horzLine: { visible: tradeView, labelVisible: tradeView, color: 'rgba(255,255,255,.18)' },
-      },
-      handleScroll: tradeView,
-      handleScale: tradeView,
-    });
-    const series = chart.addSeries(LineSeries, {
-      color: '#75e8bd',
-      lineWidth: tradeView ? 2 : 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: tradeView,
-    });
-    series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .1, bottom: compact ? .18 : .14 } });
-    chartRef.current = chart;
-    seriesRef.current = series;
+    const mountChart = (size: { width: number; height: number }) => {
+      if (chartRef.current) return;
+      const chart = createChart(container, {
+        width: size.width,
+        height: size.height,
+        layout: {
+          background: { type: ColorType.Solid, color: 'transparent' },
+          textColor: tradeView ? 'rgba(219,235,255,.62)' : 'rgba(255,255,255,0)',
+          attributionLogo: false,
+        },
+        grid: {
+          vertLines: { visible: tradeView, color: 'rgba(255,255,255,.045)' },
+          horzLines: { visible: tradeView, color: 'rgba(255,255,255,.06)' },
+        },
+        leftPriceScale: { visible: false },
+        rightPriceScale: {
+          visible: tradeView,
+          borderVisible: false,
+          textColor: 'rgba(219,235,255,.68)',
+        },
+        timeScale: {
+          visible: tradeView,
+          borderVisible: false,
+          fixLeftEdge: true,
+          fixRightEdge: true,
+          rightOffset: tradeView ? 4 : 0,
+          timeVisible: tradeView,
+          secondsVisible: tradeView,
+        },
+        crosshair: {
+          vertLine: { visible: tradeView, labelVisible: tradeView, color: 'rgba(255,255,255,.18)' },
+          horzLine: { visible: tradeView, labelVisible: tradeView, color: 'rgba(255,255,255,.18)' },
+        },
+        handleScroll: tradeView,
+        handleScale: tradeView,
+      });
+      const series = chart.addSeries(LineSeries, {
+        color: '#75e8bd',
+        lineWidth: tradeView ? 2 : 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: tradeView,
+      });
+      series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .1, bottom: compact ? .18 : .14 } });
+      chartRef.current = chart;
+      seriesRef.current = series;
+      series.setData(pointsRef.current);
+      if (pointsRef.current.length > 1) chart.timeScale().fitContent();
+      const entry = entryRef.current;
+      if (entry.hasEntry && entry.entryPrice != null) {
+        entryLineRef.current = series.createPriceLine({
+          price: entry.entryPrice,
+          color: entry.entryDirection === 'down' ? 'rgba(255, 82, 99, .9)' : 'rgba(117, 232, 189, .9)',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          lineVisible: true,
+          axisLabelVisible: true,
+          title: entry.entryLabel,
+        });
+      }
+    };
 
-    const resize = () => chart.resize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
+    const resize = () => {
+      const size = measuredSize(container);
+      if (!size) return;
+      mountChart(size);
+      chartRef.current?.resize(size.width, size.height);
+    };
     const observer = new ResizeObserver(resize);
     observer.observe(container);
     resize();
 
     return () => {
       observer.disconnect();
-      chart.remove();
+      chartRef.current?.remove();
       chartRef.current = null;
       seriesRef.current = null;
       entryLineRef.current = null;
@@ -185,9 +223,9 @@ export function MomentumPriceChart({
     };
   }, [entryDirection, entryLabel, entryPrice, hasEntry]);
 
-  return <div class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
-    <div class="mom-price-chart-canvas" ref={containerRef} />
+  return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
+    <span class="mom-price-chart-canvas" ref={containerRef} />
     {hasEntry && entryPrice != null && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {points.length < 2 && <span class="mom-chart-empty">Awaiting ticks</span>}
-  </div>;
+  </span>;
 }
