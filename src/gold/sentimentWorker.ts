@@ -52,19 +52,37 @@ export const DEFAULT_GOLD_SENTIMENT_FEEDS: readonly GoldSentimentFeedConfig[] = 
   {
     kind: 'news',
     source: 'google-news-gold',
-    url: 'https://news.google.com/rss/search?q=gold+price+OR+XAUUSD+when:2d&hl=en-US&gl=US&ceid=US:en',
+    url: 'https://news.google.com/rss/search?q=gold+price+OR+XAUUSD+OR+bullion+when:2d&hl=en-US&gl=US&ceid=US:en',
+    format: 'rss',
+  },
+  {
+    kind: 'news',
+    source: 'google-news-metals',
+    url: 'https://news.google.com/rss/search?q=%22precious+metals%22+OR+%22gold+market%22+OR+%22gold+futures%22+when:2d&hl=en-US&gl=US&ceid=US:en',
     format: 'rss',
   },
   {
     kind: 'news',
     source: 'google-news-macro',
-    url: 'https://news.google.com/rss/search?q=%22federal+reserve%22+OR+%22us+dollar%22+gold+when:2d&hl=en-US&gl=US&ceid=US:en',
+    url: 'https://news.google.com/rss/search?q=%22federal+reserve%22+OR+%22us+dollar%22+OR+%22interest+rates%22+gold+when:2d&hl=en-US&gl=US&ceid=US:en',
     format: 'rss',
   },
   {
     kind: 'news',
-    source: 'fxstreet',
-    url: 'https://www.fxstreet.com/rss/news',
+    source: 'kitco',
+    url: 'https://www.kitco.com/rss/KitcoNews.xml',
+    format: 'rss',
+  },
+  {
+    kind: 'news',
+    source: 'fxstreet-metals',
+    url: 'https://www.fxstreet.com/rss/news/precious-metals',
+    format: 'rss',
+  },
+  {
+    kind: 'news',
+    source: 'investing-com-gold',
+    url: 'https://www.investing.com/rss/news_15.rss',
     format: 'rss',
   },
   {
@@ -75,8 +93,14 @@ export const DEFAULT_GOLD_SENTIMENT_FEEDS: readonly GoldSentimentFeedConfig[] = 
   },
   {
     kind: 'social',
-    source: 'reddit',
-    url: 'https://www.reddit.com/search.json?q=gold%20price&sort=new&t=day&limit=50',
+    source: 'reddit-gold',
+    url: 'https://www.reddit.com/search.json?q=gold+OR+XAUUSD+OR+bullion&sort=new&t=day&limit=50',
+    format: 'reddit',
+  },
+  {
+    kind: 'social',
+    source: 'reddit-pms',
+    url: 'https://www.reddit.com/r/Gold/comments.json?sort=new&limit=25',
     format: 'reddit',
   },
 ];
