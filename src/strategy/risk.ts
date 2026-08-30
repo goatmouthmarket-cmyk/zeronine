@@ -48,6 +48,7 @@ export function riskCheck(params: {
   tradeGapMs: number;
   now: number;
   accountId?: string;
+  skipRecoveryDebtCap?: boolean;
 }): RiskCheck {
   const { stake, settings, balance, context, lastTradeAt, tradeGapMs } = params;
 
@@ -75,7 +76,7 @@ export function riskCheck(params: {
     if (context.cycleStake + stake > settings.max_recovery_exposure) {
       return { ok: false, reason: `recovery exposure cap (${settings.max_recovery_exposure}) would be exceeded` };
     }
-    if (context.debt >= settings.max_recovery_debt) {
+    if (!params.skipRecoveryDebtCap && context.debt >= settings.max_recovery_debt) {
       return { ok: false, reason: `recovery debt cap (${settings.max_recovery_debt}) reached` };
     }
   }

@@ -822,6 +822,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       lastTradeAt: listTrades(1)[0]?.ts ?? 0,
       tradeGapMs: config.tradeGapMs,
       now: Date.now(),
+      // Momentum demo orders never join the digit recovery cycle, so its debt
+      // cap must not gate them; every other rail above still applies.
+      skipRecoveryDebtCap: true,
     });
     if (!gate.ok) {
       reply.code(409);

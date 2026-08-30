@@ -120,6 +120,75 @@ test('explicit Momentum trade is demo-only and records the selected research con
   await app.close();
 });
 
+test('Momentum trades bypass the recovery debt cap while the digit risk gate keeps it', async () => {
+  const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg, risk] = await Promise.all([
+    import('fastify'),
+    import('../src/api/hub.ts'),
+    import('../src/core/marketState.ts'),
+    import('../src/deriv/publicFeed.ts'),
+    import('../src/strategy/automation.ts'),
+    import('../src/simulation/paperSimulator.ts'),
+    import('../src/api/routes.ts'),
+    import('../src/db/store.ts'),
+    import('../src/config.ts'),
+    import('../src/strategy/risk.ts'),
+  ]);
+  cfg.config.dashboardAdminToken = '';
+  store.setSession({
+    id: 'momentum-demo-debt', loginid: 'VRTC_DEBT', balance: 250, currency: 'USD', mode: 'demo', auth_kind: 'pat',
+    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+  });
+  store.saveRecovery({
+    mode: 'recovering', streak: 1, debt: 1000, attempts: 1, cycleStake: 0, peakBalance: 250,
+    last_win_epoch: 0, updated_at: Date.now(),
+  });
+
+  const settings = store.getSettings();
+  const context = risk.buildRecoveryContext(settings);
+  const digitGate = risk.riskCheck({
+    stake: 3, settings, balance: 250, context, lastTradeAt: 0, tradeGapMs: 0, now: Date.now(),
+  });
+  assert.equal(digitGate.ok, false);
+  assert.match(digitGate.reason, /recovery debt cap/);
+
+  const hub = new hubMod.Hub();
+  const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
+  registry.ensure('R_100');
+  const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
+  const client = {
+    isConnected: true,
+    getQuote: async () => { throw new Error('digit quote must not be used'); },
+    getMultiplierQuote: async () => ({ id: 'debt-proposal', askPrice: 3, payout: 6, spot: 750.5, direction: 'up', multiplier: 20 }),
+    placeBuy: async () => ({ contractId: 'momentum-debt-contract', buyPrice: 3, payout: 6 }),
+    settleContract: async () => new Promise(() => undefined),
+  };
+  const automation = new autoMod.Automation(registry, client as never, hub);
+  const momentum = {
+    state: () => ({
+      running: true,
+      phase: 'observing',
+      config: { symbol: 'R_100', multiplier: 20, stake: 10, commissionRate: .001 },
+      window: {
+        signal: { direction: 'up', confidence: 72, reason: 'Upward returns agree across 3 of 3 horizons' },
+        decisionSignal: null,
+      },
+    }),
+  };
+  const app = Fastify();
+  routesMod.registerApi(app, {
+    registry, feed, client: client as never, hub, automation,
+    paperSimulator: new paperMod.PaperSimulator(), momentum: momentum as never,
+  });
+
+  const response = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 20 } });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().trade.contractId, 'momentum-debt-contract');
+  assert.equal(store.getRecovery().debt, 1000, 'momentum execution must not touch recovery debt');
+
+  automation.dispose();
+  await app.close();
+});
+
 test('Momentum execution rejects real accounts and unfocused research before a proposal', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
     import('fastify'),
