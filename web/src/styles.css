@@ -1066,8 +1066,22 @@ button {
 
 .mom-focus-chart {
   height: 96px;
+  min-width: 0;
+  overflow: hidden;
+  contain: layout paint;
   /* Keep the Lightweight Chart series clear of the workspace edge. */
   padding: 4px 16px 4px 4px;
+}
+
+.mom-focus-chart .mom-price-chart.trade,
+.mom-focus-chart .mom-price-chart-canvas {
+  height: 100%;
+  min-height: 0;
+}
+
+.mom-focus-chart .mom-chart-entry {
+  right: 16px;
+  max-width: calc(100% - 32px);
 }
 
 /* The desktop research surface is intentionally capped. Reflow against the

@@ -2839,22 +2839,6 @@ function MomentumPage(): JSX.Element {
         <div class={`mom-call ${signal?.direction ?? 'wait'}`}><span>Current read</span><strong>{signal?.direction === 'up' ? 'UP' : signal?.direction === 'down' ? 'DOWN' : 'WAIT'}</strong><small>{signal?.confidence ?? 0}% confidence</small></div>
       </section>
 
-      <section class="mom-evidence">
-        <div class="mom-live-trace" aria-label="Price story since this market watch began">
-          <div class="mom-live-trace-head"><span>Price story since watch began</span><small>Start, high, current position, and low. Not a forecast.</small></div>
-          <div class="mom-live-trace-bars">
-            {priceStory.map((point) => {
-              const height = 18 + Math.round((Math.abs(relativeMove(point.price)) / movementScale) * 82);
-              return <div class={`mom-trace-bar ${point.tone}`} key={point.label}>
-                <i style={{ height: `${height}%` }}></i><b>{momentumPrice(point.price)}</b><span>{point.label}</span><small>{point.detail}</small>
-              </div>;
-            })}
-          </div>
-        </div>
-        <div class="mom-evidence-head"><div><span class="mom-kicker">Why this direction</span><strong>{signal?.reason ?? momentum?.reason ?? 'Building live cross-market evidence'}</strong></div>{w?.direction && <span class={`mom-locked ${w.direction}`}>Research entry locked · {w.direction}</span>}</div>
-        <div class="mom-horizons"><div><span>15 sec</span><strong class={(signal?.return15s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return15s)}</strong></div><div><span>30 sec</span><strong class={(signal?.return30s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return30s)}</strong></div><div><span>60 sec</span><strong class={(signal?.return60s ?? 0) >= 0 ? 'up' : 'down'}>{momentumPct(signal?.return60s)}</strong></div><div><span>Cost hurdle</span><strong>{momentumPct(breakEvenMove)}</strong></div></div>
-      </section>
-
       <section class="mom-pnl">
         <div><span>Estimated gross</span><strong>{fmtSigned(w?.estimatedGross ?? 0, s.session?.currency ?? 'USD')}</strong></div><div><span>Estimated commission</span><strong class="down">−{fmtMoney(w?.estimatedCommission ?? 0, s.session?.currency ?? 'USD')}</strong></div><div><span>Estimated net</span><strong class={(w?.estimatedNet ?? 0) >= 0 ? 'up' : 'down'}>{fmtSigned(w?.estimatedNet ?? 0, s.session?.currency ?? 'USD')}</strong></div><div><span>All-window estimate</span><strong class={(momentum?.estimatedNet ?? 0) >= 0 ? 'up' : 'down'}>{fmtSigned(momentum?.estimatedNet ?? 0, s.session?.currency ?? 'USD')}</strong></div>
       </section>

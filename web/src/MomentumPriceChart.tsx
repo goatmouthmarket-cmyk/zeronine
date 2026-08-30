@@ -61,6 +61,7 @@ export function MomentumPriceChart({
   const entryLineRef = useRef<IPriceLine | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
   const pointsRef = useRef<LineData<Time>[]>(points);
+  const fittedRef = useRef(false);
   const hasEntry = !compact && Number.isFinite(entryPrice);
   const entryRef = useRef({ hasEntry, entryPrice, entryDirection, entryLabel });
   const tradeView = !compact;
@@ -124,7 +125,10 @@ export function MomentumPriceChart({
       chartRef.current = chart;
       seriesRef.current = series;
       series.setData(pointsRef.current);
-      if (pointsRef.current.length > 1) chart.timeScale().fitContent();
+      if (pointsRef.current.length > 1) {
+        chart.timeScale().fitContent();
+        fittedRef.current = true;
+      }
       const entry = entryRef.current;
       if (entry.hasEntry && entry.entryPrice != null) {
         entryLineRef.current = series.createPriceLine({
@@ -139,22 +143,35 @@ export function MomentumPriceChart({
       }
     };
 
-    const resize = () => {
+    let animationFrame = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
+    const resizeNow = () => {
+      animationFrame = 0;
       const size = measuredSize(container);
       if (!size) return;
       mountChart(size);
+      if (size.width === lastWidth && size.height === lastHeight) return;
       chartRef.current?.resize(size.width, size.height);
+      lastWidth = size.width;
+      lastHeight = size.height;
+    };
+    const resize = () => {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(resizeNow);
     };
     const observer = new ResizeObserver(resize);
     observer.observe(container);
-    resize();
+    resizeNow();
 
     return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame);
       observer.disconnect();
       chartRef.current?.remove();
       chartRef.current = null;
       seriesRef.current = null;
       entryLineRef.current = null;
+      fittedRef.current = false;
     };
   }, [compact, tradeView]);
 
@@ -166,7 +183,16 @@ export function MomentumPriceChart({
     const rising = points.length < 2 || points[points.length - 1]!.value >= points[0]!.value;
     series.applyOptions({ color: rising ? '#75e8bd' : '#ff5263' });
     series.setData(points);
-    if (points.length > 1) chart.timeScale().fitContent();
+    if (points.length > 1) {
+      if (!fittedRef.current) {
+        chart.timeScale().fitContent();
+        fittedRef.current = true;
+      } else {
+        chart.timeScale().scrollToRealTime();
+      }
+    } else {
+      fittedRef.current = false;
+    }
   }, [points]);
 
   useEffect(() => {
