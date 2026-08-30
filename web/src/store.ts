@@ -1360,7 +1360,10 @@ export async function stopMomentumResearch(): Promise<MomentumState | null> {
 
 /** Starts the server-owned cTrader OAuth handoff. No broker credential enters browser state. */
 export async function startGoldOAuth(): Promise<string> {
-  const res = await api<{ ok: boolean; url: string }>('/api/gold/oauth/start');
+  const res = await api<{ ok: boolean; url: string }>('/api/gold/oauth/start', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
   if (!res.url) throw new Error('cTrader authorization is not available');
   return res.url;
 }
