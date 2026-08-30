@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 import { config } from '../config.ts';
-import { balanceSubscribe, getPrecision, ping, proposal, multiplierProposal, buy, sell, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
+import { balanceSubscribe, contractsFor, getPrecision, ping, proposal, multiplierProposal, buy, sell, proposalOpenContract, lastDigitOf } from '../core/digitMath.ts';
 import type { Direction, MultiplierDirection } from '../core/digitMath.ts';
 import { updateSessionBalance } from '../db/store.ts';
 
@@ -360,6 +360,11 @@ export class DerivPrivateClient {
       roundTripMs: Date.now() - requestSentAt,
       basis: args.basis ?? 'stake',
     };
+  }
+
+  async getAvailableContracts(symbol: string): Promise<Array<{ contract_type?: string }>> {
+    const msg = (await this.request(contractsFor(symbol, 0), 'contracts_for', 10000)) as any;
+    return Array.isArray(msg?.contracts_for?.available) ? msg.contracts_for.available : [];
   }
 
   async placeBuy(proposalId: string, price: number): Promise<{ contractId: string; payout: number; buyPrice: number; purchaseTime: number }> {

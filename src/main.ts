@@ -34,6 +34,9 @@ import { runPaperSweep } from './testlab/paper.ts';
 import { scanPatterns } from './testlab/patterns.ts';
 import { PaperSimulator } from './simulation/paperSimulator.ts';
 import { GoldRuntime } from './gold/runtime.ts';
+import { DerivGoldMarketDataAdapter } from './gold/deriv.ts';
+import { DerivGoldFeed } from './gold/derivFeed.ts';
+import { GoldResearchService } from './gold/researchService.ts';
 import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimulator.ts';
 import type { Direction } from './core/digitMath.ts';
 import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
@@ -200,7 +203,15 @@ async function main(): Promise<void> {
 
   const automation = new Automation(registry, client, hub, decisionMemory);
   const momentum = new MomentumObserver(hub);
-  const gold = new GoldRuntime();
+  const gold = new GoldRuntime({
+    adapter: new DerivGoldMarketDataAdapter(),
+    research: new GoldResearchService({
+      timeframe: '1m',
+      config: { minCandles: 12, maxSpreadToAtr: .5 },
+    }),
+  });
+  const goldFeed = new DerivGoldFeed(gold);
+  goldFeed.start();
   const startMomentumResearch = (): void => {
     void momentum.startAutomatic().catch((error) => {
       console.warn(`[momentum] automatic research start failed; retrying in 30 seconds: ${String(error)}`);

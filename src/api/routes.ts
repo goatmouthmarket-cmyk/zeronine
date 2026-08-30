@@ -79,6 +79,34 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!openTrade?.contract_id) return;
     settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
   };
+  const isGoldDerivTrade = (trade: { contract_type?: string; reason?: string | null } | null | undefined): boolean =>
+    Boolean(trade && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN') && /gold deriv manual/i.test(trade.reason ?? ''));
+  const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
+    const openTrade = owner ? getOpenTrade() : null;
+    return {
+      ...gold.state(),
+      deriv: {
+        provider: 'deriv',
+        symbol: config.goldDerivSymbol,
+        display: config.goldDerivDisplay,
+        connected: Boolean(owner && session),
+        demoConnected: Boolean(owner && session?.mode === 'demo'),
+        accountMode: owner ? session?.mode ?? null : null,
+        accountId: owner ? session?.loginid ?? null : null,
+        multiplierOptions: [10, 20, 30, 50, 100, 200, 500],
+        defaultMultiplier: 20,
+        openTrade: isGoldDerivTrade(openTrade) ? openTrade : null,
+        blockedByOpenTrade: openTrade && !isGoldDerivTrade(openTrade) ? openTrade : null,
+        message: !owner
+          ? 'Unlock owner controls before placing Deriv Gold trades.'
+          : !session
+            ? 'Connect a Deriv demo account to trade Gold through Deriv API.'
+            : session.mode !== 'demo'
+              ? 'Switch to a Deriv demo account. Gold API trading is demo-only.'
+              : 'Deriv demo account connected for Gold multiplier orders.',
+      },
+    };
+  };
 
   app.get('/health', async () => ({
     ok: true,
@@ -133,15 +161,18 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
       paperSimulation: paperSimulator.state(),
       momentum: momentum?.state() ?? null,
-      gold: gold.state(),
+      gold: goldState(owner, session),
     };
   });
 
   /**
-   * Gold is a separate, virtual-first workspace. State contains no OAuth
-   * material and this request never opens a cTrader connection.
+   * Gold state contains no OAuth material. The active trading path uses the
+   * existing Deriv account session; cTrader onboarding remains isolated.
    */
-  app.get('/api/gold/state', async () => ({ state: gold.state() }));
+  app.get('/api/gold/state', async (req) => {
+    const owner = isOwner(req);
+    return { state: goldState(owner, getSession()) };
+  });
 
   /** Gold OAuth is distinct from Deriv OAuth and remains demo/read-only. */
   app.get('/api/gold/onboarding', async (req, reply) => {
@@ -217,9 +248,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
-  // These routes are deliberately virtual-only. The runtime's readiness gate
-  // rejects every command until a reviewed adapter has supplied fresh, valid
-  // broker market data. There is no cTrader order route in this service.
+  // Virtual Gold paper routes remain separate from Deriv account contracts.
   app.post('/api/gold/paper/orders', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     const body = req.body as { side?: unknown; volume?: unknown; stopLoss?: unknown; takeProfit?: unknown } | undefined;
@@ -280,6 +309,311 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     } catch (error) {
       reply.code(error instanceof GoldRuntimeUnavailableError ? 409 : 400);
       return { error: String(error instanceof Error ? error.message : error) };
+    }
+  });
+
+  /**
+   * Gold demo execution uses Deriv API multiplier contracts, not MT5 or
+   * cTrader CFD order routing. It shares the account-wide single-open-contract
+   * lock with Momentum and manual trades.
+   */
+  app.post('/api/gold/trade', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'connect a Deriv demo account to place a Gold trade' };
+    }
+    if (session.mode !== 'demo') {
+      reply.code(403);
+      return { error: 'Gold trades are restricted to a Deriv demo account' };
+    }
+    if (automation.isRunning()) {
+      reply.code(409);
+      return { error: 'stop the bot before placing a Gold trade' };
+    }
+    const body = (req.body ?? {}) as { side?: unknown; stake?: unknown; multiplier?: unknown; takeProfit?: unknown; stopLoss?: unknown };
+    const side = body.side === 'BUY' || body.side === 'SELL' ? body.side : null;
+    const direction = side === 'BUY' ? 'up' : side === 'SELL' ? 'down' : null;
+    const stake = Number(body.stake);
+    const requestedMultiplier = Number(body.multiplier);
+    const multiplier = Number.isFinite(requestedMultiplier) && requestedMultiplier > 0
+      ? Math.floor(requestedMultiplier)
+      : undefined;
+    const takeProfit = Number(body.takeProfit);
+    const stopLoss = Number(body.stopLoss);
+    if (!side || !direction || !Number.isFinite(stake) || stake <= 0) {
+      reply.code(400);
+      return { error: 'a BUY/SELL side and positive stake are required' };
+    }
+    if (multiplier === undefined || multiplier <= 0) {
+      reply.code(400);
+      return { error: 'a positive multiplier is required' };
+    }
+    if ((Number.isFinite(takeProfit) && takeProfit <= 0) || (Number.isFinite(stopLoss) && stopLoss <= 0)) {
+      reply.code(400);
+      return { error: 'take profit and stop loss must be positive when provided' };
+    }
+
+    const goldState = gold.state();
+    const symbol = goldState.research.state.symbol;
+    const signal = goldState.research.state.signal;
+    if (!goldState.research.ready || !symbol || !goldState.research.state.quote) {
+      reply.code(409);
+      return { error: goldState.research.reason ?? 'Gold market data is not ready yet' };
+    }
+    if (!signal || (signal.direction !== 'BUY' && signal.direction !== 'SELL')) {
+      reply.code(409);
+      return { error: 'Gold research has no validated BUY/SELL direction yet; keep watching the market' };
+    }
+    if (signal.direction !== side) {
+      reply.code(409);
+      return { error: `Gold research recommends ${signal.direction}; review before trading the opposite side` };
+    }
+
+    const settings = getSettings();
+    if (stake > settings.max_stake) {
+      reply.code(400);
+      return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
+    }
+    const openTrade = getOpenTrade();
+    if (openTrade) {
+      if (openTrade.contract_id) {
+        settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
+      }
+      reply.code(409);
+      return { error: 'wait for the open contract to settle before placing a Gold trade' };
+    }
+    const gate = riskCheck({
+      stake,
+      settings,
+      balance: session.balance,
+      context: buildRecoveryContext(settings),
+      lastTradeAt: listTrades(1)[0]?.ts ?? 0,
+      tradeGapMs: config.tradeGapMs,
+      now: Date.now(),
+    });
+    if (!gate.ok) {
+      reply.code(409);
+      return { error: `Gold trade blocked: ${gate.reason}` };
+    }
+
+    if (!client.isConnected) {
+      try {
+        const token = await resolveStoredToken();
+        const connected = await client.reconnect(token, session.loginid);
+        if (connected.mode !== 'demo') {
+          reply.code(403);
+          return { error: 'Gold trades are restricted to a Deriv demo account' };
+        }
+      } catch (error) {
+        reply.code(409);
+        return { error: `socket reconnect failed: ${String(error)}` };
+      }
+    }
+
+    let recordedTrade: ReturnType<typeof insertTrade> | null = null;
+    let stage: 'availability' | 'proposal' | 'reserve' | 'buy' | 'finalize' = 'availability';
+    let buyAttempted = false;
+    let bought: { contractId: string; payout: number; buyPrice: number; purchaseTime: number } | null = null;
+    let quoteForRecovery: Awaited<ReturnType<typeof client.getMultiplierQuote>> | null = null;
+    try {
+      const available = await client.getAvailableContracts(symbol.id);
+      const requiredContract = direction === 'up' ? 'MULTUP' : 'MULTDOWN';
+      if (!available.some((item) => item.contract_type === requiredContract)) {
+        reply.code(409);
+        return { error: `${requiredContract} is not available for Deriv Gold symbol ${symbol.name}` };
+      }
+      stage = 'proposal';
+      const quote = quoteForRecovery = await client.getMultiplierQuote({
+        direction,
+        amount: stake,
+        currency: session.currency || 'USD',
+        symbol: symbol.id,
+        multiplier,
+        takeProfit: Number.isFinite(takeProfit) ? takeProfit : undefined,
+        stopLoss: Number.isFinite(stopLoss) ? stopLoss : undefined,
+      });
+      if (!(quote.askPrice > 0) || !Number.isFinite(quote.askPrice)) {
+        throw new Error('Gold multiplier proposal returned an invalid purchase price');
+      }
+      stage = 'reserve';
+      if (getOpenTrade()) {
+        reply.code(409);
+        return { error: 'another account contract opened while the Gold quote was loading' };
+      }
+      const reason = [
+        `gold deriv manual ${side}`,
+        `multiplier x${multiplier}`,
+        Number.isFinite(takeProfit) ? `TP ${takeProfit}` : null,
+        Number.isFinite(stopLoss) ? `SL ${stopLoss}` : null,
+        `research ${signal.direction} ${signal.confidence}%`,
+        signal.reasons[0] ?? signal.blockers[0] ?? 'Gold research signal',
+      ].filter(Boolean).join(' | ');
+      const trade = recordedTrade = insertTrade({
+        ts: Date.now(),
+        market: symbol.id,
+        contract_type: direction === 'up' ? 'MULTUP' : 'MULTDOWN',
+        barrier: 0,
+        duration: 0,
+        duration_unit: 'm',
+        stake,
+        ask_price: quote.askPrice,
+        payout: quote.payout,
+        est_win: signal.confidence / 100,
+        profit: 0,
+        status: 'purchasing',
+        contract_id: '',
+        purchase_id: `gold-deriv-${Date.now()}`,
+        reason,
+        origin: 'manual',
+      });
+      stage = 'buy';
+      buyAttempted = true;
+      bought = await client.placeBuy(quote.id, quote.askPrice);
+      const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice;
+      const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
+      const entryPrice = Number.isFinite(quote.spot) && quote.spot > 0
+        ? quote.spot
+        : goldState.research.state.quote.mid;
+      stage = 'finalize';
+      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entryPrice);
+      const purchased = getTrade(trade.id, trade.account_id) ?? trade;
+      settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
+      hub.emit({ type: 'trade', ts: Date.now(), trade: purchased, manual: true, gold: true });
+      return {
+        ok: true,
+        trade: {
+          id: trade.id,
+          contractId: bought.contractId,
+          market: symbol.id,
+          contractType: trade.contract_type,
+          ask: actualStake,
+          payout: actualPayout,
+          multiplier,
+          entryPrice,
+          currency: session.currency || 'USD',
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (recordedTrade && buyAttempted && !bought) {
+        try {
+          markTradePurchaseOutcomeUnknown(recordedTrade.id, recordedTrade.account_id);
+        } catch (persistenceError) {
+          console.error('[gold deriv] could not record uncertain purchase', { tradeId: recordedTrade.id, persistenceError: String(persistenceError) });
+        }
+        reply.code(503);
+        return {
+          error: 'purchase outcome unknown; the account is locked for reconciliation. Do not retry this order.',
+          code: 'purchase_outcome_unknown',
+        };
+      }
+      if (recordedTrade && bought) {
+        try {
+          const existing = getTrade(recordedTrade.id, recordedTrade.account_id);
+          if (existing?.contract_id !== bought.contractId) {
+            const quote = quoteForRecovery;
+            markTradePurchased(
+              recordedTrade.id,
+              bought.contractId,
+              bought.buyPrice > 0 ? bought.buyPrice : quote?.askPrice ?? recordedTrade.ask_price,
+              bought.payout > 0 ? bought.payout : quote?.payout ?? recordedTrade.payout,
+              recordedTrade.account_id,
+              quote?.spot ?? goldState.research.state.quote?.mid,
+            );
+          }
+          const persisted = getTrade(recordedTrade.id, recordedTrade.account_id);
+          if (persisted?.contract_id === bought.contractId) {
+            settleInBackground(client, hub, persisted.id, bought.contractId, persisted.stake, persisted.payout, persisted.account_id);
+          }
+        } catch (persistenceError) {
+          console.error('[gold deriv] confirmed purchase needs reconciliation', { tradeId: recordedTrade.id, contractId: bought.contractId, persistenceError: String(persistenceError) });
+        }
+        reply.code(202);
+        return { ok: true, warning: 'purchase was confirmed; local status is reconciling', contractId: bought.contractId };
+      }
+      if (recordedTrade) resolveTrade(recordedTrade.id, 'error', 0, '', undefined, recordedTrade.account_id);
+      console.warn('[gold deriv] order failed before purchase', { stage, symbol: symbol.id, side, stake, error: message });
+      reply.code(502);
+      return { error: `Gold ${stage} failed: ${message}` };
+    }
+  });
+
+  app.post('/api/gold/close', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'connect a Deriv demo account to close a Gold trade' };
+    }
+    if (session.mode !== 'demo') {
+      reply.code(403);
+      return { error: 'Gold trades are restricted to a Deriv demo account' };
+    }
+    const openTrade = getOpenTrade();
+    if (!openTrade) {
+      reply.code(409);
+      return { error: 'no open Gold trade found' };
+    }
+    if ((openTrade.contract_type !== 'MULTUP' && openTrade.contract_type !== 'MULTDOWN') || !/gold deriv manual/i.test(openTrade.reason ?? '')) {
+      reply.code(409);
+      return { error: 'the open account contract is not a Gold Deriv multiplier trade' };
+    }
+    if (!openTrade.contract_id) {
+      reply.code(409);
+      return { error: 'Gold purchase outcome is unknown; reconcile at Deriv before closing locally' };
+    }
+    if (!client.isConnected) {
+      try {
+        const token = await resolveStoredToken();
+        const connected = await client.reconnect(token, session.loginid);
+        if (connected.mode !== 'demo') {
+          reply.code(403);
+          return { error: 'Gold trades are restricted to a Deriv demo account' };
+        }
+      } catch (error) {
+        reply.code(409);
+        return { error: `socket reconnect failed: ${String(error)}` };
+      }
+    }
+    try {
+      const sold = await client.sellContract(openTrade.contract_id, 0);
+      const profit = Math.round((sold.soldFor - openTrade.stake) * 100) / 100;
+      const status = profit > 0 ? 'won' : profit < 0 ? 'lost' : 'push';
+      resolveTrade(openTrade.id, status, profit, sold.contractId, undefined, openTrade.account_id);
+      activeSettlements.delete(settlementKeyFor(openTrade.account_id, openTrade.id, openTrade.contract_id));
+      const trade = getTrade(openTrade.id, openTrade.account_id) ?? openTrade;
+      const performance = getPerformanceSummary(openTrade.account_id);
+      hub.emit({ type: 'trade', ts: Date.now(), trade, performance, manual: true, gold: true, settled: true, sold: true });
+      hub.emit({
+        type: 'contract',
+        ts: Date.now(),
+        contractId: sold.contractId,
+        tradeId: openTrade.id,
+        result: status,
+        profit,
+        sellPrice: sold.soldFor,
+        buyPrice: openTrade.stake,
+        sold: true,
+        settled: true,
+        status,
+      });
+      return {
+        ok: true,
+        trade,
+        sold: {
+          contractId: sold.contractId,
+          soldFor: sold.soldFor,
+          profit,
+          balanceAfter: sold.balanceAfter,
+          transactionId: sold.transactionId,
+          referenceId: sold.referenceId,
+        },
+      };
+    } catch (error) {
+      reply.code(503);
+      return { error: `Gold close failed: ${error instanceof Error ? error.message : String(error)}` };
     }
   });
 

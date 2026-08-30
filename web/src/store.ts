@@ -473,8 +473,8 @@ export interface MomentumTradeClose {
  * deliberately diagnostic only: it is never a broker account or price feed.
  */
 export interface GoldDiagnostics {
-  provider: 'ctrader';
-  status: 'disabled' | 'invalid_configuration' | 'unconfigured' | 'read_only_stub';
+  provider: 'ctrader' | 'deriv';
+  status: 'disabled' | 'invalid_configuration' | 'unconfigured' | 'read_only_stub' | 'market_data_connecting' | 'market_data_active' | 'market_unavailable';
   symbol: string;
   requestedAccountMode: 'demo' | 'live';
   liveEnabled: boolean;
@@ -697,9 +697,49 @@ export type GoldPaperCloseResult =
   | { closed: true; trade: GoldPaperTrade; state: GoldPaperState }
   | { closed: false; reason: string; state: GoldPaperState };
 
+export interface GoldDerivTradePurchase {
+  id: number;
+  contractId?: string;
+  contract_id?: string;
+  market?: string;
+  contractType?: 'MULTUP' | 'MULTDOWN';
+  ask?: number;
+  payout?: number;
+  multiplier?: number;
+  entryPrice?: number | null;
+  profit?: number | null;
+  pnl?: number | null;
+  currency?: string;
+}
+
+export interface GoldDerivTradeClose {
+  contractId?: string;
+  soldFor?: number;
+  profit?: number;
+  balanceAfter?: number | null;
+  transactionId?: string;
+  referenceId?: string;
+}
+
+export interface GoldDerivState {
+  provider: 'deriv';
+  symbol: string;
+  display: string;
+  connected: boolean;
+  demoConnected: boolean;
+  accountMode: 'demo' | 'real' | null;
+  accountId: string | null;
+  multiplierOptions: number[];
+  defaultMultiplier: number;
+  openTrade: TradeRow | null;
+  blockedByOpenTrade: TradeRow | null;
+  message: string;
+}
+
 export interface GoldModuleState {
   diagnostics: GoldDiagnostics;
   connection?: GoldConnectionState;
+  deriv?: GoldDerivState;
   research: GoldRuntimeReadiness & { state: GoldResearchState };
   paper: GoldRuntimeReadiness & { state: GoldPaperState };
   backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
@@ -1418,8 +1458,29 @@ export async function resetGoldPaperTrade(): Promise<GoldPaperState> {
   return res.state;
 }
 
-// Gold state is intentionally a public, diagnostic-only read. Fetching it
-// cannot authorize, subscribe to, or place an order with a broker.
+export async function placeGoldDerivTrade(input: {
+  side: GoldSide;
+  stake: number;
+  multiplier: number;
+  takeProfit?: number | null;
+  stopLoss?: number | null;
+}): Promise<GoldDerivTradePurchase> {
+  const res = await api<{ ok: boolean; trade: GoldDerivTradePurchase }>('/api/gold/trade', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  void refreshCoreState();
+  return res.trade;
+}
+
+export async function closeGoldDerivTrade(): Promise<GoldDerivTradeClose> {
+  const res = await api<{ ok: boolean; sold: GoldDerivTradeClose }>('/api/gold/close', { method: 'POST' });
+  void refreshCoreState();
+  return res.sold;
+}
+
+// Gold state is intentionally non-secret. Deriv demo execution still happens
+// only through explicit POST actions and never exposes OAuth tokens.
 export async function loadGoldState(): Promise<GoldModuleState | null> {
   try {
     const res = await api<{ state: GoldModuleState }>('/api/gold/state');

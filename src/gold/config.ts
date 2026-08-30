@@ -1,3 +1,4 @@
+export type GoldProvider = 'ctrader' | 'deriv';
 export type CTraderAccountMode = 'demo' | 'live';
 
 export interface GoldConfig {
@@ -14,17 +15,24 @@ export interface GoldConfig {
   validationErrors: string[];
 }
 
-export type GoldDiagnosticStatus = 'disabled' | 'invalid_configuration' | 'unconfigured' | 'read_only_stub';
+export type GoldDiagnosticStatus =
+  | 'disabled'
+  | 'invalid_configuration'
+  | 'unconfigured'
+  | 'read_only_stub'
+  | 'market_data_connecting'
+  | 'market_data_active'
+  | 'market_unavailable';
 
 export interface GoldDiagnostics {
-  provider: 'ctrader';
+  provider: GoldProvider;
   status: GoldDiagnosticStatus;
   symbol: string;
   requestedAccountMode: CTraderAccountMode;
   liveEnabled: boolean;
   /** False until a reviewed broker market-data adapter is installed. */
   marketDataCapable: boolean;
-  executionCapable: false;
+  executionCapable: boolean;
   configured: boolean;
   missing: string[];
   validationErrors: string[];

@@ -45,6 +45,8 @@ export interface AppConfig {
   autoTuneEnabled: boolean;
   autoTuneMinTrades: number;
   autoTuneFreshnessMs: number;
+  goldDerivSymbol: string;
+  goldDerivDisplay: string;
 }
 
 function loadEnvFile(file: string): void {
@@ -132,6 +134,8 @@ export function loadConfig(): AppConfig {
     autoTuneEnabled: process.env.AUTO_TUNE_ENABLED !== '0',
     autoTuneMinTrades: num('AUTO_TUNE_MIN_TRADES', 20),
     autoTuneFreshnessMs: num('AUTO_TUNE_FRESHNESS_MS', 48 * 60 * 60 * 1000),
+    goldDerivSymbol: process.env.GOLD_DERIV_SYMBOL || 'frxXAUUSD',
+    goldDerivDisplay: process.env.GOLD_DERIV_DISPLAY || 'Gold / US Dollar',
   };
 }
 

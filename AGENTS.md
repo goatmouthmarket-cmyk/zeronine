@@ -19,8 +19,8 @@
 - Paired arbitrage feasibility execution is demo-only, owner-confirmed, globally exclusive, and must remain outside normal trades, recovery, and account P&L. Unknown buy outcomes are evidence to reconcile, never grounds for an automatic retry.
 - Keep Deriv multiplier proposal payloads expiry-free: `MULTUP` and `MULTDOWN` must not include `duration`, `duration_unit`, `date_expiry`, or a digit barrier.
 - Keep `src/gold/` isolated from Deriv digit and Momentum execution. Gold uses normalized price/candle data, its own risk and paper/backtest engines, and never inherits martingale or recovery behavior.
-- Gold broker access is OAuth-only and demo-first: never configure a shared broker access token, expose provider tokens to the browser, or enable a live order path before the PostgreSQL ownership, idempotency, worker-lease, and reconciliation design is operational.
-- Use cTrader's documented accounts-consent flow for Gold, with server-side token exchange and encrypted storage. Only server-discovered demo accounts may be selected; OAuth authorization, account selection, market data, and execution are separate gates.
+- Gold dashboard execution uses Deriv API demo multiplier contracts for the configured Gold symbol (`GOLD_DERIV_SYMBOL`, default `frxXAUUSD`). It must remain demo-only, owner-gated, proposal/buy/sell based, and protected by the shared single-open-account-contract guard.
+- MT5 Gold and cTrader CFD trading are not executable through the Gold dashboard path. Keep cTrader OAuth code as an optional future connector only; do not make the visible Gold flow depend on cTrader app approval.
 
 ## Validation
 

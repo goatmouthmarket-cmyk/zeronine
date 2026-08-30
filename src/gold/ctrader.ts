@@ -2,7 +2,7 @@ import { goldDiagnostics, loadGoldConfig } from './config.ts';
 import type { GoldConfig, GoldDiagnostics } from './config.ts';
 
 export interface GoldInstrument {
-  provider: 'ctrader';
+  provider: 'ctrader' | 'deriv';
   symbol: string;
   display: string;
   assetClass: 'metal';
@@ -11,7 +11,7 @@ export interface GoldInstrument {
 }
 
 export interface GoldPriceTick {
-  provider: 'ctrader';
+  provider: 'ctrader' | 'deriv';
   symbol: string;
   epochMs: number;
   bid: number | null;
