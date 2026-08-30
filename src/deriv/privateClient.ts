@@ -90,6 +90,8 @@ export interface ContractUpdate {
   sellPrice: number;
   buyPrice: number;
   settled: boolean;
+  currentSpot?: number;
+  currentSpotTime?: number;
   exitSpot?: number;
   exitDigit?: number;
   entrySpot?: number;
@@ -257,6 +259,8 @@ export class DerivPrivateClient {
     const entryTick = c.entry_tick;
     const exitSpot = Number(exitTick?.quote ?? c.exit_spot ?? NaN);
     const entrySpot = Number(entryTick?.quote ?? c.entry_spot ?? NaN);
+    const currentSpot = Number(c.current_spot ?? c.spot ?? NaN);
+    const currentSpotTime = Number(c.current_spot_time ?? NaN);
     const precision = getPrecision(c.underlying_symbol);
     return {
       contractId: String(c.contract_id),
@@ -265,6 +269,8 @@ export class DerivPrivateClient {
       sellPrice: Number(c.sell_price ?? 0),
       buyPrice: Number(c.buy_price ?? 0),
       settled: !!c.is_sold,
+      currentSpot: Number.isFinite(currentSpot) ? currentSpot : undefined,
+      currentSpotTime: Number.isFinite(currentSpotTime) ? currentSpotTime : undefined,
       exitSpot: Number.isFinite(exitSpot) ? exitSpot : undefined,
       exitDigit: Number.isFinite(exitSpot) ? lastDigitOf(exitSpot, precision) : undefined,
       entrySpot: Number.isFinite(entrySpot) ? entrySpot : undefined,

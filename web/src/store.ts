@@ -211,6 +211,16 @@ export interface ContractEvt {
   profit?: number;
   sellPrice?: number;
   buyPrice?: number;
+  currentSpot?: number;
+  currentSpotTime?: number;
+  entrySpot?: number;
+  entryDigit?: number;
+  exitSpot?: number;
+  exitDigit?: number;
+  dateStart?: number;
+  dateExpiry?: number;
+  entryTickTime?: number;
+  exitTickTime?: number;
   status?: string;
   settled?: boolean;
   sold?: boolean;
@@ -220,6 +230,16 @@ export interface ContractEvt {
     profit?: number;
     sellPrice?: number;
     buyPrice?: number;
+    currentSpot?: number;
+    currentSpotTime?: number;
+    entrySpot?: number;
+    entryDigit?: number;
+    exitSpot?: number;
+    exitDigit?: number;
+    dateStart?: number;
+    dateExpiry?: number;
+    entryTickTime?: number;
+    exitTickTime?: number;
     settled?: boolean;
     status?: string;
   };
@@ -1054,6 +1074,16 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       const liveProfit = Number(evt.profit ?? update.profit);
       const sellPrice = Number.isFinite(Number(evt.sellPrice)) ? Number(evt.sellPrice) : Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined;
       const buyPrice = Number.isFinite(Number(evt.buyPrice)) ? Number(evt.buyPrice) : Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined;
+      const currentSpot = Number.isFinite(Number(evt.currentSpot)) ? Number(evt.currentSpot) : Number.isFinite(Number(update.currentSpot)) ? Number(update.currentSpot) : undefined;
+      const currentSpotTime = Number.isFinite(Number(evt.currentSpotTime)) ? Number(evt.currentSpotTime) : Number.isFinite(Number(update.currentSpotTime)) ? Number(update.currentSpotTime) : undefined;
+      const entrySpot = Number.isFinite(Number(evt.entrySpot)) ? Number(evt.entrySpot) : Number.isFinite(Number(update.entrySpot)) ? Number(update.entrySpot) : undefined;
+      const entryDigit = Number.isFinite(Number(evt.entryDigit)) ? Number(evt.entryDigit) : Number.isFinite(Number(update.entryDigit)) ? Number(update.entryDigit) : undefined;
+      const exitSpot = Number.isFinite(Number(evt.exitSpot)) ? Number(evt.exitSpot) : Number.isFinite(Number(update.exitSpot)) ? Number(update.exitSpot) : undefined;
+      const exitDigit = Number.isFinite(Number(evt.exitDigit)) ? Number(evt.exitDigit) : Number.isFinite(Number(update.exitDigit)) ? Number(update.exitDigit) : undefined;
+      const dateStart = Number.isFinite(Number(evt.dateStart)) ? Number(evt.dateStart) : Number.isFinite(Number(update.dateStart)) ? Number(update.dateStart) : undefined;
+      const dateExpiry = Number.isFinite(Number(evt.dateExpiry)) ? Number(evt.dateExpiry) : Number.isFinite(Number(update.dateExpiry)) ? Number(update.dateExpiry) : undefined;
+      const entryTickTime = Number.isFinite(Number(evt.entryTickTime)) ? Number(evt.entryTickTime) : Number.isFinite(Number(update.entryTickTime)) ? Number(update.entryTickTime) : undefined;
+      const exitTickTime = Number.isFinite(Number(evt.exitTickTime)) ? Number(evt.exitTickTime) : Number.isFinite(Number(update.exitTickTime)) ? Number(update.exitTickTime) : undefined;
       const informativeProfit = Number.isFinite(liveProfit)
         && (liveProfit !== 0 || eventSettled === true || Boolean(eventResult) || (sellPrice != null && sellPrice > 0) || (buyPrice != null && buyPrice > 0));
       const c: ContractEvt = {
@@ -1063,6 +1093,16 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
         profit: informativeProfit ? liveProfit : sameContract ? previous?.profit : undefined,
         sellPrice: sellPrice ?? (sameContract ? previous?.sellPrice : undefined),
         buyPrice: buyPrice ?? (sameContract ? previous?.buyPrice : undefined),
+        currentSpot: currentSpot ?? (sameContract ? previous?.currentSpot : undefined),
+        currentSpotTime: currentSpotTime ?? (sameContract ? previous?.currentSpotTime : undefined),
+        entrySpot: entrySpot ?? (sameContract ? previous?.entrySpot : undefined),
+        entryDigit: entryDigit ?? (sameContract ? previous?.entryDigit : undefined),
+        exitSpot: exitSpot ?? (sameContract ? previous?.exitSpot : undefined),
+        exitDigit: exitDigit ?? (sameContract ? previous?.exitDigit : undefined),
+        dateStart: dateStart ?? (sameContract ? previous?.dateStart : undefined),
+        dateExpiry: dateExpiry ?? (sameContract ? previous?.dateExpiry : undefined),
+        entryTickTime: entryTickTime ?? (sameContract ? previous?.entryTickTime : undefined),
+        exitTickTime: exitTickTime ?? (sameContract ? previous?.exitTickTime : undefined),
         status: typeof evt.status === 'string' ? evt.status : typeof update.status === 'string' ? update.status : undefined,
         settled: eventSettled,
         sold: typeof evt.sold === 'boolean' ? evt.sold : undefined,
@@ -1072,6 +1112,16 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
           profit: informativeProfit ? liveProfit : sameContract ? previous?.profit : undefined,
           sellPrice: Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined,
           buyPrice: Number.isFinite(Number(update.buyPrice)) ? Number(update.buyPrice) : undefined,
+          currentSpot: Number.isFinite(Number(update.currentSpot)) ? Number(update.currentSpot) : sameContract ? previous?.update?.currentSpot : undefined,
+          currentSpotTime: Number.isFinite(Number(update.currentSpotTime)) ? Number(update.currentSpotTime) : sameContract ? previous?.update?.currentSpotTime : undefined,
+          entrySpot: Number.isFinite(Number(update.entrySpot)) ? Number(update.entrySpot) : sameContract ? previous?.update?.entrySpot : undefined,
+          entryDigit: Number.isFinite(Number(update.entryDigit)) ? Number(update.entryDigit) : sameContract ? previous?.update?.entryDigit : undefined,
+          exitSpot: Number.isFinite(Number(update.exitSpot)) ? Number(update.exitSpot) : sameContract ? previous?.update?.exitSpot : undefined,
+          exitDigit: Number.isFinite(Number(update.exitDigit)) ? Number(update.exitDigit) : sameContract ? previous?.update?.exitDigit : undefined,
+          dateStart: Number.isFinite(Number(update.dateStart)) ? Number(update.dateStart) : sameContract ? previous?.update?.dateStart : undefined,
+          dateExpiry: Number.isFinite(Number(update.dateExpiry)) ? Number(update.dateExpiry) : sameContract ? previous?.update?.dateExpiry : undefined,
+          entryTickTime: Number.isFinite(Number(update.entryTickTime)) ? Number(update.entryTickTime) : sameContract ? previous?.update?.entryTickTime : undefined,
+          exitTickTime: Number.isFinite(Number(update.exitTickTime)) ? Number(update.exitTickTime) : sameContract ? previous?.update?.exitTickTime : undefined,
           settled: typeof update.settled === 'boolean' ? update.settled : undefined,
           status: typeof update.status === 'string' ? update.status : undefined,
         },
@@ -1087,10 +1137,10 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
             status: c.result as TradeRow['status'],
             profit: Number(c.profit ?? trade.profit ?? 0),
             resolved_at: Date.now(),
-            entry_spot: Number.isFinite(Number(update.entrySpot)) ? Number(update.entrySpot) : trade.entry_spot,
-            entry_digit: Number.isFinite(Number(update.entryDigit)) ? Number(update.entryDigit) : trade.entry_digit,
-            exit_spot: Number.isFinite(Number(update.exitSpot)) ? Number(update.exitSpot) : trade.exit_spot,
-            exit_digit: Number.isFinite(Number(update.exitDigit)) ? Number(update.exitDigit) : trade.exit_digit,
+            entry_spot: Number.isFinite(Number(c.entrySpot)) ? Number(c.entrySpot) : trade.entry_spot,
+            entry_digit: Number.isFinite(Number(c.entryDigit)) ? Number(c.entryDigit) : trade.entry_digit,
+            exit_spot: Number.isFinite(Number(c.exitSpot)) ? Number(c.exitSpot) : trade.exit_spot,
+            exit_digit: Number.isFinite(Number(c.exitDigit)) ? Number(c.exitDigit) : trade.exit_digit,
           };
         });
         if (c.phase !== 'purchased') {

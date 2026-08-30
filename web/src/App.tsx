@@ -2344,6 +2344,33 @@ function momentumProgress(value: number | null | undefined): number {
   return Math.max(0, Math.min(100, normalized));
 }
 
+function durationUnitMs(unit: string | undefined): number {
+  if (unit === 's') return 1_000;
+  if (unit === 'm') return 60_000;
+  if (unit === 'h') return 3_600_000;
+  if (unit === 'd') return 86_400_000;
+  if (unit === 't') return 0;
+  return 0;
+}
+
+function expectedTradeDurationMs(trade?: Pick<TradeRow, 'duration' | 'duration_unit'> | null): number {
+  if (!trade || !(trade.duration > 0)) return 0;
+  return trade.duration * durationUnitMs(trade.duration_unit);
+}
+
+function providerEpochMs(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n * 1000 : 0;
+}
+
+function mergeMomentumSamples(samples: MomentumScanSample[], next: MomentumScanSample | null, limit = 180): MomentumScanSample[] {
+  const valid = samples.filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote));
+  if (next && Number.isFinite(next.epoch) && Number.isFinite(next.quote)) valid.push(next);
+  const deduped = new Map<string, MomentumScanSample>();
+  for (const sample of valid) deduped.set(`${Math.trunc(sample.epoch)}:${sample.quote}`, sample);
+  return [...deduped.values()].sort((a, b) => a.epoch - b.epoch).slice(-limit);
+}
+
 function MomentumWatchboard({
   markets,
   selected,
@@ -2491,12 +2518,21 @@ function MomentumTradeDesk({
   const detailStopLoss = stopLoss ?? (Number.isFinite(reasonStopLoss) ? reasonStopLoss : undefined);
   if (purchase && localPurchaseTimeRef.current == null) localPurchaseTimeRef.current = Date.now();
   if (!purchase && !hasActiveTradeEntry) localPurchaseTimeRef.current = null;
-  const openedAt = trade?.ts ?? localPurchaseTimeRef.current ?? 0;
-  const elapsedText = openedAt ? fmtElapsed((settledTrade?.resolved_at ?? nowMs) - openedAt) : '--';
+  const providerStartMs = providerEpochMs(matchingContract?.dateStart ?? matchingContract?.update?.dateStart);
+  const providerExpiryMs = providerEpochMs(matchingContract?.dateExpiry ?? matchingContract?.update?.dateExpiry);
+  const openedAt = providerStartMs || trade?.ts || localPurchaseTimeRef.current || 0;
+  const scheduledDurationMs = expectedTradeDurationMs(trade) || (providerStartMs && providerExpiryMs ? providerExpiryMs - providerStartMs : 0);
+  const expectedExpiryMs = providerExpiryMs || (openedAt && scheduledDurationMs ? openedAt + scheduledDurationMs : 0);
+  const settlementOverdue = Boolean(hasActiveTradeEntry && !settledTrade && expectedExpiryMs && nowMs - expectedExpiryMs > 30_000);
+  const rawElapsedMs = openedAt ? (settledTrade?.resolved_at ?? nowMs) - openedAt : 0;
+  const displayElapsedMs = settlementOverdue && scheduledDurationMs ? Math.min(rawElapsedMs, scheduledDurationMs) : rawElapsedMs;
+  const elapsedText = openedAt ? `${fmtElapsed(displayElapsedMs)}${settlementOverdue ? '+' : ''}` : '--';
   const openedText = openedAt ? new Date(openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--';
   const evidenceStatus = settledTrade
     ? 'Added to Momentum model evidence'
-    : hasActiveTradeEntry
+    : settlementOverdue
+      ? 'Settlement pending; provider lock still active'
+      : hasActiveTradeEntry
       ? 'Will feed model after settlement'
       : closed
         ? 'Close result is being refreshed into history'
@@ -2513,11 +2549,19 @@ function MomentumTradeDesk({
   const chartDisplay = chartSnapshot?.symbol === chartSymbol && (hasActiveTradeEntry || !display) ? chartSnapshot.display : display ?? trade?.market ?? 'Momentum market';
   const chartFrozenEntry = chartSnapshot?.symbol === chartSymbol && chartSnapshot.entryPrice != null ? chartSnapshot.entryPrice : chartEntryPrice;
   const chartDirection = (chartSnapshot?.symbol === chartSymbol && chartSnapshot.direction ? chartSnapshot.direction : suggestedDirection) ?? undefined;
+  const contractCurrentSpot = Number.isFinite(Number(matchingContract?.currentSpot ?? matchingContract?.update?.currentSpot))
+    ? Number(matchingContract?.currentSpot ?? matchingContract?.update?.currentSpot)
+    : undefined;
+  const contractCurrentEpoch = Number.isFinite(Number(matchingContract?.currentSpotTime ?? matchingContract?.update?.currentSpotTime))
+    ? Number(matchingContract?.currentSpotTime ?? matchingContract?.update?.currentSpotTime)
+    : Math.floor(nowMs / 1000);
   const liveSellPrice = Number.isFinite(Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice))
     ? Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice)
     : undefined;
   const contractPhase = settledTrade
     ? `Contract ${settledTrade.status}`
+    : settlementOverdue
+      ? 'Settlement overdue'
     : matchingContract?.result
       ? `Contract ${matchingContract.result}`
       : matchingContract?.phase
@@ -2538,6 +2582,8 @@ function MomentumTradeDesk({
     ? 'Sending demo order'
     : closing
       ? 'Closing demo contract'
+    : settlementOverdue
+      ? `Provider still reports contract ${trackedContractId || ''} open after scheduled expiry; waiting for settlement recovery`
     : openAccountTrade
       ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
       : !(Number.isFinite(stake) && stake > 0)
@@ -2623,7 +2669,19 @@ function MomentumTradeDesk({
     }
     setChartSnapshot((current) => {
       const sameTrade = current?.symbol === nextSymbol;
-      const nextSamples = symbol === nextSymbol && incomingSamples.length ? incomingSamples : sameTrade ? current.samples : [];
+      const entrySample = hasActiveTradeEntry && chartEntryPrice != null && openedAt
+        ? { epoch: Math.floor(openedAt / 1000), quote: chartEntryPrice }
+        : null;
+      const currentSpotSample = hasActiveTradeEntry && contractCurrentSpot != null
+        ? { epoch: contractCurrentEpoch, quote: contractCurrentSpot }
+        : null;
+      const seededSamples = hasActiveTradeEntry
+        ? (sameTrade ? current.samples : incomingSamples.filter((sample) => !openedAt || sample.epoch >= Math.floor(openedAt / 1000) - 5))
+        : incomingSamples;
+      const nextSamples = mergeMomentumSamples(
+        entrySample ? [entrySample, ...seededSamples] : seededSamples,
+        currentSpotSample,
+      );
       if (hasActiveTradeEntry) {
         return {
           symbol: nextSymbol,
@@ -2641,7 +2699,7 @@ function MomentumTradeDesk({
         direction: suggestedDirection,
       };
     });
-  }, [chartEntryPrice, chartSymbol, display, hasActiveTradeEntry, incomingSamples, suggestedDirection, symbol, trade?.market]);
+  }, [chartEntryPrice, chartSymbol, contractCurrentEpoch, contractCurrentSpot, display, hasActiveTradeEntry, incomingSamples, openedAt, suggestedDirection, symbol, trade?.market]);
 
   const place = async (nextDirection: 'up' | 'down') => {
     if (!canQuote) return;
@@ -2725,25 +2783,29 @@ function MomentumTradeDesk({
         <strong>{isDemo && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
         <small>{contractPhase}</small>
       </div>
-      <div class={`mom-trade-readout ${displayContractPnl == null ? '' : displayContractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
-        <span>Live contract P&amp;L</span>
+      <div class={`mom-trade-readout mom-trade-panel ${displayContractPnl == null ? '' : displayContractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
+        <div class="mom-contract-line">
+          <span>{closableMomentumTrade ? 'Open contract' : 'Contract'}</span>
+          {closableMomentumTrade && <button class="mom-trade-close mini" type="button" disabled={!canClose} onClick={() => void closeOpenTrade()}><Icon name="x" size={13} />{closing ? 'Closing' : 'Close'}</button>}
+        </div>
+        <small>{contractPhase}{trackedContractId ? ` · ${trackedContractId}` : ''}</small>
+        <span class="mom-panel-label">Live contract P&amp;L</span>
         <strong>{displayContractPnl == null ? '—' : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
         <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
+        {(trade || purchase || closed) && <div class="mom-trade-mini-details" aria-label="Active Momentum bet details">
+          <div><span>Stake</span><strong>{fmtMoney(tradeStake, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
+          <div><span>Opened</span><strong>{openedText}</strong></div>
+          <div><span>Elapsed</span><strong>{elapsedText}</strong></div>
+          <div><span>Duration</span><strong>{tradeDurationLabel(trade) || '5m'}</strong></div>
+          <div><span>Multiplier</span><strong>x{tradeMultiplier || '--'}</strong></div>
+          <div><span>Exposure</span><strong>{tradeExposure == null ? '--' : fmtMoney(tradeExposure, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
+          <div><span>Potential</span><strong>{tradePotential == null ? '--' : fmtSigned(tradePotential, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
+          <div><span>TP / SL</span><strong>{detailTakeProfit ? fmtMoney(detailTakeProfit, purchase?.currency ?? session?.currency ?? 'USD') : '--'} / {detailStopLoss ? fmtMoney(detailStopLoss, purchase?.currency ?? session?.currency ?? 'USD') : '--'}</strong></div>
+          <div><span>Entry</span><strong>{chartFrozenEntry == null ? '--' : chartFrozenEntry.toLocaleString(undefined, { maximumFractionDigits: 8 })}</strong></div>
+          <div><span>Evidence</span><strong>{evidenceStatus}</strong></div>
+        </div>}
       </div>
     </div>
-
-    {(trade || purchase || closed) && <div class="mom-trade-details" aria-label="Active Momentum bet details">
-      <div><span>Stake</span><strong>{fmtMoney(tradeStake, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
-      <div><span>Opened</span><strong>{openedText}</strong></div>
-      <div><span>Elapsed</span><strong>{elapsedText}</strong></div>
-      <div><span>Duration</span><strong>{tradeDurationLabel(trade) || '5m'}</strong></div>
-      <div><span>Multiplier</span><strong>x{tradeMultiplier || '--'}</strong></div>
-      <div><span>Exposure</span><strong>{tradeExposure == null ? '--' : fmtMoney(tradeExposure, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
-      <div><span>Potential</span><strong>{tradePotential == null ? '--' : fmtSigned(tradePotential, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
-      <div><span>TP / SL</span><strong>{detailTakeProfit ? fmtMoney(detailTakeProfit, purchase?.currency ?? session?.currency ?? 'USD') : '--'} / {detailStopLoss ? fmtMoney(detailStopLoss, purchase?.currency ?? session?.currency ?? 'USD') : '--'}</strong></div>
-      <div><span>Entry spot</span><strong>{chartFrozenEntry == null ? '--' : chartFrozenEntry.toLocaleString(undefined, { maximumFractionDigits: 8 })}</strong></div>
-      <div><span>Evidence</span><strong>{evidenceStatus}</strong></div>
-    </div>}
 
     <div class="mom-trade-order">
       <div class="mom-trade-direction" aria-label="Place a demo trade">
@@ -2758,10 +2820,10 @@ function MomentumTradeDesk({
         <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
       </div>
-      {closableMomentumTrade && <button class="mom-trade-close" type="button" disabled={!canClose} onClick={() => void closeOpenTrade()}><Icon name="x" size={14} />{closing ? 'Closing' : 'Close trade'}</button>}
       <span class="mom-trade-action-note">{actionNote}</span>
     </div>
 
+    {settlementOverdue && <div class="mom-trade-note warning">Scheduled duration has passed, but Deriv still reports this contract as open. New Momentum orders stay locked until settlement recovery or a successful close confirms the final result.</div>}
     {unavailableReason && <div class="mom-trade-note">{unavailableReason}</div>}
     {(purchase || closableMomentumTrade) && <div class="mom-trade-note">Demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
     {error && <div class="tl-err">{error}</div>}
