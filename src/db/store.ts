@@ -1593,7 +1593,7 @@ function getPerformanceTotals(accountId = currentAccountId()): PerformanceTotals
         COALESCE(SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END), 0) AS losses,
         COALESCE(SUM(CASE WHEN status IN ('push', 'expired', 'timeout') THEN 1 ELSE 0 END), 0) AS pushes,
         COALESCE(SUM(CASE WHEN status IN ('won', 'lost', 'push', 'expired', 'timeout') THEN profit ELSE 0 END), 0) AS profit
-       FROM trades WHERE account_id = ?`,
+       FROM trades WHERE account_id = ? AND contract_type IN ('DIGITOVER', 'DIGITUNDER')`,
     )
     .get(accountId) as unknown as PerformanceTotals;
   return {

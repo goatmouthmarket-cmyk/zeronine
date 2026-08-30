@@ -82,6 +82,25 @@ function sourceLabel(source: ActivitySource): string {
   return source === 'backtest' ? 'Backtest' : source === 'paper' ? 'Paper' : source === 'manual' ? 'Manual' : 'Bot';
 }
 
+function isDigitTrade(trade: TradeRow): boolean {
+  return trade.contract_type === 'DIGITOVER' || trade.contract_type === 'DIGITUNDER';
+}
+
+function isMultiplierTrade(trade: TradeRow): boolean {
+  return trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN';
+}
+
+function multiplierTradeFamily(trade: TradeRow): 'Gold' | 'Momentum' {
+  return /gold/i.test(`${trade.reason ?? ''} ${trade.market ?? ''}`) ? 'Gold' : 'Momentum';
+}
+
+function tradeContractLabel(trade: TradeRow): string {
+  if (trade.contract_type === 'DIGITOVER') return `Over ${trade.barrier}`;
+  if (trade.contract_type === 'DIGITUNDER') return `Under ${trade.barrier}`;
+  if (trade.contract_type === 'MULTUP') return `${multiplierTradeFamily(trade)} Up`;
+  return `${multiplierTradeFamily(trade)} Down`;
+}
+
 const CURRENCY_SYMBOL: Record<string, string> = {
   USD: '$',
   EUR: '€',
@@ -436,13 +455,14 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const automation = s.automation?.running ?? false;
   const guest = !s.session;
   const decision = automation ? s.decision?.decision : undefined;
+  const digitTrades = useMemo(() => s.trades.filter(isDigitTrade), [s.trades]);
 
   const fallbackPerformance = useMemo(() => ({
-    wins: s.trades.filter((t) => t.status === 'won').length,
-    losses: s.trades.filter((t) => t.status === 'lost').length,
-    pushes: s.trades.filter((t) => t.status === 'push' || t.status === 'expired' || t.status === 'timeout').length,
-    profit: s.trades.reduce((acc, t) => acc + (t.profit ?? 0), 0),
-  }), [s.trades]);
+    wins: digitTrades.filter((t) => t.status === 'won').length,
+    losses: digitTrades.filter((t) => t.status === 'lost').length,
+    pushes: digitTrades.filter((t) => t.status === 'push' || t.status === 'expired' || t.status === 'timeout').length,
+    profit: digitTrades.reduce((acc, t) => acc + (t.profit ?? 0), 0),
+  }), [digitTrades]);
   const performance = s.performance ?? fallbackPerformance;
 
   const activeDirection = decision?.direction ?? (s.settings?.barrier_preference === 'under' ? 'under' : 'over');
@@ -455,32 +475,32 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   ), [s.signal]);
   const tickerProfits = useMemo(() => {
     const totals = new Map<string, { count: number; profit: number }>();
-    for (const trade of s.trades) {
+    for (const trade of digitTrades) {
       const current = totals.get(trade.market) ?? { count: 0, profit: 0 };
       current.count += 1;
       current.profit += trade.profit ?? 0;
       totals.set(trade.market, current);
     }
     return totals;
-  }, [s.trades]);
+  }, [digitTrades]);
 
   const currentStreak = useMemo(() => {
     let streak = 0;
-    for (const t of s.trades) {
+    for (const t of digitTrades) {
       if (t.status === 'lost' || t.status === 'error') break;
       if (t.status === 'won') streak += 1;
     }
     return streak;
-  }, [s.trades]);
+  }, [digitTrades]);
 
   useEffect(() => {
     void loadTestRuns();
   }, []);
 
-  const recentItems = useMemo(() => s.trades
+  const recentItems = useMemo(() => digitTrades
     .map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade }))
     .sort((a, b) => b.ts - a.ts)
-    .slice(0, 5), [s.trades]);
+    .slice(0, 5), [digitTrades]);
   const marketsBySymbol = useMemo(
     () => new Map(s.markets.map((item) => [item.symbol, item])),
     [s.markets],
@@ -712,7 +732,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               <button class="section-action" onClick={() => onNavigate('history')}>View All</button>
             </div>
             <div class="activity">
-              {s.trades.length === 0 && <div class="empty-hint">No trades yet – start the bot</div>}
+              {digitTrades.length === 0 && <div class="empty-hint">No Over/Under trades yet - start the bot</div>}
               {recentItems.map((item) => (
                 <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} market={marketsBySymbol.get(item.trade.market)} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
               ))}
@@ -784,7 +804,8 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
   const exp = trade.status === 'expired' || trade.status === 'timeout';
   const err = trade.status === 'error';
   const pend = trade.status === 'pending' || trade.status === 'purchasing';
-  const label = trade.contract_type === 'DIGITOVER' ? `Over ${trade.barrier}` : `Under ${trade.barrier}`;
+  const digitContract = isDigitTrade(trade);
+  const label = tradeContractLabel(trade);
   const pnl = trade.profit ?? 0;
   const liveDigit = market?.lastDigit != null && market.lastDigit >= 0 ? market.lastDigit : null;
   const entryDigit = trade.entry_digit != null && trade.entry_digit >= 0 ? trade.entry_digit : '–';
@@ -799,6 +820,8 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
   const time = new Date(trade.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const resultText = win ? 'Won' : loss ? 'Lost' : exp ? 'Push' : err ? 'Error' : 'Open';
   const source = sourceForTrade(trade);
+  const entryMarker = digitContract ? entryDigit : formatSpot(trade.entry_spot);
+  const currentMarker = digitContract ? currentDigit : formatSpot(currentSpot);
 
   return (
     <div
@@ -819,16 +842,16 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
           <span class="activity-outcome">{resultText}</span>
           <span class="activity-meta">· {time}</span>
         </div>
-        <div class="activity-track" aria-label={`Entry digit ${entryDigit}, ${currentLabel.toLowerCase()} digit ${currentDigit}`}>
+        <div class="activity-track" aria-label={digitContract ? `Entry digit ${entryDigit}, ${currentLabel.toLowerCase()} digit ${currentDigit}` : `Entry spot ${entryMarker}, ${currentLabel.toLowerCase()} spot ${currentMarker}`}>
           <div class="activity-point">
             <span class="activity-point-label">Entry</span>
-            <strong class="activity-point-digit">{entryDigit}</strong>
+            <strong class="activity-point-digit">{entryMarker}</strong>
             <span class="activity-point-quote">{formatSpot(trade.entry_spot)}</span>
           </div>
           <span class="activity-track-arrow" aria-hidden="true">→</span>
           <div class={`activity-point ${pend ? 'live' : tone}`}>
             <span class="activity-point-label">{currentLabel}</span>
-            <strong class="activity-point-digit">{currentDigit}</strong>
+            <strong class="activity-point-digit">{currentMarker}</strong>
             <span class="activity-point-quote">{formatSpot(currentSpot)}</span>
           </div>
         </div>
@@ -894,11 +917,12 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
   const run = detail.type === 'run' ? detail.run : null;
   const source = trade ? sourceForTrade(trade) : (run?.kind === 'backtest' ? 'backtest' : 'paper');
   const market = trade ? markets.find((item) => item.symbol === trade.market) : null;
+  const digitContract = trade ? isDigitTrade(trade) : false;
   const exactPath = trade?.entry_spot != null && trade.exit_spot != null;
   const path = trade ? (exactPath ? [trade.entry_spot!, trade.exit_spot!] : market?.recentQuotes ?? []) : equity[`${run?.kind}-${run?.strategy_mode}-${run?.bot_mode}`] ?? [0, run?.net_pnl ?? 0];
-  const title = trade ? `${trade.contract_type === 'DIGITOVER' ? 'Over' : 'Under'} ${trade.barrier}` : run?.kind === 'backtest' ? 'Backtest run' : 'Paper sweep';
+  const title = trade ? tradeContractLabel(trade) : run?.kind === 'backtest' ? 'Backtest run' : 'Paper sweep';
   const storedEstimate = trade != null && Number.isFinite(trade.est_win) && trade.est_win > 0 && trade.est_win < 1;
-  const baselineEstimate = trade
+  const baselineEstimate = trade && digitContract
     ? trade.contract_type === 'DIGITOVER' ? (9 - trade.barrier) / 10 : trade.barrier / 10
     : 0;
   const estimatedWin = trade ? (storedEstimate ? trade.est_win : baselineEstimate) : 0;
@@ -925,7 +949,7 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
             <Detail label="Market" value={shortMarketName(market?.display ?? trade.market)} />
             <Detail label="Entry amount" value={fmtMoney(trade.stake, '$')} />
             <Detail label="Payout" value={fmtMoney(trade.payout, '$')} />
-            <Detail label="Estimated win" value={`${(estimatedWin * 100).toFixed(1)}%${storedEstimate ? '' : ' baseline'}`} />
+            <Detail label="Estimated win" value={digitContract ? `${(estimatedWin * 100).toFixed(1)}%${storedEstimate ? '' : ' baseline'}` : storedEstimate ? `${(estimatedWin * 100).toFixed(1)}%` : '--'} />
             <Detail label="Entry spot" value={trade.entry_spot != null ? String(trade.entry_spot) : '--'} />
             <Detail label="Exit" value={trade.exit_spot != null ? String(trade.exit_spot) : '--'} />
             <Detail label="Reason" value={trade.reason || '--'} />
@@ -1993,7 +2017,7 @@ function BotPage(): JSX.Element {
 
 /* ---------------- history ---------------- */
 
-type Filter = 'all' | 'wins' | 'losses' | 'over' | 'under';
+type Filter = 'all' | 'wins' | 'losses' | 'over' | 'under' | 'multipliers';
 
 function HistoryPage(): JSX.Element {
   const s = useStore();
@@ -2018,17 +2042,19 @@ function HistoryPage(): JSX.Element {
   }
 
   const trades = s.trades;
-  const wins = trades.filter((t) => t.status === 'won').length;
-  const losses = trades.filter((t) => t.status === 'lost').length;
-  const total = trades.length;
+  const digitTrades = trades.filter(isDigitTrade);
+  const multiplierTrades = trades.filter(isMultiplierTrade);
+  const wins = digitTrades.filter((t) => t.status === 'won').length;
+  const losses = digitTrades.filter((t) => t.status === 'lost').length;
+  const total = digitTrades.length;
   const winRate = wins + losses > 0 ? (wins / (wins + losses)) * 100 : 0;
-  const netProfit = trades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
-  const totalStaked = trades.reduce((acc, t) => acc + (t.stake ?? 0), 0);
-  const paid = trades.filter((t) => t.payout != null);
+  const netProfit = digitTrades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
+  const totalStaked = digitTrades.reduce((acc, t) => acc + (t.stake ?? 0), 0);
+  const paid = digitTrades.filter((t) => t.payout != null);
   const avgPayout = paid.length ? paid.reduce((acc, t) => acc + (t.payout ?? 0), 0) / paid.length : 0;
   const currency = s.session?.currency ?? '';
 
-  const ordered = [...trades].reverse();
+  const ordered = [...digitTrades].reverse();
   let best = 0;
   let worst = 0;
   let winRun = 0;
@@ -2048,15 +2074,23 @@ function HistoryPage(): JSX.Element {
     }
   }
 
-  const over = trades.filter((t) => t.contract_type === 'DIGITOVER');
-  const under = trades.filter((t) => t.contract_type === 'DIGITUNDER');
+  const over = digitTrades.filter((t) => t.contract_type === 'DIGITOVER');
+  const under = digitTrades.filter((t) => t.contract_type === 'DIGITUNDER');
   const overWins = over.filter((t) => t.status === 'won').length;
   const underWins = under.filter((t) => t.status === 'won').length;
   const overRate = over.length ? (overWins / over.length) * 100 : 0;
   const underRate = under.length ? (underWins / under.length) * 100 : 0;
+  const multiplierUp = multiplierTrades.filter((t) => t.contract_type === 'MULTUP');
+  const multiplierDown = multiplierTrades.filter((t) => t.contract_type === 'MULTDOWN');
+  const multiplierUpWins = multiplierUp.filter((t) => t.status === 'won').length;
+  const multiplierDownWins = multiplierDown.filter((t) => t.status === 'won').length;
+  const multiplierNet = multiplierTrades.reduce((acc, t) => acc + (t.profit ?? 0), 0);
+  const multiplierWins = multiplierTrades.filter((t) => t.status === 'won').length;
+  const multiplierUpRate = multiplierUp.length ? (multiplierUpWins / multiplierUp.length) * 100 : 0;
+  const multiplierDownRate = multiplierDown.length ? (multiplierDownWins / multiplierDown.length) * 100 : 0;
 
   const byMarket = new Map<string, { count: number; wins: number; net: number }>();
-  for (const t of trades) {
+  for (const t of digitTrades) {
     const e = byMarket.get(t.market) ?? { count: 0, wins: 0, net: 0 };
     e.count += 1;
     if (t.status === 'won') e.wins += 1;
@@ -2064,20 +2098,22 @@ function HistoryPage(): JSX.Element {
     byMarket.set(t.market, e);
   }
 
-  const filtered = trades.filter((t) => {
+  const filtered = (filter === 'multipliers' ? multiplierTrades : digitTrades).filter((t) => {
     if (filter === 'wins') return t.status === 'won';
     if (filter === 'losses') return t.status === 'lost';
     if (filter === 'over') return t.contract_type === 'DIGITOVER';
     if (filter === 'under') return t.contract_type === 'DIGITUNDER';
+    if (filter === 'multipliers') return true;
     return true;
   });
 
   const chips: { key: Filter; label: string }[] = [
-    { key: 'all', label: 'All' },
+    { key: 'all', label: 'All digits' },
     { key: 'wins', label: 'Wins' },
     { key: 'losses', label: 'Losses' },
     { key: 'over', label: 'Over 0' },
     { key: 'under', label: 'Under 9' },
+    { key: 'multipliers', label: 'Multipliers' },
   ];
 
   return (
@@ -2088,7 +2124,7 @@ function HistoryPage(): JSX.Element {
 
       <div class="metric-grid">
         <Metric label="Win Rate" value={`${winRate.toFixed(1)}%`} tone={winRate >= 50 ? 'up' : 'down'} />
-        <Metric label="Total Trades" value={String(total)} />
+        <Metric label="Digit Trades" value={String(total)} />
         <Metric label="Net Profit" value={fmtSigned(netProfit, currency)} tone={netProfit >= 0 ? 'up' : 'down'} />
         <Metric label="Total Staked" value={fmtMoney(totalStaked, currency)} />
         <Metric label="Avg Payout" value={avgPayout ? avgPayout.toFixed(2) : '—'} />
@@ -2105,14 +2141,29 @@ function HistoryPage(): JSX.Element {
       </div>
 
       <div class="section">
-        <div class="section-title">Over / Under</div>
+        <div class="section-title">Digit Over / Under</div>
         <Bar label="Over 0" rate={overRate} count={over.length} tone="over" />
         <Bar label="Under 9" rate={underRate} count={under.length} tone="under" />
       </div>
 
       <div class="section">
+        <div class="section-title">Multiplier trades</div>
+        {multiplierTrades.length === 0 && <div class="empty-hint">No Momentum or Gold multiplier trades yet</div>}
+        {multiplierTrades.length > 0 && <>
+          <Bar label="Up / Buy" rate={multiplierUpRate} count={multiplierUp.length} tone="over" />
+          <Bar label="Down / Sell" rate={multiplierDownRate} count={multiplierDown.length} tone="under" />
+          <div class="market-stat">
+            <span class="market-stat-name">Multiplier P&amp;L</span>
+            <span class="market-stat-nums">
+              {multiplierWins}/{multiplierTrades.length} • <b class={multiplierNet >= 0 ? 'green' : 'red'}>{fmtSigned(multiplierNet, currency)}</b>
+            </span>
+          </div>
+        </>}
+      </div>
+
+      <div class="section">
         <div class="section-title">Markets</div>
-        {byMarket.size === 0 && <div class="empty-hint">No trades yet</div>}
+        {byMarket.size === 0 && <div class="empty-hint">No Over/Under trades yet</div>}
         {[...byMarket.entries()].map(([market, e]) => (
           <div class="market-stat" key={market}>
             <span class="market-stat-name">{shortMarketName(market)}</span>
@@ -2136,7 +2187,7 @@ function HistoryPage(): JSX.Element {
       </div>
 
       <div class="section activity">
-        {filtered.length === 0 && <div class="empty-hint">No trades yet</div>}
+        {filtered.length === 0 && <div class="empty-hint">{filter === 'multipliers' ? 'No multiplier trades yet' : 'No Over/Under trades yet'}</div>}
         {filtered.map((t) => (
           <ActivityRow key={t.id} trade={t} market={s.markets.find((market) => market.symbol === t.market)} />
         ))}
@@ -2361,9 +2412,12 @@ function MomentumTradeDesk({
   const [stopLossText, setStopLossText] = useState('');
   const [purchase, setPurchase] = useState<MomentumTradePurchase | null>(null);
   const [closed, setClosed] = useState<MomentumTradeClose | null>(null);
+  const [chartSnapshot, setChartSnapshot] = useState<{ symbol: string; display: string; samples: MomentumScanSample[]; entryPrice?: number; direction?: 'up' | 'down' | null } | null>(null);
+  const [lastKnownPnl, setLastKnownPnl] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
+  const incomingSamples = useMemo(() => samples ?? [], [samples]);
   const stake = Number(stakeText);
   const selectedMultiplier = Number(multiplierText);
   const takeProfit = takeProfitText.trim() ? Number(takeProfitText) : undefined;
@@ -2394,9 +2448,10 @@ function MomentumTradeDesk({
   const matchingContract = trackedContractId && contract?.contractId === trackedContractId ? contract : null;
   const settledTrade = trade && ['won', 'lost', 'push'].includes(trade.status) ? trade : null;
   const liveContractProfit = Number.isFinite(Number(matchingContract?.profit)) ? Number(matchingContract?.profit) : undefined;
-  const contractPnl = settledTrade?.profit ?? closed?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit;
   const canClose = Boolean(closableMomentumTrade?.contract_id && !closing);
   const hasActiveTradeEntry = Boolean(closableMomentumTrade || (purchase && !closed && !settledTrade));
+  const contractPnl = settledTrade?.profit ?? closed?.profit ?? liveContractProfit ?? (hasActiveTradeEntry ? undefined : purchase?.pnl ?? purchase?.profit);
+  const displayContractPnl = contractPnl ?? (hasActiveTradeEntry ? lastKnownPnl : purchase?.pnl ?? purchase?.profit);
   const actualEntryPrice = Number.isFinite(Number(trade?.entry_spot)) && Number(trade?.entry_spot) > 0
     ? Number(trade?.entry_spot)
     : Number.isFinite(Number(purchase?.entryPrice)) && Number(purchase?.entryPrice) > 0
@@ -2404,6 +2459,11 @@ function MomentumTradeDesk({
       : undefined;
   const chartEntryPrice = hasActiveTradeEntry ? actualEntryPrice ?? entryPrice : undefined;
   const chartEntryLabel = 'Trade entry';
+  const chartSymbol = hasActiveTradeEntry ? trade?.market ?? purchase?.market ?? symbol ?? '' : symbol ?? '';
+  const chartSamples = chartSnapshot?.symbol === chartSymbol && (hasActiveTradeEntry || !incomingSamples.length) ? chartSnapshot.samples : incomingSamples;
+  const chartDisplay = chartSnapshot?.symbol === chartSymbol && (hasActiveTradeEntry || !display) ? chartSnapshot.display : display ?? trade?.market ?? 'Momentum market';
+  const chartFrozenEntry = chartSnapshot?.symbol === chartSymbol && chartSnapshot.entryPrice != null ? chartSnapshot.entryPrice : chartEntryPrice;
+  const chartDirection = (chartSnapshot?.symbol === chartSymbol && chartSnapshot.direction ? chartSnapshot.direction : suggestedDirection) ?? undefined;
   const liveSellPrice = Number.isFinite(Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice))
     ? Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice)
     : undefined;
@@ -2454,6 +2514,39 @@ function MomentumTradeDesk({
   useEffect(() => {
     if (configuredMultiplier) setMultiplierText(String(configuredMultiplier));
   }, [configuredMultiplier]);
+
+  useEffect(() => {
+    if (contractPnl != null && Number.isFinite(contractPnl)) setLastKnownPnl(contractPnl);
+    if (!hasActiveTradeEntry && closed) setLastKnownPnl(null);
+  }, [closed, contractPnl, hasActiveTradeEntry]);
+
+  useEffect(() => {
+    const nextSymbol = chartSymbol;
+    if (!nextSymbol) {
+      if (!hasActiveTradeEntry) setChartSnapshot(null);
+      return;
+    }
+    setChartSnapshot((current) => {
+      const sameTrade = current?.symbol === nextSymbol;
+      const nextSamples = symbol === nextSymbol && incomingSamples.length ? incomingSamples : sameTrade ? current.samples : [];
+      if (hasActiveTradeEntry) {
+        return {
+          symbol: nextSymbol,
+          display: sameTrade ? current.display : display ?? trade?.market ?? nextSymbol,
+          samples: nextSamples,
+          entryPrice: sameTrade && current.entryPrice != null ? current.entryPrice : chartEntryPrice,
+          direction: sameTrade && current.direction ? current.direction : suggestedDirection,
+        };
+      }
+      return {
+        symbol: nextSymbol,
+        display: display ?? nextSymbol,
+        samples: incomingSamples,
+        entryPrice: chartEntryPrice,
+        direction: suggestedDirection,
+      };
+    });
+  }, [chartEntryPrice, chartSymbol, display, hasActiveTradeEntry, incomingSamples, suggestedDirection, symbol, trade?.market]);
 
   const place = async (nextDirection: 'up' | 'down') => {
     if (!canQuote) return;
@@ -2515,8 +2608,8 @@ function MomentumTradeDesk({
     <div class="mom-trade-head">
       <div>
         <span class="mom-kicker">Momentum trade</span>
-        <strong>{display ?? 'No focused market'}</strong>
-        <small>{symbol ? 'Live market selected from current research' : 'Research selection required'}</small>
+        <strong>{chartDisplay ?? 'No focused market'}</strong>
+        <small>{hasActiveTradeEntry ? 'Pinned to the active Momentum contract' : symbol ? 'Live market selected from current research' : 'Research selection required'}</small>
       </div>
       <div class="mom-trade-badges">
         <span class={`mom-trade-suggestion ${suggestionTone}`} title={suggestedReason ?? undefined}>
@@ -2530,16 +2623,16 @@ function MomentumTradeDesk({
 
     <div class="mom-trade-live">
       <div class="mom-trade-chart">
-        <MomentumPriceChart samples={samples} label={`${display ?? 'Momentum market'} live demo trade chart`} entryPrice={chartEntryPrice} entryDirection={suggestedDirection ?? undefined} entryLabel={chartEntryLabel} />
+        <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live demo trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
         <span>Demo balance</span>
         <strong>{isDemo && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
         <small>{contractPhase}</small>
       </div>
-      <div class={`mom-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
+      <div class={`mom-trade-readout ${displayContractPnl == null ? '' : displayContractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
         <span>Live contract P&amp;L</span>
-        <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
+        <strong>{displayContractPnl == null ? '—' : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
         <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
       </div>
     </div>
@@ -3799,7 +3892,12 @@ function GoldPage(): JSX.Element {
 
     <div class="gold-workspace">
       {tab === 'research'
-        ? <GoldDerivConnectionOnboarding state={store.gold} session={store.session} owner={store.owner === true} />
+        ? <GoldResearchWorkspace
+          state={store.gold}
+          settings={store.settings}
+          automation={store.automation}
+          owner={store.owner === true}
+        />
         : <GoldDerivTradeWorkspace
           state={store.gold}
           session={store.session}
@@ -4203,6 +4301,172 @@ function GoldLedgerRow({ entry, currency }: { entry: LedgerEntry; currency: stri
   </div>;
 }
 
+function GoldResearchWorkspace({
+  state,
+  settings,
+  automation,
+  owner,
+}: {
+  state: GoldModuleState | null;
+  settings: Settings | null;
+  automation: AutomationState | null;
+  owner: boolean;
+}): JSX.Element {
+  const diagnostics = state?.diagnostics ?? null;
+  const deriv = state?.deriv ?? null;
+  const research = state?.research.state ?? null;
+  const symbol = research?.symbol ?? null;
+  const quote = research?.quote ?? null;
+  const signal = research?.signal ?? null;
+  const sideFromSignal: GoldSide | null = signal?.direction === 'BUY' || signal?.direction === 'SELL' ? signal.direction : null;
+  const [chartTimeframe, setChartTimeframe] = useState<Extract<GoldTimeframe, '1m' | '5m'>>('1m');
+  const [backtestBusy, setBacktestBusy] = useState(false);
+  const [error, setError] = useState('');
+  const candles = research?.candles?.[chartTimeframe] ?? [];
+  const digits = Math.max(2, Math.min(5, symbol?.digits ?? 2));
+  const marketClosed = symbol?.tradingStatus === 'closed' || symbol?.tradingStatus === 'suspended' || symbol?.tradingStatus === 'unavailable';
+  const quoteAge = quote ? Math.max(0, Date.now() - quote.receivedAt) : null;
+  const backtest = state?.backtest.result;
+  const recentSignals = research?.recentSignals ?? [];
+  const activeStrategy = settings ? STRATEGY_META[settings.strategy_mode]?.label ?? settings.strategy_mode : 'Manual guarded';
+  const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
+  const modelWeights = [
+    ['Momentum', .25],
+    ['Timeframe agreement', .20],
+    ['EMA alignment', .15],
+    ['Structure', .15],
+    ['Candle bodies', .10],
+    ['Volatility fit', .10],
+    ['Tick volume', .05],
+  ];
+  const predictionState = marketClosed ? 'Market closed' : sideFromSignal ? `${sideFromSignal} - ${signal?.confidence ?? 0}%` : 'WAIT';
+  const predictionDetail = signal?.reasons.length
+    ? signal.reasons.join(' / ')
+    : signal?.blockers.join(' / ') || state?.research.reason || diagnostics?.reason || 'Collecting Gold candles and ticks.';
+
+  const runGoldModelBacktest = async () => {
+    if (!owner || backtestBusy || state?.backtest.ready !== true) return;
+    setBacktestBusy(true);
+    setError('');
+    try {
+      await runGoldBacktest();
+      await loadGoldState();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBacktestBusy(false);
+    }
+  };
+
+  return <section class="gold-research-desk" aria-label="Gold research prediction workspace">
+    <div class="gold-research-hero">
+      <div>
+        <span class="gold-kicker">Gold research</span>
+        <strong>Future prediction watch</strong>
+        <small>Collecting Deriv Gold candles, trend structure, volatility, spread, and recent signal outcomes before trade decisions.</small>
+      </div>
+      <div class={`gold-prediction ${(sideFromSignal ?? 'wait').toLowerCase()}${marketClosed ? ' locked' : ''}`}>
+        <span>{marketClosed ? 'Market lock' : 'Current prediction'}</span>
+        <strong>{predictionState}</strong>
+        <small>{predictionDetail}</small>
+      </div>
+    </div>
+
+    <div class="gold-research-main">
+      <div class="gold-trade-chart-wrap gold-research-chart">
+        <div class="gold-chart-tools" aria-label="Gold research chart timeframe">
+          {(['1m', '5m'] as const).map((timeframe) => <button
+            key={timeframe}
+            class={chartTimeframe === timeframe ? 'active' : ''}
+            type="button"
+            onClick={() => setChartTimeframe(timeframe)}
+          >{timeframe}</button>)}
+          <span>{marketClosed ? 'Closed market history' : 'Live TradingView candlesticks'}</span>
+        </div>
+        <GoldTradeChart
+          candles={candles}
+          quote={quote}
+          label={`${symbol?.displayName || 'Gold'} research prediction chart`}
+          entryPrice={marketClosed ? null : sideFromSignal ? signal?.entryReference : null}
+          side={marketClosed ? null : sideFromSignal}
+          muted={marketClosed}
+          lockLabel={marketClosed ? symbol?.tradingStatus ?? 'market closed' : null}
+        />
+      </div>
+      <div class="gold-research-card">
+        <span>Market feed</span>
+        <strong>{symbol?.displayName || deriv?.display || diagnostics?.symbol || 'Gold / US Dollar'}</strong>
+        <small>{symbol?.tradingStatus ? `Status: ${symbol.tradingStatus}` : state?.research.reason ?? 'Waiting for feed'}</small>
+        <div class="gold-intel-stats">
+          <span>Mid <b>{quote ? goldPrice(quote.mid, digits) : '--'}</b></span>
+          <span>Spread <b>{quote ? goldPrice(quote.spread, digits) : '--'}</b></span>
+          <span>Quote age <b>{quoteAge == null ? '--' : `${Math.round(quoteAge / 1000)}s`}</b></span>
+        </div>
+      </div>
+      <div class="gold-research-card">
+        <span>Research depth</span>
+        <strong>{(research?.candles?.['1m']?.length ?? 0) + (research?.candles?.['5m']?.length ?? 0)} candles</strong>
+        <small>Stored candle history is used for future prediction checks and backtest validation.</small>
+        <div class="gold-intel-stats">
+          <span>1m <b>{research?.candles?.['1m']?.length ?? 0}</b></span>
+          <span>5m <b>{research?.candles?.['5m']?.length ?? 0}</b></span>
+          <span>Signals <b>{recentSignals.length}</b></span>
+        </div>
+      </div>
+    </div>
+
+    <section class="gold-intel-grid gold-research-intel" aria-label="Gold research model evidence">
+      <div class="gold-intel-card">
+        <span class="gold-kicker">Bot model</span>
+        <strong>{signal?.modelVersion ?? 'gold-momentum-v1'}</strong>
+        <small>{botModel} posture - {activeStrategy} strategy - global bot {automation?.running ? 'running' : 'stopped'}. Gold execution stays manual demo-only.</small>
+        <div class="gold-intel-stats">
+          <span>Regime <b>{signal?.regime ?? 'WAITING'}</b></span>
+          <span>Score <b>{signal ? `${Math.round(signal.score * 100)}%` : '--'}</b></span>
+          <span>ATR <b>{signal ? goldPrice(signal.atr, digits) : '--'}</b></span>
+        </div>
+      </div>
+      <div class="gold-intel-card">
+        <span class="gold-kicker">Pattern watching</span>
+        <strong>{sideFromSignal ? `${sideFromSignal} setup under watch` : 'No validated setup'}</strong>
+        <small>{predictionDetail}</small>
+        <div class="gold-model-bars">
+          {modelWeights.map(([label, weight]) => <span key={label}><b>{label}</b><i><em style={{ width: `${Number(weight) * 100}%` }}></em></i></span>)}
+        </div>
+      </div>
+      <div class="gold-intel-card">
+        <span class="gold-kicker">Historical test</span>
+        <strong>{backtest ? `${backtest.metrics.tradeCount} tested trades` : 'Not run yet'}</strong>
+        <small>{backtest ? `Win rate ${backtest.metrics.winRate == null ? '--' : `${(backtest.metrics.winRate * 100).toFixed(1)}%`} - net ${fmtSigned(backtest.metrics.netPnl, 'USD')}` : state?.backtest.reason ?? 'Run history test after candles load.'}</small>
+        <div class="gold-intel-stats">
+          <span>Processed <b>{backtest?.candlesProcessed ?? 0}</b></span>
+          <span>Expectancy <b>{backtest ? fmtSigned(backtest.metrics.expectancy, 'USD') : '--'}</b></span>
+          <span>Max DD <b>{backtest ? fmtMoney(backtest.metrics.maxDrawdown, 'USD') : '--'}</b></span>
+        </div>
+        <button class="gold-backtest-button" type="button" disabled={!owner || backtestBusy || state?.backtest.ready !== true} onClick={() => void runGoldModelBacktest()}>
+          <Icon name={backtestBusy ? 'dots' : 'stats'} size={13} />
+          {backtestBusy ? 'Testing history' : 'Run history test'}
+        </button>
+      </div>
+      <div class="gold-intel-card">
+        <span class="gold-kicker">Recent predictions</span>
+        <strong>{recentSignals.length ? `${recentSignals.length} retained` : 'No retained signals yet'}</strong>
+        <small>Newest generated signals are kept as research evidence for future tuning.</small>
+        <div class="gold-research-signals">
+          {recentSignals.slice(0, 5).map((item) => <div class="gold-signal-row" key={item.id}>
+            <span class={item.direction.toLowerCase()}>{item.direction}</span>
+            <b>{item.confidence}%</b>
+            <small>{new Date(item.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+          </div>)}
+          {recentSignals.length === 0 && <span class="gold-ledger-empty">Waiting for enough market data</span>}
+        </div>
+      </div>
+    </section>
+
+    {error && <div class="tl-err">{error}</div>}
+  </section>;
+}
+
 function GoldDerivTradeWorkspace({
   state,
   owner,
@@ -4254,6 +4518,7 @@ function GoldDerivTradeWorkspace({
   const limitsValid = (takeProfit === undefined || (Number.isFinite(takeProfit) && takeProfit > 0))
     && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
   const marketReady = state?.research.ready === true && Boolean(quote);
+  const marketClosed = symbol?.tradingStatus === 'closed' || symbol?.tradingStatus === 'suspended' || symbol?.tradingStatus === 'unavailable';
   const demoConnected = deriv?.demoConnected === true || session?.mode === 'demo';
   const accountBlocked = Boolean(openAnyTrade && !unusedGoldDerivIsGoldTrade(openAnyTrade));
   const canPlace = owner && demoConnected && marketReady && Boolean(sideFromSignal) && !openAnyTrade && Number.isFinite(stake) && stake > 0
@@ -4437,6 +4702,8 @@ function GoldDerivTradeWorkspace({
             label={`${symbol?.displayName || 'Gold'} Deriv live trade chart`}
             entryPrice={entryPrice}
             side={activeTrade?.contract_type === 'MULTDOWN' ? 'SELL' : activeTrade ? 'BUY' : sideFromSignal ?? side}
+            muted={marketClosed}
+            lockLabel={marketClosed ? symbol?.tradingStatus ?? 'market closed' : null}
           />
         </div>
         <div class="gold-trade-readout" aria-live="polite">

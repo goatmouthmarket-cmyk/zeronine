@@ -20,6 +20,8 @@ export interface GoldTradeChartProps {
   stopLoss?: number | null;
   takeProfit?: number | null;
   side?: GoldSide | null;
+  muted?: boolean;
+  lockLabel?: string | null;
 }
 
 function toChartTime(ms: number): Time {
@@ -55,6 +57,8 @@ export function GoldTradeChart({
   stopLoss,
   takeProfit,
   side,
+  muted = false,
+  lockLabel,
 }: GoldTradeChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -135,6 +139,30 @@ export function GoldTradeChart({
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
+    series.applyOptions(muted ? {
+      upColor: 'rgba(145,151,166,.38)',
+      downColor: 'rgba(96,103,119,.34)',
+      borderUpColor: 'rgba(145,151,166,.48)',
+      borderDownColor: 'rgba(96,103,119,.44)',
+      wickUpColor: 'rgba(145,151,166,.5)',
+      wickDownColor: 'rgba(96,103,119,.48)',
+      priceLineVisible: false,
+      lastValueVisible: true,
+    } : {
+      upColor: '#f4c96b',
+      downColor: '#ff5263',
+      borderUpColor: '#f4c96b',
+      borderDownColor: '#ff5263',
+      wickUpColor: 'rgba(244,201,107,.86)',
+      wickDownColor: 'rgba(255,82,99,.82)',
+      priceLineVisible: true,
+      lastValueVisible: true,
+    });
+  }, [muted]);
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
     for (const line of linesRef.current) series.removePriceLine(line);
     const nextLines: IPriceLine[] = [];
     const addLine = (price: number | null | undefined, title: string, color: string, style: LineStyle) => {
@@ -149,15 +177,16 @@ export function GoldTradeChart({
         lineVisible: true,
       }));
     };
-    addLine(entryPrice, side ? `${side} entry` : 'Entry', side === 'SELL' ? 'rgba(255,82,99,.9)' : 'rgba(244,201,107,.95)', LineStyle.Dashed);
-    addLine(takeProfit, 'TP', 'rgba(117,232,189,.9)', LineStyle.Dotted);
-    addLine(stopLoss, 'SL', 'rgba(255,82,99,.9)', LineStyle.Dotted);
+    addLine(entryPrice, side ? `${side} entry` : 'Entry', muted ? 'rgba(170,176,190,.7)' : side === 'SELL' ? 'rgba(255,82,99,.9)' : 'rgba(244,201,107,.95)', LineStyle.Dashed);
+    addLine(takeProfit, 'TP', muted ? 'rgba(170,176,190,.55)' : 'rgba(117,232,189,.9)', LineStyle.Dotted);
+    addLine(stopLoss, 'SL', muted ? 'rgba(170,176,190,.55)' : 'rgba(255,82,99,.9)', LineStyle.Dotted);
     linesRef.current = nextLines;
-  }, [entryPrice, side, stopLoss, takeProfit]);
+  }, [entryPrice, muted, side, stopLoss, takeProfit]);
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
     <div class="gold-chart-kind" aria-hidden="true">Gold candlesticks / wicks / TradingView</div>
+    {lockLabel && <div class="gold-chart-lock-badge" role="status">Locked · {lockLabel}</div>}
     <div class="gold-chart-readout" aria-hidden="true">
       <span>{lastPrice == null ? 'No live price' : displayPrice(lastPrice, digits)}</span>
       <small>{high == null || low == null ? 'Awaiting candles' : `H ${displayPrice(high, digits)} · L ${displayPrice(low, digits)}`}</small>
