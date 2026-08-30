@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { GoldTradeChart } from './GoldTradeChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
@@ -49,6 +49,7 @@ import {
   resetGoldPaperTrade,
   placeGoldDerivTrade,
   closeGoldDerivTrade,
+  loadMultiplierOptions,
   runGoldBacktest,
 } from './store';
 import './marketChooser.css';
@@ -2408,6 +2409,8 @@ function MomentumTradeDesk({
   const [direction, setDirection] = useState<'up' | 'down'>(suggestedDirection ?? 'up');
   const [stakeText, setStakeText] = useState('1');
   const [multiplierText, setMultiplierText] = useState(String(configuredMultiplier ?? 20));
+  const [multiplierProbe, setMultiplierProbe] = useState<MultiplierOptionsResult | null>(null);
+  const [multiplierProbeStatus, setMultiplierProbeStatus] = useState<'idle' | 'checking' | 'error'>('idle');
   const [takeProfitText, setTakeProfitText] = useState('');
   const [stopLossText, setStopLossText] = useState('');
   const [purchase, setPurchase] = useState<MomentumTradePurchase | null>(null);
@@ -2417,6 +2420,7 @@ function MomentumTradeDesk({
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
+  const manualMultiplierRef = useRef(false);
   const incomingSamples = useMemo(() => samples ?? [], [samples]);
   const stake = Number(stakeText);
   const selectedMultiplier = Number(multiplierText);
@@ -2426,6 +2430,12 @@ function MomentumTradeDesk({
   const hasValidLimits = (takeProfit === undefined || (Number.isFinite(takeProfit) && takeProfit > 0))
     && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
   const canQuote = Boolean(symbol && owner && isDemo && Number.isFinite(stake) && stake > 0 && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && hasValidLimits);
+  const activeMultiplierProbe = multiplierProbe?.symbol === symbol ? multiplierProbe : null;
+  const multiplierOptions = activeMultiplierProbe?.options.length
+    ? activeMultiplierProbe.options
+    : [10, 20, 30, 50, 100, 200, 500, 1000];
+  const maxMultiplier = activeMultiplierProbe?.max ?? null;
+  const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
   const openAccountTrade = trades.find((item) => item.status === 'pending' || item.status === 'purchasing') ?? null;
   const openMomentumTrade = trades.find((item) =>
     (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
@@ -2440,7 +2450,7 @@ function MomentumTradeDesk({
   const closedMomentumTrade = closed?.contractId
     ? trades.find((item) => item.contract_id === closed.contractId) ?? null
     : null;
-  const canPlace = canQuote && Boolean(suggestedDirection) && !openAccountTrade;
+  const canPlace = canQuote && multiplierWithinLiveMax && Boolean(suggestedDirection) && !openAccountTrade;
   const trade = purchase?.id == null
     ? closableMomentumTrade ?? closedMomentumTrade
     : trades.find((item) => item.id === purchase.id) ?? closableMomentumTrade ?? closedMomentumTrade;
@@ -2495,6 +2505,8 @@ function MomentumTradeDesk({
         ? 'Enter a positive demo stake'
       : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
         ? 'Select a valid multiplier'
+      : !multiplierWithinLiveMax
+        ? `Selected multiplier exceeds live max x${maxMultiplier}`
       : !hasValidLimits
         ? 'TP and stop loss must be positive when set'
       : suggestedDirection
@@ -2514,6 +2526,44 @@ function MomentumTradeDesk({
   useEffect(() => {
     if (configuredMultiplier) setMultiplierText(String(configuredMultiplier));
   }, [configuredMultiplier]);
+
+  useEffect(() => {
+    manualMultiplierRef.current = false;
+  }, [symbol]);
+
+  useEffect(() => {
+    if (!symbol || !owner || !isDemo || !suggestedDirection || !(Number.isFinite(stake) && stake > 0) || openAccountTrade) {
+      setMultiplierProbe(null);
+      setMultiplierProbeStatus('idle');
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setMultiplierProbeStatus('checking');
+      void loadMultiplierOptions({
+        symbol,
+        direction: suggestedDirection,
+        stake,
+        signal: controller.signal,
+      }).then((result) => {
+        if (controller.signal.aborted) return;
+        setMultiplierProbe(result);
+        setMultiplierProbeStatus('idle');
+        if (result.max && selectedMultiplier !== result.max && (!manualMultiplierRef.current || !result.options.includes(selectedMultiplier))) {
+          setMultiplierText(String(result.max));
+        }
+      }).catch((cause) => {
+        if (controller.signal.aborted) return;
+        setMultiplierProbe(null);
+        setMultiplierProbeStatus('error');
+        console.warn('[momentum] multiplier limit check failed', cause);
+      });
+    }, 350);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [isDemo, openAccountTrade, owner, selectedMultiplier, stake, suggestedDirection, symbol]);
 
   useEffect(() => {
     if (contractPnl != null && Number.isFinite(contractPnl)) setLastKnownPnl(contractPnl);
@@ -2643,7 +2693,7 @@ function MomentumTradeDesk({
         <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down demo trade' : 'Place down demo trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
       <label class="mom-trade-stake"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
-      <label class="mom-trade-multiplier"><span>Multiplier</span><select value={multiplierText} disabled={busy || Boolean(openAccountTrade)} onChange={(event) => setMultiplierText((event.currentTarget as HTMLSelectElement).value)}><option value="10">x10</option><option value="20">x20</option><option value="30">x30</option><option value="50">x50</option><option value="100">x100</option><option value="200">x200</option><option value="500">x500</option></select></label>
+      <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAccountTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
       <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
       <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
       <div class="mom-trade-quote">
@@ -4486,6 +4536,8 @@ function GoldDerivTradeWorkspace({
   const [side, setSide] = useState<GoldSide>(sideFromSignal ?? 'BUY');
   const [stakeText, setStakeText] = useState('1');
   const [multiplierText, setMultiplierText] = useState(String(deriv?.defaultMultiplier ?? 20));
+  const [multiplierProbe, setMultiplierProbe] = useState<MultiplierOptionsResult | null>(null);
+  const [multiplierProbeStatus, setMultiplierProbeStatus] = useState<'idle' | 'checking' | 'error'>('idle');
   const [takeProfitText, setTakeProfitText] = useState('');
   const [stopLossText, setStopLossText] = useState('');
   const [purchase, setPurchase] = useState<GoldDerivTradePurchase | null>(null);
@@ -4495,6 +4547,7 @@ function GoldDerivTradeWorkspace({
   const [closing, setClosing] = useState(false);
   const [backtestBusy, setBacktestBusy] = useState(false);
   const [error, setError] = useState('');
+  const manualMultiplierRef = useRef(false);
   const stake = Number(stakeText);
   const selectedMultiplier = Number(multiplierText);
   const takeProfit = takeProfitText.trim() ? Number(takeProfitText) : undefined;
@@ -4505,8 +4558,14 @@ function GoldDerivTradeWorkspace({
   const marketClosed = symbol?.tradingStatus === 'closed' || symbol?.tradingStatus === 'suspended' || symbol?.tradingStatus === 'unavailable';
   const demoConnected = deriv?.demoConnected === true || session?.mode === 'demo';
   const accountBlocked = Boolean(openAnyTrade && !unusedGoldDerivIsGoldTrade(openAnyTrade));
+  const goldProbeSymbol = deriv?.symbol ?? symbol?.id ?? '';
+  const activeMultiplierProbe = multiplierProbe?.symbol === goldProbeSymbol ? multiplierProbe : null;
+  const probedGoldOptions = activeMultiplierProbe?.options.length ? activeMultiplierProbe.options : null;
+  const multiplierOptions = probedGoldOptions ?? deriv?.multiplierOptions?.filter((value) => value <= 1000) ?? [10, 20, 30, 50, 100, 200, 500, 1000];
+  const maxMultiplier = activeMultiplierProbe?.max ?? null;
+  const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
   const canPlace = owner && demoConnected && marketReady && Boolean(sideFromSignal) && !openAnyTrade && Number.isFinite(stake) && stake > 0
-    && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && limitsValid && !busy;
+    && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && multiplierWithinLiveMax && limitsValid && !busy;
   const canClose = owner && demoConnected && Boolean(openGoldTrade?.contract_id) && !closing;
   const activeTrade = openGoldTrade ?? (purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null);
   const trackedContractId = activeTrade?.contract_id || purchase?.contractId || purchase?.contract_id || closed?.contractId || '';
@@ -4525,7 +4584,6 @@ function GoldDerivTradeWorkspace({
       : undefined;
   const candles = research?.candles?.[chartTimeframe] ?? research?.candles?.[research.timeframe ?? '1m'] ?? [];
   const digits = Math.max(2, Math.min(5, symbol?.digits ?? 2));
-  const multiplierOptions = deriv?.multiplierOptions?.length ? deriv.multiplierOptions : [10, 20, 30, 50, 100, 200, 500];
   const currency = purchase?.currency ?? session?.currency ?? 'USD';
   const exposure = Number.isFinite(stake) && stake > 0 && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 ? stake * selectedMultiplier : 0;
   const exposureText = exposure > 0 ? `${fmtMoney(stake, currency)} controls about ${fmtMoney(exposure, currency)}` : 'Enter stake and multiplier';
@@ -4574,6 +4632,8 @@ function GoldDerivTradeWorkspace({
               ? `Wait for open contract ${openAnyTrade.contract_id || openAnyTrade.id} to settle`
               : !marketReady
                 ? state?.research.reason ?? diagnostics?.reason ?? 'Waiting for live Deriv Gold prices'
+                : !multiplierWithinLiveMax
+                  ? `Selected multiplier exceeds live max x${maxMultiplier}`
                 : !limitsValid
                   ? 'TP profit and stop loss must be positive amounts when set'
                   : sideFromSignal
@@ -4587,6 +4647,44 @@ function GoldDerivTradeWorkspace({
   useEffect(() => {
     if (deriv?.defaultMultiplier) setMultiplierText(String(deriv.defaultMultiplier));
   }, [deriv?.defaultMultiplier]);
+
+  useEffect(() => {
+    manualMultiplierRef.current = false;
+  }, [goldProbeSymbol]);
+
+  useEffect(() => {
+    if (!goldProbeSymbol || !owner || !demoConnected || !sideFromSignal || !(Number.isFinite(stake) && stake > 0) || openAnyTrade) {
+      setMultiplierProbe(null);
+      setMultiplierProbeStatus('idle');
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setMultiplierProbeStatus('checking');
+      void loadMultiplierOptions({
+        symbol: goldProbeSymbol,
+        direction: sideFromSignal,
+        stake,
+        signal: controller.signal,
+      }).then((result) => {
+        if (controller.signal.aborted) return;
+        setMultiplierProbe(result);
+        setMultiplierProbeStatus('idle');
+        if (result.max && selectedMultiplier !== result.max && (!manualMultiplierRef.current || !result.options.includes(selectedMultiplier))) {
+          setMultiplierText(String(result.max));
+        }
+      }).catch((cause) => {
+        if (controller.signal.aborted) return;
+        setMultiplierProbe(null);
+        setMultiplierProbeStatus('error');
+        console.warn('[gold] multiplier limit check failed', cause);
+      });
+    }, 350);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [demoConnected, goldProbeSymbol, openAnyTrade, owner, selectedMultiplier, sideFromSignal, stake]);
 
   useEffect(() => {
     setPurchase(null);
@@ -4708,7 +4806,7 @@ function GoldDerivTradeWorkspace({
           <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace || sideFromSignal !== 'SELL'} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
         </div>
         <label class="gold-trade-field"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
-        <label class="gold-trade-field"><span>Multiplier</span><select value={multiplierText} disabled={busy || Boolean(openAnyTrade)} onChange={(event) => setMultiplierText((event.currentTarget as HTMLSelectElement).value)}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}</option>)}</select></label>
+        <label class="gold-trade-field"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAnyTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
         <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
         <div class="gold-trade-quote">

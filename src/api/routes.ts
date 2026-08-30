@@ -21,7 +21,7 @@ import {
   serializeOAuth,
 } from '../deriv/oauth.ts';
 import type { TokenSet } from '../deriv/oauth.ts';
-import type { Direction } from '../core/digitMath.ts';
+import type { Direction, MultiplierDirection } from '../core/digitMath.ts';
 import { contractProfit } from '../strategy/pnl.ts';
 import { buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { runBacktest, TEST_MODES, TEST_STRATEGIES } from '../testlab/backtest.ts';
@@ -73,6 +73,60 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const { registry, feed, client, hub, automation, paperSimulator, momentum } = deps;
   const gold = deps.gold ?? new GoldRuntime();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
+  const multiplierProbeCache = new Map<string, { ts: number; result: MultiplierProbeResult }>();
+  const multiplierCandidates = [10, 20, 30, 50, 75, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000];
+  type MultiplierProbeResult = {
+    symbol: string;
+    direction: MultiplierDirection;
+    stake: number;
+    currency: string;
+    options: number[];
+    max: number | null;
+    checkedAt: number;
+    rejected: Array<{ multiplier: number; reason: string }>;
+  };
+  const probeMultiplierOptions = async (input: {
+    symbol: string;
+    direction: MultiplierDirection;
+    stake: number;
+    currency: string;
+  }): Promise<MultiplierProbeResult> => {
+    const cacheKey = `${input.currency}:${input.symbol}:${input.direction}:${Math.round(input.stake * 100) / 100}`;
+    const cached = multiplierProbeCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 5 * 60_000) return cached.result;
+
+    const checked = await Promise.all(multiplierCandidates.map(async (multiplier) => {
+      try {
+        await client.getMultiplierQuote({
+          direction: input.direction,
+          amount: input.stake,
+          currency: input.currency,
+          symbol: input.symbol,
+          multiplier,
+        });
+        return { multiplier, ok: true as const };
+      } catch (error) {
+        return {
+          multiplier,
+          ok: false as const,
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }));
+    const options = checked.filter((item) => item.ok).map((item) => item.multiplier);
+    const rejected = checked
+      .filter((item): item is { multiplier: number; ok: false; reason: string } => !item.ok)
+      .map((item) => ({ multiplier: item.multiplier, reason: item.reason }));
+    const result = {
+      ...input,
+      options,
+      max: options.length ? Math.max(...options) : null,
+      checkedAt: Date.now(),
+      rejected,
+    };
+    multiplierProbeCache.set(cacheKey, { ts: Date.now(), result });
+    return result;
+  };
   const resumeOpenTradeSettlement = (): void => {
     if (!client.isConnected) return;
     const openTrade = getOpenTrade();
@@ -637,6 +691,62 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     try {
       return { state: momentum.focus(symbol) };
     } catch (error) { reply.code(409); return { error: String(error) }; }
+  });
+
+  app.post('/api/multiplier/options', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'connect a Deriv demo account to check multiplier limits' };
+    }
+    if (session.mode !== 'demo') {
+      reply.code(403);
+      return { error: 'multiplier limit checks are restricted to a Deriv demo account' };
+    }
+
+    const body = (req.body ?? {}) as { symbol?: unknown; direction?: unknown; stake?: unknown };
+    const symbol = String(body.symbol ?? '').trim();
+    const direction = body.direction === 'down' || body.direction === 'SELL'
+      ? 'down'
+      : body.direction === 'up' || body.direction === 'BUY'
+        ? 'up'
+        : null;
+    const requestedStake = Number(body.stake);
+    const stake = Number.isFinite(requestedStake) && requestedStake > 0
+      ? Math.max(.35, Math.round(requestedStake * 100) / 100)
+      : 1;
+
+    if (!symbol || !direction) {
+      reply.code(400);
+      return { error: 'symbol and up/down direction are required' };
+    }
+
+    if (!client.isConnected) {
+      try {
+        const token = await resolveStoredToken();
+        const connected = await client.reconnect(token, session.loginid);
+        if (connected.mode !== 'demo') {
+          reply.code(403);
+          return { error: 'multiplier limit checks are restricted to a Deriv demo account' };
+        }
+      } catch (error) {
+        reply.code(409);
+        return { error: `socket reconnect failed: ${String(error)}` };
+      }
+    }
+
+    try {
+      return await probeMultiplierOptions({
+        symbol,
+        direction,
+        stake,
+        currency: session.currency || 'USD',
+      });
+    } catch (error) {
+      reply.code(502);
+      return { error: `multiplier limit check failed: ${String(error)}` };
+    }
   });
 
   /**

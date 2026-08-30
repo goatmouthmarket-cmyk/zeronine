@@ -460,3 +460,50 @@ test('an uncertain Momentum buy remains locked and cannot be retried or locally 
   automation.dispose();
   await app.close();
 });
+
+test('multiplier options endpoint reports the highest accepted demo multiplier', async () => {
+  const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
+    import('fastify'),
+    import('../src/api/hub.ts'),
+    import('../src/core/marketState.ts'),
+    import('../src/deriv/publicFeed.ts'),
+    import('../src/strategy/automation.ts'),
+    import('../src/simulation/paperSimulator.ts'),
+    import('../src/api/routes.ts'),
+    import('../src/db/store.ts'),
+    import('../src/config.ts'),
+  ]);
+  cfg.config.dashboardAdminToken = '';
+  const hub = new hubMod.Hub();
+  const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
+  const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
+  const requestedMultipliers: number[] = [];
+  const client = {
+    isConnected: true,
+    getMultiplierQuote: async (args: { multiplier: number }) => {
+      requestedMultipliers.push(args.multiplier);
+      if (args.multiplier > 1000 || args.multiplier === 900) throw new Error('multiplier unavailable');
+      return { id: `proposal-${args.multiplier}`, askPrice: 1, payout: 2, spot: 1 };
+    },
+  };
+  const automation = new autoMod.Automation(registry, client as never, hub);
+  const app = Fastify();
+  routesMod.registerApi(app, {
+    registry, feed, client: client as never, hub, automation,
+    paperSimulator: new paperMod.PaperSimulator(),
+  });
+  store.setSession({
+    id: 'multiplier-options-demo', loginid: 'VRTC_MULT_OPTIONS', balance: 250, currency: 'USD', mode: 'demo', auth_kind: 'pat',
+    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+  });
+
+  const response = await app.inject({ method: 'POST', url: '/api/multiplier/options', payload: { symbol: 'R_100', direction: 'up', stake: 1 } });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().max, 1000);
+  assert.ok(response.json().options.includes(1000));
+  assert.ok(!response.json().options.includes(900));
+  assert.equal(requestedMultipliers.length, 17);
+
+  automation.dispose();
+  await app.close();
+});

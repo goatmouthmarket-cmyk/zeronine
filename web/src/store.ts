@@ -721,6 +721,17 @@ export interface GoldDerivTradeClose {
   referenceId?: string;
 }
 
+export interface MultiplierOptionsResult {
+  symbol: string;
+  direction: 'up' | 'down';
+  stake: number;
+  currency: string;
+  options: number[];
+  max: number | null;
+  checkedAt: number;
+  rejected?: Array<{ multiplier: number; reason: string }>;
+}
+
 export interface GoldDerivState {
   provider: 'deriv';
   symbol: string;
@@ -1519,6 +1530,23 @@ export async function closeGoldDerivTrade(): Promise<GoldDerivTradeClose> {
   const res = await api<{ ok: boolean; sold: GoldDerivTradeClose }>('/api/gold/close', { method: 'POST' });
   void refreshCoreState();
   return res.sold;
+}
+
+export async function loadMultiplierOptions(input: {
+  symbol: string;
+  direction: 'up' | 'down' | 'BUY' | 'SELL';
+  stake: number;
+  signal?: AbortSignal;
+}): Promise<MultiplierOptionsResult> {
+  return api<MultiplierOptionsResult>('/api/multiplier/options', {
+    method: 'POST',
+    signal: input.signal,
+    body: JSON.stringify({
+      symbol: input.symbol,
+      direction: input.direction,
+      stake: input.stake,
+    }),
+  });
 }
 
 // Gold state is intentionally non-secret. Deriv demo execution still happens
