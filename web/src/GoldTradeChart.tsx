@@ -97,11 +97,11 @@ export function GoldTradeChart({
       handleScale: true,
     });
     const series = chart.addSeries(LineSeries, {
-      color: 'transparent',
-      lineWidth: 1,
+      color: '#f4c96b',
+      lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
-      crosshairMarkerVisible: false,
+      crosshairMarkerVisible: true,
     });
     series.priceScale().applyOptions({ scaleMargins: { top: .1, bottom: .14 } });
     chartRef.current = chart;
@@ -131,13 +131,13 @@ export function GoldTradeChart({
     const series = seriesRef.current;
     if (!series) return;
     series.applyOptions(muted ? {
-      color: 'transparent',
+      color: 'rgba(244,201,107,.4)',
       lineWidth: 1,
       priceLineVisible: false,
       lastValueVisible: false,
     } : {
-      color: 'transparent',
-      lineWidth: 1,
+      color: '#f4c96b',
+      lineWidth: 2,
       priceLineVisible: false,
       lastValueVisible: false,
     });
@@ -168,7 +168,6 @@ export function GoldTradeChart({
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
-    <div class="gold-chart-kind" aria-hidden="true">Gold price lines / TradingView</div>
     {lockLabel && <div class="gold-chart-lock-badge" role="status">Locked · {lockLabel}</div>}
     <div class="gold-chart-readout" aria-hidden="true">
       <span>{lastPrice == null ? 'No live price' : displayPrice(lastPrice, digits)}</span>
