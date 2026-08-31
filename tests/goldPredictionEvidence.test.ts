@@ -28,3 +28,19 @@ test('Gold prediction evidence persists once and resolves immutably at day end',
   assert.equal(row?.exit_price, 4_445);
   assert.equal(store.listPendingGoldPredictions('frxXAUUSD', dueAt + 1).length, 0);
 });
+
+test('Gold account trade outcomes build direction-specific knowledge across account modes', async () => {
+  const store = await import('../src/db/store.ts');
+  for (let index = 0; index < 3; index += 1) {
+    store.recordGoldTradeKnowledge({
+      tradeId: 100 + index, contractId: `gold-contract-${index}`, symbol: 'frxXAUUSD',
+      accountMode: index === 0 ? 'real' : 'demo', direction: 'BUY', signalId: `signal-${index}`,
+      signalDirection: 'BUY', signalConfidence: 70, signalScore: .7, entryPrice: 4_430,
+      openedAt: Date.now() + index, evidence: { source: 'account contract' },
+    });
+    store.resolveGoldTradeKnowledge(100 + index, index < 2 ? 'won' : 'lost', index < 2 ? 5 : -3, 4_435);
+  }
+  assert.deepEqual(store.getGoldTradeKnowledgeProfile('frxXAUUSD', 'BUY'), { samples: 3, winRate: 2 / 3 });
+  assert.deepEqual(store.getGoldTradeKnowledgeProfile('frxXAUUSD', 'SELL'), { samples: 0, winRate: null });
+  assert.deepEqual(new Set(store.listGoldTradeKnowledge().map((row) => row.account_mode)), new Set(['demo', 'real']));
+});

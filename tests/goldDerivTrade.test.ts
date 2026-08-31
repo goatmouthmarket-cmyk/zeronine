@@ -148,6 +148,11 @@ test('manual Gold demo trade can deliberately differ from the research suggestio
   assert.equal(trade.entry_spot, 2031.25);
   assert.match(trade.reason, /gold deriv manual SELL/i);
   assert.match(trade.reason, /research BUY 71%/i);
+  const learned = store.listGoldTradeKnowledge().find((row) => row.trade_id === trade.id);
+  assert.equal(learned?.account_mode, 'demo');
+  assert.equal(learned?.direction, 'SELL');
+  assert.equal(learned?.signal_direction, 'BUY', 'manual disagreement must be retained as knowledge');
+  assert.equal(learned?.status, 'pending');
 
   const momentumClose = await app.inject({ method: 'POST', url: '/api/momentum/close' });
   assert.equal(momentumClose.statusCode, 409);

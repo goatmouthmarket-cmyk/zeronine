@@ -26,6 +26,7 @@ export interface GoldResearchServiceOptions {
   timeframe?: GoldTimeframe;
   config?: Partial<GoldResearchConfig>;
   now?: () => number;
+  tradeKnowledge?: (symbolId: string, direction: 'BUY' | 'SELL') => { samples: number; winRate: number | null };
 }
 
 const MAX_CANDLES_PER_TIMEFRAME = 500;
@@ -55,6 +56,7 @@ function cloneSentiment(snapshot: GoldSentimentSnapshot | null): GoldSentimentSn
 export class GoldResearchService {
   private readonly now: () => number;
   private readonly config?: Partial<GoldResearchConfig>;
+  private readonly tradeKnowledge?: GoldResearchServiceOptions['tradeKnowledge'];
   private timeframe: GoldTimeframe;
   private symbol: GoldSymbol | null = null;
   private quote: GoldQuote | null = null;
@@ -69,6 +71,7 @@ export class GoldResearchService {
     this.timeframe = options.timeframe ?? '5m';
     this.config = options.config;
     this.now = options.now ?? Date.now;
+    this.tradeKnowledge = options.tradeKnowledge;
   }
 
   state(): GoldResearchState {
@@ -148,7 +151,7 @@ export class GoldResearchService {
   private recompute(): void {
     this.updatedAt = this.now();
     if (!this.symbol) return;
-    const next = evaluateGoldResearch({
+    let next = evaluateGoldResearch({
       symbol: this.symbol,
       quote: this.quote,
       timeframe: this.timeframe,
@@ -157,6 +160,24 @@ export class GoldResearchService {
       config: this.config,
       sentiment: this.sentiment,
     });
+    if (next.direction === 'BUY' || next.direction === 'SELL') {
+      try {
+        const profile = this.tradeKnowledge?.(next.symbolId, next.direction);
+        if (profile && profile.samples >= 20 && profile.winRate != null) {
+          // Outcomes from the operator's own Gold contracts calibrate the
+          // displayed strength only after a meaningful sample. The bounded
+          // adjustment cannot invent or reverse a direction on its own.
+          const adjustment = Math.max(-8, Math.min(8, Math.round((profile.winRate - .5) * 20)));
+          next = {
+            ...next,
+            confidence: Math.max(0, Math.min(100, next.confidence + adjustment)),
+            reasons: [...next.reasons, `Own-trade evidence: ${(profile.winRate * 100).toFixed(1)}% wins across ${profile.samples} ${next.direction} contracts (${adjustment >= 0 ? '+' : ''}${adjustment} confidence)`],
+          };
+        }
+      } catch {
+        // Knowledge telemetry must never interrupt live research updates.
+      }
+    }
     // A signal history starts only once there is a market quote to anchor its
     // entry reference. Candle loading alone may produce a provisional WAIT.
     if (this.quote && next.id !== this.signal?.id) {

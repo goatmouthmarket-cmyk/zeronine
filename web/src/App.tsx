@@ -5140,6 +5140,7 @@ const modelWeights = [
           <span>Spread/ATR <b>{signal && Number.isFinite(signal.spreadToAtr) ? signal.spreadToAtr.toFixed(3) : '--'}</b></span>
           <span>EOD accuracy <b>{state?.predictionEvaluation?.accuracy == null ? '--' : `${(state.predictionEvaluation.accuracy * 100).toFixed(1)}%`}</b></span>
           <span>Awaiting review <b>{state?.predictionEvaluation?.pending ?? 0}</b></span>
+          <span>Own trades learned <b>{(state?.predictionEvaluation?.tradeOutcomes.won ?? 0) + (state?.predictionEvaluation?.tradeOutcomes.lost ?? 0)}</b></span>
         </div>
         <button class="gold-backtest-button" type="button" title={state?.backtest.ready === false ? state.backtest.reason ?? undefined : undefined} disabled={!owner || backtestBusy || state?.backtest.ready !== true} onClick={() => void runGoldModelBacktest()}>
           <Icon name={backtestBusy ? 'dots' : 'stats'} size={13} />

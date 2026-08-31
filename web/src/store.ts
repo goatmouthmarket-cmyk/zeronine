@@ -846,6 +846,7 @@ export interface GoldModuleState {
     flat: number;
     accuracy: number | null;
     latest: { signal_id: string; direction: 'BUY' | 'SELL'; status: 'pending' | 'correct' | 'incorrect' | 'flat'; generated_at: number; evaluated_at: number | null } | null;
+    tradeOutcomes: { total: number; pending: number; won: number; lost: number };
   };
   paperAutomation: {
     enabled: true;

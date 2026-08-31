@@ -29,6 +29,7 @@ import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
 import {
+  type TradeRow,
   clearSession,
   getAutomation as storeGetAutomation,
   getCalibration,
@@ -45,6 +46,7 @@ import {
   insertTrade,
   listMarkets,
   listGoldPredictionEvidence,
+  listGoldTradeKnowledge,
   listOpenTrades,
   listDecisionEvents,
   listLedgerEntries,
@@ -54,6 +56,8 @@ import {
   listTrades,
   markTradePurchaseOutcomeUnknown,
   markTradePurchased,
+  recordGoldTradeKnowledge,
+  resolveGoldTradeKnowledge,
   resolveTrade,
   resetPerformanceSummary,
   setAutomation as storeSetAutomation,
@@ -143,9 +147,41 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       && (/gold deriv manual/i.test(trade.reason ?? '') || trade.market === config.goldDerivSymbol),
     );
   const fmtSentimentPct = (score: number): string => `${score >= 0 ? '+' : ''}${Math.round(score * 100)}%`;
+  const recordGoldTradeKnowledgeSafely = (
+    trade: TradeRow,
+    signal: ReturnType<typeof gold.state>['research']['state']['signal'],
+  ): void => {
+    if (!trade.contract_id || (trade.contract_type !== 'MULTUP' && trade.contract_type !== 'MULTDOWN')) return;
+    try {
+      recordGoldTradeKnowledge({
+        tradeId: trade.id,
+        contractId: trade.contract_id,
+        symbol: trade.market,
+        accountMode: trade.account_mode ?? 'unknown',
+        direction: trade.contract_type === 'MULTDOWN' ? 'SELL' : 'BUY',
+        signalId: signal?.id ?? null,
+        signalDirection: signal?.direction ?? null,
+        signalConfidence: signal?.confidence ?? null,
+        signalScore: signal?.score ?? null,
+        entryPrice: trade.entry_spot ?? null,
+        openedAt: trade.ts,
+        evidence: signal ? {
+          modelVersion: signal.modelVersion,
+          regime: signal.regime,
+          indicators: signal.indicators,
+          sentiment: signal.sentiment,
+          reasons: signal.reasons,
+          followedSuggestion: (trade.contract_type === 'MULTUP' ? 'BUY' : 'SELL') === signal.direction,
+        } : { research: 'unavailable at entry' },
+      });
+    } catch (error) {
+      console.warn(`[gold trade knowledge] record failed: ${String(error)}`);
+    }
+  };
   const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
     const openTrade = owner ? getOpenTradeByLane('multiplier') : null;
     const predictionRows = listGoldPredictionEvidence(500);
+    const tradeKnowledge = listGoldTradeKnowledge(500);
     const resolvedPredictions = predictionRows.filter((row) => row.status !== 'pending');
     const correctPredictions = resolvedPredictions.filter((row) => row.status === 'correct').length;
     return {
@@ -159,6 +195,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         flat: resolvedPredictions.filter((row) => row.status === 'flat').length,
         accuracy: resolvedPredictions.length ? correctPredictions / resolvedPredictions.length : null,
         latest: predictionRows[0] ?? null,
+        tradeOutcomes: {
+          total: tradeKnowledge.length,
+          pending: tradeKnowledge.filter((row) => row.status === 'pending').length,
+          won: tradeKnowledge.filter((row) => row.status === 'won').length,
+          lost: tradeKnowledge.filter((row) => row.status === 'lost').length,
+        },
       },
       deriv: {
         provider: 'deriv',
@@ -554,6 +596,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       stage = 'finalize';
       markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entryPrice);
       const purchased = getTrade(trade.id, trade.account_id) ?? trade;
+      recordGoldTradeKnowledgeSafely(purchased, signal);
       settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
       hub.emit({ type: 'trade', ts: Date.now(), trade: purchased, manual: true, gold: true });
       return {
@@ -600,6 +643,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
           }
           const persisted = getTrade(recordedTrade.id, recordedTrade.account_id);
           if (persisted?.contract_id === bought.contractId) {
+            recordGoldTradeKnowledgeSafely(persisted, signal);
             settleInBackground(client, hub, persisted.id, bought.contractId, persisted.stake, persisted.payout, persisted.account_id);
           }
         } catch (persistenceError) {
@@ -657,6 +701,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const profit = Math.round((sold.soldFor - openTrade.stake) * 100) / 100;
       const status = profit > 0 ? 'won' : profit < 0 ? 'lost' : 'push';
       resolveTrade(openTrade.id, status, profit, sold.contractId, undefined, openTrade.account_id);
+      try { resolveGoldTradeKnowledge(openTrade.id, status, profit, null, Date.now()); } catch (error) { console.warn(`[gold trade knowledge] close result failed: ${String(error)}`); }
       activeSettlements.delete(settlementKeyFor(openTrade.account_id, openTrade.id, openTrade.contract_id));
       const trade = getTrade(openTrade.id, openTrade.account_id) ?? openTrade;
       const performance = getPerformanceSummary(openTrade.account_id);
@@ -1929,6 +1974,16 @@ function settleInBackground(
           { entrySpot: outcome.entrySpot, entryDigit: outcome.entryDigit, exitSpot: outcome.exitSpot, exitDigit: outcome.exitDigit },
           accountId,
         );
+        if (
+          (current.contract_type === 'MULTUP' || current.contract_type === 'MULTDOWN')
+          && (/gold deriv manual/i.test(current.reason ?? '') || current.market === config.goldDerivSymbol)
+        ) {
+          try {
+            resolveGoldTradeKnowledge(tradeId, status, profit, outcome.exitSpot ?? outcome.sellPrice ?? null, Date.now());
+          } catch (error) {
+            console.warn(`[gold trade knowledge] settlement result failed: ${String(error)}`);
+          }
+        }
         const settledTrade = getTrade(tradeId, accountId);
         if (settledTrade) {
           hub.emit({

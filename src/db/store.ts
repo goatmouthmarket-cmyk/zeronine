@@ -122,6 +122,40 @@ export interface GoldPredictionEvidenceInput extends Omit<GoldPredictionEvidence
   evidence: Record<string, unknown>;
 }
 
+export interface GoldTradeEvidenceInput {
+  tradeId: number;
+  contractId: string;
+  symbol: string;
+  accountMode: 'demo' | 'real' | 'unknown';
+  direction: 'BUY' | 'SELL';
+  signalId: string | null;
+  signalDirection: 'BUY' | 'SELL' | 'WAIT' | null;
+  signalConfidence: number | null;
+  signalScore: number | null;
+  entryPrice: number | null;
+  openedAt: number;
+  evidence: Record<string, unknown>;
+}
+
+export interface GoldTradeKnowledgeRow {
+  trade_id: number;
+  contract_id: string;
+  symbol: string;
+  account_mode: 'demo' | 'real' | 'unknown';
+  direction: 'BUY' | 'SELL';
+  signal_id: string | null;
+  signal_direction: 'BUY' | 'SELL' | 'WAIT' | null;
+  signal_confidence: number | null;
+  signal_score: number | null;
+  entry_price: number | null;
+  exit_price: number | null;
+  status: 'pending' | 'won' | 'lost' | 'push';
+  profit: number | null;
+  opened_at: number;
+  evaluated_at: number | null;
+  evidence_json: string;
+}
+
 /** Immutable scanner/configuration snapshot captured when virtual research opens. */
 export interface PaperTradeContextRow {
   contract_ref: string;
@@ -444,6 +478,25 @@ function migrate(d: DatabaseSync): void {
       evidence_json TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_gold_prediction_due ON gold_prediction_evidence(status, evaluation_due_at);
+    CREATE TABLE IF NOT EXISTS gold_trade_knowledge (
+      trade_id INTEGER PRIMARY KEY,
+      contract_id TEXT NOT NULL UNIQUE,
+      symbol TEXT NOT NULL,
+      account_mode TEXT NOT NULL CHECK (account_mode IN ('demo', 'real', 'unknown')),
+      direction TEXT NOT NULL CHECK (direction IN ('BUY', 'SELL')),
+      signal_id TEXT,
+      signal_direction TEXT,
+      signal_confidence REAL,
+      signal_score REAL,
+      entry_price REAL,
+      exit_price REAL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'won', 'lost', 'push')),
+      profit REAL,
+      opened_at INTEGER NOT NULL,
+      evaluated_at INTEGER,
+      evidence_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_gold_trade_knowledge_status ON gold_trade_knowledge(status, opened_at DESC);
     CREATE INDEX IF NOT EXISTS idx_paper_trade_context_opened ON paper_trade_context(opened_at DESC);
     CREATE TABLE IF NOT EXISTS performance_baseline (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -2113,4 +2166,42 @@ export function resolveGoldPredictionEvidence(
 export function listGoldPredictionEvidence(limit = 200): GoldPredictionEvidenceRow[] {
   return getDb().prepare('SELECT * FROM gold_prediction_evidence ORDER BY generated_at DESC LIMIT ?')
     .all(Math.max(1, Math.min(2000, limit))) as unknown as GoldPredictionEvidenceRow[];
+}
+
+export function recordGoldTradeKnowledge(input: GoldTradeEvidenceInput): void {
+  getDb().prepare(`
+    INSERT OR IGNORE INTO gold_trade_knowledge
+      (trade_id, contract_id, symbol, account_mode, direction, signal_id, signal_direction, signal_confidence, signal_score,
+       entry_price, opened_at, evidence_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.tradeId, input.contractId, input.symbol, input.accountMode, input.direction, input.signalId, input.signalDirection,
+    input.signalConfidence, input.signalScore, input.entryPrice, input.openedAt, JSON.stringify(input.evidence),
+  );
+}
+
+export function resolveGoldTradeKnowledge(
+  tradeId: number,
+  status: 'won' | 'lost' | 'push',
+  profit: number,
+  exitPrice: number | null,
+  evaluatedAt = Date.now(),
+): void {
+  getDb().prepare(`
+    UPDATE gold_trade_knowledge SET status = ?, profit = ?, exit_price = ?, evaluated_at = ?
+    WHERE trade_id = ? AND status = 'pending'
+  `).run(status, profit, exitPrice, evaluatedAt, tradeId);
+}
+
+export function listGoldTradeKnowledge(limit = 500): GoldTradeKnowledgeRow[] {
+  return getDb().prepare('SELECT * FROM gold_trade_knowledge ORDER BY opened_at DESC LIMIT ?')
+    .all(Math.max(1, Math.min(5000, limit))) as unknown as GoldTradeKnowledgeRow[];
+}
+
+export function getGoldTradeKnowledgeProfile(symbol: string, direction: 'BUY' | 'SELL'): { samples: number; winRate: number | null } {
+  const row = getDb().prepare(`
+    SELECT COUNT(*) AS samples, SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) AS wins
+    FROM gold_trade_knowledge WHERE symbol = ? AND direction = ? AND status IN ('won', 'lost')
+  `).get(symbol, direction) as { samples: number; wins: number | null };
+  return { samples: row.samples, winRate: row.samples > 0 ? Number(row.wins ?? 0) / row.samples : null };
 }

@@ -20,6 +20,7 @@ import {
   appendPaperTradeContextSafely,
   getDb,
   getMeta,
+  getGoldTradeKnowledgeProfile,
   getSession,
   getSettings,
   enqueueDigit,
@@ -223,6 +224,7 @@ async function main(): Promise<void> {
     research: new GoldResearchService({
       timeframe: '1m',
       config: { minCandles: 12, maxSpreadToAtr: .5 },
+      tradeKnowledge: getGoldTradeKnowledgeProfile,
     }),
     sentimentWorker: goldSentiment,
     predictionEvidence: {
