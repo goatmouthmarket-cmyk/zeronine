@@ -2874,7 +2874,6 @@ function MomentumTradeDesk({
           <span>Suggested side</span>
           <strong>{suggestionText}</strong>
         </span>
-        <span class={`mom-trade-account${isDemo ? ' ready' : ''}`}><Icon name="check" size={13} />{isDemo ? 'Demo account' : 'Demo required'}</span>
       </div>
     </div>
 
@@ -4383,7 +4382,6 @@ function UnusedGoldDerivTradeWorkspace({
             <span>Suggested side</span>
             <strong>{sideFromSignal ? `${sideFromSignal} - ${signal?.confidence ?? 0}%` : 'WAIT'}</strong>
           </span>
-          <span class={`mom-trade-account${isDemo ? ' ready' : ''}`}><Icon name="check" size={13} />{isDemo ? 'Deriv demo' : 'Demo required'}</span>
           <button class="gold-link-button" type="button" onClick={onOpenConnection}>Connection</button>
         </div>
       </div>
@@ -5024,7 +5022,6 @@ const modelWeights = [
               <Icon name="award" size={12} /><span>Perfect setup</span>
             </span>
           )}
-          <span class={`mom-trade-account${demoConnected ? ' ready' : ''}`}><Icon name="check" size={13} />{demoConnected ? 'Deriv demo' : 'Demo required'}</span>
         </div>
       </div>
 
