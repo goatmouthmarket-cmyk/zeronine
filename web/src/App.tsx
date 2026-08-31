@@ -1198,8 +1198,6 @@ function resolveTarget(
 
 function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: () => void }): JSX.Element {
   const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
-  const ticks = (market?.recentTicks?.length ? market.recentTicks : quotes.map((quote, index) => ({ epoch: (market?.lastEpoch ?? Math.floor(Date.now() / 1000)) - quotes.length + index + 1, quote })))
-    .filter((tick) => Number.isFinite(tick.epoch) && Number.isFinite(tick.quote) && tick.quote > 0);
   const first = quotes[0] ?? 0;
   const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
   const changePct = first > 0 ? ((last - first) / first) * 100 : 0;
@@ -1214,7 +1212,7 @@ function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: ()
           <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotes.length > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
         </div>
         <div class="market-pulse-chart">
-          {ticks.length > 1 ? <MarketPulseChart ticks={ticks} label={label} /> : <span class="market-pulse-empty">Loading price history</span>}
+          {quotes.length > 1 ? <MarketPulseChart quotes={quotes} lastEpoch={market?.lastEpoch ?? 0} up={up} label={label} /> : <span class="market-pulse-empty">Awaiting ticks</span>}
         </div>
         <div class="market-pulse-foot">
           <span>{label}</span>
@@ -4166,7 +4164,6 @@ function GoldPage(): JSX.Element {
           settings={store.settings}
           contract={store.contract}
           owner={store.owner === true}
-          onOpenResearch={() => setTab('research')}
         />}
     </div>
   </section>;
@@ -4760,7 +4757,6 @@ function GoldDerivTradeWorkspace({
   automation,
   settings,
   contract,
-  onOpenResearch,
 }: {
   state: GoldModuleState | null;
   owner: boolean;
@@ -4770,7 +4766,6 @@ function GoldDerivTradeWorkspace({
   automation: AutomationState | null;
   settings: Settings | null;
   contract: ContractEvt | null;
-  onOpenResearch: () => void;
 }): JSX.Element {
   const diagnostics = state?.diagnostics ?? null;
   const deriv = state?.deriv ?? null;
@@ -4863,13 +4858,6 @@ const modelWeights = [
   const activeStrategy = settings ? STRATEGY_META[settings.strategy_mode]?.label ?? settings.strategy_mode : 'Manual guarded';
   const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
   const suggestionText = sideFromSignal ? `${sideFromSignal} - ${signal?.confidence ?? 0}%` : 'WAIT';
-  const phase = activeTrade?.status === 'purchasing'
-    ? 'Buying contract'
-    : activeTrade?.status === 'pending'
-      ? matchingContract?.phase ? `Contract ${matchingContract.phase}` : 'Contract open'
-      : closed
-        ? 'Contract closed'
-        : 'No open Deriv Gold contract';
   const actionNote = busy
     ? 'Sending Deriv demo order'
     : closing
@@ -5020,7 +5008,6 @@ const modelWeights = [
             </span>
           )}
           <span class={`mom-trade-account${demoConnected ? ' ready' : ''}`}><Icon name="check" size={13} />{demoConnected ? 'Deriv demo' : 'Demo required'}</span>
-          <button class="gold-link-button" type="button" onClick={onOpenResearch}>Research</button>
         </div>
       </div>
 
@@ -5045,11 +5032,6 @@ const modelWeights = [
             lockLabel={marketClosed ? symbol?.tradingStatus ?? 'market closed' : null}
           />
         </div>
-        <div class="gold-trade-readout" aria-live="polite">
-          <span>Demo balance</span>
-          <strong>{demoConnected && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
-          <small>{phase}</small>
-</div>
         <div class={`gold-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
           <span>Live contract P&L</span>
           <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
@@ -5089,7 +5071,7 @@ const modelWeights = [
     </section>
 
     <section class="mom-pnl gold-pnl" aria-label="Gold Deriv demo profit and loss">
-      <div><span>Demo balance</span><strong>{demoConnected && session ? fmtMoney(session.balance, currency) : '—'}</strong></div>
+      <div><span>Contract stake</span><strong>{activeTrade ? fmtMoney(activeTrade.stake, currency) : Number.isFinite(stake) && stake > 0 ? fmtMoney(stake, currency) : '—'}</strong></div>
       <div><span>Open contract P&amp;L</span><strong class={(contractPnl ?? 0) >= 0 ? 'up' : 'down'}>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong></div>
       <div><span>Realized Gold P&amp;L</span><strong class={goldRealizedPnl >= 0 ? 'up' : 'down'}>{fmtSigned(goldRealizedPnl, currency)}</strong></div>
       <div><span>Current exposure</span><strong>{exposure > 0 ? fmtMoney(exposure, currency) : '—'}</strong></div>

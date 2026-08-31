@@ -11,6 +11,7 @@ interface GoldTick {
 
 const GOLD_TIMEFRAMES: GoldTimeframe[] = ['1m', '5m', '15m'];
 const HISTORY_COUNT = 2500;
+const CANDLE_HISTORY_COUNT = 500;
 const MAX_TICKS = 6000;
 const PING_INTERVAL_MS = 30_000;
 const BACKOFF_BASE_MS = 1_000;
@@ -72,14 +73,27 @@ function candlesFromTicks(symbolId: string, timeframe: GoldTimeframe, ticks: Gol
   return [...buckets.values()].sort((left, right) => left.openTime - right.openTime).slice(-500);
 }
 
+export function candlesFromHistoryRows(symbolId: string, timeframe: GoldTimeframe, rows: Array<Record<string, unknown>>, now = Date.now()): GoldCandle[] {
+  const interval = GOLD_TIMEFRAME_MS[timeframe];
+  return rows.flatMap((row) => {
+    const openTime = Number(row.epoch) * 1000;
+    const open = Number(row.open); const high = Number(row.high); const low = Number(row.low); const close = Number(row.close);
+    if (![openTime, open, high, low, close].every(Number.isFinite)) return [];
+    return [{ symbolId, timeframe, openTime, closeTime: openTime + interval, open, high, low, close,
+      tickVolume: Number.isFinite(Number(row.tick_count)) ? Number(row.tick_count) : null, complete: openTime + interval <= now } satisfies GoldCandle];
+  }).sort((left, right) => left.openTime - right.openTime);
+}
+
 export class DerivGoldFeed {
   private readonly runtime: GoldRuntime;
   private ws: WebSocket | null = null;
   private req = 1;
   private historyReq = 0;
+  private candleHistoryReqs = new Map<number, GoldTimeframe>();
   private tickReq = 0;
   private sequence = 0;
   private ticks: GoldTick[] = [];
+  private historicalCandles = new Map<GoldTimeframe, GoldCandle[]>();
   private pingTimer: NodeJS.Timeout | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempt = 0;
@@ -159,16 +173,39 @@ export class DerivGoldFeed {
       req_id: this.historyReq,
     }));
     this.ws.send(JSON.stringify({ ticks: config.goldDerivSymbol, subscribe: 1, req_id: this.tickReq }));
+    this.candleHistoryReqs.clear();
+    for (const timeframe of GOLD_TIMEFRAMES) {
+      const reqId = this.nextReqId();
+      this.candleHistoryReqs.set(reqId, timeframe);
+      this.ws.send(JSON.stringify({
+        ticks_history: config.goldDerivSymbol,
+        style: 'candles',
+        granularity: GOLD_TIMEFRAME_MS[timeframe] / 1000,
+        count: CANDLE_HISTORY_COUNT,
+        end: 'latest',
+        adjust_start_time: 1,
+        req_id: reqId,
+      }));
+    }
   }
 
   private handleMessage(msg: Record<string, any>): void {
     if (msg.msg_type === 'ping') return;
     const reqId = Number(msg.req_id);
     if (msg.error) {
-      if (reqId === this.historyReq || reqId === this.tickReq) {
+      if (reqId === this.historyReq || reqId === this.tickReq || this.candleHistoryReqs.has(reqId)) {
         console.warn(`[gold-deriv] ${config.goldDerivSymbol} feed rejected: ${msg.error.message ?? msg.error.code ?? 'unknown error'}`);
         if (this.isMarketClosedError(msg.error)) this.setMarketStatus('closed');
       }
+      return;
+    }
+    if (msg.msg_type === 'candles' && this.candleHistoryReqs.has(reqId)) {
+      const timeframe = this.candleHistoryReqs.get(reqId)!;
+      this.candleHistoryReqs.delete(reqId);
+      const now = Date.now();
+      const candles = candlesFromHistoryRows(config.goldDerivSymbol, timeframe, Array.isArray(msg.candles) ? msg.candles : [], now);
+      this.historicalCandles.set(timeframe, candles.slice(-CANDLE_HISTORY_COUNT));
+      this.publish();
       return;
     }
     if (msg.msg_type === 'history' && reqId === this.historyReq) {
@@ -209,7 +246,10 @@ export class DerivGoldFeed {
     if (!latest) return;
     this.runtime.setSymbol(goldSymbol(this.marketStatus));
     for (const timeframe of GOLD_TIMEFRAMES) {
-      this.runtime.replaceCandles(timeframe, candlesFromTicks(symbolId, timeframe, this.ticks));
+      const merged = new Map<number, GoldCandle>();
+      for (const candle of this.historicalCandles.get(timeframe) ?? []) merged.set(candle.openTime, candle);
+      for (const candle of candlesFromTicks(symbolId, timeframe, this.ticks)) merged.set(candle.openTime, candle);
+      this.runtime.replaceCandles(timeframe, [...merged.values()].sort((left, right) => left.openTime - right.openTime).slice(-500));
     }
     this.runtime.ingestQuote({
       symbolId,
