@@ -659,6 +659,19 @@ button {
    only navigation and factual availability states; it cannot trade. */
 .gold-page { min-height: 100%; padding: 0 2px 28px; color: var(--text); }
 .gold-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 0 0 16px; }
+.gold-page-header,
+.mom-page-header {
+  position: sticky;
+  top: 0;
+  z-index: 35;
+  isolation: isolate;
+  background: rgba(8, 9, 13, .96);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  backdrop-filter: blur(18px) saturate(1.15);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .22);
+}
+.gold-page-header { border-bottom: 1px solid rgba(244, 201, 107, .2); }
+.mom-page-header { border-bottom: 1px solid rgba(117, 232, 189, .18); }
 .gold-page-header .subtitle { margin-top: 6px; }
 .gold-brand-logo { display: block; width: auto; height: 58px; max-width: min(260px, 72vw); object-fit: contain; object-position: left center; }
 .gold-kicker { display: inline-flex; align-items: center; gap: 6px; color: #f4c96b; font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
