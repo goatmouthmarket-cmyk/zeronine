@@ -22,6 +22,7 @@ export interface SignalCandidate {
   momentum: number;
   shortLongDeviation: number;
   transitionProb: number;
+  transitionSamples: number;
   learnedWin: number | null;
 }
 
@@ -104,6 +105,7 @@ function toCandidate(
     momentum: f.momentum,
     shortLongDeviation: f.shortLongDeviation,
     transitionProb: f.transitionCond,
+    transitionSamples: f.transitionSamples,
     learnedWin: f.learnedWin,
   };
 }

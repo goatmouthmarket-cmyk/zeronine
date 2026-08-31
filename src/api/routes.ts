@@ -1579,6 +1579,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     
     let recordedTrade: ReturnType<typeof insertTrade> | null = null;
     try {
+      const entrySnapshot = registry.snapshot(market);
       const quote = await client.getQuote({
         direction,
         barrier,
@@ -1612,7 +1613,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const bought = await client.placeBuy(quote.id, quote.askPrice);
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
-      const entrySnapshot = registry.snapshot(market);
       markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
       hub.emit({ type: 'trade', ts: Date.now(), trade: getTrade(trade.id, trade.account_id) ?? trade, manual: true });
       settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
@@ -1682,6 +1682,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
     const batchId = crypto.randomUUID();
     try {
+      const entrySnapshots = new Map(normalized.map((order) => [order.market, registry.snapshot(order.market)]));
       // Obtain every proposal before purchasing so no leg starts while another
       // is still waiting for its quote. Provider buys are then launched in one
       // concurrent turn (network arrival can still differ by milliseconds).
@@ -1725,7 +1726,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         const bought = outcome.value;
         const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : normalized[index].stake;
         const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
-        const entrySnapshot = registry.snapshot(trade.market);
+        const entrySnapshot = entrySnapshots.get(trade.market)!;
         markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
         const purchasedTrade = getTrade(trade.id, trade.account_id) ?? trade;
         hub.emit({ type: 'trade', ts: Date.now(), trade: purchasedTrade, manual: true, batchId });

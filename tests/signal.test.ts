@@ -79,6 +79,24 @@ test('pickSignal ranks best candidate first and caps the shortlist', () => {
   assert.ok(pick.candidates.length <= 5);
 });
 
+test('transition evidence is conditioned on the current digit instead of averaging every row', () => {
+  const digits: number[] = [];
+  for (let i = 0; i < 80; i++) digits.push(9, 8, 0, 1);
+
+  const afterNine = featureFor([...digits, 9], 'over', 5);
+  const afterZero = featureFor([...digits, 0], 'over', 5);
+
+  assert.ok(afterNine.transitionCond > afterZero.transitionCond);
+  assert.ok(afterNine.transitionSamples >= 80);
+  assert.ok(afterZero.transitionSamples >= 80);
+});
+
+test('sparse current-digit transitions are shrunk toward the theoretical probability', () => {
+  const feature = featureFor([9, 8, 1, 2, 3, 4, 5, 6, 9], 'over', 5);
+  assert.equal(feature.transitionSamples, 1);
+  assert.ok(feature.transitionCond > 0.4 && feature.transitionCond < 0.45);
+});
+
 test('signal quality avoids spammy low-base Over 6 unless evidence is exceptional', () => {
   const sensible = {
     baseWin: 0.5,

@@ -720,7 +720,8 @@ export class Automation {
     // Final quote at the planned stake so the proposal matches the buy. Only
     // this short selected-market span is freshness-critical: if its next tick
     // arrives before the quote returns, discard it and recalculate.
-    const finalSignalEpoch = this.registry.snapshot(decision.market).lastEpoch;
+    const entrySnapshot = this.registry.snapshot(decision.market);
+    const finalSignalEpoch = entrySnapshot.lastEpoch;
     const finalQuote = await this.client.getQuote({
       direction: decision.direction,
       barrier: decision.barrier,
@@ -809,7 +810,6 @@ export class Automation {
     const bought = await this.client.placeBuy(finalQuote.id, finalQuote.askPrice);
     const actualStake = bought.buyPrice > 0 ? bought.buyPrice : finalQuote.askPrice > 0 ? finalQuote.askPrice : decision.stake;
     const actualPayout = bought.payout > 0 ? bought.payout : finalQuote.payout;
-    const entrySnapshot = this.registry.snapshot(decision.market);
     markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, accountId, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
     const purchasedTrade = getTrade(trade.id, accountId);
     if (purchasedTrade) this.emit({ type: 'trade', ts: Date.now(), trade: purchasedTrade });

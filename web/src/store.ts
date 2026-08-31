@@ -160,6 +160,7 @@ export interface SignalCandidate {
   momentum: number;
   shortLongDeviation: number;
   transitionProb: number;
+  transitionSamples: number;
   learnedWin: number | null;
 }
 

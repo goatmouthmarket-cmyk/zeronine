@@ -21,6 +21,7 @@ import { winDigits } from '../core/digitMath.ts';
 export const WINDOWS = [25, 50, 100, 250, 500, 1000] as const;
 export const MOMENTUM_WEIGHTS: Readonly<Record<number, number>> = { 25: 0, 50: 0.45, 100: 0.3, 250: 0.15, 500: 0.1, 1000: 0 };
 export const TRANSITION_WEIGHT = 0.1;
+export const TRANSITION_PRIOR_SAMPLES = 20;
 export const BLOCK_SIZE = 25;
 
 export interface BarrierFeatures {
@@ -38,6 +39,7 @@ export interface BarrierFeatures {
   consistency: number;
   entropy: number;
   transitionCond: number;
+  transitionSamples: number;
   learnedWin: number | null;
   estimatedWin: number;
 }
@@ -144,29 +146,7 @@ function entropyOf(digits: number[]): number {
 
 /** P(win | previous digit) from the 10x10 transition matrix over the last 500 ticks. */
 function transitionCond(digits: number[], direction: Direction, barrier: number): number {
-  const wins = winDigits(direction, barrier);
-  const count: number[][] = Array.from({ length: 10 }, () => Array.from({ length: 10 }, () => 0));
-  const row: number[] = Array.from({ length: 10 }, () => 0);
-  const start = Math.max(1, digits.length - 500);
-  for (let i = start; i < digits.length; i++) {
-    const prev = Math.trunc(digits[i - 1]);
-    const next = Math.trunc(digits[i]);
-    if (prev < 0 || prev > 9 || next < 0 || next > 9) continue;
-    row[prev] += 1;
-    count[prev][next] += 1;
-  }
-  let cond = 0;
-  let rows = 0;
-  const winSet = new Set(wins);
-  for (let prev = 0; prev < 10; prev++) {
-    if (row[prev] === 0) continue;
-    let winsFrom = 0;
-    for (let next = 0; next < 10; next++) if (winSet.has(next)) winsFrom += count[prev][next];
-    cond += winsFrom / row[prev];
-    rows += 1;
-  }
-  if (rows === 0) return theoreticalWin(direction, barrier);
-  return cond / rows;
+  return transitionFromPrecompute(precomputeMarket(digits), direction, barrier).probability;
 }
 
 function clamp(p: number, lo: number, hi: number): number {
@@ -213,19 +193,27 @@ function consistencyFromPrecompute(precompute: MarketPrecompute, direction: Dire
   return Math.max(0, Math.min(1, 1 - Math.sqrt(variance) / 0.5));
 }
 
-function transitionFromPrecompute(precompute: MarketPrecompute, direction: Direction, barrier: number): number {
+function transitionFromPrecompute(precompute: MarketPrecompute, direction: Direction, barrier: number): { probability: number; samples: number } {
+  const previousDigit = precompute.digits.length > 0
+    ? Math.trunc(precompute.digits[precompute.digits.length - 1])
+    : -1;
+  const base = theoreticalWin(direction, barrier);
+  if (previousDigit < 0 || previousDigit > 9) return { probability: base, samples: 0 };
+
   const wins = new Set(winDigits(direction, barrier));
-  let cond = 0;
-  let rows = 0;
-  for (let prev = 0; prev < 10; prev++) {
-    const total = precompute.transitionRows[prev];
-    if (total === 0) continue;
-    let winsFrom = 0;
-    for (let next = 0; next < 10; next++) if (wins.has(next)) winsFrom += precompute.transitionCounts[prev][next];
-    cond += winsFrom / total;
-    rows += 1;
+  const samples = precompute.transitionRows[previousDigit];
+  if (samples === 0) return { probability: base, samples: 0 };
+  let winsFrom = 0;
+  for (let next = 0; next < 10; next++) {
+    if (wins.has(next)) winsFrom += precompute.transitionCounts[previousDigit][next];
   }
-  return rows === 0 ? theoreticalWin(direction, barrier) : cond / rows;
+  // A small theoretical prior stops a handful of repeated digits from looking
+  // like certainty. As evidence accumulates, the observed current-digit row
+  // takes over naturally.
+  return {
+    probability: (winsFrom + base * TRANSITION_PRIOR_SAMPLES) / (samples + TRANSITION_PRIOR_SAMPLES),
+    samples,
+  };
 }
 
 // Exposed so the test lab can reproduce the exact signal math per barrier.
@@ -315,7 +303,8 @@ export function featureFromPrecompute(
   const momentum = momentumOf(wins);
   const consistency = consistencyFromPrecompute(precompute, direction, barrier);
   const entropy = precompute.entropy;
-  const transitionCondProb = transitionFromPrecompute(precompute, direction, barrier);
+  const transition = transitionFromPrecompute(precompute, direction, barrier);
+  const transitionCondProb = transition.probability;
 
   const tilt = momentum - base;
   const credible = tilt * consistency;
@@ -340,6 +329,7 @@ export function featureFromPrecompute(
     consistency,
     entropy,
     transitionCond: transitionCondProb,
+    transitionSamples: transition.samples,
     learnedWin,
     estimatedWin,
   };

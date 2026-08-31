@@ -891,7 +891,8 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
   const liveDigit = market?.lastDigit != null && market.lastDigit >= 0 ? market.lastDigit : null;
   const entryDigit = trade.entry_digit != null && trade.entry_digit >= 0 ? trade.entry_digit : '–';
   const currentDigit = pend && liveDigit != null ? liveDigit : trade.exit_digit != null && trade.exit_digit >= 0 ? trade.exit_digit : '–';
-  const currentLabel = pend ? 'Live' : 'Exit';
+  const entryLabel = digitContract ? 'Setup' : 'Entry';
+  const currentLabel = pend ? 'Live' : digitContract ? 'Result' : 'Exit';
   const currentSpot = pend ? market?.lastQuote : trade.exit_spot;
   const formatSpot = (value?: number | null) => value != null && Number.isFinite(value)
     ? value.toLocaleString(undefined, { maximumFractionDigits: 5 })
@@ -923,9 +924,9 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
           <span class="activity-outcome">{resultText}</span>
           <span class="activity-meta">· {time}</span>
         </div>
-        <div class="activity-track" aria-label={digitContract ? `Entry digit ${entryDigit}, ${currentLabel.toLowerCase()} digit ${currentDigit}` : `Entry spot ${entryMarker}, ${currentLabel.toLowerCase()} spot ${currentMarker}`}>
+        <div class="activity-track" aria-label={digitContract ? `Setup digit ${entryDigit}, ${currentLabel.toLowerCase()} digit ${currentDigit}` : `Entry spot ${entryMarker}, ${currentLabel.toLowerCase()} spot ${currentMarker}`}>
           <div class="activity-point">
-            <span class="activity-point-label">Entry</span>
+            <span class="activity-point-label">{entryLabel}</span>
             <strong class="activity-point-digit">{entryMarker}</strong>
             <span class="activity-point-quote">{formatSpot(trade.entry_spot)}</span>
           </div>
