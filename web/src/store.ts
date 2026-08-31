@@ -742,6 +742,8 @@ export interface GoldPaperPosition {
   updatedAt: number;
   markPrice: number | null;
   unrealizedPnl: number;
+  origin: 'manual' | 'automatic_research';
+  researchSignalId: string | null;
 }
 
 export interface GoldPaperTrade extends GoldPaperPosition {
@@ -834,6 +836,16 @@ export interface GoldModuleState {
   paper: GoldRuntimeReadiness & { state: GoldPaperState };
   backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
   sentiment: GoldSentimentWorkerState | null;
+  paperAutomation: {
+    enabled: true;
+    status: 'collecting' | 'waiting' | 'open' | 'cooldown';
+    reason: string;
+    attempts: number;
+    opened: number;
+    lastSignalId: string | null;
+    lastAttemptAt: number;
+    nextEligibleAt: number;
+  };
 }
 
 export interface State {

@@ -4587,6 +4587,13 @@ function GoldResearchWorkspace({
   const quoteAge = quote ? Math.max(0, Date.now() - quote.receivedAt) : null;
   const backtest = state?.backtest.result;
   const recentSignals = research?.recentSignals ?? [];
+  const paper = state?.paper.state;
+  const paperTrades = paper?.closedTrades ?? [];
+  const paperWins = paperTrades.filter((trade) => trade.netPnl > 0).length;
+  const paperLosses = paperTrades.filter((trade) => trade.netPnl < 0).length;
+  const paperWinRate = paperTrades.length ? paperWins / paperTrades.length : null;
+  const paperPosition = paper?.positions[0] ?? null;
+  const paperAutomation = state?.paperAutomation;
   const activeStrategy = settings ? STRATEGY_META[settings.strategy_mode]?.label ?? settings.strategy_mode : 'Manual guarded';
   const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
   const modelWeights = [
@@ -4672,6 +4679,24 @@ function GoldResearchWorkspace({
           <span>Signals <b>{recentSignals.length}</b></span>
         </div>
       </div>
+    </div>
+
+    <section class="mom-pnl gold-pnl" aria-label="Gold virtual paper profit and loss">
+      <div><span>Virtual balance</span><strong>{fmtMoney(paper?.balance ?? 10_000, paper?.currency ?? 'USD')}</strong></div>
+      <div><span>Open paper P&amp;L</span><strong class={(paper?.unrealizedPnl ?? 0) >= 0 ? 'up' : 'down'}>{fmtSigned(paper?.unrealizedPnl ?? 0, paper?.currency ?? 'USD')}</strong></div>
+      <div><span>Realized paper P&amp;L</span><strong class={(paper?.realizedPnl ?? 0) >= 0 ? 'up' : 'down'}>{fmtSigned(paper?.realizedPnl ?? 0, paper?.currency ?? 'USD')}</strong></div>
+      <div><span>Paper drawdown</span><strong class={(paper?.drawdown ?? 0) > 0 ? 'down' : ''}>{fmtMoney(paper?.drawdown ?? 0, paper?.currency ?? 'USD')}</strong></div>
+    </section>
+    <section class="mom-scoreboard gold-scoreboard" aria-label="Gold prediction paper results">
+      <div><span>Predictions tested</span><strong>{paperTrades.length + (paperPosition ? 1 : 0)}</strong></div>
+      <div><span>Paper wins</span><strong>{paperWins}</strong></div>
+      <div><span>Paper losses</span><strong>{paperLosses}</strong></div>
+      <div><span>Paper win rate</span><strong>{paperWinRate == null ? '—' : `${(paperWinRate * 100).toFixed(1)}%`}</strong></div>
+    </section>
+    <div class={`gold-paper-auto ${paperAutomation?.status ?? 'collecting'}`} aria-live="polite">
+      <span><i></i> Automatic virtual research</span>
+      <strong>{paperPosition ? `${paperPosition.side} paper position · ${paperPosition.origin === 'automatic_research' ? 'model prediction' : 'manual paper'}` : paperAutomation?.status ?? 'collecting'}</strong>
+      <small>{paperAutomation?.reason ?? 'Collecting enough evidence for the first virtual prediction trade.'}</small>
     </div>
 
     <section class="gold-intel-grid gold-research-intel" aria-label="Gold research model evidence">
@@ -4789,7 +4814,7 @@ function GoldDerivTradeWorkspace({
   const multiplierOptions = probedGoldOptions ?? deriv?.multiplierOptions?.filter((value) => value <= 1000) ?? [10, 20, 30, 50, 100, 200, 500, 1000];
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
-  const canPlace = owner && demoConnected && marketReady && Boolean(sideFromSignal) && !openAnyTrade && Number.isFinite(stake) && stake > 0
+  const canPlace = owner && demoConnected && marketReady && !openAnyTrade && Number.isFinite(stake) && stake > 0
     && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && multiplierWithinLiveMax && limitsValid && !busy;
   const canClose = owner && demoConnected && Boolean(openGoldTrade?.contract_id) && !closing;
   const activeTrade = openGoldTrade ?? (purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null);
@@ -4864,8 +4889,8 @@ const modelWeights = [
                 : !limitsValid
                   ? 'TP profit and stop loss must be positive amounts when set'
                   : sideFromSignal
-                    ? `${sideFromSignal} is the current Gold research side`
-                    : 'Waiting for validated Gold direction';
+                    ? `Manual demo order ready · model currently suggests ${sideFromSignal}`
+                    : 'Manual demo order ready · model currently says WAIT';
 
   useEffect(() => {
     if (sideFromSignal) setSide(sideFromSignal);
@@ -5036,8 +5061,8 @@ const modelWeights = [
 
       <div class="gold-trade-order">
         <div class="gold-trade-direction" aria-label="Place a Deriv Gold demo trade">
-          <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace || sideFromSignal !== 'BUY'} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
-          <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace || sideFromSignal !== 'SELL'} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
+          <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy demo'}</button>
+          <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell demo'}</button>
         </div>
         <label class="gold-trade-field"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAnyTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
@@ -5061,6 +5086,19 @@ const modelWeights = [
       {(purchase || openGoldTrade) && <div class="gold-trade-note">Deriv demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
       {accountBlocked && <div class="gold-trade-note">Another account contract is open. Gold waits for the shared account lock to clear.</div>}
       {error && <div class="tl-err">{error}</div>}
+    </section>
+
+    <section class="mom-pnl gold-pnl" aria-label="Gold Deriv demo profit and loss">
+      <div><span>Demo balance</span><strong>{demoConnected && session ? fmtMoney(session.balance, currency) : '—'}</strong></div>
+      <div><span>Open contract P&amp;L</span><strong class={(contractPnl ?? 0) >= 0 ? 'up' : 'down'}>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong></div>
+      <div><span>Realized Gold P&amp;L</span><strong class={goldRealizedPnl >= 0 ? 'up' : 'down'}>{fmtSigned(goldRealizedPnl, currency)}</strong></div>
+      <div><span>Current exposure</span><strong>{exposure > 0 ? fmtMoney(exposure, currency) : '—'}</strong></div>
+    </section>
+    <section class="mom-scoreboard gold-scoreboard" aria-label="Gold Deriv demo results">
+      <div><span>Demo bets settled</span><strong>{settledGoldTrades.length}</strong></div>
+      <div><span>Demo wins</span><strong>{settledGoldTrades.filter((trade) => trade.status === 'won' || Number(trade.profit ?? 0) > 0).length}</strong></div>
+      <div><span>Demo losses</span><strong>{settledGoldTrades.filter((trade) => trade.status === 'lost' || Number(trade.profit ?? 0) < 0).length}</strong></div>
+      <div><span>Demo win rate</span><strong>{goldWinRate == null ? '—' : `${goldWinRate.toFixed(1)}%`}</strong></div>
     </section>
 
     <section class="gold-intel-grid" aria-label="Gold trade intelligence">

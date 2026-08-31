@@ -12,12 +12,13 @@ const symbol: GoldSymbol = {
   minStopDistance: .5, marginRate: .02, tradingStatus: 'open', sessions: [],
 };
 
-function candle(index: number): GoldCandle {
-  const open = 2_000 + index * .1;
+function candle(index: number, timeframe: '5m' | '15m' = '5m', slope = .1): GoldCandle {
+  const open = 2_000 + index * slope;
+  const interval = timeframe === '5m' ? 300_000 : 900_000;
   return {
-    symbolId: symbol.id, timeframe: '5m', openTime: NOW - (40 - index) * 300_000,
-    closeTime: NOW - (39 - index) * 300_000, open, high: open + .2, low: open - .1,
-    close: open + .1, tickVolume: 10, complete: true,
+    symbolId: symbol.id, timeframe, openTime: NOW - (40 - index) * interval,
+    closeTime: NOW - (39 - index) * interval, open, high: Math.max(open, open + slope) + .2, low: Math.min(open, open + slope) - .1,
+    close: open + slope, tickVolume: 10, complete: true,
   };
 }
 
@@ -51,6 +52,21 @@ test('Gold runtime is inert until a validated live market-data adapter supplies 
   assert.equal(state.backtest.ready, false);
   assert.throws(() => runtime.openPaper({ side: 'BUY', volume: 1 }), GoldRuntimeUnavailableError);
   assert.throws(() => runtime.runBaselineBacktest(), GoldRuntimeUnavailableError);
+});
+
+test('Gold runtime automatically paper-tests a validated prediction and links the evidence', () => {
+  const runtime = new GoldRuntime({ adapter: new TestMarketAdapter(true), now: () => NOW });
+  runtime.setSymbol(symbol);
+  runtime.replaceCandles('5m', Array.from({ length: 40 }, (_, index) => candle(index, '5m', .7)));
+  runtime.replaceCandles('15m', Array.from({ length: 40 }, (_, index) => candle(index, '15m', .7)));
+  runtime.ingestQuote({ symbolId: symbol.id, bid: 2_028, ask: 2_028.05, timestamp: NOW - 50, receivedAt: NOW, sequence: 1 });
+
+  const state = runtime.state();
+  assert.equal(state.research.state.signal?.direction, 'BUY', JSON.stringify(state.research.state.signal));
+  assert.equal(state.paperAutomation.opened, 1);
+  assert.equal(state.paper.state.positions.length, 1);
+  assert.equal(state.paper.state.positions[0]?.origin, 'automatic_research');
+  assert.equal(state.paper.state.positions[0]?.researchSignalId, state.research.state.signal?.id);
 });
 
 test('Gold runtime can use only virtual paper and completed-candle backtests after market data is validated', () => {

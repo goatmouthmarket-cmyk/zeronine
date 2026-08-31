@@ -30,6 +30,18 @@ export interface GoldRuntimeState {
   backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
   /** News/social sentiment worker status; null when no worker is attached. */
   sentiment: GoldSentimentWorkerState | null;
+  paperAutomation: GoldPaperAutomationState;
+}
+
+export interface GoldPaperAutomationState {
+  enabled: true;
+  status: 'collecting' | 'waiting' | 'open' | 'cooldown';
+  reason: string;
+  attempts: number;
+  opened: number;
+  lastSignalId: string | null;
+  lastAttemptAt: number;
+  nextEligibleAt: number;
 }
 
 export interface GoldRuntimeOptions {
@@ -62,6 +74,10 @@ export class GoldRuntime {
   private readonly sentimentWorker: GoldSentimentWorker | null;
   private readonly now: () => number;
   private lastBacktest: GoldBacktestResult | null = null;
+  private paperAutomation: GoldPaperAutomationState = {
+    enabled: true, status: 'collecting', reason: 'Collecting candles for the first validated prediction',
+    attempts: 0, opened: 0, lastSignalId: null, lastAttemptAt: 0, nextEligibleAt: 0,
+  };
 
   constructor(options: GoldRuntimeOptions = {}) {
     const config = options.config ?? loadGoldConfig();
@@ -87,6 +103,7 @@ export class GoldRuntime {
       paper: { ...readiness, state: this.paper.state() },
       backtest: { ...backtestReadiness, result: this.lastBacktest },
       sentiment: this.sentimentWorker?.state() ?? null,
+      paperAutomation: { ...this.paperAutomation },
     };
   }
 
@@ -130,6 +147,7 @@ export class GoldRuntime {
     // The virtual book reserves its first executable quote for entry. Once a
     // position exists, every newer research quote marks or settles it.
     if (next.quote && this.paper.state().positions.length > 0) this.paper.onQuote(next.quote);
+    if (next.symbol && next.quote) this.runAutomaticPaperResearch(next);
     return next;
   }
 
@@ -140,7 +158,7 @@ export class GoldRuntime {
 
   openPaper(input: { side: GoldSide; volume: number; stopLoss?: number | null; takeProfit?: number | null }): GoldPaperOpenResult {
     const { symbol, quote } = this.requireMarketData();
-    return this.paper.open({ ...input, symbol, quote, now: this.now() });
+    return this.paper.open({ ...input, symbol, quote, now: this.now(), origin: 'manual' });
   }
 
   closePaper(positionId: string): GoldPaperCloseResult {
@@ -184,6 +202,50 @@ export class GoldRuntime {
   private diagnostics(): GoldDiagnostics {
     // The adapter owns its own configuration and must never leak credentials.
     return this.adapter.diagnostics() ?? goldDiagnostics();
+  }
+
+  private runAutomaticPaperResearch(research: GoldResearchState): void {
+    const paper = this.paper.state();
+    if (paper.positions.length > 0) {
+      this.paperAutomation.status = 'open';
+      this.paperAutomation.reason = 'Tracking the open virtual prediction against live Gold prices';
+      return;
+    }
+    const signal = research.signal;
+    const now = this.now();
+    if (!signal || (signal.direction !== 'BUY' && signal.direction !== 'SELL')) {
+      this.paperAutomation.status = 'collecting';
+      this.paperAutomation.reason = signal?.blockers.join(' · ') || 'Collecting candle, trend, volatility, and sentiment evidence';
+      return;
+    }
+    if (signal.confidence < 65) {
+      this.paperAutomation.status = 'waiting';
+      this.paperAutomation.reason = `Prediction confidence ${signal.confidence}% is below the 65% paper threshold`;
+      return;
+    }
+    if (now < this.paperAutomation.nextEligibleAt) {
+      this.paperAutomation.status = 'cooldown';
+      this.paperAutomation.reason = 'Waiting five minutes before testing another prediction';
+      return;
+    }
+    if (signal.id === this.paperAutomation.lastSignalId) return;
+    this.paperAutomation.attempts += 1;
+    this.paperAutomation.lastSignalId = signal.id;
+    this.paperAutomation.lastAttemptAt = now;
+    const opened = this.paper.open({
+      symbol: research.symbol!, quote: research.quote!, side: signal.direction,
+      volume: research.symbol!.minVolume, stopLoss: signal.proposedStopLoss, takeProfit: signal.proposedTakeProfit,
+      now, origin: 'automatic_research', researchSignalId: signal.id,
+    });
+    if (opened.accepted) {
+      this.paperAutomation.opened += 1;
+      this.paperAutomation.status = 'open';
+      this.paperAutomation.reason = `${signal.direction} prediction opened virtually at ${signal.confidence}% confidence`;
+      this.paperAutomation.nextEligibleAt = now + 5 * 60_000;
+    } else {
+      this.paperAutomation.status = 'waiting';
+      this.paperAutomation.reason = opened.reason;
+    }
   }
 
   private marketDataReadiness(): GoldRuntimeReadiness {

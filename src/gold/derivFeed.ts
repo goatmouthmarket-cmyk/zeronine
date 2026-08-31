@@ -9,7 +9,7 @@ interface GoldTick {
   epochMs: number;
 }
 
-const GOLD_TIMEFRAMES: GoldTimeframe[] = ['1m', '5m'];
+const GOLD_TIMEFRAMES: GoldTimeframe[] = ['1m', '5m', '15m'];
 const HISTORY_COUNT = 2500;
 const MAX_TICKS = 6000;
 const PING_INTERVAL_MS = 30_000;

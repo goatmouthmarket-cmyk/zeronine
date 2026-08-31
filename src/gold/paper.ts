@@ -24,6 +24,8 @@ export interface GoldPaperOrder {
   stopLoss?: number | null;
   takeProfit?: number | null;
   now: number;
+  origin?: 'manual' | 'automatic_research';
+  researchSignalId?: string | null;
 }
 
 export interface GoldPaperPosition {
@@ -41,6 +43,8 @@ export interface GoldPaperPosition {
   updatedAt: number;
   markPrice: number | null;
   unrealizedPnl: number;
+  origin: 'manual' | 'automatic_research';
+  researchSignalId: string | null;
 }
 
 export type GoldPaperCloseReason = 'manual' | 'stop_loss' | 'take_profit';
@@ -193,6 +197,8 @@ export class GoldPaperEngine {
       updatedAt: order.now,
       markPrice: entryMark,
       unrealizedPnl: 0,
+      origin: order.origin ?? 'manual',
+      researchSignalId: order.researchSignalId ?? null,
     };
     position.unrealizedPnl = rounded(this.grossPnl(position, entryMark));
     this.positions.set(position.id, position);

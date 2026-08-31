@@ -417,15 +417,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(409);
       return { error: goldState.research.reason ?? 'Gold market data is not ready yet' };
     }
-    if (!signal || (signal.direction !== 'BUY' && signal.direction !== 'SELL')) {
-      reply.code(409);
-      return { error: 'Gold research has no validated BUY/SELL direction yet; keep watching the market' };
-    }
-    if (signal.direction !== side) {
-      reply.code(409);
-      return { error: `Gold research recommends ${signal.direction}; review before trading the opposite side` };
-    }
-
     const settings = getSettings();
     if (stake > settings.max_stake) {
       reply.code(400);
@@ -502,12 +493,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         `multiplier x${multiplier}`,
         Number.isFinite(takeProfit) ? `TP ${takeProfit}` : null,
         Number.isFinite(stopLoss) ? `SL ${stopLoss}` : null,
-        `research ${signal.direction} ${signal.confidence}%`,
-        signal.sentiment
+        signal ? `research ${signal.direction} ${signal.confidence}%` : 'research unavailable',
+        signal?.sentiment
           ? `sentiment news ${fmtSentimentPct(signal.sentiment.newsScore)} social ${fmtSentimentPct(signal.sentiment.socialScore)}`
             + (signal.sentiment.perfectSetup ? ' perfect' : signal.sentiment.alignment === 'CONFLICTING' ? ' conflicting' : '')
           : null,
-        signal.reasons[0] ?? signal.blockers[0] ?? 'Gold research signal',
+        signal?.reasons[0] ?? signal?.blockers[0] ?? 'Manual Gold demo decision',
       ].filter(Boolean).join(' | ');
       const trade = recordedTrade = insertTrade({
         ts: Date.now(),
@@ -519,7 +510,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         stake,
         ask_price: quote.askPrice,
         payout: quote.payout,
-        est_win: signal.confidence / 100,
+        est_win: signal?.confidence ? signal.confidence / 100 : .5,
         profit: 0,
         status: 'purchasing',
         contract_id: '',

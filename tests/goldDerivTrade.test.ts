@@ -87,7 +87,7 @@ function goldState(direction: 'BUY' | 'SELL' = 'BUY') {
   };
 }
 
-test('Gold Deriv trade uses a demo multiplier proposal and records an account contract', async () => {
+test('manual Gold demo trade can deliberately differ from the research suggestion', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
     import('fastify'),
     import('../src/api/hub.ts'),
@@ -135,18 +135,18 @@ test('Gold Deriv trade uses a demo multiplier proposal and records an account co
     paperSimulator: new paperMod.PaperSimulator(), gold: { state: () => goldState('BUY') } as never,
   });
 
-  const response = await app.inject({ method: 'POST', url: '/api/gold/trade', payload: { side: 'BUY', stake: 2, multiplier: 20, takeProfit: 1.5, stopLoss: .75 } });
+  const response = await app.inject({ method: 'POST', url: '/api/gold/trade', payload: { side: 'SELL', stake: 2, multiplier: 20, takeProfit: 1.5, stopLoss: .75 } });
   assert.equal(response.statusCode, 200);
   assert.equal(boughtProposal, 'gold-proposal');
   assert.deepEqual(quoteArgs, {
-    direction: 'up', amount: 2, currency: 'USD', symbol: 'frxXAUUSD', multiplier: 20, takeProfit: 1.5, stopLoss: .75,
+    direction: 'down', amount: 2, currency: 'USD', symbol: 'frxXAUUSD', multiplier: 20, takeProfit: 1.5, stopLoss: .75,
   });
   const trade = store.getOpenTrade('deriv:VRTC_GOLD');
   assert.ok(trade);
-  assert.equal(trade.contract_type, 'MULTUP');
+  assert.equal(trade.contract_type, 'MULTDOWN');
   assert.equal(trade.market, 'frxXAUUSD');
   assert.equal(trade.entry_spot, 2031.25);
-  assert.match(trade.reason, /gold deriv manual BUY/i);
+  assert.match(trade.reason, /gold deriv manual SELL/i);
   assert.match(trade.reason, /research BUY 71%/i);
 
   automation.dispose();
