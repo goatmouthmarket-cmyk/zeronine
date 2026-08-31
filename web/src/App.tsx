@@ -5069,16 +5069,16 @@ const modelWeights = [
 
     <section class="mom-pnl gold-pnl" aria-label="Gold Deriv demo profit and loss">
       <div><span>Contract stake</span><strong>{activeTrade ? fmtMoney(activeTrade.stake, currency) : Number.isFinite(stake) && stake > 0 ? fmtMoney(stake, currency) : '—'}</strong></div>
-      <div><span>Open contract P&amp;L</span><strong class={(contractPnl ?? 0) >= 0 ? 'up' : 'down'}>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong></div>
-      <div><span>Realized Gold P&amp;L</span><strong class={goldRealizedPnl >= 0 ? 'up' : 'down'}>{fmtSigned(goldRealizedPnl, currency)}</strong></div>
-      <div><span>Current exposure</span><strong>{exposure > 0 ? fmtMoney(exposure, currency) : '—'}</strong></div>
-      <div class="gold-pnl-actions">
-        <span>Demo order</span>
-        <div class="gold-trade-direction" aria-label="Place a Deriv Gold demo trade">
+      <div class="gold-pnl-contract">
+        <span>Open contract P&amp;L</span>
+        <strong class={(contractPnl ?? 0) >= 0 ? 'up' : 'down'}>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
+        <div class="gold-trade-direction gold-pnl-actions" aria-label="Place a Deriv Gold demo trade">
           <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
           <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
         </div>
       </div>
+      <div><span>Realized Gold P&amp;L</span><strong class={goldRealizedPnl >= 0 ? 'up' : 'down'}>{fmtSigned(goldRealizedPnl, currency)}</strong></div>
+      <div><span>Current exposure</span><strong>{exposure > 0 ? fmtMoney(exposure, currency) : '—'}</strong></div>
     </section>
     <section class="mom-scoreboard gold-scoreboard" aria-label="Gold Deriv demo results">
       <div><span>Demo bets settled</span><strong>{settledGoldTrades.length}</strong></div>
