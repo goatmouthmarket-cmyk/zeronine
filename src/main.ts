@@ -189,6 +189,7 @@ async function main(): Promise<void> {
         fresh: snap.fresh,
         recentDigits: snap.recentDigits,
         recentQuotes: snap.recentQuotes,
+        recentTicks: snap.recentTicks,
       });
     },
   });

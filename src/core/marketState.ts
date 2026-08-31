@@ -8,6 +8,7 @@ export interface MarketSnapshot {
   ticksPerMin: number;
   recentDigits: number[];
   recentQuotes: number[];
+  recentTicks: Array<{ epoch: number; quote: number }>;
   dist: number[];
 }
 
@@ -46,6 +47,13 @@ export class MarketRegistry {
     this.cb.onTick(this.snapshot(symbol));
   }
 
+  seed(symbol: string, ticks: Array<{ quote: number; epoch: number; digit: number }>): void {
+    if (!this.buffers.has(symbol) || ticks.length === 0) return;
+    const clean = ticks.filter((tick) => Number.isFinite(tick.quote) && Number.isFinite(tick.epoch)).sort((a, b) => a.epoch - b.epoch);
+    this.buffers.set(symbol, clean.slice(-RECENT_WINDOW));
+    this.cb.onTick(this.snapshot(symbol));
+  }
+
   snapshot(symbol: string): MarketSnapshot {
     const buf = this.buffers.get(symbol) ?? [];
     const last = buf[buf.length - 1];
@@ -65,6 +73,7 @@ export class MarketRegistry {
       ticksPerMin: recentWindow.length,
       recentDigits: buf.slice(-60).map((t) => t.digit),
       recentQuotes: buf.slice(-40).map((t) => t.quote),
+      recentTicks: buf.slice(-60).map((t) => ({ epoch: t.epoch, quote: t.quote })),
       dist,
     };
   }

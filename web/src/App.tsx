@@ -1198,6 +1198,8 @@ function resolveTarget(
 
 function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: () => void }): JSX.Element {
   const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
+  const ticks = (market?.recentTicks?.length ? market.recentTicks : quotes.map((quote, index) => ({ epoch: (market?.lastEpoch ?? Math.floor(Date.now() / 1000)) - quotes.length + index + 1, quote })))
+    .filter((tick) => Number.isFinite(tick.epoch) && Number.isFinite(tick.quote) && tick.quote > 0);
   const first = quotes[0] ?? 0;
   const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
   const changePct = first > 0 ? ((last - first) / first) * 100 : 0;
@@ -1212,7 +1214,7 @@ function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: ()
           <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotes.length > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
         </div>
         <div class="market-pulse-chart">
-          {quotes.length > 1 ? <MarketPulseChart quotes={quotes} lastEpoch={market?.lastEpoch ?? 0} up={up} label={label} /> : <span class="market-pulse-empty">Awaiting ticks</span>}
+          {ticks.length > 1 ? <MarketPulseChart ticks={ticks} label={label} /> : <span class="market-pulse-empty">Loading price history</span>}
         </div>
         <div class="market-pulse-foot">
           <span>{label}</span>
@@ -4131,6 +4133,8 @@ function GoldPage(): JSX.Element {
     void loadGoldState();
     void refreshTrades();
     if (store.owner) void loadLedgerEntries(80);
+    const refresh = window.setInterval(() => { void loadGoldState(); }, 1_000);
+    return () => window.clearInterval(refresh);
   }, [store.owner]);
 
   return <section class="gold-page" aria-label="Gold workspace">

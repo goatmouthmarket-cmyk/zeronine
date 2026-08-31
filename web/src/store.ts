@@ -11,6 +11,7 @@ export interface Market {
   ticksPerMin: number;
   recentDigits: number[];
   recentQuotes: number[];
+  recentTicks: Array<{ epoch: number; quote: number }>;
   dist: number[];
   health?: MarketHealth;
   regime?: RegimeAssessment;
@@ -1020,6 +1021,7 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
         ticksPerMin: 0,
         recentDigits: (evt.recentDigits as number[]) ?? [],
         recentQuotes: (evt.recentQuotes as number[]) ?? [],
+        recentTicks: (evt.recentTicks as Array<{ epoch: number; quote: number }>) ?? [],
         dist: [],
       };
       const idx = state.markets.findIndex((x) => x.symbol === symbol);
@@ -1032,6 +1034,7 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
           ticksPerMin: m.recentDigits.length >= 2 ? m.recentDigits.length : prev.ticksPerMin,
           recentDigits: m.recentDigits.length ? m.recentDigits : prev.recentDigits,
           recentQuotes: m.recentQuotes.length ? m.recentQuotes : prev.recentQuotes,
+          recentTicks: m.recentTicks.length ? m.recentTicks : prev.recentTicks,
         };
       } else {
         markets.push(m);

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef } from 'preact/hooks';
 import {
   ColorType,
-  LineSeries,
+  CandlestickSeries,
   LineStyle,
   createChart,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
-  type LineData,
+  type CandlestickData,
   type Time,
 } from 'lightweight-charts';
 import type { GoldCandleState, GoldQuoteState, GoldSide } from './store';
@@ -28,14 +28,18 @@ function toChartTime(ms: number): Time {
   return Math.trunc(ms / 1000) as Time;
 }
 
-function lineData(candles: GoldCandleState[]): LineData<Time>[] {
+function candleData(candles: GoldCandleState[]): CandlestickData<Time>[] {
   return candles
     .filter((candle) => Number.isFinite(candle.openTime)
-      && Number.isFinite(candle.close))
+      && Number.isFinite(candle.open) && Number.isFinite(candle.high)
+      && Number.isFinite(candle.low) && Number.isFinite(candle.close))
     .slice(-140)
     .map((candle) => ({
       time: toChartTime(candle.openTime),
-      value: candle.close,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
     }));
 }
 
@@ -56,13 +60,13 @@ export function GoldTradeChart({
 }: GoldTradeChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const linesRef = useRef<IPriceLine[]>([]);
-  const data = useMemo(() => lineData(candles ?? []), [candles]);
-  const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.value ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
-  const lastPrice = quote?.mid ?? data.at(-1)?.value ?? null;
-  const high = data.length ? Math.max(...data.map((point) => point.value)) : null;
-  const low = data.length ? Math.min(...data.map((point) => point.value)) : null;
+  const data = useMemo(() => candleData(candles ?? []), [candles]);
+  const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.close ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
+  const lastPrice = quote?.mid ?? data.at(-1)?.close ?? null;
+  const high = data.length ? Math.max(...data.map((point) => point.high)) : null;
+  const low = data.length ? Math.min(...data.map((point) => point.low)) : null;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -96,12 +100,15 @@ export function GoldTradeChart({
       handleScroll: true,
       handleScale: true,
     });
-    const series = chart.addSeries(LineSeries, {
-      color: '#f4c96b',
-      lineWidth: 2,
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e',
+      downColor: '#ff5263',
+      borderUpColor: '#75e8bd',
+      borderDownColor: '#ff5263',
+      wickUpColor: '#75e8bd',
+      wickDownColor: '#ff8290',
       priceLineVisible: false,
       lastValueVisible: false,
-      crosshairMarkerVisible: true,
     });
     series.priceScale().applyOptions({ scaleMargins: { top: .1, bottom: .14 } });
     chartRef.current = chart;
@@ -130,17 +137,9 @@ export function GoldTradeChart({
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
-    series.applyOptions(muted ? {
-      color: 'rgba(244,201,107,.4)',
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    } : {
-      color: '#f4c96b',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
+    series.applyOptions(muted
+      ? { upColor: 'rgba(170,176,190,.38)', downColor: 'rgba(130,136,150,.38)', borderUpColor: 'rgba(170,176,190,.55)', borderDownColor: 'rgba(130,136,150,.55)', wickUpColor: 'rgba(170,176,190,.5)', wickDownColor: 'rgba(130,136,150,.5)' }
+      : { upColor: '#22c55e', downColor: '#ff5263', borderUpColor: '#75e8bd', borderDownColor: '#ff5263', wickUpColor: '#75e8bd', wickDownColor: '#ff8290' });
   }, [muted]);
 
   useEffect(() => {

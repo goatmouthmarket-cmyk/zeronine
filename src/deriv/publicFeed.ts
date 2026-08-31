@@ -124,6 +124,16 @@ export class DerivPublicFeed {
       const symbol = this.histSymbols.get(reqId)!;
       this.histSymbols.delete(reqId);
       if (typeof msg.pip_size === 'number') setPrecision(symbol, msg.pip_size);
+      const prices = Array.isArray(msg.history?.prices) ? msg.history.prices as number[] : [];
+      const times = Array.isArray(msg.history?.times) ? msg.history.times as number[] : [];
+      const precision = getPrecision(symbol);
+      this.registry.seed(symbol, prices.flatMap((quote, index) => {
+        const epoch = Number(times[index]);
+        const numericQuote = Number(quote);
+        return Number.isFinite(epoch) && Number.isFinite(numericQuote)
+          ? [{ quote: numericQuote, epoch, digit: lastDigitOf(numericQuote, precision) }]
+          : [];
+      }));
       return;
     }
 
