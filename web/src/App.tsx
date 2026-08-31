@@ -2588,6 +2588,7 @@ function MomentumTradeDesk({
   ) ?? null;
   const openMultiplierTrade = openAccountTrade
     && (openAccountTrade.contract_type === 'MULTUP' || openAccountTrade.contract_type === 'MULTDOWN')
+    && multiplierTradeFamily(openAccountTrade) === 'Momentum'
     ? openAccountTrade
     : null;
   const closableMomentumTrade = openMomentumTrade ?? openMultiplierTrade;

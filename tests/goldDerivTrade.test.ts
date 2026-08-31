@@ -149,6 +149,10 @@ test('manual Gold demo trade can deliberately differ from the research suggestio
   assert.match(trade.reason, /gold deriv manual SELL/i);
   assert.match(trade.reason, /research BUY 71%/i);
 
+  const momentumClose = await app.inject({ method: 'POST', url: '/api/momentum/close' });
+  assert.equal(momentumClose.statusCode, 409);
+  assert.match(momentumClose.json().error, /not a Momentum multiplier trade/i);
+
   automation.dispose();
   await app.close();
 });

@@ -133,8 +133,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!openTrade?.contract_id) return;
     settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
   };
-  const isGoldDerivTrade = (trade: { contract_type?: string; reason?: string | null } | null | undefined): boolean =>
-    Boolean(trade && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN') && /gold deriv manual/i.test(trade.reason ?? ''));
+  const isGoldDerivTrade = (trade: { contract_type?: string; market?: string; reason?: string | null } | null | undefined): boolean =>
+    Boolean(
+      trade
+      && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN')
+      && (/gold deriv manual/i.test(trade.reason ?? '') || trade.market === config.goldDerivSymbol),
+    );
   const fmtSentimentPct = (score: number): string => `${score >= 0 ? '+' : ''}${Math.round(score * 100)}%`;
   const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
     const openTrade = owner ? getOpenTrade() : null;
@@ -1067,7 +1071,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(409);
       return { error: 'no open Momentum trade found' };
     }
-    if (openTrade.contract_type !== 'MULTUP' && openTrade.contract_type !== 'MULTDOWN') {
+    if ((openTrade.contract_type !== 'MULTUP' && openTrade.contract_type !== 'MULTDOWN') || isGoldDerivTrade(openTrade)) {
       reply.code(409);
       return { error: 'the open contract is not a Momentum multiplier trade' };
     }
