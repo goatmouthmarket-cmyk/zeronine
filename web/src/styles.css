@@ -5241,3 +5241,123 @@ button.activity-row {
 .paper-detail-section { margin-top: 14px; padding: 12px; border-left: 2px solid var(--border-strong); background: rgba(255,255,255,.018); }.paper-detail-section > strong { display: block; margin-top: 5px; color: var(--text); font-size: 11px; }.paper-detail-section p { margin: 5px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.5; }.paper-detail-lifecycle { border-left-color: var(--purple); }.paper-detail-lifecycle > div { display: grid; grid-template-columns: 94px minmax(0,1fr); gap: 9px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.055); }.paper-detail-lifecycle > div:last-child { border-bottom: 0; padding-bottom: 0; }.paper-detail-lifecycle > div > span { color: var(--muted-2); font-size: 9px; }.paper-detail-lifecycle > div > strong { overflow: hidden; color: var(--text); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.paper-detail-loading { margin-top: 12px; color: var(--purple-light); font-size: 10px; }
 @media (max-width: 760px) { .paper-portfolio { grid-template-columns: repeat(3, minmax(0,1fr)); }.paper-portfolio-title { grid-column: 1 / -1; border-bottom: 1px solid var(--border); }.paper-portfolio > .metric:nth-child(5) { border-left: 0; }.paper-contract-row { grid-template-columns: 32px minmax(0,1fr) auto; }.paper-contract-potential { display: none; } }
 @media (max-width: 420px) { .paper-portfolio { grid-template-columns: 1fr 1fr; }.paper-portfolio > .metric:nth-child(5) { border-left: 1px solid var(--border); }.paper-contract-row { grid-template-columns: 28px minmax(0,1fr) 58px; }.paper-contract-row:hover { padding-right: 0; padding-left: 0; }.paper-contract-line { gap: 5px; }.paper-contract-strategy { display: none; }.paper-contract-meta span:nth-child(2) { display: none; }.paper-contract-pnl svg { display: none; }.paper-detail-outcome { grid-template-columns: 1fr; }.paper-detail-lifecycle > div { grid-template-columns: 76px minmax(0,1fr); } }
+
+/* Gold mobile workspace: touch-first hierarchy with no horizontal overflow. */
+@media (max-width: 760px) {
+  .gold-page { width: 100%; min-width: 0; padding: 0 0 calc(24px + env(safe-area-inset-bottom)); overflow-x: clip; }
+  .gold-page-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding: 4px 14px 14px; }
+  .gold-page-header .subtitle { max-width: 32rem; font-size: 11px; line-height: 1.45; }
+  .gold-page-header .gold-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; padding: 4px; }
+  .gold-page-header .gold-tabs button { min-height: 42px; font-size: 11px; }
+
+  .gold-trade-head, .gold-research-hero { gap: 13px; padding: 18px 14px; }
+  .gold-trade-head strong, .gold-research-hero strong { font-size: 19px; }
+  .gold-trade-head small, .gold-research-hero small { font-size: 10px; line-height: 1.5; }
+  .gold-trade-badges { justify-content: flex-start; gap: 8px 12px; }
+  .gold-trade-suggestion { white-space: normal; }
+
+  .gold-trade-live, .gold-research-main { grid-template-columns: minmax(0, 1fr); }
+  .gold-trade-chart-wrap, .gold-research-chart { grid-column: 1; min-height: 280px; padding: 12px 8px 10px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .gold-trade-chart { min-height: 230px; }
+  .gold-chart-tools { min-width: 0; flex-wrap: wrap; gap: 7px; }
+  .gold-chart-tools button { min-width: 48px; min-height: 38px; }
+  .gold-chart-tools > span { flex: 1 1 145px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gold-chart-readout { max-width: calc(100% - 20px); }
+  .gold-chart-readout small { overflow: hidden; text-overflow: ellipsis; }
+
+  .gold-trade-readout { min-height: 0; padding: 18px 14px 20px; border-right: 0; }
+  .gold-trade-readout > strong { font-size: 24px; }
+  .gold-live-actions { gap: 10px; margin-top: 16px; }
+  .gold-live-actions button, .gold-live-close { min-height: 46px; font-size: 12px; }
+  .gold-contract-details { margin-top: 16px; }
+  .gold-contract-details > div { padding: 10px; }
+  .gold-contract-details span { font-size: 8px; }
+  .gold-contract-details b { font-size: 10px; }
+
+  .gold-sentiment-panel { padding: 0 14px 10px; }
+  .gold-sentiment-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 14px 0 9px; }
+  .gold-sentiment-freshness { grid-column: 1 / -1; white-space: normal; }
+  .gold-sentiment-grid { grid-template-columns: 1fr 1fr; gap: 0; padding: 6px 0 12px; border-top: 1px solid rgba(255,255,255,.04); border-left: 1px solid rgba(255,255,255,.04); }
+  .gold-sentiment-score { min-width: 0; padding: 11px 8px; border-right: 1px solid rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.04); }
+  .gold-sentiment-score strong { font-size: 15px; }
+  .gold-sentiment-headlines { margin-top: 0; padding-top: 13px; }
+  .gold-sentiment-item { padding: 13px 0; }
+  .gold-sentiment-title { font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+  .gold-sentiment-meta { gap: 7px 10px; }
+  .gold-sentiment-sources summary { min-height: 42px; display: flex; align-items: center; }
+
+  .gold-trade-order, .gold-trade-order.gold-deriv-order { grid-template-columns: 1fr 1fr; gap: 13px 10px; padding: 17px 14px; align-items: end; }
+  .gold-trade-field { min-width: 0; }
+  .gold-trade-field input, .gold-trade-field select { height: 44px; padding-inline: 11px; font-size: 16px; }
+  .gold-trade-quote { grid-column: auto; min-width: 0; padding: 4px 0; }
+  .gold-trade-quote strong { overflow: visible; font-size: 13px; white-space: normal; }
+  .gold-trade-quote small { line-height: 1.4; white-space: normal; }
+  .gold-trade-action-note { grid-column: 1 / -1; max-width: none; padding-top: 2px; font-size: 9px; line-height: 1.5; text-align: left; }
+  .gold-trade-note { padding: 11px 14px; font-size: 9px; line-height: 1.55; overflow-wrap: anywhere; }
+  .gold-trade-desk .tl-err { margin: 0 14px 14px; }
+
+  .mom-pnl.gold-pnl, .mom-scoreboard.gold-scoreboard { grid-template-columns: 1fr 1fr; }
+  .mom-pnl.gold-pnl > div, .mom-scoreboard.gold-scoreboard > div { min-width: 0; padding: 13px 12px 13px 28px; }
+  .mom-pnl.gold-pnl > div:nth-child(2), .mom-scoreboard.gold-scoreboard > div:nth-child(2) { border-right: 0; }
+  .mom-pnl.gold-pnl > div:nth-child(-n + 2), .mom-scoreboard.gold-scoreboard > div:nth-child(-n + 2) { border-bottom: 1px solid var(--border); }
+  .mom-pnl.gold-pnl strong, .mom-scoreboard.gold-scoreboard strong { overflow-wrap: anywhere; white-space: normal; }
+
+  .gold-paper-auto { grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 14px; }
+  .gold-paper-auto small { grid-column: 1; }
+  .gold-prediction { padding: 14px; }
+  .gold-research-card { padding: 16px 14px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .gold-research-card:last-child { border-bottom: 0; }
+
+  .gold-intel-grid, .gold-facts, .gold-connection-facts { grid-template-columns: 1fr 1fr; }
+  .gold-intel-card { min-width: 0; padding: 16px 14px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .gold-intel-card:nth-child(odd) { border-right: 1px solid var(--border); }
+  .gold-intel-card:nth-last-child(-n + 2) { border-bottom: 0; }
+  .gold-intel-card > strong { font-size: 14px; }
+  .gold-intel-card > small { font-size: 9px; }
+  .gold-backtest-button { width: 100%; min-height: 42px; }
+  .gold-ledger-row { grid-template-columns: 34px minmax(0, 1fr) max-content; }
+  .gold-ledger-row small { display: none; }
+  .gold-facts > div, .gold-connection-facts > div { min-width: 0; padding: 14px; }
+  .gold-facts > div + div, .gold-connection-facts > div + div { padding-left: 14px; }
+  .gold-facts > div:nth-child(odd), .gold-connection-facts > div:nth-child(odd) { border-left: 0; }
+  .gold-facts small { white-space: normal; overflow-wrap: anywhere; }
+
+  .gold-connection-intro, .gold-connection-body, .gold-config-guide { grid-template-columns: minmax(0, 1fr); }
+  .gold-connection-intro > div:first-child { padding: 22px 14px; }
+  .gold-connection-state, .gold-auth-action { padding: 18px 14px; border-top: 1px solid var(--border); border-left: 0; }
+  .gold-onboard-step, .gold-config-guide { padding-inline: 14px; }
+  .gold-account-option, .gold-connect-button, .gold-disconnect-button { min-height: 44px; }
+}
+
+@media (max-width: 520px) {
+  .gold-page-header { padding-inline: 12px; }
+  .gold-trade-head, .gold-research-hero { padding-inline: 12px; }
+  .gold-trade-chart-wrap, .gold-research-chart { min-height: 260px; padding-inline: 4px; }
+  .gold-trade-chart { min-height: 216px; }
+  .gold-chart-readout small { display: none; }
+  .gold-trade-readout, .gold-sentiment-panel, .gold-trade-order, .gold-trade-order.gold-deriv-order { padding-inline: 12px; }
+  .gold-trade-direction.gold-live-actions { grid-column: auto; }
+  .gold-contract-details { grid-template-columns: 1fr 1fr; }
+  .gold-trade-quote, .gold-trade-action-note { grid-column: 1 / -1; }
+  .gold-intel-grid { grid-template-columns: minmax(0, 1fr); }
+  .gold-intel-card, .gold-intel-card:nth-child(odd), .gold-intel-card:nth-last-child(-n + 2) { border-right: 0; border-bottom: 1px solid var(--border); }
+  .gold-intel-card:last-child { border-bottom: 0; }
+  .gold-model-bars span { grid-template-columns: minmax(94px, .85fr) minmax(0, 1fr); }
+  .gold-mini-ledger { gap: 8px; }
+  .gold-ledger-row { min-height: 30px; }
+  .gold-connection-facts { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 380px) {
+  .gold-page-header, .gold-trade-head, .gold-research-hero, .gold-trade-readout, .gold-sentiment-panel, .gold-trade-order, .gold-trade-order.gold-deriv-order { padding-inline: 10px; }
+  .gold-page-header .gold-tabs button { min-height: 40px; padding-inline: 7px; }
+  .gold-trade-head strong { font-size: 18px; }
+  .gold-trade-chart-wrap, .gold-research-chart { min-height: 240px; }
+  .gold-trade-chart { min-height: 198px; }
+  .gold-chart-tools > span { flex-basis: 110px; font-size: 7px; }
+  .gold-contract-details > div { padding: 9px 7px; }
+  .mom-pnl.gold-pnl > div, .mom-scoreboard.gold-scoreboard > div { padding-left: 25px; }
+  .gold-facts, .gold-connection-facts { grid-template-columns: minmax(0, 1fr); }
+  .gold-facts > div, .gold-connection-facts > div { border-left: 0 !important; border-bottom: 1px solid var(--border); }
+  .gold-facts > div:last-child, .gold-connection-facts > div:last-child { border-bottom: 0; }
+}
