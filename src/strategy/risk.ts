@@ -1,4 +1,4 @@
-import { getOpenTrade, getRecovery } from '../db/store.ts';
+import { getOpenTradeByLane, getRecovery } from '../db/store.ts';
 import type { SettingsRow } from '../db/store.ts';
 import type { RecoveryContext, StrategyMode } from '../strategy/recovery.ts';
 import { config } from '../config.ts';
@@ -49,6 +49,7 @@ export function riskCheck(params: {
   now: number;
   accountId?: string;
   skipRecoveryDebtCap?: boolean;
+  lane?: 'digit' | 'multiplier';
 }): RiskCheck {
   const { stake, settings, balance, context, lastTradeAt, tradeGapMs } = params;
 
@@ -81,8 +82,9 @@ export function riskCheck(params: {
     }
   }
 
-  const open = getOpenTrade(params.accountId);
-  if (open) return { ok: false, reason: `open contract still settling (${open.status})` };
+  const lane = params.lane ?? 'digit';
+  const open = getOpenTradeByLane(lane, params.accountId);
+  if (open) return { ok: false, reason: `${lane} contract still settling (${open.status})` };
 
   if (tradeGapMs > 0 && lastTradeAt > 0 && params.now - lastTradeAt < tradeGapMs) {
     return { ok: false, reason: 'trade gap not elapsed' };

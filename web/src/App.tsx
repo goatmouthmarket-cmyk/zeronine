@@ -490,7 +490,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const guest = !s.session;
   const decision = automation ? s.decision?.decision : undefined;
   const digitTrades = useMemo(() => s.trades.filter(isDigitTrade), [s.trades]);
-  const openAccountTrade = useMemo(() => s.trades.find(isOpenAccountTrade) ?? null, [s.trades]);
+  const openAccountTrade = useMemo(() => s.trades.find((trade) => isOpenAccountTrade(trade) && isDigitTrade(trade)) ?? null, [s.trades]);
   const accountLockMessage = openTradeLockMessage(openAccountTrade);
   const startLocked = Boolean(openAccountTrade);
 
@@ -1875,7 +1875,7 @@ function BotPage(): JSX.Element {
   const [settlementBusy, setSettlementBusy] = useState(false);
   const cooldownLeft = useBotCooldown();
   const automation = s.automation?.running ?? false;
-  const openAccountTrade = useMemo(() => s.trades.find(isOpenAccountTrade) ?? null, [s.trades]);
+  const openAccountTrade = useMemo(() => s.trades.find((trade) => isOpenAccountTrade(trade) && isDigitTrade(trade)) ?? null, [s.trades]);
   const accountLockMessage = openTradeLockMessage(openAccountTrade);
   const startLocked = Boolean(openAccountTrade);
 
@@ -2580,7 +2580,7 @@ function MomentumTradeDesk({
     : [10, 20, 30, 50, 100, 200, 500, 1000];
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
-  const openAccountTrade = trades.find(isOpenAccountTrade) ?? null;
+  const openAccountTrade = trades.find((trade) => isOpenAccountTrade(trade) && isMultiplierTrade(trade)) ?? null;
   const openMomentumTrade = trades.find((item) =>
     (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
     && /momentum manual/i.test(item.reason ?? '')
@@ -4224,7 +4224,7 @@ function UnusedGoldDerivTradeWorkspace({
   const validLimits = takeProfit !== undefined && stopLoss !== undefined;
   const marketReady = state?.research.ready === true;
   const isDemo = session?.mode === 'demo';
-  const openAccountTrade = trades.find((item) => item.status === 'pending' || item.status === 'purchasing') ?? null;
+  const openAccountTrade = trades.find((item) => isMultiplierTrade(item) && (item.status === 'pending' || item.status === 'purchasing')) ?? null;
   const openGoldTrade = trades.find((item) =>
     (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
     && /gold deriv manual/i.test(item.reason ?? '')
@@ -4779,7 +4779,7 @@ function GoldDerivTradeWorkspace({
   const serverOpenGoldTrade = deriv?.openTrade ?? null;
   const localOpenGoldTrade = trades.find((trade) => unusedGoldDerivIsGoldTrade(trade) && unusedGoldDerivIsOpenTrade(trade)) ?? null;
   const openGoldTrade = serverOpenGoldTrade ?? localOpenGoldTrade;
-  const openAnyTrade = deriv?.blockedByOpenTrade ?? trades.find(unusedGoldDerivIsOpenTrade) ?? null;
+  const openAnyTrade = deriv?.blockedByOpenTrade ?? trades.find((trade) => unusedGoldDerivIsOpenTrade(trade) && isMultiplierTrade(trade)) ?? null;
   const [side, setSide] = useState<GoldSide>(sideFromSignal ?? 'BUY');
   const [stakeText, setStakeText] = useState('1');
   const [multiplierText, setMultiplierText] = useState(String(deriv?.defaultMultiplier ?? 20));
@@ -5159,7 +5159,7 @@ const modelWeights = [
       <div><span>Provider</span><strong>Deriv API</strong><small>Not MT5/cTrader execution</small></div>
       <div><span>Market data</span><strong>{state?.research.ready ? 'Live' : 'Waiting'}</strong><small>{state?.research.reason ?? diagnostics?.reason ?? 'Deriv Gold feed'}</small></div>
       <div><span>Trading</span><strong>{demoConnected ? 'Demo enabled' : 'Demo locked'}</strong><small>{deriv?.message ?? 'Connect Deriv demo'}</small></div>
-      <div><span>Account lock</span><strong>{openAnyTrade ? 'Busy' : 'Clear'}</strong><small>{openAnyTrade ? `Open contract ${openAnyTrade.contract_id || openAnyTrade.id}` : 'Single open contract guard'}</small></div>
+      <div><span>Multiplier lane</span><strong>{openAnyTrade ? 'Busy' : 'Clear'}</strong><small>{openAnyTrade ? `Open multiplier ${openAnyTrade.contract_id || openAnyTrade.id}` : 'Digit lane remains independent'}</small></div>
     </section>
   </>;
 }

@@ -19,6 +19,7 @@ import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
   accountIdForLogin,
   getAutomation,
+  getOpenTradeByLane,
   getPerformanceSummary,
   getTrade,
   getPendingTrades,
@@ -403,10 +404,10 @@ export class Automation {
     // Reconcile pending bets left by a restart or delayed settlement. A real
     // contract remains pending until Deriv gives a terminal result; recording a
     // timeout as zero PnL would corrupt both history and recovery debt.
-    const pending = getPendingTrades(accountId);
+    const pending = getPendingTrades(accountId).filter((trade) => trade.contract_type === 'DIGITOVER' || trade.contract_type === 'DIGITUNDER');
     if (pending.length > 0) {
       await this.reconcilePending(pending);
-      if (getPendingTrades(accountId).length > 0) {
+      if (getPendingTrades(accountId).some((trade) => trade.contract_type === 'DIGITOVER' || trade.contract_type === 'DIGITUNDER')) {
         this.emit({ type: HOLD, ts: Date.now(), reason: 'waiting open contract to settle' });
         this.phase = 'waiting-settlement';
         return 350;
@@ -761,6 +762,13 @@ export class Automation {
       regime: market?.regime.regime,
       requested_stake: decision.stake,
     });
+    // Re-check after the proposal await. This synchronous check and insert
+    // reserve the digit lane against a simultaneous manual order.
+    if (getOpenTradeByLane('digit', accountId)) {
+      this.phase = 'waiting-settlement';
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'digit lane became busy while quote was loading' });
+      return 350;
+    }
     const trade = insertTrade({
       ts: Date.now(),
       market: decision.market,

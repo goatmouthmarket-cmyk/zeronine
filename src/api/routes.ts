@@ -35,6 +35,7 @@ import {
   getMeta,
   getMomentumResearchProfile,
   getOpenTrade,
+  getOpenTradeByLane,
   getTrade,
   getPerformanceSummary,
   getPaperTrade,
@@ -43,6 +44,7 @@ import {
   getSettings,
   insertTrade,
   listMarkets,
+  listOpenTrades,
   listDecisionEvents,
   listLedgerEntries,
   listPaperLedgerEntries,
@@ -129,9 +131,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   };
   const resumeOpenTradeSettlement = (): void => {
     if (!client.isConnected) return;
-    const openTrade = getOpenTrade();
-    if (!openTrade?.contract_id) return;
-    settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
+    for (const openTrade of listOpenTrades()) {
+      if (openTrade.contract_id) settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
+    }
   };
   const isGoldDerivTrade = (trade: { contract_type?: string; market?: string; reason?: string | null } | null | undefined): boolean =>
     Boolean(
@@ -141,7 +143,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     );
   const fmtSentimentPct = (score: number): string => `${score >= 0 ? '+' : ''}${Math.round(score * 100)}%`;
   const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
-    const openTrade = owner ? getOpenTrade() : null;
+    const openTrade = owner ? getOpenTradeByLane('multiplier') : null;
     return {
       ...gold.state(),
       deriv: {
@@ -426,7 +428,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    const openTrade = getOpenTrade();
+    const openTrade = getOpenTradeByLane('multiplier');
     if (openTrade) {
       if (openTrade.contract_id) {
         settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
@@ -446,6 +448,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       // drawdown, loss-streak, cooldown, and open-contract rails, but do not
       // reject a manual Gold order solely because the digit strategy has debt.
       skipRecoveryDebtCap: true,
+      lane: 'multiplier',
     });
     if (!gate.ok) {
       reply.code(409);
@@ -492,7 +495,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         throw new Error('Gold multiplier proposal returned an invalid purchase price');
       }
       stage = 'reserve';
-      if (getOpenTrade()) {
+      if (getOpenTradeByLane('multiplier')) {
         reply.code(409);
         return { error: 'another account contract opened while the Gold quote was loading' };
       }
@@ -609,7 +612,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(403);
       return { error: 'Gold trades are restricted to a Deriv demo account' };
     }
-    const openTrade = getOpenTrade();
+    const openTrade = listOpenTrades().find(isGoldDerivTrade) ?? null;
     if (!openTrade) {
       reply.code(409);
       return { error: 'no open Gold trade found' };
@@ -810,7 +813,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    const openTrade = getOpenTrade();
+    const openTrade = getOpenTradeByLane('multiplier');
     if (openTrade) {
       if (openTrade.contract_id) {
         settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
@@ -829,6 +832,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       // Momentum demo orders never join the digit recovery cycle, so its debt
       // cap must not gate them; every other rail above still applies.
       skipRecoveryDebtCap: true,
+      lane: 'multiplier',
     });
     if (!gate.ok) {
       reply.code(409);
@@ -921,7 +925,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       }
       // This synchronous insert reserves the shared account contract slot
       // before the buy. Concurrent click handlers cannot create a second order.
-      if (getOpenTrade()) {
+      if (getOpenTradeByLane('multiplier')) {
         reply.code(409);
         return { error: 'another account contract opened while the Momentum quote was loading' };
       }
@@ -1066,10 +1070,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(403);
       return { error: 'Momentum trades are restricted to a Deriv demo account' };
     }
-    const openTrade = getOpenTrade();
+    const multiplierTrade = getOpenTradeByLane('multiplier');
+    const openTrade = listOpenTrades().find((trade) => (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN') && !isGoldDerivTrade(trade)) ?? null;
     if (!openTrade) {
       reply.code(409);
-      return { error: 'no open Momentum trade found' };
+      return { error: multiplierTrade ? 'the open contract is not a Momentum multiplier trade' : 'no open Momentum trade found' };
     }
     if ((openTrade.contract_type !== 'MULTUP' && openTrade.contract_type !== 'MULTDOWN') || isGoldDerivTrade(openTrade)) {
       reply.code(409);
@@ -1577,8 +1582,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
     
     // Never clear a provider contract merely because local time elapsed. A
-    // delayed settlement must retain the single-open-contract lock.
-    const openTrade = getOpenTrade();
+    // delayed settlement retains its digit-lane lock while a multiplier may
+    // remain open independently.
+    const openTrade = getOpenTradeByLane('digit');
     if (openTrade) {
       const staleness = Date.now() - openTrade.ts;
       reply.code(409);
@@ -1597,6 +1603,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         durationUnit: 't',
         symbol: market,
       });
+      if (getOpenTradeByLane('digit')) {
+        reply.code(409);
+        return { error: 'another digit contract opened while the quote was loading' };
+      }
       // Keep this row out of reconciliation until Deriv confirms a contract
       // id. The always-on watch loop must not turn a valid in-flight manual
       // buy into an error between proposal and purchase.
@@ -1674,7 +1684,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `invalid basket order for ${invalid.market || 'unknown market'}` };
     }
-    if (getOpenTrade()) {
+    if (getOpenTradeByLane('digit')) {
       reply.code(409);
       return { error: 'wait for the open contract to settle before placing a basket' };
     }

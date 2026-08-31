@@ -1191,6 +1191,22 @@ export function getOpenTrade(accountId = currentAccountId()): TradeRow | null {
   return row ? (row as unknown as TradeRow) : null;
 }
 
+export type TradeLane = 'digit' | 'multiplier';
+
+export function tradeLane(trade: Pick<TradeRow, 'contract_type'>): TradeLane {
+  return trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN' ? 'multiplier' : 'digit';
+}
+
+export function listOpenTrades(accountId = currentAccountId()): TradeRow[] {
+  return getDb()
+    .prepare("SELECT * FROM trades WHERE account_id = ? AND status IN ('purchasing', 'pending') ORDER BY id DESC")
+    .all(accountId) as unknown as TradeRow[];
+}
+
+export function getOpenTradeByLane(lane: TradeLane, accountId = currentAccountId()): TradeRow | null {
+  return listOpenTrades(accountId).find((trade) => tradeLane(trade) === lane) ?? null;
+}
+
 export function getPendingTrades(accountId = currentAccountId()): TradeRow[] {
   return getDb()
     .prepare("SELECT * FROM trades WHERE account_id = ? AND status = 'pending' ORDER BY id ASC")
