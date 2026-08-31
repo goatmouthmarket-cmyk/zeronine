@@ -90,3 +90,15 @@ test('Gold runtime can use only virtual paper and completed-candle backtests aft
   assert.ok(result.candlesProcessed > 0);
   assert.equal(runtime.state().backtest.result?.modelVersion, 'gold-backtest-v1');
 });
+
+test('Gold backtest ignores the active unfinished candle and runs completed history', () => {
+  const runtime = new GoldRuntime({ adapter: new TestMarketAdapter(true), now: () => NOW });
+  runtime.setSymbol(symbol);
+  const history = Array.from({ length: 40 }, (_, index) => candle(index));
+  history.push({ ...candle(40), openTime: NOW, closeTime: NOW + 300_000, complete: false });
+  runtime.replaceCandles('5m', history);
+
+  assert.equal(runtime.state().backtest.ready, true);
+  const result = runtime.runBaselineBacktest();
+  assert.equal(result.candlesProcessed, 40);
+});

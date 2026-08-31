@@ -218,11 +218,9 @@ export class GoldRuntime {
       this.paperAutomation.reason = signal?.blockers.join(' · ') || 'Collecting candle, trend, volatility, and sentiment evidence';
       return;
     }
-    if (signal.confidence < 65) {
-      this.paperAutomation.status = 'waiting';
-      this.paperAutomation.reason = `Prediction confidence ${signal.confidence}% is below the 65% paper threshold`;
-      return;
-    }
+    // BUY/SELL has already cleared the research model's directional threshold.
+    // Paper evidence should sample every validated signal instead of applying a
+    // second, stricter confidence gate that hides most of the model's calls.
     if (now < this.paperAutomation.nextEligibleAt) {
       this.paperAutomation.status = 'cooldown';
       this.paperAutomation.reason = 'Waiting five minutes before testing another prediction';
@@ -264,8 +262,9 @@ export class GoldRuntime {
 
   private backtestReadiness(research: GoldResearchState): GoldRuntimeReadiness {
     const candles = research.candles[research.timeframe] ?? [];
-    if (candles.length === 0) return { ready: false, reason: 'Gold backtest is not validated: no historical candles are loaded.' };
-    if (candles.some((candle) => !candle.complete)) return { ready: false, reason: 'Gold backtest is unavailable: historical candles must be complete.' };
+    const completed = candles.filter((candle) => candle.complete);
+    if (completed.length === 0) return { ready: false, reason: 'Gold backtest is not validated: no completed historical candles are loaded.' };
+    if (completed.length < 30) return { ready: false, reason: `Gold backtest needs 30 completed candles (${completed.length} loaded).` };
     return { ready: true, reason: null };
   }
 
@@ -281,6 +280,12 @@ export class GoldRuntime {
     const state = this.research.state();
     const readiness = this.backtestReadiness(state);
     if (!readiness.ready) throw new GoldRuntimeUnavailableError(readiness.reason ?? 'Gold backtest is unavailable');
-    return state;
+    return {
+      ...state,
+      candles: {
+        ...state.candles,
+        [state.timeframe]: (state.candles[state.timeframe] ?? []).filter((candle) => candle.complete),
+      },
+    };
   }
 }

@@ -5106,13 +5106,13 @@ const modelWeights = [
       <div class="gold-intel-card">
         <span class="gold-kicker">Historical edge</span>
         <strong>{backtest ? `${backtest.metrics.tradeCount} tested trades` : `${candles.length} candles loaded`}</strong>
-        <small>{backtest ? `Win rate ${backtest.metrics.winRate == null ? '--' : `${(backtest.metrics.winRate * 100).toFixed(1)}%`} - net ${fmtSigned(backtest.metrics.netPnl, currency)}` : 'Gold research uses recent candle history, EMA structure, ATR, volatility, and tick volume before allowing a side.'}</small>
+        <small>{backtest ? `Win rate ${backtest.metrics.winRate == null ? '--' : `${(backtest.metrics.winRate * 100).toFixed(1)}%`} - net ${fmtSigned(backtest.metrics.netPnl, currency)}` : state?.backtest.reason ?? 'Completed Gold candles are ready for historical testing.'}</small>
         <div class="gold-intel-stats">
           <span>1m <b>{research?.candles?.['1m']?.length ?? 0}</b></span>
           <span>5m <b>{research?.candles?.['5m']?.length ?? 0}</b></span>
           <span>Spread/ATR <b>{signal && Number.isFinite(signal.spreadToAtr) ? signal.spreadToAtr.toFixed(3) : '--'}</b></span>
         </div>
-        <button class="gold-backtest-button" type="button" disabled={!owner || backtestBusy || state?.backtest.ready !== true} onClick={() => void runGoldModelBacktest()}>
+        <button class="gold-backtest-button" type="button" title={state?.backtest.ready === false ? state.backtest.reason ?? undefined : undefined} disabled={!owner || backtestBusy || state?.backtest.ready !== true} onClick={() => void runGoldModelBacktest()}>
           <Icon name={backtestBusy ? 'dots' : 'stats'} size={13} />
           {backtestBusy ? 'Testing history' : 'Run history test'}
         </button>
