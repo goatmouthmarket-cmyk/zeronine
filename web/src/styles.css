@@ -682,7 +682,7 @@ button {
 .gold-page-header .gold-tabs { flex: 0 0 auto; padding: 3px; border: 1px solid var(--border); border-radius: 6px; }
 .gold-workspace { border-bottom: 1px solid var(--border); background: transparent; }
 .gold-trade-desk { overflow: hidden; border-top: 1px solid var(--border); background: transparent; }
-.gold-trade-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 2px 20px; }
+.gold-trade-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 24px 20px 2px; }
 .gold-trade-head strong { display: block; margin-top: 4px; color: var(--text); font-size: 19px; line-height: 1.15; }.gold-trade-head small { display: block; max-width: 720px; margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .gold-trade-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; }
 .gold-trade-suggestion { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }.gold-trade-suggestion span { color: var(--muted-2); }.gold-trade-suggestion strong { color: currentColor; font-size: 10px; }.gold-trade-suggestion.buy { color: #f4c96b; }.gold-trade-suggestion.sell { color: var(--red); }.gold-trade-suggestion.wait { color: var(--muted); }
