@@ -102,6 +102,26 @@ export interface GoldDemoConnectionRow {
   account_label: string | null;
 }
 
+export interface GoldPredictionEvidenceRow {
+  signal_id: string;
+  symbol: string;
+  timeframe: string;
+  direction: 'BUY' | 'SELL';
+  confidence: number;
+  score: number;
+  entry_price: number;
+  generated_at: number;
+  evaluation_due_at: number;
+  status: 'pending' | 'correct' | 'incorrect' | 'flat';
+  exit_price: number | null;
+  evaluated_at: number | null;
+  evidence_json: string;
+}
+
+export interface GoldPredictionEvidenceInput extends Omit<GoldPredictionEvidenceRow, 'status' | 'exit_price' | 'evaluated_at' | 'evidence_json'> {
+  evidence: Record<string, unknown>;
+}
+
 /** Immutable scanner/configuration snapshot captured when virtual research opens. */
 export interface PaperTradeContextRow {
   contract_ref: string;
@@ -408,6 +428,22 @@ function migrate(d: DatabaseSync): void {
       account_id TEXT,
       account_label TEXT
     );
+    CREATE TABLE IF NOT EXISTS gold_prediction_evidence (
+      signal_id TEXT PRIMARY KEY,
+      symbol TEXT NOT NULL,
+      timeframe TEXT NOT NULL,
+      direction TEXT NOT NULL CHECK (direction IN ('BUY', 'SELL')),
+      confidence REAL NOT NULL,
+      score REAL NOT NULL,
+      entry_price REAL NOT NULL,
+      generated_at INTEGER NOT NULL,
+      evaluation_due_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'correct', 'incorrect', 'flat')),
+      exit_price REAL,
+      evaluated_at INTEGER,
+      evidence_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_gold_prediction_due ON gold_prediction_evidence(status, evaluation_due_at);
     CREATE INDEX IF NOT EXISTS idx_paper_trade_context_opened ON paper_trade_context(opened_at DESC);
     CREATE TABLE IF NOT EXISTS performance_baseline (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -2041,4 +2077,40 @@ export function upsertGoldDemoConnection(row: GoldDemoConnectionRow): void {
 
 export function deleteGoldDemoConnection(ownerKey: string): void {
   getDb().prepare('DELETE FROM gold_demo_connections WHERE owner_key = ?').run(ownerKey);
+}
+
+export function recordGoldPredictionEvidence(input: GoldPredictionEvidenceInput): void {
+  getDb().prepare(`
+    INSERT OR IGNORE INTO gold_prediction_evidence
+      (signal_id, symbol, timeframe, direction, confidence, score, entry_price, generated_at, evaluation_due_at, evidence_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.signal_id, input.symbol, input.timeframe, input.direction, input.confidence, input.score,
+    input.entry_price, input.generated_at, input.evaluation_due_at, JSON.stringify(input.evidence),
+  );
+}
+
+export function listPendingGoldPredictions(symbol: string, dueAt: number): GoldPredictionEvidenceRow[] {
+  return getDb().prepare(`
+    SELECT * FROM gold_prediction_evidence
+    WHERE symbol = ? AND status = 'pending' AND evaluation_due_at <= ?
+    ORDER BY evaluation_due_at ASC
+  `).all(symbol, dueAt) as unknown as GoldPredictionEvidenceRow[];
+}
+
+export function resolveGoldPredictionEvidence(
+  signalId: string,
+  status: Extract<GoldPredictionEvidenceRow['status'], 'correct' | 'incorrect' | 'flat'>,
+  exitPrice: number,
+  evaluatedAt: number,
+): void {
+  getDb().prepare(`
+    UPDATE gold_prediction_evidence SET status = ?, exit_price = ?, evaluated_at = ?
+    WHERE signal_id = ? AND status = 'pending'
+  `).run(status, exitPrice, evaluatedAt, signalId);
+}
+
+export function listGoldPredictionEvidence(limit = 200): GoldPredictionEvidenceRow[] {
+  return getDb().prepare('SELECT * FROM gold_prediction_evidence ORDER BY generated_at DESC LIMIT ?')
+    .all(Math.max(1, Math.min(2000, limit))) as unknown as GoldPredictionEvidenceRow[];
 }

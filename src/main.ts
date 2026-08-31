@@ -25,7 +25,10 @@ import {
   enqueueDigit,
   flushDigitQueue,
   listPaperLedgerEntries,
+  listPendingGoldPredictions,
   pruneDigits,
+  recordGoldPredictionEvidence,
+  resolveGoldPredictionEvidence,
   setMeta,
   updateSessionBalance,
 } from './db/store.ts';
@@ -222,6 +225,33 @@ async function main(): Promise<void> {
       config: { minCandles: 12, maxSpreadToAtr: .5 },
     }),
     sentimentWorker: goldSentiment,
+    predictionEvidence: {
+      record(signal, evaluationDueAt) {
+        recordGoldPredictionEvidence({
+          signal_id: signal.id,
+          symbol: signal.symbolId,
+          timeframe: signal.timeframe,
+          direction: signal.direction as 'BUY' | 'SELL',
+          confidence: signal.confidence,
+          score: signal.score,
+          entry_price: signal.entryReference,
+          generated_at: signal.generatedAt,
+          evaluation_due_at: evaluationDueAt,
+          evidence: {
+            modelVersion: signal.modelVersion,
+            atr: signal.atr,
+            spread: signal.spread,
+            spreadToAtr: signal.spreadToAtr,
+            regime: signal.regime,
+            indicators: signal.indicators,
+            sentiment: signal.sentiment,
+            reasons: signal.reasons,
+          },
+        });
+      },
+      pending: listPendingGoldPredictions,
+      resolve: resolveGoldPredictionEvidence,
+    },
   });
   if (config.goldSentimentEnabled) goldSentiment.start();
   const goldFeed = new DerivGoldFeed(gold);

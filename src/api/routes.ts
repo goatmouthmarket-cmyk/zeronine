@@ -44,6 +44,7 @@ import {
   getSettings,
   insertTrade,
   listMarkets,
+  listGoldPredictionEvidence,
   listOpenTrades,
   listDecisionEvents,
   listLedgerEntries,
@@ -144,8 +145,21 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const fmtSentimentPct = (score: number): string => `${score >= 0 ? '+' : ''}${Math.round(score * 100)}%`;
   const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
     const openTrade = owner ? getOpenTradeByLane('multiplier') : null;
+    const predictionRows = listGoldPredictionEvidence(500);
+    const resolvedPredictions = predictionRows.filter((row) => row.status !== 'pending');
+    const correctPredictions = resolvedPredictions.filter((row) => row.status === 'correct').length;
     return {
       ...gold.state(),
+      predictionEvaluation: {
+        total: predictionRows.length,
+        pending: predictionRows.filter((row) => row.status === 'pending').length,
+        resolved: resolvedPredictions.length,
+        correct: correctPredictions,
+        incorrect: resolvedPredictions.filter((row) => row.status === 'incorrect').length,
+        flat: resolvedPredictions.filter((row) => row.status === 'flat').length,
+        accuracy: resolvedPredictions.length ? correctPredictions / resolvedPredictions.length : null,
+        latest: predictionRows[0] ?? null,
+      },
       deriv: {
         provider: 'deriv',
         symbol: config.goldDerivSymbol,

@@ -837,6 +837,16 @@ export interface GoldModuleState {
   paper: GoldRuntimeReadiness & { state: GoldPaperState };
   backtest: GoldRuntimeReadiness & { result: GoldBacktestResult | null };
   sentiment: GoldSentimentWorkerState | null;
+  predictionEvaluation?: {
+    total: number;
+    pending: number;
+    resolved: number;
+    correct: number;
+    incorrect: number;
+    flat: number;
+    accuracy: number | null;
+    latest: { signal_id: string; direction: 'BUY' | 'SELL'; status: 'pending' | 'correct' | 'incorrect' | 'flat'; generated_at: number; evaluated_at: number | null } | null;
+  };
   paperAutomation: {
     enabled: true;
     status: 'collecting' | 'waiting' | 'open' | 'cooldown';

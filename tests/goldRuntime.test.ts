@@ -69,6 +69,39 @@ test('Gold runtime automatically paper-tests a validated prediction and links th
   assert.equal(state.paper.state.positions[0]?.researchSignalId, state.research.state.signal?.id);
 });
 
+test('Gold runtime stores a prediction and scores it from the completed UTC day-end candle', () => {
+  let now = NOW;
+  const pending = new Map<string, { signal_id: string; direction: 'BUY' | 'SELL'; entry_price: number; generated_at: number; evaluation_due_at: number }>();
+  const resolved: Array<{ signalId: string; status: string; exitPrice: number }> = [];
+  const runtime = new GoldRuntime({
+    adapter: new TestMarketAdapter(true),
+    now: () => now,
+    predictionEvidence: {
+      record(signal, evaluationDueAt) {
+        if (signal.direction !== 'BUY' && signal.direction !== 'SELL') return;
+        pending.set(signal.id, { signal_id: signal.id, direction: signal.direction, entry_price: signal.entryReference, generated_at: signal.generatedAt, evaluation_due_at: evaluationDueAt });
+      },
+      pending: (_symbol, dueAt) => [...pending.values()].filter((row) => row.evaluation_due_at <= dueAt),
+      resolve(signalId, status, exitPrice) {
+        resolved.push({ signalId, status, exitPrice });
+        pending.delete(signalId);
+      },
+    },
+  });
+  runtime.setSymbol(symbol);
+  const primary = Array.from({ length: 40 }, (_, index) => candle(index, '5m', .7));
+  runtime.replaceCandles('5m', primary);
+  runtime.replaceCandles('15m', Array.from({ length: 40 }, (_, index) => candle(index, '15m', .7)));
+  runtime.ingestQuote({ symbolId: symbol.id, bid: 2_028, ask: 2_028.05, timestamp: NOW - 50, receivedAt: NOW, sequence: 1 });
+  const saved = [...pending.values()][0];
+  assert.ok(saved);
+
+  now = saved.evaluation_due_at + 60_000;
+  const dayEnd = { ...primary.at(-1)!, openTime: saved.evaluation_due_at - 300_000, closeTime: saved.evaluation_due_at, open: saved.entry_price + 4, high: saved.entry_price + 6, low: saved.entry_price + 3, close: saved.entry_price + 5 };
+  runtime.replaceCandles('5m', [...primary, dayEnd]);
+  assert.deepEqual(resolved, [{ signalId: saved.signal_id, status: 'correct', exitPrice: saved.entry_price + 5 }]);
+});
+
 test('Gold runtime can use only virtual paper and completed-candle backtests after market data is validated', () => {
   const runtime = new GoldRuntime({ adapter: new TestMarketAdapter(true), now: () => NOW });
   runtime.setSymbol(symbol);

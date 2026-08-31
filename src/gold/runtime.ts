@@ -10,6 +10,7 @@ import {
 import { runGoldBacktest, type GoldBacktestConfig, type GoldBacktestResult, type GoldBacktestStrategy } from './backtest.ts';
 import { GoldPaperEngine, type GoldPaperCloseResult, type GoldPaperOpenResult, type GoldPaperState } from './paper.ts';
 import { GoldResearchService, type GoldResearchState } from './researchService.ts';
+import type { GoldSignal } from './research.ts';
 import type { GoldSentimentSnapshot } from './sentiment.ts';
 import type { GoldSentimentWorker, GoldSentimentWorkerState } from './sentimentWorker.ts';
 import { GoldOAuthOnboarding, type GoldConnectionState } from './onboarding.ts';
@@ -51,6 +52,21 @@ export interface GoldRuntimeOptions {
   paper?: GoldPaperEngine;
   sentimentWorker?: GoldSentimentWorker;
   now?: () => number;
+  predictionEvidence?: GoldPredictionEvidenceStore;
+}
+
+export interface PendingGoldPrediction {
+  signal_id: string;
+  direction: 'BUY' | 'SELL';
+  entry_price: number;
+  generated_at: number;
+  evaluation_due_at: number;
+}
+
+export interface GoldPredictionEvidenceStore {
+  record(signal: GoldSignal, evaluationDueAt: number): void;
+  pending(symbol: string, dueAt: number): PendingGoldPrediction[];
+  resolve(signalId: string, status: 'correct' | 'incorrect' | 'flat', exitPrice: number, evaluatedAt: number): void;
 }
 
 export class GoldRuntimeUnavailableError extends Error {
@@ -73,6 +89,7 @@ export class GoldRuntime {
   private readonly onboarding: GoldOAuthOnboarding;
   private readonly sentimentWorker: GoldSentimentWorker | null;
   private readonly now: () => number;
+  private readonly predictionEvidence: GoldPredictionEvidenceStore | null;
   private lastBacktest: GoldBacktestResult | null = null;
   private paperAutomation: GoldPaperAutomationState = {
     enabled: true, status: 'collecting', reason: 'Collecting candles for the first validated prediction',
@@ -90,6 +107,7 @@ export class GoldRuntime {
     // Starting/stopping the worker stays with the process lifecycle in main.
     this.sentimentWorker?.setOnSnapshot((snapshot) => this.ingestSentiment(snapshot));
     this.now = options.now ?? Date.now;
+    this.predictionEvidence = options.predictionEvidence ?? null;
   }
 
   state(): GoldRuntimeState {
@@ -138,7 +156,9 @@ export class GoldRuntime {
 
   /** Adapter ingress only. Historical candles remain separate from live ticks. */
   replaceCandles(timeframe: GoldTimeframe, candles: GoldCandle[]): GoldResearchState {
-    return this.research.replaceCandles(timeframe, candles);
+    const next = this.research.replaceCandles(timeframe, candles);
+    this.evaluateMaturePredictions(next);
+    return next;
   }
 
   /** Adapter ingress only. Paper positions receive a mark only after this call. */
@@ -148,6 +168,7 @@ export class GoldRuntime {
     // position exists, every newer research quote marks or settles it.
     if (next.quote && this.paper.state().positions.length > 0) this.paper.onQuote(next.quote);
     if (next.symbol && next.quote) this.runAutomaticPaperResearch(next);
+    this.evaluateMaturePredictions(next);
     return next;
   }
 
@@ -240,9 +261,48 @@ export class GoldRuntime {
       this.paperAutomation.status = 'open';
       this.paperAutomation.reason = `${signal.direction} prediction opened virtually at ${signal.confidence}% confidence`;
       this.paperAutomation.nextEligibleAt = now + 5 * 60_000;
+      this.recordPrediction(signal);
     } else {
       this.paperAutomation.status = 'waiting';
       this.paperAutomation.reason = opened.reason;
+    }
+  }
+
+  private recordPrediction(signal: GoldSignal): void {
+    const store = this.predictionEvidence;
+    if (!store || (signal.direction !== 'BUY' && signal.direction !== 'SELL')) return;
+    try {
+      const generated = new Date(signal.generatedAt);
+      const evaluationDueAt = Date.UTC(generated.getUTCFullYear(), generated.getUTCMonth(), generated.getUTCDate() + 1);
+      store.record(signal, evaluationDueAt);
+    } catch (error) {
+      console.warn(`[gold prediction evidence] ${String(error)}`);
+    }
+  }
+
+  private evaluateMaturePredictions(research: GoldResearchState): void {
+    const store = this.predictionEvidence;
+    if (!store || !research.symbol) return;
+    try {
+      const now = this.now();
+      const pending = store.pending(research.symbol.id, now);
+      if (!pending.length) return;
+      const completed = Object.values(research.candles).flat().filter((candle): candle is GoldCandle => Boolean(candle?.complete));
+      for (const prediction of pending) {
+        const closingCandle = completed
+          .filter((candle) => candle.symbolId === research.symbol!.id && candle.closeTime > prediction.generated_at && candle.closeTime <= prediction.evaluation_due_at)
+          .sort((a, b) => b.closeTime - a.closeTime)[0];
+        if (!closingCandle) continue;
+        const movement = closingCandle.close - prediction.entry_price;
+        const status = Math.abs(movement) < Number.EPSILON
+          ? 'flat'
+          : prediction.direction === 'BUY' ? movement > 0 ? 'correct' : 'incorrect' : movement < 0 ? 'correct' : 'incorrect';
+        store.resolve(prediction.signal_id, status, closingCandle.close, now);
+      }
+    } catch (error) {
+      // Research evidence is telemetry: persistence must never block quotes,
+      // paper testing, demo orders, settlement, or stop requests.
+      console.warn(`[gold prediction evidence] ${String(error)}`);
     }
   }
 
