@@ -62,6 +62,10 @@ export function GoldTradeChart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const linesRef = useRef<IPriceLine[]>([]);
+  const initialViewportSetRef = useRef(false);
+  const followLiveRef = useRef(true);
+  const dataLengthRef = useRef(0);
+  const latestCandleTimeRef = useRef<Time | null>(null);
   const data = useMemo(() => candleData(candles ?? []), [candles]);
   const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.close ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
   const lastPrice = quote?.mid ?? data.at(-1)?.close ?? null;
@@ -91,6 +95,8 @@ export function GoldTradeChart({
         fixLeftEdge: true,
         fixRightEdge: true,
         rightOffset: 6,
+        barSpacing: 13,
+        minBarSpacing: 4,
         timeVisible: true,
       },
       crosshair: {
@@ -111,6 +117,10 @@ export function GoldTradeChart({
       lastValueVisible: false,
     });
     series.priceScale().applyOptions({ scaleMargins: { top: .1, bottom: .14 } });
+    const trackViewport = (range: { to: number } | null) => {
+      if (range) followLiveRef.current = range.to >= dataLengthRef.current - 1.5;
+    };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(trackViewport);
     chartRef.current = chart;
     seriesRef.current = series;
     const resize = () => chart.resize(Math.max(1, container.clientWidth), Math.max(1, container.clientHeight));
@@ -119,10 +129,15 @@ export function GoldTradeChart({
     resize();
     return () => {
       observer.disconnect();
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(trackViewport);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
       linesRef.current = [];
+      initialViewportSetRef.current = false;
+      followLiveRef.current = true;
+      dataLengthRef.current = 0;
+      latestCandleTimeRef.current = null;
     };
   }, []);
 
@@ -130,8 +145,25 @@ export function GoldTradeChart({
     const chart = chartRef.current;
     const series = seriesRef.current;
     if (!chart || !series) return;
+    const previousLatestTime = latestCandleTimeRef.current;
     series.setData(data);
-    if (data.length > 1) chart.timeScale().fitContent();
+    dataLengthRef.current = data.length;
+    // Establish a useful live-trading viewport once. Calling fitContent on
+    // every candle update overwrote the operator's manual wheel/pinch zoom.
+    // Subsequent updates change only the data, so the selected zoom survives.
+    if (data.length > 1 && !initialViewportSetRef.current) {
+      const last = data.length - 1;
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(0, last - 31),
+        to: last + 4,
+      });
+      initialViewportSetRef.current = true;
+    } else if (data.length > 1 && followLiveRef.current && previousLatestTime !== data.at(-1)?.time) {
+      // Keep following newly-opened candles only while the operator is still
+      // at the live edge. scrollToRealTime retains their chosen bar spacing.
+      chart.timeScale().scrollToRealTime();
+    }
+    latestCandleTimeRef.current = data.at(-1)?.time ?? null;
   }, [data]);
 
   useEffect(() => {
