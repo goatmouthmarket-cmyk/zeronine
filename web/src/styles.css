@@ -959,6 +959,8 @@ button {
 /* Momentum demo execution is deliberately one compact desk. It reuses the
    selected research market and never presents account values as estimates. */
 .mom-page-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.mom-brand-logo { display: block; width: auto; height: 58px; max-width: min(300px, 72vw); object-fit: contain; object-position: left center; }
+@media (max-width: 430px) { .mom-brand-logo { height: 50px; max-width: min(270px, 78vw); } }
 .mom-tabs { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 6px; }
 .mom-tabs button { min-width: 74px; height: 29px; padding: 0 10px; border: 0; border-radius: 4px; color: var(--muted); background: transparent; font: inherit; font-size: 9px; font-weight: 800; cursor: pointer; transition: color .16s ease, background .16s ease; }
 .mom-tabs button:hover { color: var(--text); }.mom-tabs button.active { color: #06140f; background: #75e8bd; }.mom-tabs button:focus-visible { outline: 1px solid #75e8bd; outline-offset: 2px; }

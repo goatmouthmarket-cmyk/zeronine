@@ -3034,7 +3034,7 @@ function MomentumPage(): JSX.Element {
   return <>
     <header class="header mom-page-header">
       <div class="mom-page-heading">
-      <div class="page-title">Multiplier Momentum</div>
+      <img class="mom-brand-logo" src="/multiplier-logo.png" alt="Multiplier" />
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
       </div>
       <div class="mom-tabs" role="tablist" aria-label="Momentum workspace">
