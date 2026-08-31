@@ -39,6 +39,7 @@ export interface TradeRow {
   resolved_at: number;
   entry_spot?: number;
   entry_digit?: number;
+  entry_captured_at?: number | null;
   exit_spot?: number;
   exit_digit?: number;
 }
@@ -408,6 +409,7 @@ function migrate(d: DatabaseSync): void {
       resolved_at INTEGER,
       entry_spot REAL,
       entry_digit INTEGER,
+      entry_captured_at INTEGER,
       exit_spot REAL,
       exit_digit INTEGER
     );
@@ -686,6 +688,7 @@ function migrate(d: DatabaseSync): void {
   );
   if (!cols.has('entry_spot')) d.exec(`ALTER TABLE trades ADD COLUMN entry_spot REAL`);
   if (!cols.has('entry_digit')) d.exec(`ALTER TABLE trades ADD COLUMN entry_digit INTEGER`);
+  if (!cols.has('entry_captured_at')) d.exec(`ALTER TABLE trades ADD COLUMN entry_captured_at INTEGER`);
   if (!cols.has('exit_spot')) d.exec(`ALTER TABLE trades ADD COLUMN exit_spot REAL`);
   if (!cols.has('exit_digit')) d.exec(`ALTER TABLE trades ADD COLUMN exit_digit INTEGER`);
   if (!cols.has('resolved_at')) d.exec(`ALTER TABLE trades ADD COLUMN resolved_at INTEGER`);
@@ -1296,6 +1299,38 @@ export function getOpenTradeByLane(lane: TradeLane, accountId = currentAccountId
   return listOpenTrades(accountId).find((trade) => tradeLane(trade) === lane) ?? null;
 }
 
+export interface EntryTimingProfile {
+  triggerTrades: number;
+  triggerWins: number;
+  otherTrades: number;
+  otherWins: number;
+}
+
+export function getEntryTimingProfile(
+  market: string,
+  direction: 'over' | 'under',
+  barrier: number,
+  triggerDigit: number,
+): EntryTimingProfile {
+  const contractType = direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER';
+  const row = getDb().prepare(`
+    SELECT
+      SUM(CASE WHEN entry_digit = ? THEN 1 ELSE 0 END) AS trigger_trades,
+      SUM(CASE WHEN entry_digit = ? AND status = 'won' THEN 1 ELSE 0 END) AS trigger_wins,
+      SUM(CASE WHEN entry_digit <> ? THEN 1 ELSE 0 END) AS other_trades,
+      SUM(CASE WHEN entry_digit <> ? AND status = 'won' THEN 1 ELSE 0 END) AS other_wins
+    FROM trades
+    WHERE market = ? AND contract_type = ? AND barrier = ?
+      AND entry_captured_at IS NOT NULL AND status IN ('won', 'lost')
+  `).get(triggerDigit, triggerDigit, triggerDigit, triggerDigit, market, contractType, barrier) as Record<string, number | null>;
+  return {
+    triggerTrades: Number(row.trigger_trades ?? 0),
+    triggerWins: Number(row.trigger_wins ?? 0),
+    otherTrades: Number(row.other_trades ?? 0),
+    otherWins: Number(row.other_wins ?? 0),
+  };
+}
+
 export function getPendingTrades(accountId = currentAccountId()): TradeRow[] {
   return getDb()
     .prepare("SELECT * FROM trades WHERE account_id = ? AND status = 'pending' ORDER BY id ASC")
@@ -1318,7 +1353,7 @@ export function resolveTrade(
   getDb()
     .prepare(
       `UPDATE trades SET status=?, profit=?, contract_id=?, resolved_at=?,
-        entry_spot=COALESCE(?, entry_spot), entry_digit=COALESCE(?, entry_digit), exit_spot=?, exit_digit=? WHERE id=? AND account_id=?`,
+        entry_spot=COALESCE(entry_spot, ?), entry_digit=COALESCE(entry_digit, ?), exit_spot=?, exit_digit=? WHERE id=? AND account_id=?`,
     )
     .run(
       status,
@@ -1348,9 +1383,10 @@ export function markTradePurchased(
 ): void {
   const before = getTrade(id, accountId);
   if (!before) return;
+  const capturedDigit = typeof entryDigit === 'number' && Number.isInteger(entryDigit) && entryDigit >= 0 && entryDigit <= 9 ? entryDigit : null;
   getDb()
-    .prepare("UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=?, status='pending', entry_spot=COALESCE(entry_spot, ?), entry_digit=COALESCE(entry_digit, ?) WHERE id=? AND account_id=?")
-    .run(contractId, stake, stake, payout, typeof entrySpot === 'number' && Number.isFinite(entrySpot) ? entrySpot : null, typeof entryDigit === 'number' && Number.isInteger(entryDigit) ? entryDigit : null, id, accountId);
+    .prepare("UPDATE trades SET contract_id=?, stake=?, ask_price=?, payout=?, status='pending', entry_spot=COALESCE(entry_spot, ?), entry_digit=COALESCE(entry_digit, ?), entry_captured_at=CASE WHEN ? IS NOT NULL THEN COALESCE(entry_captured_at, ?) ELSE entry_captured_at END WHERE id=? AND account_id=?")
+    .run(contractId, stake, stake, payout, typeof entrySpot === 'number' && Number.isFinite(entrySpot) ? entrySpot : null, capturedDigit, capturedDigit, Date.now(), id, accountId);
   if (!before.contract_id && contractId) {
     const purchased = getTrade(id, accountId);
     if (purchased) appendAccountLedgerEntrySafely(purchased, 'purchased');

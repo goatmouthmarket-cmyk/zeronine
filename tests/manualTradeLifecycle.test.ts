@@ -27,6 +27,7 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   const hub = new hubMod.Hub();
   const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
   registry.ensure('R_10');
+  registry.push('R_10', 100, Math.floor(Date.now() / 1000), 0);
   const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
   let buyCalls = 0;
   let purchasingWasHidden = false;
@@ -80,6 +81,11 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   });
   const settledEvent = events.find((event) => event.type === 'trade' && event.settled === true);
   assert.equal((settledEvent?.trade as { status?: string } | undefined)?.status, 'won');
+  const settledTrade = store.listTrades(1)[0];
+  assert.equal(settledTrade?.entry_digit, 0, 'the pre-buy trigger digit must survive settlement');
+  assert.equal(settledTrade?.exit_digit, 9);
+  assert.notEqual(settledTrade?.entry_spot, settledTrade?.exit_spot);
+  assert.ok(settledTrade?.entry_captured_at, 'only trustworthy pre-buy snapshots can train entry timing');
 
   store.setSession({
     id: 'manual-real', loginid: 'CR_REAL', balance: 100, currency: 'USD', mode: 'real', auth_kind: 'pat',

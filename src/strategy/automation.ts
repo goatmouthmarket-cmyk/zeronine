@@ -19,6 +19,7 @@ import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
   accountIdForLogin,
   getAutomation,
+  getEntryTimingProfile,
   getOpenTradeByLane,
   getPerformanceSummary,
   getTrade,
@@ -39,6 +40,7 @@ import {
 } from '../db/store.ts';
 import { calibrateResearchProbability, observeResearchOutcome } from '../intelligence/researchCalibration.ts';
 import { SignalConfirmationGate, confirmationTicksForMode } from './signalConfirmation.ts';
+import { assessExtremeEntryTiming } from './entryTiming.ts';
 
 const HOLD = 'hold';
 
@@ -606,15 +608,28 @@ export class Automation {
         this.phase = 'waiting-edge';
         return 1500;
       }
+      const timed = eligible.map((option) => {
+        const triggerDigit = option.direction === 'over' ? 9 : 0;
+        const assessment = assessExtremeEntryTiming(
+          option.direction,
+          option.barrier,
+          getEntryTimingProfile(option.market, option.direction, option.barrier, triggerDigit),
+          option.ask > 0 && option.payout > 0 ? option.ask / option.payout : 1,
+        );
+        return { option, assessment, liveDigit: this.registry.snapshot(option.market).lastDigit };
+      }).filter((item) => item.assessment.validated && item.liveDigit === item.assessment.triggerDigit)
+        .sort((left, right) => (right.assessment.triggerWinRate ?? 0) - (left.assessment.triggerWinRate ?? 0));
+      const selected = timed[0]?.option ?? eligible[0];
+      const timingReason = timed[0]?.assessment.reason;
       decision = {
         stake: settings.base_stake,
-        direction: eligible[0].direction,
-        barrier: eligible[0].barrier,
-        reason: 'base',
-        estWin: eligible[0].estWin,
-        payout: eligible[0].payout,
+        direction: selected.direction,
+        barrier: selected.barrier,
+        reason: timingReason ? 'entry_timing' : 'base',
+        estWin: selected.estWin,
+        payout: selected.payout,
         holds: false,
-        market: eligible[0].market,
+        market: selected.market,
       };
     }
 

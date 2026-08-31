@@ -11,7 +11,7 @@ export interface LadderOption {
 
 export type StrategyMode = 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
 
-export type RecoveryReason = 'base' | 'martingale' | 'boosted_martingale' | 'chase' | 'conservative';
+export type RecoveryReason = 'base' | 'entry_timing' | 'martingale' | 'boosted_martingale' | 'chase' | 'conservative';
 
 export interface RecoveryDecision {
   market?: string;

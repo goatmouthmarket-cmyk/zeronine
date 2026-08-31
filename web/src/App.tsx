@@ -889,7 +889,8 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
   const label = tradeContractLabel(trade);
   const pnl = trade.profit ?? 0;
   const liveDigit = market?.lastDigit != null && market.lastDigit >= 0 ? market.lastDigit : null;
-  const entryDigit = trade.entry_digit != null && trade.entry_digit >= 0 ? trade.entry_digit : '–';
+  const trustedDigitEntry = !digitContract || trade.entry_captured_at != null;
+  const entryDigit = trustedDigitEntry && trade.entry_digit != null && trade.entry_digit >= 0 ? trade.entry_digit : '–';
   const currentDigit = pend && liveDigit != null ? liveDigit : trade.exit_digit != null && trade.exit_digit >= 0 ? trade.exit_digit : '–';
   const entryLabel = digitContract ? 'Setup' : 'Entry';
   const currentLabel = pend ? 'Live' : digitContract ? 'Result' : 'Exit';
@@ -928,7 +929,7 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
           <div class="activity-point">
             <span class="activity-point-label">{entryLabel}</span>
             <strong class="activity-point-digit">{entryMarker}</strong>
-            <span class="activity-point-quote">{formatSpot(trade.entry_spot)}</span>
+            <span class="activity-point-quote">{trustedDigitEntry ? formatSpot(trade.entry_spot) : 'legacy entry unavailable'}</span>
           </div>
           <span class="activity-track-arrow" aria-hidden="true">→</span>
           <div class={`activity-point ${pend ? 'live' : tone}`}>

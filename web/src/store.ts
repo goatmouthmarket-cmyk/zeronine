@@ -103,6 +103,7 @@ export interface TradeRow {
   resolved_at: number;
   entry_spot?: number;
   entry_digit?: number;
+  entry_captured_at?: number | null;
   exit_spot?: number;
   exit_digit?: number;
 }
