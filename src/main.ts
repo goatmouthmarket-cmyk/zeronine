@@ -223,7 +223,15 @@ async function main(): Promise<void> {
     adapter: new DerivGoldMarketDataAdapter(),
     research: new GoldResearchService({
       timeframe: '1m',
-      config: { minCandles: 12, maxSpreadToAtr: .5 },
+      config: {
+        minCandles: 12,
+        maxSpreadToAtr: .5,
+        buyThreshold: .65,
+        sellThreshold: -.65,
+        stopAtrMultiple: 1,
+        targetAtrMultiple: 1.5,
+        signalTtlMs: 60_000,
+      },
       tradeKnowledge: getGoldTradeKnowledgeProfile,
     }),
     sentimentWorker: goldSentiment,

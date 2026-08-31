@@ -24,7 +24,7 @@ function candles(timeframe: '5m' | '15m', slope: number): GoldCandle[] {
 }
 
 test('Gold research service accepts a symbol/candles/quote and publishes explainable state', () => {
-  const service = new GoldResearchService({ now: () => NOW });
+  const service = new GoldResearchService({ now: () => NOW, confirmationCandles: 1 });
   service.setSymbol(symbol);
   service.replaceCandles('5m', candles('5m', .7));
   service.replaceCandles('15m', candles('15m', .7));
@@ -42,13 +42,13 @@ test('settled own-trade knowledge applies only a bounded sample-gated confidence
     service.replaceCandles('15m', candles('15m', .7));
     return service.ingestQuote({ symbolId: symbol.id, bid: 2_025, ask: 2_025.1, timestamp: NOW - 50, receivedAt: NOW, sequence: 1 });
   };
-  const baseline = prepare(new GoldResearchService({ now: () => NOW }));
-  const calibrated = prepare(new GoldResearchService({ now: () => NOW, tradeKnowledge: () => ({ samples: 30, winRate: .9 }) }));
+  const baseline = prepare(new GoldResearchService({ now: () => NOW, confirmationCandles: 1 }));
+  const calibrated = prepare(new GoldResearchService({ now: () => NOW, confirmationCandles: 1, tradeKnowledge: () => ({ samples: 30, winRate: .9 }) }));
   assert.equal(calibrated.signal?.direction, baseline.signal?.direction);
   assert.equal(calibrated.signal?.confidence, Math.min(100, (baseline.signal?.confidence ?? 0) + 8));
   assert.match(calibrated.signal?.reasons.join(' ') ?? '', /Own-trade evidence.*30 BUY contracts.*\+8 confidence/);
 
-  const sparse = prepare(new GoldResearchService({ now: () => NOW, tradeKnowledge: () => ({ samples: 19, winRate: 1 }) }));
+  const sparse = prepare(new GoldResearchService({ now: () => NOW, confirmationCandles: 1, tradeKnowledge: () => ({ samples: 19, winRate: 1 }) }));
   assert.equal(sparse.signal?.confidence, baseline.signal?.confidence);
 });
 
@@ -61,6 +61,16 @@ test('Gold research service rejects duplicate/out-of-order quotes without replac
   const rejected = service.ingestQuote({ symbolId: symbol.id, bid: 2_024, ask: 2_024.1, timestamp: NOW - 60, receivedAt: NOW, sequence: 1 });
   assert.equal(rejected.quote?.bid, 2_025);
   assert.match(rejected.lastRejectedTick ?? '', /out-of-order/);
+});
+
+test('Gold scalp forecast waits for completed-candle confirmation by default', () => {
+  const service = new GoldResearchService({ now: () => NOW });
+  service.setSymbol(symbol);
+  service.replaceCandles('5m', candles('5m', .7));
+  service.replaceCandles('15m', candles('15m', .7));
+  const state = service.ingestQuote({ symbolId: symbol.id, bid: 2_025, ask: 2_025.1, timestamp: NOW - 50, receivedAt: NOW, sequence: 1 });
+  assert.equal(state.signal?.direction, 'WAIT');
+  assert.match(state.signal?.blockers.join(' ') ?? '', /confirmations \(1\/2\)/);
 });
 
 test('changing an active Gold symbol clears cross-instrument market state', () => {

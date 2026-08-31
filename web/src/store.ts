@@ -658,6 +658,7 @@ export interface GoldSignalState {
   sentiment: GoldSignalSentimentState | null;
   generatedAt: number;
   expiresAt: number;
+  forecastHorizonMs: number;
 }
 
 export interface GoldSignalSentimentState {

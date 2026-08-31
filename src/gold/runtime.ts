@@ -272,8 +272,7 @@ export class GoldRuntime {
     const store = this.predictionEvidence;
     if (!store || (signal.direction !== 'BUY' && signal.direction !== 'SELL')) return;
     try {
-      const generated = new Date(signal.generatedAt);
-      const evaluationDueAt = Date.UTC(generated.getUTCFullYear(), generated.getUTCMonth(), generated.getUTCDate() + 1);
+      const evaluationDueAt = signal.generatedAt + signal.forecastHorizonMs;
       store.record(signal, evaluationDueAt);
     } catch (error) {
       console.warn(`[gold prediction evidence] ${String(error)}`);

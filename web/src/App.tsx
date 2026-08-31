@@ -4700,7 +4700,7 @@ function GoldResearchWorkspace({
     <section class="gold-intel-grid gold-research-intel" aria-label="Gold research model evidence">
       <div class="gold-intel-card">
         <span class="gold-kicker">Bot model</span>
-        <strong>{signal?.modelVersion ?? 'gold-momentum-v1'}</strong>
+        <strong>{signal?.modelVersion ?? 'gold-scalp-v2'}</strong>
         <small>{botModel} posture - {activeStrategy} strategy - global bot {automation?.running ? 'running' : 'stopped'}. Gold execution stays manual demo-only.</small>
         <div class="gold-intel-stats">
           <span>Regime <b>{signal?.regime ?? 'WAITING'}</b></span>
@@ -4803,6 +4803,7 @@ function GoldDerivTradeWorkspace({
     && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
   const marketReady = state?.research.ready === true && Boolean(quote);
   const marketClosed = symbol?.tradingStatus === 'closed' || symbol?.tradingStatus === 'suspended' || symbol?.tradingStatus === 'unavailable';
+  const signalEntryOpen = Boolean(sideFromSignal && (signal?.confidence ?? 0) >= 65 && Date.now() <= (signal?.expiresAt ?? 0));
   const probeSide: GoldSide = sideFromSignal ?? side;
   const demoConnected = deriv?.demoConnected === true || session?.mode === 'demo';
   const accountBlocked = Boolean(openAnyTrade && !unusedGoldDerivIsGoldTrade(openAnyTrade));
@@ -4834,6 +4835,7 @@ function GoldDerivTradeWorkspace({
   const contractMultiplier = purchase?.multiplier ?? (Number.isFinite(reasonMultiplier) ? reasonMultiplier : selectedMultiplier);
   const contractStake = activeTrade?.stake ?? purchase?.ask ?? stake;
   const contractSide = activeTrade?.contract_type === 'MULTDOWN' ? 'SELL' : activeTrade?.contract_type === 'MULTUP' ? 'BUY' : purchase ? side : null;
+  const reversalForecast = Boolean(contractSide && sideFromSignal && contractSide !== sideFromSignal);
   const contractOpenedAt = activeTrade?.ts ?? 0;
   const contractElapsed = contractOpenedAt ? fmtElapsed(Math.max(0, contractClock - contractOpenedAt)) : '--';
   const candles = research?.candles?.[chartTimeframe] ?? research?.candles?.[research.timeframe ?? '1m'] ?? [];
@@ -4866,7 +4868,7 @@ const modelWeights = [
 ];
   const activeStrategy = settings ? STRATEGY_META[settings.strategy_mode]?.label ?? settings.strategy_mode : 'Manual guarded';
   const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
-  const suggestionText = sideFromSignal ? `${sideFromSignal} - ${signal?.confidence ?? 0}%` : 'WAIT';
+  const suggestionText = sideFromSignal ? `${sideFromSignal} · ${signal?.confidence ?? 0}%` : 'WAIT';
   const actionNote = busy
     ? 'Sending Deriv demo order'
     : closing
@@ -4889,9 +4891,11 @@ const modelWeights = [
                   ? `Selected multiplier exceeds live max x${maxMultiplier}`
                 : !limitsValid
                   ? 'TP profit and stop loss must be positive amounts when set'
-                  : sideFromSignal
-                    ? `Manual demo order ready · model currently suggests ${sideFromSignal}`
-                    : 'Manual demo order ready · model currently says WAIT';
+                  : sideFromSignal && !signalEntryOpen
+                    ? 'Forecast entry window expired · wait for the next completed candle'
+                    : sideFromSignal
+                      ? `Confirmed five-minute ${sideFromSignal} scalp forecast · entry window open`
+                      : 'Waiting for two completed-candle confirmations';
 
   useEffect(() => {
     if (sideFromSignal) setSide(sideFromSignal);
@@ -5012,9 +5016,9 @@ const modelWeights = [
           <small>{marketReady ? `${chartTimeframe} candlestick watch - Deriv demo multipliers` : state?.research.reason ?? 'Waiting for Deriv Gold feed'}</small>
         </div>
 <div class="gold-trade-badges">
-          <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}`}>
+          <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}${reversalForecast ? ' reversal' : ''}`}>
             <Icon name={sideFromSignal === 'SELL' ? 'arrowDown' : sideFromSignal === 'BUY' ? 'arrowUp' : 'history'} size={13} />
-            <span>Suggested side</span>
+            <span>{reversalForecast ? `Reversal vs open ${contractSide}` : '5-minute forecast'}</span>
             <strong>{suggestionText}</strong>
           </span>
           {signal?.sentiment?.perfectSetup && (
@@ -5112,7 +5116,7 @@ const modelWeights = [
     <section class="gold-intel-grid" aria-label="Gold trade intelligence">
       <div class="gold-intel-card">
         <span class="gold-kicker">Bot model</span>
-        <strong>{signal?.modelVersion ?? 'gold-momentum-v1'}</strong>
+        <strong>{signal?.modelVersion ?? 'gold-scalp-v2'}</strong>
         <small>{botModel} bot posture - {activeStrategy} money strategy - global bot {automation?.running ? 'running' : 'stopped'}. Gold auto-execution remains manual demo-only.</small>
         <div class="gold-intel-stats">
           <span>Regime <b>{signal?.regime ?? 'WAITING'}</b></span>

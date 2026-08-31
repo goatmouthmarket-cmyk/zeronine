@@ -27,6 +27,7 @@ export interface GoldResearchServiceOptions {
   config?: Partial<GoldResearchConfig>;
   now?: () => number;
   tradeKnowledge?: (symbolId: string, direction: 'BUY' | 'SELL') => { samples: number; winRate: number | null };
+  confirmationCandles?: 1 | 2;
 }
 
 const MAX_CANDLES_PER_TIMEFRAME = 500;
@@ -57,6 +58,7 @@ export class GoldResearchService {
   private readonly now: () => number;
   private readonly config?: Partial<GoldResearchConfig>;
   private readonly tradeKnowledge?: GoldResearchServiceOptions['tradeKnowledge'];
+  private readonly confirmationCandles: 1 | 2;
   private timeframe: GoldTimeframe;
   private symbol: GoldSymbol | null = null;
   private quote: GoldQuote | null = null;
@@ -66,12 +68,16 @@ export class GoldResearchService {
   private lastRejectedTick: string | null = null;
   private sentiment: GoldSentimentSnapshot | null = null;
   private updatedAt = 0;
+  private candidateDirection: 'BUY' | 'SELL' | 'WAIT' = 'WAIT';
+  private candidateConfirmations = 0;
+  private lastDecisionCandleClose = 0;
 
   constructor(options: GoldResearchServiceOptions = {}) {
     this.timeframe = options.timeframe ?? '5m';
     this.config = options.config;
     this.now = options.now ?? Date.now;
     this.tradeKnowledge = options.tradeKnowledge;
+    this.confirmationCandles = options.confirmationCandles ?? 2;
   }
 
   state(): GoldResearchState {
@@ -101,6 +107,9 @@ export class GoldResearchService {
       this.signal = null;
       this.recentSignals = [];
       this.lastRejectedTick = null;
+      this.candidateDirection = 'WAIT';
+      this.candidateConfirmations = 0;
+      this.lastDecisionCandleClose = 0;
     }
     this.updatedAt = this.now();
     return this.state();
@@ -160,6 +169,43 @@ export class GoldResearchService {
       config: this.config,
       sentiment: this.sentiment,
     });
+    const decisionCandleClose = (this.candles[this.timeframe] ?? [])
+      .filter((candle) => candle.complete && candle.closeTime <= this.updatedAt)
+      .at(-1)?.closeTime ?? 0;
+
+    // Produce at most one decision per completed primary candle. Two
+    // consecutive candles must independently support the same side before it
+    // becomes actionable. Live quotes may update P&L, but cannot rewrite this
+    // forward forecast inside its candle window.
+    if (this.quote && decisionCandleClose > this.lastDecisionCandleClose) {
+      this.lastDecisionCandleClose = decisionCandleClose;
+      if (next.direction === 'BUY' || next.direction === 'SELL') {
+        if (next.direction === this.candidateDirection) this.candidateConfirmations += 1;
+        else {
+          this.candidateDirection = next.direction;
+          this.candidateConfirmations = 1;
+        }
+      } else {
+        this.candidateDirection = 'WAIT';
+        this.candidateConfirmations = 0;
+      }
+    }
+    if ((next.direction === 'BUY' || next.direction === 'SELL') && this.candidateConfirmations < this.confirmationCandles) {
+      const candidate = next.direction;
+      next = {
+        ...next,
+        direction: 'WAIT',
+        confidence: 0,
+        proposedStopLoss: null,
+        proposedTakeProfit: null,
+        blockers: [...next.blockers, `Forecast needs ${this.confirmationCandles} completed-candle confirmations (${this.candidateConfirmations}/${this.confirmationCandles})`],
+        reasons: [...next.reasons, `${candidate} candidate is forming for the next five minutes`],
+      };
+    }
+    if (this.signal?.id === next.id) {
+      // Keep the issued forecast immutable until the next completed candle.
+      return;
+    }
     if (next.direction === 'BUY' || next.direction === 'SELL') {
       try {
         const profile = this.tradeKnowledge?.(next.symbolId, next.direction);

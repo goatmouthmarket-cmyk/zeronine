@@ -98,6 +98,8 @@ export interface GoldSignal {
   sentiment: GoldSignalSentiment | null;
   generatedAt: number;
   expiresAt: number;
+  /** Forward window this signal forecasts; it is not a guaranteed holding period. */
+  forecastHorizonMs: number;
 }
 
 export interface GoldResearchInput {
@@ -112,7 +114,7 @@ export interface GoldResearchInput {
 }
 
 export const DEFAULT_GOLD_RESEARCH_CONFIG: GoldResearchConfig = {
-  modelVersion: 'gold-momentum-v1',
+  modelVersion: 'gold-scalp-v2',
   weights: {
     momentum: .20,
     timeframeAgreement: .15,
@@ -147,6 +149,8 @@ export const DEFAULT_GOLD_RESEARCH_CONFIG: GoldResearchConfig = {
   sentimentPerfectSocialMin: .20,
   sentimentPerfectScoreMin: .55,
 };
+
+export const GOLD_SCALP_FORECAST_HORIZON_MS = 5 * 60_000;
 
 function clamp(value: number, min = -1, max = 1): number {
   return Math.max(min, Math.min(max, value));
@@ -382,7 +386,7 @@ function waitSignal(input: GoldResearchInput, config: GoldResearchConfig, blocke
   const currentAtr = primary.length >= 2 ? atr(primary, config.atrPeriod) : 0;
   const spread = quote?.spread ?? 0;
   return {
-    id: `${config.modelVersion}:${input.symbol.id}:${input.timeframe}:${input.now}`,
+    id: `${config.modelVersion}:${input.symbol.id}:${input.timeframe}:wait:${input.now}`,
     modelVersion: config.modelVersion,
     symbol: input.symbol.name,
     symbolId: input.symbol.id,
@@ -403,6 +407,7 @@ function waitSignal(input: GoldResearchInput, config: GoldResearchConfig, blocke
     sentiment: sentiment ? summarizeSentiment(sentiment, 'NEUTRAL', false) : null,
     generatedAt: input.now,
     expiresAt: input.now + config.signalTtlMs,
+    forecastHorizonMs: GOLD_SCALP_FORECAST_HORIZON_MS,
   };
 }
 
@@ -452,8 +457,18 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   const primaryRaw = input.candles[input.timeframe] ?? [];
   const confirmationTimeframe: GoldTimeframe = input.timeframe === '15m' || input.timeframe === '1h' ? input.timeframe : '15m';
   const confirmationRaw = input.candles[confirmationTimeframe] ?? [];
-  const primary = sortedValidCandles(primaryRaw, input.symbol.id, input.timeframe);
-  const confirmation = sortedValidCandles(confirmationRaw, input.symbol.id, confirmationTimeframe);
+  // A still-forming candle is observation, not evidence about what happens
+  // next. Excluding it prevents tick-by-tick direction flicker.
+  const primary = sortedValidCandles(
+    primaryRaw.filter((candle) => candle.complete && candle.closeTime <= input.now),
+    input.symbol.id,
+    input.timeframe,
+  );
+  const confirmation = sortedValidCandles(
+    confirmationRaw.filter((candle) => candle.complete && candle.closeTime <= input.now),
+    input.symbol.id,
+    confirmationTimeframe,
+  );
 
   const statusBlocker = marketBlocker(input.symbol.tradingStatus);
   if (statusBlocker) blockers.push(statusBlocker);
@@ -566,7 +581,7 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   const minStop = Math.max(input.symbol.minStopDistance, currentAtr * config.stopAtrMultiple);
   const target = Math.max(input.symbol.minStopDistance, currentAtr * config.targetAtrMultiple);
   return {
-    id: `${config.modelVersion}:${input.symbol.id}:${input.timeframe}:${quote!.timestamp}`,
+    id: `${config.modelVersion}:${input.symbol.id}:${input.timeframe}:${candles.at(-1)!.closeTime}`,
     modelVersion: config.modelVersion,
     symbol: input.symbol.name,
     symbolId: input.symbol.id,
@@ -587,5 +602,6 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
     sentiment: signalSentiment,
     generatedAt: input.now,
     expiresAt: input.now + config.signalTtlMs,
+    forecastHorizonMs: GOLD_SCALP_FORECAST_HORIZON_MS,
   };
 }

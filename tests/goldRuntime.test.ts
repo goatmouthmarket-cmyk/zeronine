@@ -4,6 +4,7 @@ import type { GoldDiagnostics } from '../src/gold/config.ts';
 import type { GoldInstrument, GoldMarketDataAdapter, GoldPriceListener } from '../src/gold/ctrader.ts';
 import type { GoldCandle, GoldQuote, GoldSymbol } from '../src/gold/domain.ts';
 import { GoldRuntime, GoldRuntimeUnavailableError } from '../src/gold/runtime.ts';
+import { GoldResearchService } from '../src/gold/researchService.ts';
 
 const NOW = 1_750_000_000_000;
 const symbol: GoldSymbol = {
@@ -55,7 +56,7 @@ test('Gold runtime is inert until a validated live market-data adapter supplies 
 });
 
 test('Gold runtime automatically paper-tests a validated prediction and links the evidence', () => {
-  const runtime = new GoldRuntime({ adapter: new TestMarketAdapter(true), now: () => NOW });
+  const runtime = new GoldRuntime({ adapter: new TestMarketAdapter(true), now: () => NOW, research: new GoldResearchService({ now: () => NOW, confirmationCandles: 1 }) });
   runtime.setSymbol(symbol);
   runtime.replaceCandles('5m', Array.from({ length: 40 }, (_, index) => candle(index, '5m', .7)));
   runtime.replaceCandles('15m', Array.from({ length: 40 }, (_, index) => candle(index, '15m', .7)));
@@ -69,13 +70,14 @@ test('Gold runtime automatically paper-tests a validated prediction and links th
   assert.equal(state.paper.state.positions[0]?.researchSignalId, state.research.state.signal?.id);
 });
 
-test('Gold runtime stores a prediction and scores it from the completed UTC day-end candle', () => {
+test('Gold runtime stores a prediction and scores it at the five-minute forecast horizon', () => {
   let now = NOW;
   const pending = new Map<string, { signal_id: string; direction: 'BUY' | 'SELL'; entry_price: number; generated_at: number; evaluation_due_at: number }>();
   const resolved: Array<{ signalId: string; status: string; exitPrice: number }> = [];
   const runtime = new GoldRuntime({
     adapter: new TestMarketAdapter(true),
     now: () => now,
+    research: new GoldResearchService({ now: () => now, confirmationCandles: 1 }),
     predictionEvidence: {
       record(signal, evaluationDueAt) {
         if (signal.direction !== 'BUY' && signal.direction !== 'SELL') return;

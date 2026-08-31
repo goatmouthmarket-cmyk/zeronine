@@ -41,7 +41,7 @@ test('Gold research emits an explainable BUY from aligned rising candles', () =>
   assert.equal(signal.direction, 'BUY');
   assert.ok(signal.score >= DEFAULT_GOLD_RESEARCH_CONFIG.buyThreshold);
   assert.ok(signal.confidence > 0);
-  assert.equal(signal.modelVersion, 'gold-momentum-v1');
+  assert.equal(signal.modelVersion, 'gold-scalp-v2');
   assert.ok(signal.reasons.some((reason) => /agree|breaking|buyers/i.test(reason)));
   assert.ok(signal.proposedStopLoss! < signal.entryReference);
   assert.ok(signal.proposedTakeProfit! > signal.entryReference);
@@ -103,4 +103,23 @@ test('research requires both primary and confirmation history and stays determin
   const first = evaluateGoldResearch(input(.7));
   const second = evaluateGoldResearch(input(.7));
   assert.deepEqual(second, first);
+});
+
+test('an unfinished candle cannot flip a completed-candle forecast', () => {
+  const candidate = input(.7);
+  const baseline = evaluateGoldResearch(candidate);
+  candidate.candles['5m']!.push({
+    ...candidate.candles['5m']!.at(-1)!,
+    openTime: NOW,
+    closeTime: NOW + 300_000,
+    open: 2_050,
+    high: 2_051,
+    low: 1_900,
+    close: 1_901,
+    complete: false,
+  });
+  const withLiveReversal = evaluateGoldResearch(candidate);
+  assert.equal(withLiveReversal.direction, baseline.direction);
+  assert.equal(withLiveReversal.score, baseline.score);
+  assert.equal(withLiveReversal.id, baseline.id);
 });
