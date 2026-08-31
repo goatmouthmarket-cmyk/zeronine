@@ -4793,6 +4793,7 @@ function GoldDerivTradeWorkspace({
   const [closing, setClosing] = useState(false);
   const [backtestBusy, setBacktestBusy] = useState(false);
   const [error, setError] = useState('');
+  const [contractClock, setContractClock] = useState(Date.now());
   const manualMultiplierRef = useRef(false);
   const stake = Number(stakeText);
   const selectedMultiplier = Number(multiplierText);
@@ -4829,6 +4830,12 @@ function GoldDerivTradeWorkspace({
     : Number.isFinite(Number(purchase?.entryPrice)) && Number(purchase?.entryPrice) > 0
       ? Number(purchase?.entryPrice)
       : undefined;
+  const reasonMultiplier = Number((activeTrade?.reason ?? '').match(/multiplier x(\d+)/i)?.[1] ?? NaN);
+  const contractMultiplier = purchase?.multiplier ?? (Number.isFinite(reasonMultiplier) ? reasonMultiplier : selectedMultiplier);
+  const contractStake = activeTrade?.stake ?? purchase?.ask ?? stake;
+  const contractSide = activeTrade?.contract_type === 'MULTDOWN' ? 'SELL' : activeTrade?.contract_type === 'MULTUP' ? 'BUY' : purchase ? side : null;
+  const contractOpenedAt = activeTrade?.ts ?? 0;
+  const contractElapsed = contractOpenedAt ? fmtElapsed(Math.max(0, contractClock - contractOpenedAt)) : '--';
   const candles = research?.candles?.[chartTimeframe] ?? research?.candles?.[research.timeframe ?? '1m'] ?? [];
   const digits = Math.max(2, Math.min(5, symbol?.digits ?? 2));
   const currency = purchase?.currency ?? session?.currency ?? 'USD';
@@ -4889,6 +4896,13 @@ const modelWeights = [
   useEffect(() => {
     if (sideFromSignal) setSide(sideFromSignal);
   }, [sideFromSignal]);
+
+  useEffect(() => {
+    if (!openGoldTrade) return;
+    setContractClock(Date.now());
+    const timer = window.setInterval(() => setContractClock(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [openGoldTrade?.id]);
 
   useEffect(() => {
     if (deriv?.defaultMultiplier) setMultiplierText(String(deriv.defaultMultiplier));
@@ -5033,13 +5047,26 @@ const modelWeights = [
             lockLabel={marketClosed ? symbol?.tradingStatus ?? 'market closed' : null}
           />
         </div>
-        <div class={`gold-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`} aria-live="polite">
+        <div class={`gold-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`}>
           <span>Live contract P&L</span>
-          <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
+          <strong aria-live="polite">{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
           <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, currency)}` : liveSellPrice == null ? trackedContractId || 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, currency)}`}</small>
           <div class="gold-trade-direction gold-live-actions" aria-label="Place a Deriv Gold demo trade">
             <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
             <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
+          </div>
+          <button class="gold-live-close" type="button" disabled={!canClose} onClick={() => void close()}>
+            <Icon name="x" size={14} />{closing ? 'Cashing out' : openGoldTrade ? 'Close / Cash out' : 'No open trade'}
+          </button>
+          <div class="gold-contract-details" aria-label="Gold contract details">
+            <div><span>Side</span><b class={contractSide === 'SELL' ? 'sell' : contractSide === 'BUY' ? 'buy' : ''}>{contractSide ?? '—'}</b></div>
+            <div><span>Stake</span><b>{activeTrade || purchase ? fmtMoney(contractStake, currency) : '—'}</b></div>
+            <div><span>Multiplier</span><b>{activeTrade || purchase ? `x${contractMultiplier}` : '—'}</b></div>
+            <div><span>Elapsed</span><b>{contractElapsed}</b></div>
+            <div><span>Entry</span><b>{entryPrice == null ? '—' : goldPrice(entryPrice, digits)}</b></div>
+            <div><span>Cash-out value</span><b>{liveSellPrice == null ? '—' : fmtMoney(liveSellPrice, currency)}</b></div>
+            <div class="contract-id"><span>Contract</span><b title={trackedContractId}>{trackedContractId || '—'}</b></div>
+            <div><span>Status</span><b>{activeTrade?.status ?? (purchase ? 'pending' : '—')}</b></div>
           </div>
         </div>
       </div>
@@ -5062,7 +5089,6 @@ const modelWeights = [
           <small>x{selectedMultiplier || '--'} multiplier - TP {tpPreview} - SL {slPreview}</small>
         </div>
         <span class="gold-trade-action-note">{actionNote}</span>
-        {openGoldTrade && <button class="gold-trade-close" type="button" disabled={!canClose} onClick={() => void close()}>{closing ? 'Closing' : 'Close trade'}</button>}
       </div>
 
       {signal && <div class="gold-trade-note">{signal.reasons.length ? signal.reasons.join(' · ') : signal.blockers.join(' · ') || 'Gold research is waiting for stronger evidence.'}</div>}

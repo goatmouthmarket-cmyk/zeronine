@@ -740,8 +740,11 @@ button {
 .mom-pnl.gold-pnl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .gold-live-actions { width: 100%; margin-top: 18px; gap: 9px; }
 .gold-live-actions button { width: 100%; min-width: 0; height: 38px; border: 1px solid rgba(244,201,107,.2); background: rgba(255,255,255,.025); }
-.gold-live-actions button.sell { border-color: rgba(255,82,99,.2); }
+.gold-live-actions button.sell { border-color: rgba(255,82,99,.72); color: #fff; background: rgba(255,82,99,.86); }
+.gold-live-actions button.sell:hover:not(:disabled) { background: #ff5263; }
 .gold-live-actions button:disabled { cursor: not-allowed; opacity: .62; }
+.gold-live-close { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 36px; margin-top: 9px; border: 1px solid rgba(145,151,166,.32); border-radius: 4px; color: var(--text); background: rgba(145,151,166,.1); font: inherit; font-size: 10px; font-weight: 850; cursor: pointer; transition: border-color .16s ease, background .16s ease; }.gold-live-close:hover:not(:disabled) { border-color: rgba(244,201,107,.58); background: rgba(244,201,107,.11); }.gold-live-close:disabled { cursor: not-allowed; opacity: .42; }
+.gold-contract-details { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 15px; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }.gold-contract-details > div { min-width: 0; padding: 8px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }.gold-contract-details span { display: block; color: var(--muted-2); font-size: 7px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }.gold-contract-details b { display: block; overflow: hidden; margin-top: 4px; color: var(--text); font-size: 9px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }.gold-contract-details b.buy { color: #f4c96b; }.gold-contract-details b.sell { color: var(--red); }.gold-contract-details .contract-id { grid-column: 1 / -1; }.gold-contract-details .contract-id b { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
 .gold-connection { border-bottom: 1px solid var(--border); }
 .gold-connection-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, .5fr); min-height: 172px; }
 .gold-connection-intro > div:first-child { display: grid; align-content: center; min-width: 0; padding: 26px 28px 26px 2px; }
