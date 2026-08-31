@@ -438,6 +438,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       lastTradeAt: listTrades(1)[0]?.ts ?? 0,
       tradeGapMs: config.tradeGapMs,
       now: Date.now(),
+      // Gold multipliers are not digit-recovery bets. Keep the shared balance,
+      // drawdown, loss-streak, cooldown, and open-contract rails, but do not
+      // reject a manual Gold order solely because the digit strategy has debt.
+      skipRecoveryDebtCap: true,
     });
     if (!gate.ok) {
       reply.code(409);

@@ -4802,6 +4802,7 @@ function GoldDerivTradeWorkspace({
     && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
   const marketReady = state?.research.ready === true && Boolean(quote);
   const marketClosed = symbol?.tradingStatus === 'closed' || symbol?.tradingStatus === 'suspended' || symbol?.tradingStatus === 'unavailable';
+  const probeSide: GoldSide = sideFromSignal ?? side;
   const demoConnected = deriv?.demoConnected === true || session?.mode === 'demo';
   const accountBlocked = Boolean(openAnyTrade && !unusedGoldDerivIsGoldTrade(openAnyTrade));
   const goldProbeSymbol = deriv?.symbol ?? symbol?.id ?? '';
@@ -4810,7 +4811,7 @@ function GoldDerivTradeWorkspace({
   const multiplierOptions = probedGoldOptions ?? deriv?.multiplierOptions?.filter((value) => value <= 1000) ?? [10, 20, 30, 50, 100, 200, 500, 1000];
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
-  const canPlace = owner && demoConnected && marketReady && !openAnyTrade && Number.isFinite(stake) && stake > 0
+  const canPlace = owner && demoConnected && marketReady && !marketClosed && !automation?.running && !openAnyTrade && Number.isFinite(stake) && stake > 0
     && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && multiplierWithinLiveMax && limitsValid && !busy;
   const canClose = owner && demoConnected && Boolean(openGoldTrade?.contract_id) && !closing;
   const activeTrade = openGoldTrade ?? (purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null);
@@ -4869,6 +4870,10 @@ const modelWeights = [
           ? 'Connect a Deriv demo account to trade Gold'
           : !demoConnected
             ? 'Switch to a Deriv demo account'
+            : automation?.running
+              ? 'Stop the main bot before placing a Gold trade'
+            : marketClosed
+              ? `Gold market is ${symbol?.tradingStatus ?? 'unavailable'}`
             : openAnyTrade
               ? `Wait for open contract ${openAnyTrade.contract_id || openAnyTrade.id} to settle`
               : !marketReady
@@ -4894,7 +4899,7 @@ const modelWeights = [
   }, [goldProbeSymbol]);
 
   useEffect(() => {
-    if (!goldProbeSymbol || !owner || !demoConnected || !sideFromSignal || !(Number.isFinite(stake) && stake > 0) || openAnyTrade) {
+    if (!goldProbeSymbol || !owner || !demoConnected || !(Number.isFinite(stake) && stake > 0) || openAnyTrade) {
       setMultiplierProbe(null);
       setMultiplierProbeStatus('idle');
       return;
@@ -4904,7 +4909,7 @@ const modelWeights = [
       setMultiplierProbeStatus('checking');
       void loadMultiplierOptions({
         symbol: goldProbeSymbol,
-        direction: sideFromSignal,
+        direction: probeSide,
         stake,
         signal: controller.signal,
       }).then((result) => {
@@ -4925,7 +4930,7 @@ const modelWeights = [
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [demoConnected, goldProbeSymbol, openAnyTrade, owner, selectedMultiplier, sideFromSignal, stake]);
+  }, [demoConnected, goldProbeSymbol, openAnyTrade, owner, probeSide, selectedMultiplier, stake]);
 
   useEffect(() => {
     setPurchase(null);
@@ -4935,11 +4940,6 @@ const modelWeights = [
 
   const place = async (nextSide: GoldSide) => {
     if (!canPlace) return;
-    if (sideFromSignal && nextSide !== sideFromSignal) {
-      setSide(sideFromSignal);
-      setError(`Gold research recommends ${sideFromSignal}; the opposite side is disabled.`);
-      return;
-    }
     setSide(nextSide);
     setBusy(true);
     setError('');
@@ -5042,11 +5042,7 @@ const modelWeights = [
 
       <GoldSentimentPanel state={state} />
 
-      <div class="gold-trade-order">
-        <div class="gold-trade-direction" aria-label="Place a Deriv Gold demo trade">
-          <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy demo'}</button>
-          <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell demo'}</button>
-        </div>
+      <div class="gold-trade-order gold-deriv-order">
         <label class="gold-trade-field"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAnyTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
         <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
@@ -5076,6 +5072,13 @@ const modelWeights = [
       <div><span>Open contract P&amp;L</span><strong class={(contractPnl ?? 0) >= 0 ? 'up' : 'down'}>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong></div>
       <div><span>Realized Gold P&amp;L</span><strong class={goldRealizedPnl >= 0 ? 'up' : 'down'}>{fmtSigned(goldRealizedPnl, currency)}</strong></div>
       <div><span>Current exposure</span><strong>{exposure > 0 ? fmtMoney(exposure, currency) : '—'}</strong></div>
+      <div class="gold-pnl-actions">
+        <span>Demo order</span>
+        <div class="gold-trade-direction" aria-label="Place a Deriv Gold demo trade">
+          <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
+          <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
+        </div>
+      </div>
     </section>
     <section class="mom-scoreboard gold-scoreboard" aria-label="Gold Deriv demo results">
       <div><span>Demo bets settled</span><strong>{settledGoldTrades.length}</strong></div>
@@ -5222,14 +5225,6 @@ function GoldSentimentPanel({ state }: { state: GoldModuleState | null }): JSX.E
           {perfectSetup && <span class="gold-perfect-inline">Perfect setup</span>}
         </div>
       </div>
-      {snapshot?.drivers?.length && (
-        <div class="gold-sentiment-drivers">
-          <span class="gold-kicker">Top drivers</span>
-          {snapshot.drivers.slice(0, 6).map((driver, index) => (
-            <span key={index} class="gold-sentiment-driver">{driver}</span>
-          ))}
-        </div>
-      )}
       {snapshot?.topItems?.length && (
         <div class="gold-sentiment-headlines">
           <span class="gold-kicker">Latest headlines</span>
