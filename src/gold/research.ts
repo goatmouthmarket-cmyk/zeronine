@@ -466,8 +466,11 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   if (!primary || !confirmation) blockers.push('Candle data is invalid or out of order');
   if (primary && primary.length < config.minCandles) blockers.push(`Insufficient ${input.timeframe} candle history`);
   if (confirmation && confirmation.length < config.minCandles) blockers.push(`Insufficient ${confirmationTimeframe} candle history`);
-  if (primary && hasMissingIntervals(primary, input.timeframe)) blockers.push(`Missing ${input.timeframe} candle intervals`);
-  if (confirmation && hasMissingIntervals(confirmation, confirmationTimeframe)) blockers.push(`Missing ${confirmationTimeframe} candle intervals`);
+  // Broker history legitimately contains session/weekend closures. Only the
+  // latest analysis window must be continuous; an older closure should not
+  // pin live research to WAIT until all 500 downloaded rows roll forward.
+  if (primary && hasMissingIntervals(primary.slice(-config.minCandles), input.timeframe)) blockers.push(`Missing ${input.timeframe} candle intervals`);
+  if (confirmation && hasMissingIntervals(confirmation.slice(-config.minCandles), confirmationTimeframe)) blockers.push(`Missing ${confirmationTimeframe} candle intervals`);
   if (blockers.length > 0) return waitSignal(input, config, blockers, primary ?? [], sentiment);
 
   const candles = primary!;

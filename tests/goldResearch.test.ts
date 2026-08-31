@@ -78,6 +78,21 @@ test('wide spreads and missing candle intervals are hard research blockers', () 
   assert.match(signal.blockers.join(' '), /Missing 5m candle intervals/i);
 });
 
+test('an older Gold session closure does not block a continuous current analysis window', () => {
+  const candidate = input(.7);
+  candidate.candles['5m'] = candles('5m', .7, 60);
+  for (const candle of candidate.candles['5m'].slice(0, 10)) {
+    candle.openTime -= 2 * 24 * 60 * 60_000;
+    candle.closeTime -= 2 * 24 * 60 * 60_000;
+  }
+  const latest = candidate.candles['5m'].at(-1)!.close;
+  candidate.quote = normalizeGoldQuote({ symbolId: symbol.id, bid: latest - .05, ask: latest + .05, timestamp: NOW - 500, receivedAt: NOW - 300 });
+
+  const signal = evaluateGoldResearch(candidate);
+  assert.equal(signal.direction, 'BUY');
+  assert.doesNotMatch(signal.blockers.join(' '), /Missing 5m candle intervals/i);
+});
+
 test('research requires both primary and confirmation history and stays deterministic', () => {
   const candidate = input(.7);
   candidate.candles['15m'] = candidate.candles['15m']!.slice(0, 10);
