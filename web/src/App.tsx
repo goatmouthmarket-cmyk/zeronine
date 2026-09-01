@@ -5028,6 +5028,7 @@ function GoldDerivTradeWorkspace({
     ? activeTrade.profit
     : closed?.profit ?? liveContractProfit ?? purchase?.pnl ?? purchase?.profit ?? null;
   const liveSellPrice = Number.isFinite(Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice))
+    && Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice) > 0
     ? Number(matchingContract?.sellPrice ?? matchingContract?.update?.sellPrice)
     : undefined;
   const entryPrice = Number.isFinite(Number(activeTrade?.entry_spot)) && Number(activeTrade?.entry_spot) > 0
@@ -5294,12 +5295,12 @@ const modelWeights = [
         <div class={`gold-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`}>
           <span>Live contract P&L</span>
           <strong aria-live="polite">{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
-          <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, currency)}` : liveSellPrice == null ? trackedContractId || 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, currency)}`}</small>
+          <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, currency)}` : liveSellPrice == null ? trackedContractId ? 'Cash-out quote updating' : 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, currency)}`}</small>
           {(openGoldTrade || purchase) && (
             <div class={`gold-trade-guidance ${tradeGuidance.tone}`} aria-live="polite">
               <span>Live trade guidance</span>
               <strong>{tradeGuidance.action}</strong>
-              <small>{tradeGuidance.reason}</small>
+              <small title={tradeGuidance.reason}>{tradeGuidance.reason}</small>
             </div>
           )}
           <div class="gold-trade-direction gold-live-actions" aria-label="Place a Deriv Gold trade">

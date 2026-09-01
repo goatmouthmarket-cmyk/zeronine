@@ -762,13 +762,13 @@ button {
 .gold-trade-guidance { display: grid; gap: 4px; margin-top: 14px; padding: 11px 12px; border: 1px solid var(--border); border-left: 3px solid var(--muted); border-radius: 5px; background: rgba(145,151,166,.055); text-align: left; }
 .gold-trade-guidance span { color: var(--muted-2); font-size: 7px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .gold-trade-guidance strong { font-size: 16px; letter-spacing: .02em; }
-.gold-trade-guidance small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.gold-trade-readout .gold-trade-guidance small { overflow: visible; color: var(--muted); font-size: 9px; line-height: 1.45; text-overflow: clip; text-transform: none; white-space: normal; overflow-wrap: anywhere; }
 .gold-trade-guidance.positive { border-left-color: var(--green); background: rgba(27,207,125,.055); }
-.gold-trade-guidance.positive strong { color: var(--green); }
+.gold-trade-readout .gold-trade-guidance.positive strong { color: var(--green); }
 .gold-trade-guidance.warning { border-left-color: #f4c96b; background: rgba(244,201,107,.06); }
-.gold-trade-guidance.warning strong { color: #f4c96b; }
+.gold-trade-readout .gold-trade-guidance.warning strong { color: #f4c96b; }
 .gold-trade-guidance.danger { border-left-color: var(--red); background: rgba(255,82,99,.06); }
-.gold-trade-guidance.danger strong { color: var(--red); }
+.gold-trade-readout .gold-trade-guidance.danger strong { color: var(--red); }
 .gold-connection { border-bottom: 1px solid var(--border); }
 .gold-connection-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, .5fr); min-height: 172px; }
 .gold-connection-intro > div:first-child { display: grid; align-content: center; min-width: 0; padding: 26px 28px 26px 2px; }
