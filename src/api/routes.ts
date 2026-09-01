@@ -195,6 +195,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         flat: resolvedPredictions.filter((row) => row.status === 'flat').length,
         accuracy: resolvedPredictions.length ? correctPredictions / resolvedPredictions.length : null,
         latest: predictionRows[0] ?? null,
+        recent: predictionRows.slice(0, 100),
         tradeOutcomes: {
           total: tradeKnowledge.length,
           pending: tradeKnowledge.filter((row) => row.status === 'pending').length,

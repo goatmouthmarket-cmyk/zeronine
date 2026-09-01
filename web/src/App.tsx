@@ -2522,6 +2522,42 @@ function MomentumResearchLedger({ rows, currency }: { rows?: MomentumResearchRow
   </section>;
 }
 
+function SectionTradeHistory({ trades, currency, empty }: { trades: TradeRow[]; currency: string; empty: string }): JSX.Element {
+  return <section class="section-ledger-card" aria-label="Stored contract history">
+    <div class="mom-watchboard-head"><div><span class="mom-kicker">Contract ledger</span><strong>Stored trade history</strong></div><span>{trades.length} records</span></div>
+    <div class="section-trade-ledger">
+      {trades.length === 0 && <div class="section-ledger-empty">{empty}</div>}
+      {trades.slice(0, 40).map((trade) => {
+        const side = trade.contract_type === 'MULTDOWN' ? 'SELL' : 'BUY';
+        const settled = trade.status === 'won' || trade.status === 'lost' || trade.status === 'push';
+        const tone = settled ? Number(trade.profit) > 0 ? 'up' : Number(trade.profit) < 0 ? 'down' : '' : '';
+        return <div class={`section-trade-row ${tone}`} key={trade.id}>
+          <span class={`section-trade-side ${side.toLowerCase()}`}>{side}</span>
+          <span><b>{trade.market}</b><small>{new Date(trade.ts).toLocaleString()} · {trade.status}</small></span>
+          <span><small>Stake</small><b>{fmtMoney(trade.stake, currency)}</b></span>
+          <strong>{settled ? fmtSigned(Number(trade.profit ?? 0), currency) : 'OPEN'}</strong>
+        </div>;
+      })}
+    </div>
+  </section>;
+}
+
+function MomentumLedgerWorkspace({ rows, trades, currency }: { rows?: MomentumResearchRow[]; trades: TradeRow[]; currency: string }): JSX.Element {
+  const momentumTrades = trades.filter((trade) => isMultiplierTrade(trade) && multiplierTradeFamily(trade) === 'Momentum');
+  const settled = momentumTrades.filter((trade) => trade.status === 'won' || trade.status === 'lost' || trade.status === 'push');
+  const pnl = settled.reduce((sum, trade) => sum + Number(trade.profit ?? 0), 0);
+  return <div class="section-ledger-page">
+    <section class="section-ledger-summary" aria-label="Momentum ledger summary">
+      <div><span>Research windows</span><strong>{rows?.length ?? 0}</strong></div>
+      <div><span>Contracts</span><strong>{momentumTrades.length}</strong></div>
+      <div><span>Settled</span><strong>{settled.length}</strong></div>
+      <div><span>Realized P&amp;L</span><strong class={pnl >= 0 ? 'up' : 'down'}>{fmtSigned(pnl, currency)}</strong></div>
+    </section>
+    <MomentumResearchLedger rows={rows} currency={currency} />
+    <SectionTradeHistory trades={momentumTrades} currency={currency} empty="No Momentum contracts stored yet." />
+  </div>;
+}
+
 function MomentumTradeDesk({
   symbol,
   display,
@@ -2673,23 +2709,23 @@ function MomentumTradeDesk({
         : trade
           ? `Contract ${trade.status}`
           : purchase
-            ? 'Demo contract submitted'
-            : 'No open demo contract';
+            ? 'Contract submitted'
+            : 'No open contract';
   const potentialProfit = closed?.profit ?? (purchase?.payout != null && purchase.ask != null ? purchase.payout - purchase.ask : null);
   const suggestionTone = suggestedDirection ?? 'wait';
   const suggestionText = suggestedDirection
     ? `${suggestedDirection.toUpperCase()}${Number.isFinite(Number(suggestedConfidence)) ? ` - ${suggestedConfidence}%` : ''}`
     : 'WAIT';
   const actionNote = busy
-    ? 'Sending demo order'
+    ? 'Sending order'
     : closing
-      ? 'Closing demo contract'
+      ? 'Closing contract'
     : settlementOverdue
       ? `Provider still reports contract ${trackedContractId || ''} open after scheduled expiry; waiting for settlement recovery`
     : openAccountTrade
       ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
       : !(Number.isFinite(stake) && stake > 0)
-        ? 'Enter a positive demo stake'
+        ? 'Enter a positive stake'
       : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
         ? 'Select a valid multiplier'
       : !multiplierWithinLiveMax
@@ -2850,18 +2886,18 @@ function MomentumTradeDesk({
   };
 
   const unavailableReason = !symbol
-    ? 'Focus a research market before placing a demo trade.'
+    ? 'Focus a research market before placing a trade.'
     : !session
-      ? 'Connect a Deriv demo account to request a live quote.'
+      ? 'Connect your Deriv account to request a live quote.'
       : !isDemo
-        ? 'Momentum execution is available on demo accounts only. Switch to demo to continue.'
+        ? 'Momentum execution is unavailable for the selected account.'
       : !owner
-        ? 'Unlock the dashboard owner controls to place a demo trade.'
+        ? 'Unlock the dashboard owner controls to place a trade.'
         : openAccountTrade
           ? `Wait for open contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle before placing another Momentum trade.`
           : null;
 
-  return <section class="mom-trade-desk" aria-label="Momentum demo trade">
+  return <section class="mom-trade-desk" aria-label="Momentum trade">
     <div class="mom-trade-head">
       <div>
         <span class="mom-kicker">Momentum trade</span>
@@ -2879,10 +2915,10 @@ function MomentumTradeDesk({
 
     <div class="mom-trade-live">
       <div class="mom-trade-chart">
-        <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live demo trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} />
+        <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
-        <span>Demo balance</span>
+        <span>Account balance</span>
         <strong>{isDemo && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
         <small>{contractPhase}</small>
       </div>
@@ -2894,7 +2930,7 @@ function MomentumTradeDesk({
         <small>{contractPhase}{trackedContractId ? ` · ${trackedContractId}` : ''}</small>
         <span class="mom-panel-label">Live contract P&amp;L</span>
         <strong>{displayContractPnl == null ? '—' : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
-        <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
+        <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
         {(trade || purchase || closed) && <div class="mom-trade-mini-details" aria-label="Active Momentum bet details">
           <div><span>Stake</span><strong>{fmtMoney(tradeStake, purchase?.currency ?? session?.currency ?? 'USD')}</strong></div>
           <div><span>Opened</span><strong>{openedText}</strong></div>
@@ -2911,11 +2947,11 @@ function MomentumTradeDesk({
     </div>
 
     <div class="mom-trade-order">
-      <div class="mom-trade-direction" aria-label="Place a demo trade">
-        <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up demo trade' : 'Place up demo trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
-        <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down demo trade' : 'Place down demo trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
+      <div class="mom-trade-direction" aria-label="Place a trade">
+        <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up trade' : 'Place up trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
+        <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down trade' : 'Place down trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
-      <label class="mom-trade-stake"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
       <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAccountTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
       <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
       <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
@@ -2928,7 +2964,7 @@ function MomentumTradeDesk({
 
     {settlementOverdue && <div class="mom-trade-note warning">Scheduled duration has passed, but Deriv still reports this contract as open. New Momentum orders stay locked until settlement recovery or a successful close confirms the final result.</div>}
     {unavailableReason && <div class="mom-trade-note">{unavailableReason}</div>}
-    {(purchase || closableMomentumTrade) && <div class="mom-trade-note">Demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
+    {(purchase || closableMomentumTrade) && <div class="mom-trade-note">Contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
     {error && <div class="tl-err">{error}</div>}
   </section>;
 }
@@ -2936,7 +2972,7 @@ function MomentumTradeDesk({
 function MomentumPage(): JSX.Element {
   const s = useStore();
   const momentum = s.momentum;
-  const [activeTab, setActiveTab] = useState<'research' | 'trade'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'trade' | 'ledger'>('research');
   const [busy, setBusy] = useState(false);
   const [focusing, setFocusing] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -3039,9 +3075,10 @@ function MomentumPage(): JSX.Element {
       <div class="mom-tabs" role="tablist" aria-label="Momentum workspace">
         <button class={activeTab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'research'} onClick={() => setActiveTab('research')}>Research</button>
         <button class={activeTab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'trade'} onClick={() => setActiveTab('trade')}>Trade</button>
+        <button class={activeTab === 'ledger' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'ledger'} onClick={() => setActiveTab('ledger')}>Ledger</button>
       </div>
     </header>
-    {activeTab === 'trade' ? <MomentumTradeDesk
+    {activeTab === 'ledger' ? <MomentumLedgerWorkspace rows={research?.recent} trades={s.trades} currency={s.session?.currency ?? 'USD'} /> : activeTab === 'trade' ? <MomentumTradeDesk
       symbol={momentum?.config?.symbol}
       display={focusedMarket?.display ?? market?.display}
       samples={w?.samples ?? focusedMarket?.samples}
@@ -3121,9 +3158,9 @@ function MomentumPage(): JSX.Element {
       <section class={`mom-research-rail${research?.ready_for_virtual_paper ? ' mature' : ''}`}>
         <div><span class="mom-kicker">Stored research</span><strong>{research ? `${research.windows}/${research.maturity_target} signal windows` : 'Loading stored evidence'}</strong></div>
         <span>{research?.ready_for_virtual_paper ? 'Maturity reached. Review before any separate virtual-paper design.' : `${research?.samples_remaining ?? 30} more directional windows needed for a virtual-paper review.`}</span>
-        <small>Saved globally. It does not alter digit signals, account balances, or real/demo trading.</small>
+        <small>Saved globally. It does not alter digit signals, account balances, or account trading.</small>
       </section>
-      <div class="mom-disclaimer"><strong>Research estimate, not account P&amp;L.</strong> The 0.10% cost hurdle is a fixed assumption. Before demo execution, the system must capture Deriv’s actual proposal commission and live sell price; spot movement alone is not sufficient evidence of profitability.</div>
+      <div class="mom-disclaimer"><strong>Research estimate, not account P&amp;L.</strong> The 0.10% cost hurdle is a fixed assumption. Before execution, the system must capture Deriv’s actual proposal commission and live sell price; spot movement alone is not sufficient evidence of profitability.</div>
     </div>}
   </>;
 }
@@ -4123,7 +4160,7 @@ function AccountPage(): JSX.Element {
   );
 }
 
-type GoldTab = 'research' | 'trade';
+type GoldTab = 'research' | 'trade' | 'ledger';
 
 function GoldPage(): JSX.Element {
   const store = useStore();
@@ -4141,16 +4178,19 @@ function GoldPage(): JSX.Element {
     <header class="header gold-page-header">
       <div>
         <img class="gold-brand-logo" src="/gold-logo.png" alt="Gold" />
-        <div class="subtitle">Active market watch · Deriv Gold demo contracts · demo-first safeguards</div>
+        <div class="subtitle">Active market watch · Deriv Gold contracts · guarded execution</div>
       </div>
       <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
         <button class={tab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'research'} onClick={() => setTab('research')}>Research</button>
         <button class={tab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'trade'} onClick={() => setTab('trade')}>Trade</button>
+        <button class={tab === 'ledger' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'ledger'} onClick={() => setTab('ledger')}>Ledger</button>
       </div>
     </header>
 
     <div class="gold-workspace">
-      {tab === 'research'
+      {tab === 'ledger'
+        ? <GoldLedgerWorkspace state={store.gold} trades={store.trades} ledgerEntries={store.ledgerEntries} currency={store.session?.currency ?? 'USD'} />
+        : tab === 'research'
         ? <GoldResearchWorkspace
           state={store.gold}
           settings={store.settings}
@@ -4271,25 +4311,25 @@ function UnusedGoldDerivTradeWorkspace({
           : openGoldTrade
             ? `Contract ${openGoldTrade.status}`
             : purchase
-              ? 'Demo contract submitted'
-              : 'No open demo contract';
+              ? 'Contract submitted'
+              : 'No open contract';
   const potentialProfit = closed?.profit ?? (purchase?.payout != null && purchase.ask != null ? purchase.payout - purchase.ask : null);
   const actionNote = busy
-    ? 'Sending Gold demo order'
+    ? 'Sending Gold order'
     : closing
-      ? 'Closing Gold demo contract'
+      ? 'Closing Gold contract'
       : !owner
         ? 'Unlock dashboard owner controls'
         : !session
           ? 'Connect Deriv first'
           : !isDemo
-            ? 'Switch to Deriv demo'
+            ? 'Select an eligible Deriv account'
             : !marketReady
               ? readinessReason
               : openAccountTrade
                 ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
                 : !(Number.isFinite(stake) && stake > 0)
-                  ? 'Enter a positive demo stake'
+                  ? 'Enter a positive stake'
                   : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
                     ? 'Select a valid multiplier'
                     : !validLimits
@@ -4314,7 +4354,7 @@ function UnusedGoldDerivTradeWorkspace({
 
   const open = async (nextSide: GoldSide) => {
     if (!owner || !session || !isDemo) {
-      setError('Connect or switch to a Deriv demo account before placing a Gold trade.');
+      setError('Select an eligible Deriv account before placing a Gold trade.');
       return;
     }
     if (!canOpen) return;
@@ -4359,11 +4399,11 @@ function UnusedGoldDerivTradeWorkspace({
   };
 
   const unavailableReason = !session
-    ? 'Connect a Deriv demo account to request a live Gold contract.'
+    ? 'Connect your Deriv account to request a live Gold contract.'
     : !isDemo
-      ? 'Gold execution is available on Deriv demo accounts only. Switch to demo to continue.'
+      ? 'Gold execution is unavailable for the selected account.'
       : !owner
-        ? 'Unlock the dashboard owner controls to place a demo trade.'
+        ? 'Unlock the dashboard owner controls to place a trade.'
         : openAccountTrade && !openGoldTrade
           ? `Wait for open contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle before placing a Gold trade.`
           : null;
@@ -4374,7 +4414,7 @@ function UnusedGoldDerivTradeWorkspace({
         <div>
           <span class="gold-kicker">Gold trade</span>
           <strong>{symbol?.displayName || diagnostics?.symbol || 'Gold market'}</strong>
-          <small>{marketReady ? `${research?.timeframe ?? '5m'} watch · Deriv demo multiplier enabled` : readinessReason}</small>
+          <small>{marketReady ? `${research?.timeframe ?? '5m'} watch · Deriv multiplier enabled` : readinessReason}</small>
         </div>
         <div class="gold-trade-badges">
           <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}`}>
@@ -4399,23 +4439,23 @@ function UnusedGoldDerivTradeWorkspace({
           />
         </div>
         <div class="gold-trade-readout">
-          <span>Demo balance</span>
+          <span>Account balance</span>
           <strong>{isDemo && session ? fmtMoney(session.balance, session.currency) : '—'}</strong>
           <small>{contractPhase}</small>
         </div>
         <div class={`gold-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`}>
           <span>Live contract P&amp;L</span>
           <strong>{contractPnl == null ? '—' : fmtSigned(contractPnl, purchase?.currency ?? session?.currency ?? 'USD')}</strong>
-          <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting a demo order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
+          <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, purchase?.currency ?? session?.currency ?? 'USD')}` : liveSellPrice == null ? trackedContractId || 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD')}`}</small>
         </div>
       </div>
 
       <div class="gold-trade-order">
-        <div class="gold-trade-direction" aria-label="Place a Gold demo trade">
+        <div class="gold-trade-direction" aria-label="Place a Gold trade">
           <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canOpen || sideFromSignal !== 'BUY' || busy} onClick={() => void open('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Opening' : 'Buy'}</button>
           <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canOpen || sideFromSignal !== 'SELL' || busy} onClick={() => void open('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Opening' : 'Sell'}</button>
         </div>
-        <label class="gold-trade-field"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>Multiplier</span><select value={multiplierText} disabled={busy || Boolean(openAccountTrade)} onChange={(event) => setMultiplierText((event.currentTarget as HTMLSelectElement).value)}><option value="10">x10</option><option value="20">x20</option><option value="30">x30</option><option value="50">x50</option><option value="100">x100</option><option value="200">x200</option><option value="500">x500</option></select></label>
         <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={tpText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setTpText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={slText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setSlText((event.currentTarget as HTMLInputElement).value)} /></label>
@@ -4430,13 +4470,13 @@ function UnusedGoldDerivTradeWorkspace({
 
       {signal && <div class="gold-trade-note">{signal.reasons.length ? signal.reasons.join(' · ') : signal.blockers.join(' · ') || 'Gold research is waiting for stronger evidence.'}</div>}
       {unavailableReason && <div class="gold-trade-note">{unavailableReason}</div>}
-      {(purchase || openGoldTrade) && <div class="gold-trade-note">Deriv Gold demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
+      {(purchase || openGoldTrade) && <div class="gold-trade-note">Deriv Gold contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
       {error && <div class="tl-err">{error}</div>}
     </section>
 
     <section class="gold-facts" aria-label="Gold active trade safeguards">
       <div><span>Market data</span><strong>{state?.research.ready ? 'Validated' : 'Waiting'}</strong><small>{state?.research.reason ?? 'Live quote accepted'}</small></div>
-      <div><span>Demo trading</span><strong>{isDemo ? 'Ready' : 'Locked'}</strong><small>{isDemo ? 'Deriv demo session connected' : 'Switch/connect Deriv demo'}</small></div>
+      <div><span>Trading access</span><strong>{isDemo ? 'Ready' : 'Locked'}</strong><small>{isDemo ? 'Deriv session connected' : 'Select an eligible Deriv account'}</small></div>
       <div><span>Execution adapter</span><strong>{diagnostics?.executionCapable ? 'Deriv multipliers' : 'Checking'}</strong><small>MT5/cTrader CFD orders are not used</small></div>
       <div><span>Account lock</span><strong>{openAccountTrade ? 'Open contract' : 'Clear'}</strong><small>{openAccountTrade ? `Contract ${openAccountTrade.contract_id || openAccountTrade.id}` : 'One account contract at a time'}</small></div>
     </section>
@@ -4447,12 +4487,12 @@ function UnusedGoldDerivConnectionOnboarding({ state, session, owner }: { state:
   const diagnostics = state?.diagnostics ?? null;
   const marketReady = state?.research.ready === true;
   const isDemo = session?.mode === 'demo';
-  const status = isDemo ? 'Deriv demo connected' : session ? 'Real account connected' : 'Deriv demo required';
+  const status = isDemo ? 'Deriv connected' : session ? 'Account restricted' : 'Deriv account required';
   const detail = isDemo
-    ? `Gold demo contracts will use ${session.loginid}.`
+    ? `Gold contracts will use ${session.loginid}.`
     : session
-      ? 'Gold trading is locked on real accounts. Switch to a Deriv demo account.'
-      : 'Connect Deriv from the Account page, then choose a demo account.';
+      ? 'Gold trading is unavailable for the selected account.'
+      : 'Connect Deriv from the Account page, then choose an eligible account.';
   const steps: Array<{ label: string; detail: string; complete: boolean; active?: boolean }> = [
     {
       label: 'Deriv session',
@@ -4461,8 +4501,8 @@ function UnusedGoldDerivConnectionOnboarding({ state, session, owner }: { state:
       active: !session,
     },
     {
-      label: 'Demo account',
-      detail: isDemo ? 'The active account is demo.' : 'Switch away from live before Gold execution is enabled.',
+      label: 'Eligible account',
+      detail: isDemo ? 'The active account is eligible.' : 'Select an eligible account before Gold execution is enabled.',
       complete: isDemo,
       active: Boolean(session) && !isDemo,
     },
@@ -4478,7 +4518,7 @@ function UnusedGoldDerivConnectionOnboarding({ state, session, owner }: { state:
     <div class="gold-connection-intro">
       <div>
         <span class="gold-kicker">Deriv account connection</span>
-        <h2>{isDemo ? 'Deriv demo ready for Gold' : session ? 'Switch to Deriv demo' : 'Connect Deriv demo access'}</h2>
+        <h2>{isDemo ? 'Deriv ready for Gold' : session ? 'Select another Deriv account' : 'Connect Deriv access'}</h2>
         <p>Gold now uses Deriv API multiplier contracts when they are available for the active Gold symbol. MT5 and cTrader CFD accounts are not used by this route.</p>
       </div>
       <div class={`gold-connection-state${isDemo ? ' is-connected' : ''}`} role="status" aria-live="polite">
@@ -4498,13 +4538,13 @@ function UnusedGoldDerivConnectionOnboarding({ state, session, owner }: { state:
 
       <aside class="gold-auth-action" aria-label="Deriv Gold account action">
         {isDemo ? <>
-          <span class="gold-kicker">Demo-first authorization</span>
-          <strong>Gold can use this Deriv demo account</strong>
-          <small>Orders stay locked to demo, use Deriv multiplier contracts, and remain subject to the shared one-open-contract account guard.</small>
+          <span class="gold-kicker">Guarded authorization</span>
+          <strong>Gold can use this Deriv account</strong>
+          <small>Orders use Deriv multiplier contracts and remain subject to the shared one-open-contract account guard.</small>
         </> : session ? <>
-          <span class="gold-kicker">Demo-only protection</span>
+          <span class="gold-kicker">Account protection</span>
           <strong>Real account blocked</strong>
-          <small>Open the Account page and switch to a Deriv demo account before using Gold execution.</small>
+          <small>Open the Account page and select an eligible Deriv account before using Gold execution.</small>
           <button class="gold-connect-button" type="button" onClick={() => { window.location.href = '/account'; }}>
             <Icon name="arrowUpRight" size={15} strokeWidth={2} /> Switch account
           </button>
@@ -4522,13 +4562,13 @@ function UnusedGoldDerivConnectionOnboarding({ state, session, owner }: { state:
     {!marketReady && <section class="gold-config-guide" aria-label="Gold market data status">
       <div><span class="gold-kicker">Before users can trade</span><strong>Deriv Gold contract availability is checked server-side</strong><small>If the active account or region does not expose Gold multipliers, the order route rejects before purchase.</small></div>
       <div class="gold-config-list">
-        {['DERIV_DEMO_SESSION', diagnostics?.symbol ?? 'XAUUSD', diagnostics?.status ?? 'market_data_connecting'].map((setting) => <span key={setting}>{setting}</span>)}
+        {['DERIV_SESSION', diagnostics?.symbol ?? 'XAUUSD', diagnostics?.status ?? 'market_data_connecting'].map((setting) => <span key={setting}>{setting}</span>)}
       </div>
     </section>}
 
     <section class="gold-connection-facts" aria-label="Connection safeguards">
       <div><span>Provider</span><strong>Deriv API</strong></div>
-      <div><span>Account path</span><strong>Demo only</strong></div>
+      <div><span>Account path</span><strong>Guarded</strong></div>
       <div><span>Product</span><strong>Gold multipliers</strong></div>
       <div><span>MT5/cTrader</span><strong>Not used</strong></div>
     </section>
@@ -4555,6 +4595,46 @@ function GoldLedgerRow({ entry, currency }: { entry: LedgerEntry; currency: stri
     <b>{LEDGER_EVENT_LABEL[entry.event] ?? entry.event}</b>
     <small>{entry.contract_ref || entry.market}{time ? ` - ${time}` : ''}</small>
     <strong>{settled ? fmtSigned(profit, currency) : fmtMoney(entry.stake, currency)}</strong>
+  </div>;
+}
+
+function GoldLedgerWorkspace({ state, trades, ledgerEntries, currency }: { state: GoldModuleState | null; trades: TradeRow[]; ledgerEntries: LedgerEntry[]; currency: string }): JSX.Element {
+  const goldTrades = trades.filter((trade) => unusedGoldDerivIsGoldTrade(trade));
+  const goldEvents = ledgerEntries.filter((entry) => (entry.contract_type === 'MULTUP' || entry.contract_type === 'MULTDOWN') && (/gold/i.test(entry.reason ?? '') || /XAU/i.test(entry.market)));
+  const evaluation = state?.predictionEvaluation;
+  return <div class="section-ledger-page gold-ledger-page">
+    <section class="section-ledger-summary" aria-label="Gold ledger summary">
+      <div><span>Forecasts stored</span><strong>{evaluation?.total ?? 0}</strong></div>
+      <div><span>Forecasts scored</span><strong>{evaluation?.resolved ?? 0}</strong></div>
+      <div><span>Forecast accuracy</span><strong>{evaluation?.accuracy == null ? '—' : `${(evaluation.accuracy * 100).toFixed(1)}%`}</strong></div>
+      <div><span>Contracts stored</span><strong>{goldTrades.length}</strong></div>
+    </section>
+    <section class="section-ledger-card" aria-label="Gold forecast evidence">
+      <div class="mom-watchboard-head"><div><span class="gold-kicker">Forecast ledger</span><strong>Saved prediction evidence</strong></div><span>{evaluation?.pending ?? 0} awaiting score</span></div>
+      <div class="gold-forecast-ledger">
+        <div><span>Correct</span><strong class="up">{evaluation?.correct ?? 0}</strong></div>
+        <div><span>Incorrect</span><strong class="down">{evaluation?.incorrect ?? 0}</strong></div>
+        <div><span>Flat</span><strong>{evaluation?.flat ?? 0}</strong></div>
+        <div><span>Latest</span><strong>{evaluation?.latest ? `${evaluation.latest.direction} · ${evaluation.latest.status}` : 'No forecast yet'}</strong></div>
+      </div>
+      <div class="gold-prediction-history">
+        {(evaluation?.recent?.length ?? 0) === 0 && <div class="section-ledger-empty">No Gold forecasts stored yet.</div>}
+        {evaluation?.recent?.slice(0, 40).map((forecast) => <div class={`gold-prediction-row ${forecast.status}`} key={forecast.signal_id}>
+          <span class={`section-trade-side ${forecast.direction === 'BUY' ? 'buy' : 'sell'}`}>{forecast.direction}</span>
+          <span><b>{forecast.confidence}% forecast</b><small>{new Date(forecast.generated_at).toLocaleString()}</small></span>
+          <span><small>Entry</small><b>{forecast.entry_price.toLocaleString()}</b></span>
+          <strong>{forecast.status}</strong>
+        </div>)}
+      </div>
+    </section>
+    <SectionTradeHistory trades={goldTrades} currency={currency} empty="No Gold contracts stored yet." />
+    <section class="section-ledger-card" aria-label="Gold contract lifecycle ledger">
+      <div class="mom-watchboard-head"><div><span class="gold-kicker">Lifecycle ledger</span><strong>Contract events</strong></div><span>{goldEvents.length} events</span></div>
+      <div class="gold-ledger-list">
+        {goldEvents.length === 0 && <span class="gold-ledger-empty">No Gold ledger events yet</span>}
+        {goldEvents.slice(0, 60).map((entry) => <GoldLedgerRow entry={entry} currency={currency} key={entry.id} />)}
+      </div>
+    </section>
   </div>;
 }
 
@@ -4701,7 +4781,7 @@ function GoldResearchWorkspace({
       <div class="gold-intel-card">
         <span class="gold-kicker">Bot model</span>
         <strong>{signal?.modelVersion ?? 'gold-scalp-v2'}</strong>
-        <small>{botModel} posture - {activeStrategy} strategy - global bot {automation?.running ? 'running' : 'stopped'}. Gold execution stays manual demo-only.</small>
+        <small>{botModel} posture - {activeStrategy} strategy - global bot {automation?.running ? 'running' : 'stopped'}. Gold execution stays manual and guarded.</small>
         <div class="gold-intel-stats">
           <span>Regime <b>{signal?.regime ?? 'WAITING'}</b></span>
           <span>Score <b>{signal ? `${Math.round(signal.score * 100)}%` : '--'}</b></span>
@@ -4870,15 +4950,15 @@ const modelWeights = [
   const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
   const suggestionText = sideFromSignal ? `${sideFromSignal} · ${signal?.confidence ?? 0}%` : 'WAIT';
   const actionNote = busy
-    ? 'Sending Deriv demo order'
+    ? 'Sending Deriv order'
     : closing
       ? 'Closing Deriv Gold contract'
       : !owner
         ? 'Unlock owner controls to trade Gold'
         : !session
-          ? 'Connect a Deriv demo account to trade Gold'
+          ? 'Connect your Deriv account to trade Gold'
           : !demoConnected
-            ? 'Switch to a Deriv demo account'
+            ? 'Select an eligible Deriv account'
             : automation?.running
               ? 'Stop the main bot before placing a Gold trade'
             : marketClosed
@@ -5013,7 +5093,7 @@ const modelWeights = [
         <div>
           <span class="gold-kicker">Deriv Gold trade</span>
           <strong>{symbol?.displayName || deriv?.display || 'Gold / US Dollar'}</strong>
-          <small>{marketReady ? `${chartTimeframe} candlestick watch - Deriv demo multipliers` : state?.research.reason ?? 'Waiting for Deriv Gold feed'}</small>
+          <small>{marketReady ? `${chartTimeframe} candlestick watch - Deriv multipliers` : state?.research.reason ?? 'Waiting for Deriv Gold feed'}</small>
         </div>
 <div class="gold-trade-badges">
           <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}${reversalForecast ? ' reversal' : ''}`}>
@@ -5054,7 +5134,7 @@ const modelWeights = [
           <span>Live contract P&L</span>
           <strong aria-live="polite">{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
           <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, currency)}` : liveSellPrice == null ? trackedContractId || 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, currency)}`}</small>
-          <div class="gold-trade-direction gold-live-actions" aria-label="Place a Deriv Gold demo trade">
+          <div class="gold-trade-direction gold-live-actions" aria-label="Place a Deriv Gold trade">
             <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
             <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
           </div>
@@ -5075,7 +5155,7 @@ const modelWeights = [
       </div>
 
       <div class="gold-trade-order gold-deriv-order">
-        <label class="gold-trade-field"><span>Demo stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAnyTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
         <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
@@ -5095,29 +5175,29 @@ const modelWeights = [
       <GoldSentimentPanel state={state} />
 
       {signal && <div class="gold-trade-note">{signal.reasons.length ? signal.reasons.join(' · ') : signal.blockers.join(' · ') || 'Gold research is waiting for stronger evidence.'}</div>}
-      {(purchase || openGoldTrade) && <div class="gold-trade-note">Deriv demo contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
+      {(purchase || openGoldTrade) && <div class="gold-trade-note">Deriv contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
       {accountBlocked && <div class="gold-trade-note">Another account contract is open. Gold waits for the shared account lock to clear.</div>}
       {error && <div class="tl-err">{error}</div>}
     </section>
 
-    <section class="mom-pnl gold-pnl" aria-label="Gold Deriv demo profit and loss">
+    <section class="mom-pnl gold-pnl" aria-label="Gold Deriv profit and loss">
       <div><span>Contract stake</span><strong>{activeTrade ? fmtMoney(activeTrade.stake, currency) : Number.isFinite(stake) && stake > 0 ? fmtMoney(stake, currency) : '—'}</strong></div>
       <div><span>Open contract P&amp;L</span><strong class={(contractPnl ?? 0) >= 0 ? 'up' : 'down'}>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong></div>
       <div><span>Realized Gold P&amp;L</span><strong class={goldRealizedPnl >= 0 ? 'up' : 'down'}>{fmtSigned(goldRealizedPnl, currency)}</strong></div>
       <div><span>Current exposure</span><strong>{exposure > 0 ? fmtMoney(exposure, currency) : '—'}</strong></div>
     </section>
-    <section class="mom-scoreboard gold-scoreboard" aria-label="Gold Deriv demo results">
-      <div><span>Demo bets settled</span><strong>{settledGoldTrades.length}</strong></div>
-      <div><span>Demo wins</span><strong>{settledGoldTrades.filter((trade) => trade.status === 'won' || Number(trade.profit ?? 0) > 0).length}</strong></div>
-      <div><span>Demo losses</span><strong>{settledGoldTrades.filter((trade) => trade.status === 'lost' || Number(trade.profit ?? 0) < 0).length}</strong></div>
-      <div><span>Demo win rate</span><strong>{goldWinRate == null ? '—' : `${goldWinRate.toFixed(1)}%`}</strong></div>
+    <section class="mom-scoreboard gold-scoreboard" aria-label="Gold Deriv results">
+      <div><span>Bets settled</span><strong>{settledGoldTrades.length}</strong></div>
+      <div><span>Wins</span><strong>{settledGoldTrades.filter((trade) => trade.status === 'won' || Number(trade.profit ?? 0) > 0).length}</strong></div>
+      <div><span>Losses</span><strong>{settledGoldTrades.filter((trade) => trade.status === 'lost' || Number(trade.profit ?? 0) < 0).length}</strong></div>
+      <div><span>Win rate</span><strong>{goldWinRate == null ? '—' : `${goldWinRate.toFixed(1)}%`}</strong></div>
     </section>
 
     <section class="gold-intel-grid" aria-label="Gold trade intelligence">
       <div class="gold-intel-card">
         <span class="gold-kicker">Bot model</span>
         <strong>{signal?.modelVersion ?? 'gold-scalp-v2'}</strong>
-        <small>{botModel} bot posture - {activeStrategy} money strategy - global bot {automation?.running ? 'running' : 'stopped'}. Gold auto-execution remains manual demo-only.</small>
+        <small>{botModel} bot posture - {activeStrategy} money strategy - global bot {automation?.running ? 'running' : 'stopped'}. Gold execution remains manual and guarded.</small>
         <div class="gold-intel-stats">
           <span>Regime <b>{signal?.regime ?? 'WAITING'}</b></span>
           <span>Score <b>{signal ? `${Math.round(signal.score * 100)}%` : '--'}</b></span>
@@ -5163,7 +5243,7 @@ const modelWeights = [
     <section class="gold-facts" aria-label="Deriv Gold safeguards">
       <div><span>Provider</span><strong>Deriv API</strong><small>Not MT5/cTrader execution</small></div>
       <div><span>Market data</span><strong>{state?.research.ready ? 'Live' : 'Waiting'}</strong><small>{state?.research.reason ?? diagnostics?.reason ?? 'Deriv Gold feed'}</small></div>
-      <div><span>Trading</span><strong>{demoConnected ? 'Demo enabled' : 'Demo locked'}</strong><small>{deriv?.message ?? 'Connect Deriv demo'}</small></div>
+      <div><span>Trading</span><strong>{demoConnected ? 'Enabled' : 'Locked'}</strong><small>{demoConnected ? 'Deriv account connected' : 'Connect Deriv'}</small></div>
       <div><span>Multiplier lane</span><strong>{openAnyTrade ? 'Busy' : 'Clear'}</strong><small>{openAnyTrade ? `Open multiplier ${openAnyTrade.contract_id || openAnyTrade.id}` : 'Digit lane remains independent'}</small></div>
     </section>
   </>;
@@ -5184,22 +5264,22 @@ function GoldDerivConnectionOnboarding({
     <div class="gold-connection-intro">
       <div>
         <span class="gold-kicker">Gold trade readiness</span>
-        <h2>{session.mode === 'demo' ? 'Deriv demo ready for Gold trades' : 'Switch to demo for Gold trades'}</h2>
-        <p>Gold trading uses Deriv API multiplier contracts with demo-first controls, server-side contract checks, and the shared one-open-contract account guard.</p>
+        <h2>{session.mode === 'demo' ? 'Deriv ready for Gold trades' : 'Select an eligible account for Gold trades'}</h2>
+        <p>Gold trading uses Deriv API multiplier contracts with guarded controls, server-side contract checks, and the shared one-open-contract account guard.</p>
       </div>
       <div class={`gold-connection-state${session.mode === 'demo' ? ' is-connected' : ''}`} role="status" aria-live="polite">
         <span>Trade status</span>
-        <strong>{session.mode === 'demo' ? 'Demo connected' : 'Real account selected'}</strong>
-        <small>{deriv?.message ?? 'Deriv account connected.'}</small>
+        <strong>{session.mode === 'demo' ? 'Account connected' : 'Restricted account selected'}</strong>
+        <small>{session.mode === 'demo' ? 'Deriv account connected.' : 'Select an eligible account to continue.'}</small>
       </div>
     </div>
     <section class="gold-connection-facts" aria-label="Deriv Gold trade facts">
       <div><span>Provider</span><strong>Deriv API</strong></div>
       <div><span>Account</span><strong>{owner ? session.loginid : 'Owner locked'}</strong></div>
-      <div><span>Mode</span><strong>{session.mode === 'demo' ? 'Demo' : 'Real blocked'}</strong></div>
+      <div><span>Mode</span><strong>{session.mode === 'demo' ? 'Eligible' : 'Restricted'}</strong></div>
       <div><span>Symbol</span><strong>{deriv?.symbol ?? state?.diagnostics.symbol ?? 'frxXAUUSD'}</strong></div>
     </section>
-    {session.mode !== 'demo' && <div class="tl-err">Gold API trading is demo-only. Open Account and switch to a demo account before placing a Gold trade.</div>}
+    {session.mode !== 'demo' && <div class="tl-err">Gold API trading is unavailable for this account. Open Account and select an eligible account before placing a Gold trade.</div>}
   </section>;
 }
 
@@ -5485,7 +5565,7 @@ function GoldTradeWorkspace({
       <div><span>Market data</span><strong>{state?.research.ready ? 'Validated' : 'Waiting'}</strong><small>{state?.research.reason ?? 'Live quote accepted'}</small></div>
       <div><span>Paper trading</span><strong>{state?.paper.ready ? 'Enabled' : 'Locked'}</strong><small>{state?.paper.reason ?? 'Virtual book only'}</small></div>
       <div><span>Execution adapter</span><strong>{diagnostics?.executionCapable ? 'Available' : 'Not live'}</strong><small>cTrader live orders remain separate</small></div>
-      <div><span>Connection</span><strong>{state?.connection?.status === 'connected_demo' ? 'Demo selected' : 'Setup'}</strong><small>{state?.connection?.message ?? diagnostics?.reason ?? 'Check connection'}</small></div>
+      <div><span>Connection</span><strong>{state?.connection?.status === 'connected_demo' ? 'Selected' : 'Setup'}</strong><small>{state?.connection?.status === 'connected_demo' ? 'Provider account connected' : 'Check connection'}</small></div>
     </section>
   </>;
 }
@@ -5504,8 +5584,8 @@ function GoldConnectionOnboarding({ state }: { state: GoldModuleState | null }):
   const connectedDemo = connection?.status === 'connected_demo';
   const authorizing = connection?.status === 'authorizing' || busy || authWindowOpen;
   const connectionError = connection?.status === 'error';
-  const status = connectedDemo ? 'Demo account selected' : authorizedDemo ? 'Demo access authorized' : authorizing ? 'Authorization in progress' : connectionError ? 'Connection needs attention' : configured ? 'Ready to authorize' : 'Provider setup needed';
-  const detail = connection?.message ?? diagnostics?.reason ?? 'Checking cTrader connection readiness.';
+  const status = connectedDemo ? 'Account selected' : authorizedDemo ? 'Access authorized' : authorizing ? 'Authorization in progress' : connectionError ? 'Connection needs attention' : configured ? 'Ready to authorize' : 'Provider setup needed';
+  const detail = connectedDemo ? 'Provider account is connected and ready.' : authorizedDemo ? 'Authorization complete; select an account.' : connectionError ? 'Check provider authorization and try again.' : 'Checking provider connection readiness.';
   const missing = diagnostics?.missing ?? [];
   const invalid = diagnostics?.validationErrors ?? [];
   const canStart = connection?.status === 'ready' && !authorizing;
