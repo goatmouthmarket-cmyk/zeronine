@@ -227,6 +227,7 @@ export interface ContractEvt {
   status?: string;
   settled?: boolean;
   sold?: boolean;
+  isValidToSell?: boolean;
   phase?: string;
   error?: string;
   update?: {
@@ -1164,6 +1165,11 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       const previous = contractId ? state.contracts[contractId] ?? state.contract : state.contract;
       const sameContract = Boolean(contractId && previous?.contractId === contractId);
       const eventSettled = typeof evt.settled === 'boolean' ? evt.settled : typeof update.settled === 'boolean' ? update.settled : undefined;
+      const isValidToSell = typeof evt.isValidToSell === 'boolean'
+        ? evt.isValidToSell
+        : typeof update.isValidToSell === 'boolean'
+          ? update.isValidToSell
+          : undefined;
       const eventResult = evt.result as string | undefined;
       const liveProfit = Number(evt.profit ?? update.profit);
       const sellPrice = Number.isFinite(Number(evt.sellPrice)) ? Number(evt.sellPrice) : Number.isFinite(Number(update.sellPrice)) ? Number(update.sellPrice) : undefined;
@@ -1200,6 +1206,7 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
         status: typeof evt.status === 'string' ? evt.status : typeof update.status === 'string' ? update.status : undefined,
         settled: eventSettled,
         sold: typeof evt.sold === 'boolean' ? evt.sold : undefined,
+        isValidToSell: isValidToSell ?? (sameContract ? previous?.isValidToSell : undefined),
         phase: evt.phase as string | undefined,
         error: evt.error as string | undefined,
         update: {

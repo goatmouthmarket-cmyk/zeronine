@@ -1967,11 +1967,13 @@ function settleInBackground(
         buyPrice: u.buyPrice,
         settled: u.settled,
         status: u.status,
+        isValidToSell: u.isValidToSell,
         update: u,
         manual: true,
         profitProtection: protectProfit ? protection : undefined,
       });
-      if (!protectProfit || !protection.shouldClose || profitLockSelling || !(u.sellPrice > 0) || u.settled) return;
+      const sellable = u.isValidToSell === true || (u.isValidToSell == null && u.sellPrice > 0);
+      if (!protectProfit || !protection.shouldClose || profitLockSelling || !sellable || u.settled) return;
       profitLockSelling = true;
       hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, phase: 'profit lock cash-out', profit: u.profit, sellPrice: u.sellPrice, update: u, profitProtection: { ...protection, triggered: true } });
       void client.sellContract(contractId, 0).catch((error) => {

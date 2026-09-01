@@ -90,6 +90,7 @@ export interface ContractUpdate {
   sellPrice: number;
   buyPrice: number;
   settled: boolean;
+  isValidToSell?: boolean;
   currentSpot?: number;
   currentSpotTime?: number;
   exitSpot?: number;
@@ -269,6 +270,7 @@ export class DerivPrivateClient {
       sellPrice: Number(c.sell_price ?? 0),
       buyPrice: Number(c.buy_price ?? 0),
       settled: !!c.is_sold,
+      isValidToSell: c.is_valid_to_sell === 1 || c.is_valid_to_sell === true,
       currentSpot: Number.isFinite(currentSpot) ? currentSpot : undefined,
       currentSpotTime: Number.isFinite(currentSpotTime) ? currentSpotTime : undefined,
       exitSpot: Number.isFinite(exitSpot) ? exitSpot : undefined,

@@ -5141,7 +5141,7 @@ const modelWeights = [
     forecastConfidence: signal?.confidence ?? 0,
   });
   const displayedTradeGuidance = profitGuard.triggered
-    ? { action: 'CLOSE', reason: `Profit fell through the protected ${fmtMoney(profitGuard.floor, currency)} floor. Automatic cash-out is being requested.`, tone: 'danger' as const }
+    ? { action: 'CLOSE', reason: `Profit fell through the protected ${fmtMoney(profitGuard.floor, currency)} floor. Automatic cash-out is active${matchingContract?.isValidToSell === false ? ' and waiting for Deriv to make the contract sellable' : ''}.`, tone: 'danger' as const }
     : profitGuard.armed
       ? { action: 'PROTECT', reason: `Profit lock overrides the forecast: peak ${fmtMoney(profitGuard.peak, currency)}, protected floor ${fmtMoney(profitGuard.floor, currency)}.`, tone: 'warning' as const }
       : tradeGuidance;
@@ -5270,7 +5270,7 @@ const modelWeights = [
       && current.activation === activation && current.triggered === triggered
       ? current
       : { armed, peak, floor, activation, triggered });
-    if (protection.shouldClose && liveSellPrice != null) {
+    if (protection.shouldClose) {
       setProfitGuard({ armed, peak, floor, activation, triggered: true });
     }
   }, [closing, contractPnl, contractStake, liveSellPrice, openGoldTrade?.id, session?.balance, trackedContractId]);
@@ -5345,7 +5345,9 @@ const modelWeights = [
               <div class={`gold-profit-lock${profitGuard.armed ? ' armed' : ''}${profitGuard.triggered ? ' triggered' : ''}`}>
                 <b>Auto profit lock</b>
                 <em>{profitGuard.triggered
-                  ? 'Cash-out triggered after protected floor was crossed'
+                  ? matchingContract?.isValidToSell === false
+                    ? 'Floor crossed - waiting for Deriv sell availability'
+                    : 'Floor crossed - automatic cash-out requested'
                   : profitGuard.armed
                     ? `Armed - peak ${fmtMoney(profitGuard.peak, currency)} - closes at or below ${fmtMoney(profitGuard.floor, currency)}`
                     : `Building - arms at ${fmtMoney(profitGuard.activation, currency)} profit`}</em>
