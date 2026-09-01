@@ -234,7 +234,7 @@ export class GoldRuntime {
     }
     const signal = research.signal;
     const now = this.now();
-    if (!signal || (signal.direction !== 'BUY' && signal.direction !== 'SELL')) {
+    if (!signal || !signal.actionable || (signal.direction !== 'BUY' && signal.direction !== 'SELL')) {
       this.paperAutomation.status = 'collecting';
       this.paperAutomation.reason = signal?.blockers.join(' · ') || 'Collecting candle, trend, volatility, and sentiment evidence';
       return;

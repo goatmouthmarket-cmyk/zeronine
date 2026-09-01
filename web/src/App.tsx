@@ -4883,7 +4883,7 @@ function GoldDerivTradeWorkspace({
     && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
   const marketReady = state?.research.ready === true && Boolean(quote);
   const marketClosed = symbol?.tradingStatus === 'closed' || symbol?.tradingStatus === 'suspended' || symbol?.tradingStatus === 'unavailable';
-  const signalEntryOpen = Boolean(sideFromSignal && (signal?.confidence ?? 0) >= 65 && Date.now() <= (signal?.expiresAt ?? 0));
+  const signalEntryOpen = Boolean(sideFromSignal && signal?.actionable && Date.now() <= (signal?.expiresAt ?? 0));
   const probeSide: GoldSide = sideFromSignal ?? side;
   const demoConnected = deriv?.demoConnected === true || session?.mode === 'demo';
   const accountBlocked = Boolean(openAnyTrade && !unusedGoldDerivIsGoldTrade(openAnyTrade));
@@ -4971,8 +4971,10 @@ const modelWeights = [
                   ? `Selected multiplier exceeds live max x${maxMultiplier}`
                 : !limitsValid
                   ? 'TP profit and stop loss must be positive amounts when set'
-                  : sideFromSignal && !signalEntryOpen
-                    ? 'Forecast entry window expired · wait for the next completed candle'
+                  : sideFromSignal && !signal?.actionable
+                    ? `${sideFromSignal} forecast forming · ${signal?.confirmationCount ?? 0}/${signal?.confirmationRequired ?? 2} candles · ${signal?.confidence ?? 0}% strength`
+                    : sideFromSignal && !signalEntryOpen
+                      ? 'Forecast entry window expired · wait for the next completed candle'
                     : sideFromSignal
                       ? `Confirmed five-minute ${sideFromSignal} scalp forecast · entry window open`
                       : 'Waiting for two completed-candle confirmations';
@@ -5098,7 +5100,7 @@ const modelWeights = [
 <div class="gold-trade-badges">
           <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}${reversalForecast ? ' reversal' : ''}`}>
             <Icon name={sideFromSignal === 'SELL' ? 'arrowDown' : sideFromSignal === 'BUY' ? 'arrowUp' : 'history'} size={13} />
-            <span>{reversalForecast ? `Reversal vs open ${contractSide}` : '5-minute forecast'}</span>
+            <span>{reversalForecast ? `Reversal vs open ${contractSide}` : signal?.actionable ? 'Confirmed 5-minute forecast' : 'Forming 5-minute forecast'}</span>
             <strong>{suggestionText}</strong>
           </span>
           {signal?.sentiment?.perfectSetup && (

@@ -28,6 +28,7 @@ export interface GoldResearchServiceOptions {
   now?: () => number;
   tradeKnowledge?: (symbolId: string, direction: 'BUY' | 'SELL') => { samples: number; winRate: number | null };
   confirmationCandles?: 1 | 2;
+  minActionableConfidence?: number;
 }
 
 const MAX_CANDLES_PER_TIMEFRAME = 500;
@@ -59,6 +60,7 @@ export class GoldResearchService {
   private readonly config?: Partial<GoldResearchConfig>;
   private readonly tradeKnowledge?: GoldResearchServiceOptions['tradeKnowledge'];
   private readonly confirmationCandles: 1 | 2;
+  private readonly minActionableConfidence: number;
   private timeframe: GoldTimeframe;
   private symbol: GoldSymbol | null = null;
   private quote: GoldQuote | null = null;
@@ -78,6 +80,7 @@ export class GoldResearchService {
     this.now = options.now ?? Date.now;
     this.tradeKnowledge = options.tradeKnowledge;
     this.confirmationCandles = options.confirmationCandles ?? 2;
+    this.minActionableConfidence = Math.max(0, Math.min(100, options.minActionableConfidence ?? 0));
   }
 
   state(): GoldResearchState {
@@ -190,16 +193,20 @@ export class GoldResearchService {
         this.candidateConfirmations = 0;
       }
     }
-    if ((next.direction === 'BUY' || next.direction === 'SELL') && this.candidateConfirmations < this.confirmationCandles) {
-      const candidate = next.direction;
+    if (next.direction === 'BUY' || next.direction === 'SELL') {
+      const confirmed = this.candidateConfirmations >= this.confirmationCandles;
+      const strongEnough = next.confidence >= this.minActionableConfidence;
       next = {
         ...next,
-        direction: 'WAIT',
-        confidence: 0,
-        proposedStopLoss: null,
-        proposedTakeProfit: null,
-        blockers: [...next.blockers, `Forecast needs ${this.confirmationCandles} completed-candle confirmations (${this.candidateConfirmations}/${this.confirmationCandles})`],
-        reasons: [...next.reasons, `${candidate} candidate is forming for the next five minutes`],
+        actionable: confirmed && strongEnough,
+        confirmationCount: this.candidateConfirmations,
+        confirmationRequired: this.confirmationCandles,
+        blockers: [
+          ...next.blockers,
+          ...(!confirmed ? [`Forecast needs ${this.confirmationCandles} completed-candle confirmations (${this.candidateConfirmations}/${this.confirmationCandles})`] : []),
+          ...(!strongEnough ? [`Forecast confidence ${next.confidence}% is below the ${this.minActionableConfidence}% confirmation gate`] : []),
+        ],
+        reasons: [...next.reasons, ...(confirmed && strongEnough ? [] : [`${next.direction} forecast is forming for the next five minutes`])],
       };
     }
     if (this.signal?.id === next.id) {

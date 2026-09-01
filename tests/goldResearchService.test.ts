@@ -69,7 +69,10 @@ test('Gold scalp forecast waits for completed-candle confirmation by default', (
   service.replaceCandles('5m', candles('5m', .7));
   service.replaceCandles('15m', candles('15m', .7));
   const state = service.ingestQuote({ symbolId: symbol.id, bid: 2_025, ask: 2_025.1, timestamp: NOW - 50, receivedAt: NOW, sequence: 1 });
-  assert.equal(state.signal?.direction, 'WAIT');
+  assert.equal(state.signal?.direction, 'BUY', 'the forming forecast remains visible');
+  assert.equal(state.signal?.actionable, false, 'the first candle cannot create an actionable entry');
+  assert.equal(state.signal?.confirmationCount, 1);
+  assert.equal(state.signal?.confirmationRequired, 2);
   assert.match(state.signal?.blockers.join(' ') ?? '', /confirmations \(1\/2\)/);
 });
 

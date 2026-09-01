@@ -74,6 +74,10 @@ export interface GoldSignal {
   symbolId: string;
   timeframe: GoldTimeframe;
   direction: GoldSignalDirection;
+  /** True only after stateful confirmation and confidence gates clear. */
+  actionable: boolean;
+  confirmationCount: number;
+  confirmationRequired: number;
   /** Deterministic strength: round(abs(score) * 100), never a fitted probability. */
   confidence: number;
   /** Signed, normalized model score in [-1, 1]. */
@@ -392,6 +396,9 @@ function waitSignal(input: GoldResearchInput, config: GoldResearchConfig, blocke
     symbolId: input.symbol.id,
     timeframe: input.timeframe,
     direction: 'WAIT',
+    actionable: false,
+    confirmationCount: 0,
+    confirmationRequired: 0,
     confidence: 0,
     score: 0,
     entryReference: quote?.mid ?? primary.at(-1)?.close ?? 0,
@@ -587,6 +594,9 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
     symbolId: input.symbol.id,
     timeframe: input.timeframe,
     direction,
+    actionable: direction !== 'WAIT',
+    confirmationCount: direction === 'WAIT' ? 0 : 1,
+    confirmationRequired: direction === 'WAIT' ? 0 : 1,
     confidence: Math.round(Math.abs(score) * 100),
     score,
     entryReference: roundTo(entryReference, input.symbol.digits),

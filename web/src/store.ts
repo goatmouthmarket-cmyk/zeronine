@@ -644,6 +644,9 @@ export interface GoldSignalState {
   symbolId: string;
   timeframe: GoldTimeframe;
   direction: GoldSide | 'WAIT';
+  actionable: boolean;
+  confirmationCount: number;
+  confirmationRequired: number;
   confidence: number;
   score: number;
   entryReference: number;
