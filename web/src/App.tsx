@@ -4919,6 +4919,17 @@ function GoldDerivTradeWorkspace({
   const contractOpenedAt = activeTrade?.ts ?? 0;
   const contractElapsed = contractOpenedAt ? fmtElapsed(Math.max(0, contractClock - contractOpenedAt)) : '--';
   const candles = research?.candles?.[chartTimeframe] ?? research?.candles?.[research.timeframe ?? '1m'] ?? [];
+  const forecastNow = Date.now();
+  const forecastTimeframe = research?.timeframe ?? '1m';
+  const forecastIntervalMs = forecastTimeframe === '1h' ? 3_600_000 : forecastTimeframe === '15m' ? 900_000 : forecastTimeframe === '5m' ? 300_000 : 60_000;
+  const forecastCandles = research?.candles?.[forecastTimeframe] ?? [];
+  const latestCompletedForecastCandle = forecastCandles.filter((candle) => candle.complete && candle.closeTime <= forecastNow).at(-1) ?? null;
+  const intervalsSinceReview = latestCompletedForecastCandle ? Math.max(1, Math.floor((forecastNow - latestCompletedForecastCandle.closeTime) / forecastIntervalMs) + 1) : 1;
+  const nextForecastReviewAt = latestCompletedForecastCandle ? latestCompletedForecastCandle.closeTime + intervalsSinceReview * forecastIntervalMs : forecastNow + forecastIntervalMs;
+  const nextReviewSeconds = Math.max(0, Math.ceil((nextForecastReviewAt - forecastNow) / 1_000));
+  const entrySeconds = Math.max(0, Math.ceil(((signal?.expiresAt ?? forecastNow) - forecastNow) / 1_000));
+  const forecastLean: GoldSide | null = sideFromSignal ?? ((signal?.score ?? 0) >= .05 ? 'BUY' : (signal?.score ?? 0) <= -.05 ? 'SELL' : null);
+  const hardForecastBlocker = signal?.blockers.find((blocker) => /insufficient|missing|stale|closed|suspended|unavailable|spread|volatility|no live|invalid/i.test(blocker)) ?? null;
   const digits = Math.max(2, Math.min(5, symbol?.digits ?? 2));
   const currency = purchase?.currency ?? session?.currency ?? 'USD';
   const exposure = Number.isFinite(stake) && stake > 0 && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 ? stake * selectedMultiplier : 0;
@@ -4948,7 +4959,20 @@ const modelWeights = [
 ];
   const activeStrategy = settings ? STRATEGY_META[settings.strategy_mode]?.label ?? settings.strategy_mode : 'Manual guarded';
   const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
-  const suggestionText = sideFromSignal ? `${sideFromSignal} · ${signal?.confidence ?? 0}%` : 'WAIT';
+  const suggestionText = signal?.actionable && signalEntryOpen && sideFromSignal
+    ? `ENTER ${sideFromSignal}`
+    : sideFromSignal
+      ? `PREPARE ${sideFromSignal}`
+      : forecastLean
+        ? `WATCH ${forecastLean}`
+        : 'WAIT';
+  const forecastTimingText = hardForecastBlocker
+    ? hardForecastBlocker
+    : signal?.actionable && signalEntryOpen
+      ? `${signal.confidence}% confirmed · entry window ${entrySeconds}s`
+      : sideFromSignal
+        ? `${signal?.confidence ?? 0}% strength · ${signal?.confirmationCount ?? 0}/${signal?.confirmationRequired ?? 2} candles · next review ${String(Math.floor(nextReviewSeconds / 60)).padStart(2, '0')}:${String(nextReviewSeconds % 60).padStart(2, '0')}`
+        : `${signal?.confidence ?? 0}% strength · next review ${String(Math.floor(nextReviewSeconds / 60)).padStart(2, '0')}:${String(nextReviewSeconds % 60).padStart(2, '0')}`;
   const actionNote = busy
     ? 'Sending Deriv order'
     : closing
@@ -5098,10 +5122,11 @@ const modelWeights = [
           <small>{marketReady ? `${chartTimeframe} candlestick watch - Deriv multipliers` : state?.research.reason ?? 'Waiting for Deriv Gold feed'}</small>
         </div>
 <div class="gold-trade-badges">
-          <span class={`gold-trade-suggestion ${(sideFromSignal ?? 'WAIT').toLowerCase()}${reversalForecast ? ' reversal' : ''}`}>
-            <Icon name={sideFromSignal === 'SELL' ? 'arrowDown' : sideFromSignal === 'BUY' ? 'arrowUp' : 'history'} size={13} />
-            <span>{reversalForecast ? `Reversal vs open ${contractSide}` : signal?.actionable ? 'Confirmed 5-minute forecast' : 'Forming 5-minute forecast'}</span>
+          <span class={`gold-trade-suggestion ${(forecastLean ?? 'WAIT').toLowerCase()}${reversalForecast ? ' reversal' : ''}`} aria-live="polite">
+            <Icon name={forecastLean === 'SELL' ? 'arrowDown' : forecastLean === 'BUY' ? 'arrowUp' : 'history'} size={13} />
+            <span>{reversalForecast ? `Reversal vs open ${contractSide}` : signal?.actionable ? 'Confirmed 5-minute forecast' : forecastLean ? 'Early forecast warning' : 'Scanning next setup'}</span>
             <strong>{suggestionText}</strong>
+            <em>{forecastTimingText}</em>
           </span>
           {signal?.sentiment?.perfectSetup && (
             <span class="gold-perfect-badge" title="Price, news, and social sentiment fully align">
