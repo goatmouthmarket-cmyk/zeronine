@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { confidenceForSetup, isSensibleManualSetup, manualSetupScore, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
+import { assessTimedManualEntry, confidenceForSetup, isSensibleManualSetup, manualSetupScore, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
 import type { ManualMarket, ManualSignalCandidate } from '../web/src/manualMarketRanking.ts';
 
 function market(symbol: string, digits: number[]): ManualMarket {
@@ -72,4 +72,13 @@ test('five-at-once selection returns one strongest prediction per distinct marke
   assert.equal(new Set(basket.map((setup) => setup.market)).size, 5);
   assert.deepEqual(basket.map((setup) => setup.market), ['M0', 'M1', 'M2', 'M3', 'M4']);
   assert.ok(basket.every((setup) => setup.direction === 'over' && setup.barrier === 4));
+});
+
+test('timed manual entry waits for sampled transition lift and positive quote economics', () => {
+  const base = { market: 'A', direction: 'over' as const, barrier: 4, estWin: .58, edge: .04, expectedROI: .06, consistency: .7, transitionProb: .58, transitionSamples: 30 };
+  assert.equal(assessTimedManualEntry(base).ready, true);
+  assert.match(assessTimedManualEntry({ ...base, transitionSamples: 12 }).reason, /12\/20/);
+  assert.match(assessTimedManualEntry({ ...base, transitionProb: .51 }).reason, /no validated lift/);
+  assert.match(assessTimedManualEntry({ ...base, edge: 0 }).reason, /edge/);
+  assert.match(assessTimedManualEntry({ ...base, expectedROI: 0 }).reason, /expected return/);
 });

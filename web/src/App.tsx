@@ -55,7 +55,7 @@ import {
   runGoldBacktest,
 } from './store';
 import './marketChooser.css';
-import { confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
+import { assessTimedManualEntry, confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'gold' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -464,6 +464,12 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
 
 /* ---------------- home ---------------- */
 
+interface TimedManualIntent extends ManualSetup {
+  stake: number;
+  armedAfterEpoch: number;
+  expiresAt: number;
+}
+
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const [startError, setStartError] = useState('');
@@ -478,6 +484,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [manualOverBarrier, setManualOverBarrier] = useState(0);
   const [manualUnderBarrier, setManualUnderBarrier] = useState(9);
   const [manualStakeText, setManualStakeText] = useState('');
+  const [timedManualSetup, setTimedManualSetup] = useState<ManualSetup | null>(null);
+  const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
+  const timedManualExecuting = useRef(false);
   const cooldownLeft = useBotCooldown();
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
 
@@ -574,10 +583,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     }
   };
 
-  const placeManual = async (
+  const executeManualNow = async (
     direction: 'over' | 'under',
     barrier = direction === 'under' ? 9 : 0,
     marketSymbol = market?.symbol,
+    stakeOverride = manualStake,
   ): Promise<boolean> => {
     if (guest || !marketSymbol || manualBusy) return false;
     if (openAccountTrade) {
@@ -591,7 +601,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualMsg('');
     setManualError(false);
     try {
-      const stake = manualStake;
+      const stake = stakeOverride;
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
@@ -607,6 +617,80 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       setManualBusy(false);
     }
   };
+
+  const placeManual = async (
+    direction: 'over' | 'under',
+    barrier = direction === 'under' ? 9 : 0,
+    marketSymbol = market?.symbol,
+  ): Promise<boolean> => {
+    if (!marketSymbol) return false;
+    const shouldTimeEntry = timedManualSetup?.market === marketSymbol
+      && timedManualSetup.direction === direction
+      && timedManualSetup.barrier === barrier;
+    if (!shouldTimeEntry) return executeManualNow(direction, barrier, marketSymbol);
+    if (openAccountTrade) {
+      setManualError(true);
+      setManualMsg(accountLockMessage);
+      return false;
+    }
+    const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
+    setPendingManualIntent({
+      ...timedManualSetup,
+      stake: manualStake,
+      armedAfterEpoch: selectedMarket?.lastEpoch ?? 0,
+      expiresAt: Date.now() + 3 * 60_000,
+    });
+    setManualError(false);
+    setManualMsg(`${sideLabel(direction, barrier)} armed · waiting up to 3 minutes for a validated fresh entry digit`);
+    return true;
+  };
+
+  useEffect(() => {
+    if (!pendingManualIntent || timedManualExecuting.current) return;
+    if (Date.now() >= pendingManualIntent.expiresAt) {
+      setPendingManualIntent(null);
+      setManualError(true);
+      setManualMsg('Timed entry expired without a validated setup · no contract was purchased');
+      return;
+    }
+    if (openAccountTrade) {
+      setPendingManualIntent(null);
+      setManualError(true);
+      setManualMsg(accountLockMessage);
+      return;
+    }
+    const liveMarket = s.markets.find((item) => item.symbol === pendingManualIntent.market);
+    const candidate = exactCandidateForSetup(
+      s.signal?.signal.candidates ?? [],
+      pendingManualIntent.market,
+      pendingManualIntent.direction,
+      pendingManualIntent.barrier,
+    );
+    const assessment = assessTimedManualEntry(candidate);
+    const freshTick = Boolean(liveMarket && liveMarket.lastEpoch > pendingManualIntent.armedAfterEpoch);
+    if (!freshTick || !assessment.ready) {
+      const seconds = Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000));
+      setManualMsg(`${sideLabel(pendingManualIntent.direction, pendingManualIntent.barrier)} armed · ${freshTick ? assessment.reason : 'waiting for the next fresh digit'} · ${seconds}s left`);
+      return;
+    }
+    timedManualExecuting.current = true;
+    const intent = pendingManualIntent;
+    setPendingManualIntent(null);
+    setManualMsg(`${sideLabel(intent.direction, intent.barrier)} trigger confirmed · requesting live quote`);
+    void executeManualNow(intent.direction, intent.barrier, intent.market, intent.stake)
+      .finally(() => { timedManualExecuting.current = false; });
+  }, [pendingManualIntent, openAccountTrade, s.markets, s.signal]);
+
+  useEffect(() => {
+    if (!pendingManualIntent) return;
+    const timer = window.setInterval(() => {
+      if (Date.now() < pendingManualIntent.expiresAt) return;
+      setPendingManualIntent(null);
+      setManualError(true);
+      setManualMsg('Timed entry expired without a validated setup · no contract was purchased');
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [pendingManualIntent]);
 
   const placeManualBasket = async (setups: ManualSetup[]): Promise<boolean> => {
     if (guest || manualBusy || automation || setups.length !== 5) return false;
@@ -740,10 +824,26 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               manualOverBarrier={manualOverBarrier}
               manualUnderBarrier={manualUnderBarrier}
               manualStake={manualStakeText}
-              onManualStake={setManualStakeText}
-              onManualDirection={setManualDirection}
-              onManualBarrier={(direction, barrier) => direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier)}
-              onManualMarket={selectMarket}
+              onManualStake={(stake) => {
+                setPendingManualIntent(null);
+                setManualStakeText(stake);
+              }}
+              onManualDirection={(direction) => {
+                setTimedManualSetup(null);
+                setPendingManualIntent(null);
+                setManualDirection(direction);
+              }}
+              onManualBarrier={(direction, barrier) => {
+                setTimedManualSetup(null);
+                setPendingManualIntent(null);
+                direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier);
+              }}
+              onManualMarket={(symbol) => {
+                setTimedManualSetup(null);
+                setPendingManualIntent(null);
+                selectMarket(symbol);
+              }}
+              onManualTimedSetup={setTimedManualSetup}
               onManualBasket={placeManualBasket}
             />
 
@@ -752,21 +852,32 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                 <div class="side-selector">
                   <button
                     class={`side-btn over${manualDirection === 'over' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy || startLocked}
+                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent)}
                     onClick={() => void placeManual('over', manualOverBarrier)}
                   >
-                    <span class="side-name">Over {manualOverBarrier}</span>
+                    <span class="side-name">{pendingManualIntent?.direction === 'over' ? 'Waiting entry...' : `Over ${manualOverBarrier}`}</span>
                     <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(manualStake, s.session?.currency)}</span>
                   </button>
                   <button
                     class={`side-btn under${manualDirection === 'under' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy || startLocked}
+                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent)}
                     onClick={() => void placeManual('under', manualUnderBarrier)}
                   >
-                    <span class="side-name">Under {manualUnderBarrier}</span>
+                    <span class="side-name">{pendingManualIntent?.direction === 'under' ? 'Waiting entry...' : `Under ${manualUnderBarrier}`}</span>
                     <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(manualStake, s.session?.currency)}</span>
                   </button>
                   <div class={`manual-msg${manualError ? ' error' : ''}`} aria-live="polite">{manualMsg}</div>
+                  {pendingManualIntent && (
+                    <button
+                      type="button"
+                      class="manual-cancel-entry"
+                      onClick={() => {
+                        setPendingManualIntent(null);
+                        setManualError(false);
+                        setManualMsg('Timed manual entry cancelled - no contract was purchased');
+                      }}
+                    >Cancel queued entry</button>
+                  )}
                 </div>
               )}
             </div>
@@ -1236,6 +1347,7 @@ function InlineMarketChooser({
   onDirection,
   onBarrier,
   onMarket,
+  onTimedSetup,
   onStake,
   onBasket,
   onClose,
@@ -1249,6 +1361,7 @@ function InlineMarketChooser({
   onDirection: (direction: 'over' | 'under') => void;
   onBarrier: (direction: 'over' | 'under', barrier: number) => void;
   onMarket: (symbol: string) => void;
+  onTimedSetup: (setup: ManualSetup) => void;
   onStake: (stake: string) => void;
   onBasket: (setups: ManualSetup[]) => Promise<boolean>;
   onClose: () => void;
@@ -1285,6 +1398,7 @@ function InlineMarketChooser({
     onDirection(strongest.direction);
     onBarrier(strongest.direction, barrier);
     onMarket(strongest.market);
+    onTimedSetup(strongest);
     setRankedSymbols(
       rankMarketsForSetup(markets, candidates, strongest.direction, barrier)
         .map((market) => market.symbol),
@@ -1296,6 +1410,7 @@ function InlineMarketChooser({
     onDirection(strongest.direction);
     onBarrier(strongest.direction, strongest.barrier);
     onMarket(strongest.market);
+    onTimedSetup(strongest);
     setRankedSymbols(
       rankMarketsForSetup(markets, candidates, strongest.direction, strongest.barrier)
         .map((market) => market.symbol),
@@ -1352,7 +1467,7 @@ function InlineMarketChooser({
           <button type="button" class="secondary" onClick={useStrongest} disabled={!ranked.length}>Best overall</button>
         </div>
       </div>
-      <p>Use the existing buttons below to place this setup.</p>
+      <p>Best selections arm a timed entry below. The order waits for a fresh, validated digit pattern instead of firing immediately.</p>
       </> : <>
         <div class="inline-basket-list" aria-label="Five basket predictions">
           {basket.map((setup, index) => {
@@ -1544,6 +1659,7 @@ function DecisionHero({
   onManualDirection,
   onManualBarrier,
   onManualMarket,
+  onManualTimedSetup,
   onManualStake,
   onManualBasket,
 }: {
@@ -1571,6 +1687,7 @@ function DecisionHero({
   onManualDirection: (direction: 'over' | 'under') => void;
   onManualBarrier: (direction: 'over' | 'under', barrier: number) => void;
   onManualMarket: (symbol: string) => void;
+  onManualTimedSetup: (setup: ManualSetup) => void;
   onManualStake: (stake: string) => void;
   onManualBasket: (setups: ManualSetup[]) => Promise<boolean>;
 }): JSX.Element {
@@ -1685,6 +1802,7 @@ function DecisionHero({
           onDirection={onManualDirection}
           onBarrier={onManualBarrier}
           onMarket={onManualMarket}
+          onTimedSetup={onManualTimedSetup}
           onStake={onManualStake}
           onBasket={onManualBasket}
           onClose={onCloseMarketChooser}

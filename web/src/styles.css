@@ -1591,7 +1591,7 @@ button {
 .side-selector {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: minmax(64px, auto) 28px;
+    grid-template-rows: minmax(64px, auto) minmax(28px, auto) auto;
     background: var(--surface-2);
     overflow: hidden;
 }
@@ -1732,6 +1732,29 @@ button {
 
 .manual-msg.error {
     color: var(--red);
+}
+
+.manual-cancel-entry {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: center;
+    margin: 0 0 9px;
+    padding: 5px 10px;
+    border: 1px solid rgba(167, 139, 250, .32);
+    border-radius: 999px;
+    color: var(--purple-light);
+    background: rgba(139, 92, 246, .08);
+    font: inherit;
+    font-size: 10px;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.manual-cancel-entry:hover,
+.manual-cancel-entry:focus-visible {
+    border-color: var(--purple-light);
+    background: rgba(139, 92, 246, .16);
+    outline: none;
 }
 
 .betting-status {
@@ -2463,7 +2486,7 @@ button.activity-row {
     }
 
     .side-selector {
-        grid-template-rows: minmax(72px, auto) 32px;
+        grid-template-rows: minmax(72px, auto) minmax(32px, auto) auto;
         border-radius: 12px;
     }
 

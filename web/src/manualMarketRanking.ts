@@ -12,6 +12,32 @@ export interface ManualSignalCandidate {
   barrier: number;
   estWin: number;
   edge: number;
+  expectedROI?: number;
+  consistency?: number;
+  transitionProb?: number;
+  transitionSamples?: number;
+}
+
+export interface TimedManualEntryAssessment {
+  ready: boolean;
+  reason: string;
+}
+
+/**
+ * Manual "best" selections are rankings, not immediate entry permission.
+ * A timed entry requires a sampled current-digit transition row plus quoted
+ * positive edge/ROI. This deliberately avoids hard-coded digit folklore.
+ */
+export function assessTimedManualEntry(candidate: ManualSignalCandidate | null | undefined): TimedManualEntryAssessment {
+  if (!candidate) return { ready: false, reason: 'waiting for an exact live scanner candidate' };
+  const base = theoreticalWinForSetup(candidate.direction, candidate.barrier);
+  const samples = candidate.transitionSamples ?? 0;
+  if (samples < 20) return { ready: false, reason: `learning this entry digit (${samples}/20 transition samples)` };
+  if ((candidate.transitionProb ?? 0) < base + .03) return { ready: false, reason: 'current entry digit has no validated lift over baseline' };
+  if (candidate.edge < .01) return { ready: false, reason: 'quoted edge is below 1%' };
+  if ((candidate.expectedROI ?? 0) < .01) return { ready: false, reason: 'expected return is below 1%' };
+  if ((candidate.consistency ?? 0) < .55) return { ready: false, reason: 'short and long evidence are not consistent yet' };
+  return { ready: true, reason: `entry row validated across ${samples} transitions` };
 }
 
 export interface ManualSetup {
