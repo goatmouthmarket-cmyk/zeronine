@@ -824,6 +824,22 @@ button {
 @media (prefers-reduced-motion: reduce) { .gold-tabs button { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .gold-connect-button, .gold-disconnect-button, .gold-account-option { transition: none; } }
 
+/* Keep the live chart and order controls together in short desktop viewports. */
+@media (min-width: 861px) and (max-height: 900px) {
+  .gold-page { padding-bottom: 18px; }
+  .gold-page-header { align-items: center; padding-bottom: 10px; }
+  .gold-brand-logo { height: 48px; }
+  .gold-page-header .subtitle { margin-top: 2px; font-size: 10px; }
+  .gold-trade-head { padding-top: 12px; padding-bottom: 12px; }
+  .gold-trade-suggestion { min-height: 48px; padding-block: 4px; }
+  .gold-trade-suggestion strong { font-size: 17px; }
+  .gold-trade-live, .gold-trade-chart-wrap { min-height: 245px; }
+  .gold-trade-chart-wrap { padding-block: 10px; }
+  .gold-trade-readout { padding-block: 13px; }
+  .gold-live-actions { margin-top: 12px; }
+  .gold-trade-order, .gold-trade-order.gold-deriv-order { gap: 10px; padding-block: 11px; }
+}
+
 .mom-hero,
 .mom-auto-rail,
 .mom-window,

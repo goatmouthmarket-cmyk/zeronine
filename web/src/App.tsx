@@ -5361,7 +5361,7 @@ const modelWeights = [
           <button class="gold-live-close" type="button" disabled={!canClose} onClick={() => void close()}>
             <Icon name="x" size={14} />{closing ? 'Cashing out' : openGoldTrade ? 'Close / Cash out' : 'No open trade'}
           </button>
-          <div class="gold-contract-details" aria-label="Gold contract details">
+          {(activeTrade || purchase || openGoldTrade) && <div class="gold-contract-details" aria-label="Gold contract details">
             <div><span>Side</span><b class={contractSide === 'SELL' ? 'sell' : contractSide === 'BUY' ? 'buy' : ''}>{contractSide ?? '—'}</b></div>
             <div><span>Stake</span><b>{activeTrade || purchase ? fmtMoney(contractStake, currency) : '—'}</b></div>
             <div><span>Multiplier</span><b>{activeTrade || purchase ? `x${contractMultiplier}` : '—'}</b></div>
@@ -5370,7 +5370,7 @@ const modelWeights = [
             <div><span>Cash-out value</span><b>{liveSellPrice == null ? '—' : fmtMoney(liveSellPrice, currency)}</b></div>
             <div class="contract-id"><span>Contract</span><b title={trackedContractId}>{trackedContractId || '—'}</b></div>
             <div><span>Status</span><b>{activeTrade?.status ?? (purchase ? 'pending' : '—')}</b></div>
-          </div>
+          </div>}
         </div>
       </div>
 
