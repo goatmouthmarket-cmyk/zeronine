@@ -56,6 +56,7 @@ import {
 } from './store';
 import './marketChooser.css';
 import { assessTimedManualEntry, confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
+import { assessGoldTradeGuidance } from './goldTradeGuidance';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'gold' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -4323,6 +4324,7 @@ function GoldPage(): JSX.Element {
           automation={store.automation}
           settings={store.settings}
           contract={store.contract}
+          contracts={store.contracts}
           owner={store.owner === true}
         />}
     </div>
@@ -4956,6 +4958,7 @@ function GoldDerivTradeWorkspace({
   automation,
   settings,
   contract,
+  contracts,
 }: {
   state: GoldModuleState | null;
   owner: boolean;
@@ -4965,6 +4968,7 @@ function GoldDerivTradeWorkspace({
   automation: AutomationState | null;
   settings: Settings | null;
   contract: ContractEvt | null;
+  contracts: Record<string, ContractEvt>;
 }): JSX.Element {
   const diagnostics = state?.diagnostics ?? null;
   const deriv = state?.deriv ?? null;
@@ -5016,7 +5020,9 @@ function GoldDerivTradeWorkspace({
   const canClose = owner && demoConnected && Boolean(openGoldTrade?.contract_id) && !closing;
   const activeTrade = openGoldTrade ?? (purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null);
   const trackedContractId = activeTrade?.contract_id || purchase?.contractId || purchase?.contract_id || closed?.contractId || '';
-  const matchingContract = trackedContractId && contract?.contractId === trackedContractId ? contract : null;
+  const matchingContract = trackedContractId
+    ? contracts[trackedContractId] ?? (contract?.contractId === trackedContractId ? contract : null)
+    : null;
   const liveContractProfit = Number.isFinite(Number(matchingContract?.profit)) ? Number(matchingContract?.profit) : undefined;
   const contractPnl = activeTrade && ['won', 'lost', 'push'].includes(activeTrade.status)
     ? activeTrade.profit
@@ -5120,6 +5126,16 @@ const modelWeights = [
                     : sideFromSignal
                       ? `Confirmed five-minute ${sideFromSignal} scalp forecast · entry window open`
                       : 'Waiting for two completed-candle confirmations';
+  const tradeGuidance = assessGoldTradeGuidance({
+    open: Boolean(openGoldTrade || purchase),
+    side: contractSide,
+    pnl: contractPnl,
+    takeProfit,
+    stopLoss,
+    forecastSide: sideFromSignal,
+    forecastActionable: signal?.actionable === true && signalEntryOpen,
+    forecastConfidence: signal?.confidence ?? 0,
+  });
 
   useEffect(() => {
     if (sideFromSignal) setSide(sideFromSignal);
@@ -5279,6 +5295,13 @@ const modelWeights = [
           <span>Live contract P&L</span>
           <strong aria-live="polite">{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
           <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, currency)}` : liveSellPrice == null ? trackedContractId || 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, currency)}`}</small>
+          {(openGoldTrade || purchase) && (
+            <div class={`gold-trade-guidance ${tradeGuidance.tone}`} aria-live="polite">
+              <span>Live trade guidance</span>
+              <strong>{tradeGuidance.action}</strong>
+              <small>{tradeGuidance.reason}</small>
+            </div>
+          )}
           <div class="gold-trade-direction gold-live-actions" aria-label="Place a Deriv Gold trade">
             <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
             <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>

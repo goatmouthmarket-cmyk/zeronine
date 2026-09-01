@@ -759,6 +759,16 @@ button {
 .gold-live-actions button:disabled { cursor: not-allowed; opacity: .62; }
 .gold-live-close { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; height: 36px; margin-top: 9px; border: 1px solid rgba(145,151,166,.32); border-radius: 4px; color: var(--text); background: rgba(145,151,166,.1); font: inherit; font-size: 10px; font-weight: 850; cursor: pointer; transition: border-color .16s ease, background .16s ease; }.gold-live-close:hover:not(:disabled) { border-color: rgba(244,201,107,.58); background: rgba(244,201,107,.11); }.gold-live-close:disabled { cursor: not-allowed; opacity: .42; }
 .gold-contract-details { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-top: 15px; border-top: 1px solid var(--border); border-left: 1px solid var(--border); }.gold-contract-details > div { min-width: 0; padding: 8px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }.gold-contract-details span { display: block; color: var(--muted-2); font-size: 7px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }.gold-contract-details b { display: block; overflow: hidden; margin-top: 4px; color: var(--text); font-size: 9px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }.gold-contract-details b.buy { color: #f4c96b; }.gold-contract-details b.sell { color: var(--red); }.gold-contract-details .contract-id { grid-column: 1 / -1; }.gold-contract-details .contract-id b { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.gold-trade-guidance { display: grid; gap: 4px; margin-top: 14px; padding: 11px 12px; border: 1px solid var(--border); border-left: 3px solid var(--muted); border-radius: 5px; background: rgba(145,151,166,.055); text-align: left; }
+.gold-trade-guidance span { color: var(--muted-2); font-size: 7px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.gold-trade-guidance strong { font-size: 16px; letter-spacing: .02em; }
+.gold-trade-guidance small { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.gold-trade-guidance.positive { border-left-color: var(--green); background: rgba(27,207,125,.055); }
+.gold-trade-guidance.positive strong { color: var(--green); }
+.gold-trade-guidance.warning { border-left-color: #f4c96b; background: rgba(244,201,107,.06); }
+.gold-trade-guidance.warning strong { color: #f4c96b; }
+.gold-trade-guidance.danger { border-left-color: var(--red); background: rgba(255,82,99,.06); }
+.gold-trade-guidance.danger strong { color: var(--red); }
 .gold-connection { border-bottom: 1px solid var(--border); }
 .gold-connection-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, .5fr); min-height: 172px; }
 .gold-connection-intro > div:first-child { display: grid; align-content: center; min-width: 0; padding: 26px 28px 26px 2px; }

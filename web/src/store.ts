@@ -891,6 +891,7 @@ export interface State {
   decision: { decision: Decision; streak: number; debt: number; attempts: number; cycleStake: number } | null;
   hold: { reason: string } | null;
   contract: ContractEvt | null;
+  contracts: Record<string, ContractEvt>;
   botCooldownUntil: number;
   testlab: TestLabActive | null;
   testRuns: TestRunRow[];
@@ -926,6 +927,7 @@ const initial: State = {
   decision: null,
   hold: null,
   contract: null,
+  contracts: {},
   botCooldownUntil: 0,
   testlab: null,
   testRuns: [],
@@ -1158,8 +1160,8 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
     }
     case 'contract': {
       const update = (evt.update ?? {}) as Record<string, unknown>;
-      const previous = state.contract;
       const contractId = evt.contractId as string | undefined;
+      const previous = contractId ? state.contracts[contractId] ?? state.contract : state.contract;
       const sameContract = Boolean(contractId && previous?.contractId === contractId);
       const eventSettled = typeof evt.settled === 'boolean' ? evt.settled : typeof update.settled === 'boolean' ? update.settled : undefined;
       const eventResult = evt.result as string | undefined;
@@ -1219,6 +1221,10 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
         },
       };
       patch.contract = c;
+      if (contractId) {
+        const retained = [...Object.entries(state.contracts).filter(([id]) => id !== contractId), [contractId, c] as const].slice(-12);
+        patch.contracts = Object.fromEntries(retained);
+      }
       if (c.result) {
         const contractId = String(evt.contractId ?? '');
         const tradeId = Number(evt.tradeId ?? 0);
@@ -1537,7 +1543,7 @@ export async function oauthStart(): Promise<string> {
 export async function logout(): Promise<void> {
   await api('/api/auth/logout', { method: 'POST' });
   signalStabilizer.reset();
-  set({ session: null, automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null, ledgerEntries: [] });
+  set({ session: null, automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null, contracts: {}, ledgerEntries: [] });
 }
 
 export async function startAutomation(opts?: {
@@ -1778,7 +1784,7 @@ export async function switchDerivAccount(accountId: string): Promise<SessionInfo
     body: JSON.stringify({ accountId }),
   });
   signalStabilizer.reset();
-  set({ session: res.session, trades: [], performance: null, recovery: null, contract: null, decision: null });
+  set({ session: res.session, trades: [], performance: null, recovery: null, contract: null, contracts: {}, decision: null });
   await refreshTrades();
   return res.session;
 }
