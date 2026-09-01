@@ -43,6 +43,12 @@ export interface GoldSentimentSnapshot {
   socialScore: number;
   /** Blended crowd score in [-1, 1]; news weighted above social. */
   combinedScore: number;
+  /** Raw fresh items before cross-source headline deduplication. */
+  rawCount: number;
+  /** Repeated syndicated headlines removed from score amplification. */
+  duplicateCount: number;
+  /** Distinct healthy/evidenced publishers represented in the snapshot. */
+  sourceCount: number;
   newsCount: number;
   socialCount: number;
   /** Age of the newest item per kind, in milliseconds. */
@@ -107,21 +113,64 @@ function clampScore(value: number): number {
 
 /** Scores one headline or post body. Pure, deterministic, explainable. */
 export function scoreSentimentText(text: string): { score: number; drivers: string[] } {
-  const haystack = ` ${text.toLowerCase().replace(/\s+/g, ' ')} `;
-  const bullish: string[] = [];
-  const bearish: string[] = [];
-  for (const phrase of BULLISH_PHRASES) {
-    if (haystack.includes(phrase)) bullish.push(phrase);
+  const haystack = ` ${text.toLowerCase().replace(/[^a-z0-9$%.-]+/g, ' ').replace(/\s+/g, ' ')} `;
+  const candidates = [
+    ...BULLISH_PHRASES.map((phrase) => ({ phrase, direction: 1 })),
+    ...BEARISH_PHRASES.map((phrase) => ({ phrase, direction: -1 })),
+  ].sort((left, right) => right.phrase.length - left.phrase.length);
+  const occupied: Array<[number, number]> = [];
+  const matched: Array<{ phrase: string; direction: number }> = [];
+  for (const candidate of candidates) {
+    let from = 0;
+    while (from < haystack.length) {
+      const index = haystack.indexOf(candidate.phrase, from);
+      if (index < 0) break;
+      const end = index + candidate.phrase.length;
+      from = end;
+      if (occupied.some(([start, finish]) => index < finish && end > start)) continue;
+      occupied.push([index, end]);
+      const prefix = haystack.slice(Math.max(0, index - 32), index);
+      const negated = /(?:\bno\b|\bnot\b|\bwithout\b|\bunlikely\b|\brules? out\b|\bdenies?\b)\s+(?:\w+\s+){0,3}$/.test(prefix);
+      matched.push({ phrase: `${negated ? 'negated ' : ''}${candidate.phrase}`, direction: negated ? -candidate.direction : candidate.direction });
+    }
   }
-  for (const phrase of BEARISH_PHRASES) {
-    if (haystack.includes(phrase)) bearish.push(phrase);
+  // Capture common forecast language that a fixed phrase list otherwise
+  // misses, while keeping the result explainable and Gold-specific.
+  if (/\bgold(?: price)?\b.{0,36}\b(?:will|expected to|forecast to|set to|likely to|could)\b.{0,18}\b(?:rise|rally|climb|gain|surge|hit|reach|break above)\b/.test(haystack)) {
+    matched.push({ phrase: 'forward gold upside', direction: 1 });
   }
-  const total = bullish.length + bearish.length;
-  if (total === 0) return { score: 0, drivers: [] };
+  if (/\bgold(?: price)?\b.{0,36}\b(?:will|expected to|forecast to|set to|likely to|could)\b.{0,18}\b(?:fall|drop|decline|slide|weaken|retreat|break below)\b/.test(haystack)) {
+    matched.push({ phrase: 'forward gold downside', direction: -1 });
+  }
+  if (matched.length === 0) return { score: 0, drivers: [] };
+  const raw = matched.reduce((sum, item) => sum + item.direction, 0) / matched.length;
+  const forwardLooking = /\b(?:will|forecast|outlook|expected|expects|likely|set to|target)\b/.test(haystack);
+  const uncertain = /\b(?:may|might|could|uncertain|mixed|but|however)\b/.test(haystack);
+  const confidence = forwardLooking ? 1 : uncertain ? .72 : .85;
   return {
-    score: clampScore((bullish.length - bearish.length) / total),
-    drivers: [...bullish, ...bearish],
+    score: clampScore(raw * confidence),
+    drivers: matched.map((item) => item.phrase),
   };
+}
+
+function canonicalHeadline(title: string): string {
+  return title.toLowerCase()
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\b(?:breaking|update|analysis|opinion|live)\b/g, '')
+    .replace(/[^a-z0-9$%]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+}
+
+function dedupeSyndicatedItems(items: GoldSentimentItem[]): GoldSentimentItem[] {
+  const unique = new Map<string, GoldSentimentItem>();
+  for (const item of items) {
+    const key = `${item.kind}:${canonicalHeadline(item.title)}`;
+    const current = unique.get(key);
+    if (!current || item.publishedAt > current.publishedAt || Math.abs(item.score) > Math.abs(current.score)) unique.set(key, item);
+  }
+  return [...unique.values()];
 }
 
 function decayWeight(ageMs: number, halfLifeMs: number): number {
@@ -175,7 +224,8 @@ export function buildSentimentSnapshot(
   const newsBlend = Math.min(1, Math.max(0, options.newsBlend ?? .65));
   const maxTopItems = options.maxTopItems ?? 8;
 
-  const fresh = items.filter((item) => Number.isFinite(item.publishedAt) && now - item.publishedAt <= windowMs);
+  const rawFresh = items.filter((item) => Number.isFinite(item.publishedAt) && now - item.publishedAt <= windowMs);
+  const fresh = dedupeSyndicatedItems(rawFresh);
   const news = fresh.filter((item) => item.kind === 'news');
   const social = fresh.filter((item) => item.kind === 'social');
   const newsAggregate = aggregate(news, newsHalfLifeMs, now);
@@ -196,6 +246,9 @@ export function buildSentimentSnapshot(
     newsScore: round(newsAggregate.score),
     socialScore: round(socialAggregate.score),
     combinedScore: round(combinedScore),
+    rawCount: rawFresh.length,
+    duplicateCount: rawFresh.length - fresh.length,
+    sourceCount: new Set(fresh.map((item) => item.source)).size,
     newsCount: newsAggregate.count,
     socialCount: socialAggregate.count,
     newsFreshnessMs: Number.isFinite(newsAggregate.freshnessMs) ? Math.max(0, round(newsAggregate.freshnessMs)) : Number.POSITIVE_INFINITY,

@@ -702,6 +702,9 @@ export interface GoldSentimentSnapshotState {
   newsScore: number;
   socialScore: number;
   combinedScore: number;
+  rawCount?: number;
+  duplicateCount?: number;
+  sourceCount?: number;
   newsCount: number;
   socialCount: number;
   newsFreshnessMs: number;

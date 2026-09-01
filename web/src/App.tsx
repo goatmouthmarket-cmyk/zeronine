@@ -5508,8 +5508,16 @@ function GoldSentimentPanel({ state }: { state: GoldModuleState | null }): JSX.E
   const snapshot = worker?.snapshot ?? state?.research.state?.sentiment ?? null;
   const signalSentiment = state?.research.state?.signal?.sentiment ?? null;
   if (!snapshot && !worker) return null;
-  const lean = snapshot?.combinedScore ? (snapshot.combinedScore >= 0.15 ? 'BULLISH' : snapshot.combinedScore <= -0.15 ? 'BEARISH' : 'NEUTRAL') : 'NEUTRAL';
-  const leanClass = lean.toLowerCase();
+  const combined = snapshot?.combinedScore ?? 0;
+  const outlook = combined >= .15
+    ? { label: 'STRONG BULLISH OUTLOOK', tone: 'bullish' }
+    : combined >= .05
+      ? { label: 'LEANING BULLISH', tone: 'bullish' }
+      : combined <= -.15
+        ? { label: 'STRONG BEARISH OUTLOOK', tone: 'bearish' }
+        : combined <= -.05
+          ? { label: 'LEANING BEARISH', tone: 'bearish' }
+          : { label: 'MIXED / LOW CONVICTION', tone: 'neutral' };
 
   const formatAge = (ms: number): string => {
     if (!Number.isFinite(ms)) return '—';
@@ -5523,19 +5531,28 @@ function GoldSentimentPanel({ state }: { state: GoldModuleState | null }): JSX.E
 
   const formatScore = (score: number): string => `${score >= 0 ? '+' : ''}${(score * 100).toFixed(1)}%`;
 
-  const alignment = signalSentiment?.alignment ?? 'NEUTRAL';
+  const priceDirection = state?.research.state?.signal?.direction ?? 'WAIT';
+  const alignment = !signalSentiment || priceDirection === 'WAIT'
+    ? 'AWAITING PRICE SIGNAL'
+    : signalSentiment.alignment === 'ALIGNED'
+      ? 'PRICE CONFIRMS OUTLOOK'
+      : signalSentiment.alignment === 'CONFLICTING'
+        ? 'PRICE CONFLICTS'
+        : 'PRICE NOT CONFIRMED';
   const perfectSetup = signalSentiment?.perfectSetup ?? false;
+  const modelTilt = ((snapshot?.newsScore ?? 0) * .10 + (snapshot?.socialScore ?? 0) * .05) * 100;
+  const effectiveItems = (snapshot?.newsCount ?? 0) + (snapshot?.socialCount ?? 0);
 
   return (
     <section class="gold-sentiment-panel" aria-label="Gold news and social sentiment">
       <div class="gold-sentiment-head">
         <span class="gold-kicker">News & social sentiment</span>
-        <span class={`gold-sentiment-lean ${leanClass}`}>{lean}</span>
+        <span class={`gold-sentiment-lean ${outlook.tone}`}>{outlook.label}</span>
         <span class="gold-sentiment-freshness">{worker ? `worker ${worker.running ? 'running' : 'stopped'}` : 'from research'} · updated {formatAge(Date.now() - (snapshot?.generatedAt ?? Date.now()))} ago</span>
       </div>
       <div class="gold-sentiment-grid">
         <div class="gold-sentiment-score">
-          <span class="gold-sentiment-label">Combined</span>
+          <span class="gold-sentiment-label">Market outlook</span>
           <strong>{formatScore(snapshot?.combinedScore ?? 0)}</strong>
         </div>
         <div class="gold-sentiment-score">
@@ -5549,10 +5566,15 @@ function GoldSentimentPanel({ state }: { state: GoldModuleState | null }): JSX.E
           <small>{formatAge(snapshot?.socialFreshnessMs ?? 0)} ago</small>
         </div>
         <div class="gold-sentiment-score">
-          <span class="gold-sentiment-label">Alignment</span>
+          <span class="gold-sentiment-label">Price agreement</span>
           <strong>{alignment}</strong>
           {perfectSetup && <span class="gold-perfect-inline">Perfect setup</span>}
         </div>
+      </div>
+      <div class="gold-sentiment-explainer">
+        <strong>{effectiveItems} unique items from {snapshot?.sourceCount ?? snapshot?.sources.length ?? 0} sources</strong>
+        <span>{snapshot?.duplicateCount ?? 0} syndicated duplicate{(snapshot?.duplicateCount ?? 0) === 1 ? '' : 's'} removed</span>
+        <span>Current model tilt {modelTilt >= 0 ? '+' : ''}{modelTilt.toFixed(1)} points - sentiment carries 15% maximum model weight</span>
       </div>
       {snapshot?.topItems?.length && (
         <div class="gold-sentiment-headlines">

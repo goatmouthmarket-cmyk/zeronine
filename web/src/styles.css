@@ -715,6 +715,10 @@ button {
 .gold-sentiment-label { display: block; color: var(--muted); font-size: 7px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .gold-sentiment-score strong { display: block; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
 .gold-sentiment-score small { display: block; color: var(--muted-2); font-size: 7px; margin-top: 2px; }
+.gold-sentiment-explainer { display: flex; flex-wrap: wrap; gap: 7px 16px; padding: 9px 4px 12px; border-top: 1px solid rgba(255,255,255,.04); color: var(--muted); font-size: 8px; line-height: 1.4; }
+.gold-sentiment-explainer strong { color: var(--text); font-size: 8px; }
+.gold-sentiment-explainer span + span { position: relative; }
+.gold-sentiment-explainer span + span::before { content: "\2022"; position: absolute; left: -10px; color: var(--muted-2); }
 .gold-perfect-inline { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 3px; font-size: 7px; font-weight: 850; color: #191206; background: #f4c96b; text-transform: uppercase; letter-spacing: .04em; }
 .gold-sentiment-drivers { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px 12px; }
 .gold-sentiment-drivers .gold-kicker { margin-right: 8px; }

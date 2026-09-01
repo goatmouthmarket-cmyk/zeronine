@@ -34,6 +34,15 @@ test('scoreSentimentText handles mixed bullish and bearish phrases', () => {
   assert.ok(result.drivers.includes('strong dollar'));
 });
 
+test('scoreSentimentText understands negation, overlap, and forward Gold outlook language', () => {
+  const negated = scoreSentimentText('Fed says there will be no rate cuts this year');
+  assert.ok(negated.score < 0, 'no rate cuts is bearish instead of double-counting rate cut');
+  assert.equal(negated.drivers.filter((driver) => driver.includes('rate cut')).length, 1, 'overlapping phrases count once');
+  const forecast = scoreSentimentText('Gold price is expected to reach a new record as demand builds');
+  assert.ok(forecast.score > 0.5);
+  assert.ok(forecast.drivers.includes('forward gold upside'));
+});
+
 test('buildSentimentSnapshot aggregates news and social with recency decay', () => {
   const recentNews: GoldSentimentItem = {
     id: 'src:recent', kind: 'news', source: 'google-news', title: 'Rate cut coming', url: null,
@@ -96,6 +105,17 @@ test('buildSentimentSnapshot blends news and social with configured weight', () 
   ];
   const snap = buildSentimentSnapshot([news, social], sources, { now: NOW, newsBlend: 0.65 });
   assert.ok(snap.combinedScore > 0 && snap.combinedScore < 1, 'blend respects news weight');
+});
+
+test('buildSentimentSnapshot removes syndicated duplicate headlines across sources', () => {
+  const duplicateA: GoldSentimentItem = { id: 'a', kind: 'news', source: 'wire-a', title: 'Gold expected to rise on rate cuts', url: null, publishedAt: NOW, score: 1, drivers: ['rate cuts'], fetchedAt: NOW };
+  const duplicateB: GoldSentimentItem = { ...duplicateA, id: 'b', source: 'wire-b', publishedAt: NOW - 1_000 };
+  const independent: GoldSentimentItem = { id: 'c', kind: 'news', source: 'wire-c', title: 'Central banks increase gold demand', url: null, publishedAt: NOW, score: .8, drivers: ['central bank buying'], fetchedAt: NOW };
+  const snap = buildSentimentSnapshot([duplicateA, duplicateB, independent], [], { now: NOW });
+  assert.equal(snap.rawCount, 3);
+  assert.equal(snap.newsCount, 2);
+  assert.equal(snap.duplicateCount, 1);
+  assert.equal(snap.sourceCount, 2);
 });
 
 test('GoldSentimentWorker polls feeds and publishes snapshot', async () => {
