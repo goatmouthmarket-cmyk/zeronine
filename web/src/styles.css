@@ -769,6 +769,11 @@ button {
 .gold-trade-readout .gold-trade-guidance.warning strong { color: #f4c96b; }
 .gold-trade-guidance.danger { border-left-color: var(--red); background: rgba(255,82,99,.06); }
 .gold-trade-readout .gold-trade-guidance.danger strong { color: var(--red); }
+.gold-profit-lock { display: grid; gap: 3px; margin-top: 6px; padding-top: 7px; border-top: 1px solid rgba(145,151,166,.16); }
+.gold-profit-lock b { color: var(--muted-2); font-size: 8px; letter-spacing: .04em; text-transform: uppercase; }
+.gold-profit-lock em { color: var(--muted); font-size: 8px; font-style: normal; line-height: 1.4; }
+.gold-profit-lock.armed b, .gold-profit-lock.armed em { color: #f4c96b; }
+.gold-profit-lock.triggered b, .gold-profit-lock.triggered em { color: var(--green); }
 .gold-connection { border-bottom: 1px solid var(--border); }
 .gold-connection-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, .5fr); min-height: 172px; }
 .gold-connection-intro > div:first-child { display: grid; align-content: center; min-width: 0; padding: 26px 28px 26px 2px; }

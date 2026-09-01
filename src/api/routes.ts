@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.ts';
 import { GoldRuntime, GoldRuntimeUnavailableError } from '../gold/runtime.ts';
 import { GoldOAuthError } from '../gold/onboarding.ts';
+import { assessGoldProfitProtection } from '../gold/profitProtection.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
@@ -1935,6 +1936,8 @@ function settleInBackground(
   if (activeSettlements.has(settlementKey)) return;
   activeSettlements.add(settlementKey);
   let attempts = 0;
+  let peakProfit = 0;
+  let profitLockSelling = false;
   const retry = (): void => {
     attempts += 1;
     const timer = setTimeout(settle, Math.min(10_000, 1_000 * 2 ** Math.min(attempts - 1, 3)));
@@ -1946,21 +1949,36 @@ function settleInBackground(
       activeSettlements.delete(settlementKey);
       return;
     }
+    const protectProfit = (current.contract_type === 'MULTUP' || current.contract_type === 'MULTDOWN')
+      && (/gold deriv manual/i.test(current.reason ?? '') || current.market === config.goldDerivSymbol);
     void client
-    .settleContract(contractId, (u) => hub.emit({
-      type: 'contract',
-      ts: Date.now(),
-      contractId: u.contractId,
-      tradeId,
-      phase: u.status,
-      profit: u.profit,
-      sellPrice: u.sellPrice,
-      buyPrice: u.buyPrice,
-      settled: u.settled,
-      status: u.status,
-      update: u,
-      manual: true,
-    }))
+    .settleContract(contractId, (u) => {
+      const session = getSession();
+      const protection = assessGoldProfitProtection({ stake, balance: session?.balance ?? 0, previousPeak: peakProfit, profit: u.profit });
+      peakProfit = protection.peak;
+      hub.emit({
+        type: 'contract',
+        ts: Date.now(),
+        contractId: u.contractId,
+        tradeId,
+        phase: u.status,
+        profit: u.profit,
+        sellPrice: u.sellPrice,
+        buyPrice: u.buyPrice,
+        settled: u.settled,
+        status: u.status,
+        update: u,
+        manual: true,
+        profitProtection: protectProfit ? protection : undefined,
+      });
+      if (!protectProfit || !protection.shouldClose || profitLockSelling || !(u.sellPrice > 0) || u.settled) return;
+      profitLockSelling = true;
+      hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, phase: 'profit lock cash-out', profit: u.profit, sellPrice: u.sellPrice, update: u, profitProtection: { ...protection, triggered: true } });
+      void client.sellContract(contractId, 0).catch((error) => {
+        profitLockSelling = false;
+        hub.emit({ type: 'contract', ts: Date.now(), contractId, tradeId, phase: 'profit lock retrying', error: String(error), profitProtection: protection });
+      });
+    })
     .then((outcome) => {
       if (outcome.settled) {
         activeSettlements.delete(settlementKey);

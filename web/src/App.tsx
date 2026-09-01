@@ -57,6 +57,7 @@ import {
 import './marketChooser.css';
 import { assessTimedManualEntry, confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
+import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
 type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'gold' | 'account';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
@@ -4997,6 +4998,8 @@ function GoldDerivTradeWorkspace({
   const [error, setError] = useState('');
   const [contractClock, setContractClock] = useState(Date.now());
   const manualMultiplierRef = useRef(false);
+  const profitGuardRef = useRef({ contractId: '', peak: 0, triggered: false });
+  const [profitGuard, setProfitGuard] = useState({ armed: false, peak: 0, floor: 0, activation: 0, triggered: false });
   const stake = Number(stakeText);
   const selectedMultiplier = Number(multiplierText);
   const takeProfit = takeProfitText.trim() ? Number(takeProfitText) : undefined;
@@ -5137,6 +5140,11 @@ const modelWeights = [
     forecastActionable: signal?.actionable === true && signalEntryOpen,
     forecastConfidence: signal?.confidence ?? 0,
   });
+  const displayedTradeGuidance = profitGuard.triggered
+    ? { action: 'CLOSE', reason: `Profit fell through the protected ${fmtMoney(profitGuard.floor, currency)} floor. Automatic cash-out is being requested.`, tone: 'danger' as const }
+    : profitGuard.armed
+      ? { action: 'PROTECT', reason: `Profit lock overrides the forecast: peak ${fmtMoney(profitGuard.peak, currency)}, protected floor ${fmtMoney(profitGuard.floor, currency)}.`, tone: 'warning' as const }
+      : tradeGuidance;
 
   useEffect(() => {
     if (sideFromSignal) setSide(sideFromSignal);
@@ -5218,8 +5226,8 @@ const modelWeights = [
     }
   };
 
-  const close = async () => {
-    if (!canClose) return;
+  const close = async (): Promise<boolean> => {
+    if (!canClose) return false;
     setClosing(true);
     setError('');
     try {
@@ -5227,12 +5235,45 @@ const modelWeights = [
       setPurchase(null);
       await refreshTrades();
       await loadGoldState();
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+      return false;
     } finally {
       setClosing(false);
     }
   };
+
+  useEffect(() => {
+    if (!openGoldTrade || !trackedContractId || contractPnl == null || !Number.isFinite(contractPnl)) {
+      if (profitGuardRef.current.contractId) {
+        profitGuardRef.current = { contractId: '', peak: 0, triggered: false };
+        setProfitGuard({ armed: false, peak: 0, floor: 0, activation: 0, triggered: false });
+      }
+      return;
+    }
+    if (profitGuardRef.current.contractId !== trackedContractId) {
+      profitGuardRef.current = { contractId: trackedContractId, peak: Math.max(0, contractPnl), triggered: false };
+    } else {
+      profitGuardRef.current.peak = Math.max(profitGuardRef.current.peak, contractPnl);
+    }
+    const protection = assessGoldProfitProtection({
+      stake: contractStake,
+      balance: Number(session?.balance ?? 0),
+      previousPeak: profitGuardRef.current.peak,
+      profit: contractPnl,
+    });
+    const { activation, peak, armed, floor } = protection;
+    profitGuardRef.current.peak = peak;
+    const triggered = profitGuardRef.current.triggered;
+    setProfitGuard((current) => current.armed === armed && current.peak === peak && current.floor === floor
+      && current.activation === activation && current.triggered === triggered
+      ? current
+      : { armed, peak, floor, activation, triggered });
+    if (protection.shouldClose && liveSellPrice != null) {
+      setProfitGuard({ armed, peak, floor, activation, triggered: true });
+    }
+  }, [closing, contractPnl, contractStake, liveSellPrice, openGoldTrade?.id, session?.balance, trackedContractId]);
 
   const runGoldModelBacktest = async () => {
     if (!owner || backtestBusy || state?.backtest.ready !== true) return;
@@ -5297,10 +5338,18 @@ const modelWeights = [
           <strong aria-live="polite">{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong>
           <small>{closed?.soldFor != null ? `Sold ${fmtMoney(closed.soldFor, currency)}` : liveSellPrice == null ? trackedContractId ? 'Cash-out quote updating' : 'Awaiting order' : `Sell ${fmtMoney(liveSellPrice, currency)}`}</small>
           {(openGoldTrade || purchase) && (
-            <div class={`gold-trade-guidance ${tradeGuidance.tone}`} aria-live="polite">
+            <div class={`gold-trade-guidance ${displayedTradeGuidance.tone}`} aria-live="polite">
               <span>Live trade guidance</span>
-              <strong>{tradeGuidance.action}</strong>
-              <small title={tradeGuidance.reason}>{tradeGuidance.reason}</small>
+              <strong>{displayedTradeGuidance.action}</strong>
+              <small title={displayedTradeGuidance.reason}>{displayedTradeGuidance.reason}</small>
+              <div class={`gold-profit-lock${profitGuard.armed ? ' armed' : ''}${profitGuard.triggered ? ' triggered' : ''}`}>
+                <b>Auto profit lock</b>
+                <em>{profitGuard.triggered
+                  ? 'Cash-out triggered after protected floor was crossed'
+                  : profitGuard.armed
+                    ? `Armed - peak ${fmtMoney(profitGuard.peak, currency)} - closes at or below ${fmtMoney(profitGuard.floor, currency)}`
+                    : `Building - arms at ${fmtMoney(profitGuard.activation, currency)} profit`}</em>
+              </div>
             </div>
           )}
           <div class="gold-trade-direction gold-live-actions" aria-label="Place a Deriv Gold trade">
