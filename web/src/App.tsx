@@ -486,6 +486,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [manualOverBarrier, setManualOverBarrier] = useState(0);
   const [manualUnderBarrier, setManualUnderBarrier] = useState(9);
   const [manualStakeText, setManualStakeText] = useState('');
+  const [timedManualSetup, setTimedManualSetup] = useState<ManualSetup | null>(null);
+  const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
+  const timedManualExecuting = useRef(false);
   const cooldownLeft = useBotCooldown();
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
 
@@ -6106,6 +6109,3 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
     </div>
   );
 }
-  const [timedManualSetup, setTimedManualSetup] = useState<ManualSetup | null>(null);
-  const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
-  const timedManualExecuting = useRef(false);
