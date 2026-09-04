@@ -29,6 +29,19 @@
   animation: inline-chooser-in .16s ease-out;
 }
 
+/* Manual setup owns the cockpit while open. Keeping the bot summary mounted
+   would consume the same fixed-height rail and push the actual order buttons
+   below the visible card. */
+.cockpit.manual-open {
+  display: block;
+  min-height: 0;
+  padding: 8px 0;
+  animation: cockpit-manual-in .18s cubic-bezier(.2,.8,.2,1);
+}
+.cockpit.manual-open .cockpit-primary { display: none; }
+.cockpit.manual-open .inline-market-chooser { width: 100%; min-height: 0; }
+.cockpit:not(.manual-open) .market-pulse { animation: cockpit-market-return .16s ease-out; }
+
 .inline-chooser-head,
 .inline-confidence,
 .inline-barrier {
@@ -187,7 +200,9 @@
   .inline-market-chooser > p { line-height: 10px; }
 }
 
-@keyframes inline-chooser-in { from { opacity: 0; transform: scale(.985); } }
+@keyframes inline-chooser-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }
+@keyframes cockpit-manual-in { from { opacity: .45; transform: translateY(-3px); } }
+@keyframes cockpit-market-return { from { opacity: .4; transform: translateY(-3px); } }
 
 @media (max-width: 619.98px) {
   .inline-market-chooser {

@@ -1825,7 +1825,7 @@ function DecisionHero({
   })();
 
   return (
-    <div class="cockpit">
+    <div class={`cockpit${marketChooserOpen ? ' manual-open' : ''}`}>
       <div class="cockpit-primary">
       <div class="cockpit-market">{bestLabel}</div>
 
