@@ -536,7 +536,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     ? exactCandidateForSetup(candidates, pendingManualIntent.market, pendingManualIntent.direction, pendingManualIntent.barrier) ?? null
     : null;
   const queuedAssessment = assessTimedManualEntry(queuedCandidate);
-  const queuedFreshTick = Boolean(queuedMarket && pendingManualIntent && queuedMarket.lastEpoch > pendingManualIntent.armedAfterEpoch);
+  const queuedFreshTick = Boolean(queuedMarket && pendingManualIntent && (
+    queuedMarket.lastEpoch > pendingManualIntent.armedAfterEpoch
+    || (pendingManualIntent.entryMode === 'digit-trigger-confirmed' && (pendingManualIntent.twoPassStage ?? 0) > 0)
+  ));
   const queuedSecondsLeft = pendingManualIntent ? Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000)) : 0;
   const queuedBaseline = pendingManualIntent ? theoreticalWinForSetup(pendingManualIntent.direction, pendingManualIntent.barrier) : 0;
   const queuedTriggerReady = Boolean(!pendingManualIntent || pendingManualIntent.entryMode === 'model'
@@ -704,7 +707,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       pendingManualIntent.barrier,
     );
     const assessment = assessTimedManualEntry(candidate);
-    const freshTick = Boolean(liveMarket && liveMarket.lastEpoch > pendingManualIntent.armedAfterEpoch);
+    const freshTick = Boolean(liveMarket && (
+      liveMarket.lastEpoch > pendingManualIntent.armedAfterEpoch
+      || (pendingManualIntent.entryMode === 'digit-trigger-confirmed' && (pendingManualIntent.twoPassStage ?? 0) > 0)
+    ));
     const hasNewQuote = Boolean(liveMarket && (
       (liveMarket.lastEpoch ?? 0) > (pendingManualIntent.lastObservedEpoch ?? 0)
       || liveMarket.lastQuote !== pendingManualIntent.lastObservedQuote
@@ -744,7 +750,12 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       || (pendingManualIntent.entryMode === 'digit-trigger-confirmed'
         ? pendingManualIntent.twoPassStage === 3
         : matchesDigitTrigger(pendingManualIntent.direction, liveMarket?.lastDigit));
-    if (!freshTick || !triggerReady || !assessment.ready) {
+    // A two-pass manual instruction is the operator's explicitly selected
+    // entry rule. Once its three fresh quotes are captured, submit the Deriv
+    // proposal/purchase flow rather than indefinitely waiting for a scanner
+    // row that may not exist for the same market/barrier.
+    const entryValidated = pendingManualIntent.entryMode === 'digit-trigger-confirmed' || assessment.ready;
+    if (!freshTick || !triggerReady || !entryValidated) {
       const seconds = Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000));
       setManualMsg(`${sideLabel(pendingManualIntent.direction, pendingManualIntent.barrier)} armed · ${freshTick ? assessment.reason : 'waiting for the next fresh digit'} · ${seconds}s left`);
       return;
