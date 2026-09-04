@@ -1602,11 +1602,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(401);
       return { error: 'not connected' };
     }
-    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number };
+    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number; entryMode?: unknown };
     const market = body.market;
     const direction = body.direction;
     const barrier = Number(body.barrier);
     const stake = Number(body.stake);
+    const entryMode = body.entryMode === 'digit-trigger' ? 'digit-trigger' : 'model';
     const theoreticalWin = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
     const requestedEstWin = Number(body.estWin);
     const estWin = Number.isFinite(requestedEstWin) && requestedEstWin > 0 && requestedEstWin < 1
@@ -1686,7 +1687,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         status: 'purchasing',
         contract_id: '',
         purchase_id: `manual-${Date.now()}`,
-        reason: 'manual',
+        reason: entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
         origin: 'manual',
       });
       const bought = await client.placeBuy(quote.id, quote.askPrice);

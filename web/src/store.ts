@@ -1805,6 +1805,7 @@ export interface ManualOrder {
   barrier: number;
   stake: number;
   estWin: number;
+  entryMode?: 'model' | 'digit-trigger';
 }
 
 export interface ManualBasketResult {

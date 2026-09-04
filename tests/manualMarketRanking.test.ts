@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessTimedManualEntry, confidenceForSetup, isSensibleManualSetup, manualSetupScore, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
+import { assessTimedManualEntry, confidenceForSetup, isSensibleManualSetup, manualSetupScore, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
 import type { ManualMarket, ManualSignalCandidate } from '../web/src/manualMarketRanking.ts';
 
 function market(symbol: string, digits: number[]): ManualMarket {
@@ -81,4 +81,13 @@ test('timed manual entry waits for sampled transition lift and positive quote ec
   assert.match(assessTimedManualEntry({ ...base, transitionProb: .51 }).reason, /no validated lift/);
   assert.match(assessTimedManualEntry({ ...base, edge: 0 }).reason, /edge/);
   assert.match(assessTimedManualEntry({ ...base, expectedROI: 0 }).reason, /expected return/);
+});
+
+test('digit-trigger entry mode only arms the matching high or low digit family', () => {
+  assert.equal(matchesDigitTrigger('over', 8), true);
+  assert.equal(matchesDigitTrigger('over', 9), true);
+  assert.equal(matchesDigitTrigger('over', 7), false);
+  assert.equal(matchesDigitTrigger('under', 0), true);
+  assert.equal(matchesDigitTrigger('under', 1), true);
+  assert.equal(matchesDigitTrigger('under', 2), false);
 });

@@ -1,4 +1,15 @@
 export type ManualDirection = 'over' | 'under';
+export type ManualEntryMode = 'model' | 'digit-trigger';
+
+/**
+ * A deliberately narrow, operator-selected trigger hypothesis. It is not an
+ * assumed edge: the caller must still require the model/economic gates before
+ * it can purchase a contract.
+ */
+export function matchesDigitTrigger(direction: ManualDirection, digit: number | null | undefined): boolean {
+  if (!Number.isInteger(digit)) return false;
+  return direction === 'over' ? Number(digit) >= 8 : Number(digit) <= 1;
+}
 
 export interface ManualMarket {
   symbol: string;

@@ -81,6 +81,10 @@
 .inline-stake { display: grid; grid-template-columns: 1fr 112px; align-items: center; gap: 6px; }
 .inline-stake span { color: var(--muted); font-size: 8px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
 .inline-stake input { height: 32px; padding: 0 8px; text-align: right; }
+.inline-entry-mode { display: grid; gap: 4px; }
+.inline-entry-mode > span { color: var(--muted); font-size: 8px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+.inline-entry-mode select { width: 100%; height: 32px; padding: 0 8px; border: 1px solid rgba(139,92,246,.3); border-radius: 8px; color: var(--text); background: #11141c; font: inherit; font-size: 9px; font-weight: 750; }
+.inline-entry-mode small { color: var(--muted-2); font-size: 8px; line-height: 1.35; }
 
 .inline-direction { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .inline-direction button {
@@ -160,6 +164,7 @@
   .inline-execution,
   .inline-market-select,
   .inline-stake,
+  .inline-entry-mode,
   .inline-confidence,
   .inline-market-chooser > p,
   .inline-basket-list,
@@ -177,6 +182,7 @@
   .inline-confidence button { height: 29px; }
   .inline-barrier { grid-template-columns: minmax(38px, 1fr) 26px 38px 26px; gap: 3px; }
   .inline-stake { grid-template-columns: 1fr 112px; }
+  .inline-entry-mode { grid-column: 1 / -1; }
   .inline-confidence { min-height: 34px; }
   .inline-market-chooser > p { line-height: 10px; }
 }
@@ -186,7 +192,7 @@
 @media (max-width: 619.98px) {
   .inline-market-chooser {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: repeat(7, auto);
+    grid-template-rows: repeat(8, auto);
     gap: 8px;
     height: auto;
     padding: 12px;
@@ -205,7 +211,9 @@
   .inline-barrier button, .inline-barrier input { height: 46px; font-size: 13px; }
   .inline-stake { grid-row: 6; grid-column: 1 / -1; grid-template-columns: 1fr 120px; }
   .inline-stake input { height: 46px; font-size: 13px; }
-  .inline-confidence { grid-row: 7; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .inline-entry-mode { grid-row: 7; grid-column: 1 / -1; }
+  .inline-entry-mode select { height: 46px; font-size: 11px; }
+  .inline-confidence { grid-row: 8; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 8px; }
   .inline-confidence > div { display: grid; }
   .inline-confidence > .inline-confidence-actions {
     display: grid;
