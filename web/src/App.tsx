@@ -1503,6 +1503,11 @@ function InlineMarketChooser({
       <div class={`inline-entry-status${manualQueued ? ' queued' : ''}`} aria-live="polite">
         <span>{manualQueued ? 'Queued trade · waiting for entry' : 'Trade queue · idle'}</span>
         <b>{manualStatus || 'Choose Best for barrier or Best overall to arm a setup. It will wait for the required live entry checks before sending a contract.'}</b>
+        {entryMode === 'digit-trigger-confirmed' && <div class="queue-trigger-progress" aria-label="Two-pass trigger progress">
+          <span class={twoPass.first ? 'pass' : ''}>1. First {direction === 'over' ? '8/9' : '0/1'}</span>
+          <span class={twoPass.follow ? 'pass' : ''}>2. {direction === 'over' ? 'High follow-through' : 'Low follow-through'}</span>
+          <span class={twoPass.reentry ? 'pass' : ''}>3. New {direction === 'over' ? '8/9' : '0/1'} entry</span>
+        </div>}
         {manualQueued && <button type="button" onClick={onCancelManualQueue}>Cancel queue</button>}
       </div>
       <div class="inline-execution" role="group" aria-label="Manual execution mode">
@@ -1546,11 +1551,6 @@ function InlineMarketChooser({
         </select>
         <small>Trigger mode still requires the model, quote edge, ROI, and consistency gates. It is stored as a testable hypothesis.</small>
       </label>
-      {entryMode === 'digit-trigger-confirmed' && <div class="inline-trigger-progress" aria-label="Two-pass trigger progress">
-        <span class={twoPass.first ? 'pass' : ''}>1. First {direction === 'over' ? '8/9' : '0/1'}</span>
-        <span class={twoPass.follow ? 'pass' : ''}>2. {direction === 'over' ? 'High follow-through' : 'Low follow-through'}</span>
-        <span class={twoPass.reentry ? 'pass' : ''}>3. New {direction === 'over' ? '8/9' : '0/1'} entry</span>
-      </div>}
       <div class="inline-confidence">
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
         <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
