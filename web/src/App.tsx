@@ -911,21 +911,19 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               )}
             </div>
 
-            {(startError || accountLockMessage) && (
+            {startError && (
               <div class="bot-feedback" aria-live="polite">
-                <div class="bot-error">{startError || accountLockMessage}</div>
-                {openAccountTrade && (
-                  <button class="bot-inline-action" type="button" disabled={settlementBusy} onClick={() => void recoverOpenTrade()}>
-                    {settlementBusy ? 'Checking...' : openAccountTrade.contract_id ? 'Refresh settlement' : 'Clear stuck local order'}
-                  </button>
-                )}
+                <div class="bot-error">{startError}</div>
               </div>
             )}
 
             <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && !guest && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
-              <span>{automation ? 'Stop Bot' : guest ? 'Connect Deriv to trade' : startLocked ? 'Settlement recovery active' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
+              <span>{automation ? 'Stop Bot' : guest ? 'Connect Deriv to trade' : startLocked ? 'Waiting for outcome' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
             </button>
+            {openAccountTrade && <button class="bot-inline-action" type="button" disabled={settlementBusy} onClick={() => void recoverOpenTrade()}>
+              {settlementBusy ? 'Checking outcome...' : openAccountTrade.contract_id ? 'Refresh outcome' : 'Check submitted order'}
+            </button>}
           </section>
         </div>
 
@@ -1755,7 +1753,14 @@ function DecisionHero({
 
   const lastResult = contract?.result ?? trades[0]?.status;
   const winFlash = lastResult === 'won';
+  const outcomeTrade = trades.find((trade) => isOpenAccountTrade(trade) && isDigitTrade(trade)) ?? null;
   const note = (() => {
+    if (outcomeTrade) {
+      const side = outcomeTrade.contract_type === 'DIGITUNDER' ? 'Under' : 'Over';
+      const marketName = shortMarketName(markets.find((market) => market.symbol === outcomeTrade.market)?.display ?? outcomeTrade.market);
+      const elapsed = fmtElapsed(Date.now() - outcomeTrade.ts);
+      return `Waiting for Deriv to confirm the outcome: ${marketName} ${side} ${outcomeTrade.barrier} was submitted ${elapsed} ago. The digit lane stays protected until the result arrives; no additional manual order will be sent.`;
+    }
     if (!feedConnected) {
       return `Feed down — checking ${markets.length} cached markets, will resume betting when it reconnects`;
     }
