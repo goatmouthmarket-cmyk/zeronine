@@ -4154,8 +4154,27 @@ button.activity-row {
         z-index: 1;
     }
 
-    .view-home .dash-main .cockpit {
+.view-home .dash-main .cockpit {
         flex: 0 0 auto;
+    }
+
+    /* Manual setup deliberately replaces the two-column bot cockpit. Without
+       this explicit desktop override the chooser remains trapped in the chart
+       column and its execution controls can be clipped below the card. */
+    .view-home .dash-main .cockpit.manual-open {
+        display: block;
+        min-height: 0;
+        padding: 8px 0;
+        overflow: visible;
+    }
+
+    .view-home .dash-main .cockpit.manual-open .cockpit-primary {
+        display: none;
+    }
+
+    .view-home .dash-main .cockpit.manual-open .inline-market-chooser {
+        width: 100%;
+        min-height: 0;
     }
 
     /* desktop: recent activity then win/loss stats, in document order */
