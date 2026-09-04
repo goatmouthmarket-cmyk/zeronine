@@ -1492,11 +1492,11 @@ function InlineMarketChooser({
         <span>Manual setup</span>
         <button type="button" onClick={onClose} aria-label="Return to live chart">×</button>
       </div>
-      {(manualStatus || manualQueued) && <div class={`inline-entry-status${manualQueued ? ' queued' : ''}`} aria-live="polite">
-        <span>{manualQueued ? 'Queued trade · waiting for entry' : 'Manual status'}</span>
-        <b>{manualStatus || 'Choosing a validated entry setup'}</b>
+      <div class={`inline-entry-status${manualQueued ? ' queued' : ''}`} aria-live="polite">
+        <span>{manualQueued ? 'Queued trade · waiting for entry' : 'Trade queue · idle'}</span>
+        <b>{manualStatus || 'Choose Best for barrier or Best overall to arm a setup. It will wait for the required live entry checks before sending a contract.'}</b>
         {manualQueued && <button type="button" onClick={onCancelManualQueue}>Cancel queue</button>}
-      </div>}
+      </div>
       <div class="inline-execution" role="group" aria-label="Manual execution mode">
         <button type="button" class={execution === 'single' ? 'active' : ''} onClick={() => setExecution('single')}>Single</button>
         <button type="button" class={execution === 'basket' ? 'active' : ''} onClick={() => setExecution('basket')}>5 at once</button>
