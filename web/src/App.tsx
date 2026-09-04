@@ -55,7 +55,7 @@ import {
   runGoldBacktest,
 } from './store';
 import './marketChooser.css';
-import { assessTimedManualEntry, confidenceForSetup, exactCandidateForSetup, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
+import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesConfirmedDigitTrigger, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
@@ -530,8 +530,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const queuedFreshTick = Boolean(queuedMarket && pendingManualIntent && queuedMarket.lastEpoch > pendingManualIntent.armedAfterEpoch);
   const queuedSecondsLeft = pendingManualIntent ? Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000)) : 0;
   const queuedBaseline = pendingManualIntent ? theoreticalWinForSetup(pendingManualIntent.direction, pendingManualIntent.barrier) : 0;
-  const queuedTriggerReady = Boolean(pendingManualIntent?.entryMode !== 'digit-trigger'
-    || matchesDigitTrigger(pendingManualIntent.direction, queuedMarket?.lastDigit));
+  const queuedTriggerReady = Boolean(!pendingManualIntent || pendingManualIntent.entryMode === 'model'
+    || (pendingManualIntent.entryMode === 'digit-trigger-confirmed'
+      ? matchesConfirmedDigitTrigger(pendingManualIntent.direction, queuedMarket?.recentDigits ?? [])
+      : matchesDigitTrigger(pendingManualIntent.direction, queuedMarket?.lastDigit)));
   const tickerPredictions = useMemo(() => new Map(
     (s.signal?.signal.candidates ?? []).map((candidate) => [candidate.market, candidate]),
   ), [s.signal]);
@@ -641,7 +643,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     marketSymbol = market?.symbol,
   ): Promise<boolean> => {
     if (!marketSymbol) return false;
-    const shouldTimeEntry = manualEntryMode === 'digit-trigger' || (timedManualSetup?.market === marketSymbol
+    const shouldTimeEntry = manualEntryMode !== 'model' || (timedManualSetup?.market === marketSymbol
       && timedManualSetup.direction === direction
       && timedManualSetup.barrier === barrier);
     if (!shouldTimeEntry) return executeManualNow(direction, barrier, marketSymbol);
@@ -691,8 +693,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     );
     const assessment = assessTimedManualEntry(candidate);
     const freshTick = Boolean(liveMarket && liveMarket.lastEpoch > pendingManualIntent.armedAfterEpoch);
-    const triggerReady = pendingManualIntent.entryMode !== 'digit-trigger'
-      || matchesDigitTrigger(pendingManualIntent.direction, liveMarket?.lastDigit);
+    const triggerReady = pendingManualIntent.entryMode === 'model'
+      || (pendingManualIntent.entryMode === 'digit-trigger-confirmed'
+        ? matchesConfirmedDigitTrigger(pendingManualIntent.direction, liveMarket?.recentDigits ?? [])
+        : matchesDigitTrigger(pendingManualIntent.direction, liveMarket?.lastDigit));
     if (!freshTick || !triggerReady || !assessment.ready) {
       const seconds = Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000));
       setManualMsg(`${sideLabel(pendingManualIntent.direction, pendingManualIntent.barrier)} armed · ${freshTick ? assessment.reason : 'waiting for the next fresh digit'} · ${seconds}s left`);
@@ -1450,6 +1454,7 @@ function InlineMarketChooser({
     .filter((market): market is Market => Boolean(market));
   const exact = selectedMarket ? exactCandidateForSetup(candidates, selectedMarket.symbol, direction, barrier) ?? null : null;
   const selectedConfidence = selectedMarket ? exact?.estWin ?? confidenceForSetup(selectedMarket, direction, barrier) : null;
+  const twoPass = confirmedDigitTriggerProgress(direction, selectedMarket?.recentDigits ?? []);
   const basket = strongestManualSetups(markets, candidates, 5);
   const basketStake = Math.max(0.1, Number(stake) || 1);
   const min = direction === 'over' ? 0 : 1;
@@ -1537,9 +1542,15 @@ function InlineMarketChooser({
         <select value={entryMode} onChange={(event) => onEntryMode((event.currentTarget as HTMLSelectElement).value as ManualEntryMode)}>
           <option value="model">Model validation (default)</option>
           <option value="digit-trigger">Trigger: 8/9 → Over, 0/1 → Under</option>
+          <option value="digit-trigger-confirmed">Two-pass: extreme → follow-through → extreme</option>
         </select>
         <small>Trigger mode still requires the model, quote edge, ROI, and consistency gates. It is stored as a testable hypothesis.</small>
       </label>
+      {entryMode === 'digit-trigger-confirmed' && <div class="inline-trigger-progress" aria-label="Two-pass trigger progress">
+        <span class={twoPass.first ? 'pass' : ''}>1. First {direction === 'over' ? '8/9' : '0/1'}</span>
+        <span class={twoPass.follow ? 'pass' : ''}>2. {direction === 'over' ? 'High follow-through' : 'Low follow-through'}</span>
+        <span class={twoPass.reentry ? 'pass' : ''}>3. New {direction === 'over' ? '8/9' : '0/1'} entry</span>
+      </div>}
       <div class="inline-confidence">
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
         <div><span>Edge</span><b class={exact && exact.edge >= 0 ? 'positive' : ''}>{exact ? `${exact.edge >= 0 ? '+' : ''}${(exact.edge * 100).toFixed(1)}%` : '—'}</b></div>
@@ -1550,7 +1561,7 @@ function InlineMarketChooser({
       </div>
       <p>Best selections queue a specific entry setup. The trade waits for a fresh digit plus validated transition, edge, return, and consistency checks before it can fire.</p>
       <button class="inline-place-single" type="button" disabled={!selectedMarket} onClick={() => void onPlace(direction, barrier, selectedMarket?.symbol)}>
-        {entryMode === 'digit-trigger' ? `Arm ${sideLabel(direction, barrier)} trigger` : `Place ${sideLabel(direction, barrier)}`}
+        {entryMode === 'model' ? `Place ${sideLabel(direction, barrier)}` : `Arm ${sideLabel(direction, barrier)} trigger`}
       </button>
       </> : <>
         <div class="inline-basket-list" aria-label="Five basket predictions">
@@ -2264,8 +2275,9 @@ function BotPage(): JSX.Element {
           <div class="seg">
             <button class={`seg-btn${entryMode === 'model' ? ' active' : ''}`} onClick={() => pickEntryMode('model')}>Model</button>
             <button class={`seg-btn${entryMode === 'digit_trigger' ? ' active' : ''}`} onClick={() => pickEntryMode('digit_trigger')}>8/9 · 0/1 trigger</button>
+            <button class={`seg-btn${entryMode === 'digit_trigger_confirmed' ? ' active' : ''}`} onClick={() => pickEntryMode('digit_trigger_confirmed')}>Two-pass trigger</button>
           </div>
-          <div class="set-hint">Trigger waits for 8/9 before Over or 0/1 before Under; it still needs validated transition, price, risk, and confirmation evidence.</div>
+          <div class="set-hint">Two-pass waits for extreme → same-side follow-through → a new extreme; every mode still needs validated transition, price, risk, and confirmation evidence.</div>
         </div>
 
         <div class="bot-advanced-toggle-wrap">

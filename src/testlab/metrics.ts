@@ -70,7 +70,7 @@ export function runRow(
   kind: TestRunRow['kind'],
   strategy_mode: string,
   bot_mode: string,
-  entry_mode: 'model' | 'digit_trigger',
+  entry_mode: 'model' | 'digit_trigger' | 'digit_trigger_confirmed',
   baseStake: number,
   target: number,
   agg: Aggregate,

@@ -18,7 +18,7 @@ import {
 import type { RecoveryObservationState } from '../intelligence/recoveryObservation.ts';
 import { digitCandidateQuality, isSensibleDigitCandidate, pickSignalFromSnapshot } from '../strategy/signal.ts';
 import { config } from '../config.ts';
-import { matchesDigitTrigger } from '../strategy/entryMode.ts';
+import { matchesConfirmedDigitTrigger, matchesDigitTrigger } from '../strategy/entryMode.ts';
 import { digitHistory, getQuoteStats, getSettings, insertTestRun, listMarkets, listTestRuns, patternRowsByPrev, patternWeightForStrategy } from '../db/store.ts';
 import type { TestRunRow } from '../db/store.ts';
 import { computeMetrics, runRow, round2 } from './metrics.ts';
@@ -26,7 +26,7 @@ import type { Aggregate } from './metrics.ts';
 
 export const TEST_STRATEGIES = ['conservative', 'martingale', 'boosted_martingale', 'chase'] as const;
 export const TEST_MODES = ['rapid', 'balanced', 'strict'] as const;
-export const TEST_ENTRY_MODES = ['model', 'digit_trigger'] as const;
+export const TEST_ENTRY_MODES = ['model', 'digit_trigger', 'digit_trigger_confirmed'] as const;
 
 export interface TestConfig {
   strategyMode: (typeof TEST_STRATEGIES)[number];
@@ -326,9 +326,13 @@ function replayOne(
             expectedROI: quote.realEV,
           }))
           .sort((a, b) => replayQuoteQuality(b) - replayQuoteQuality(a) || b.realEV - a.realEV || b.estWin - a.estWin);
-      const best = entryMode === 'digit_trigger'
-        ? eligible.find((quote) => matchesDigitTrigger(quote.direction, markets.find((market) => market.symbol === quote.market)?.digits[currentSamples.get(quote.market)?.k ?? -1]))
-        : eligible[0];
+      const best = entryMode === 'model' ? eligible[0] : eligible.find((quote) => {
+        const marketData = markets.find((market) => market.symbol === quote.market);
+        const k = currentSamples.get(quote.market)?.k ?? -1;
+        return entryMode === 'digit_trigger_confirmed'
+          ? matchesConfirmedDigitTrigger(quote.direction, marketData?.digits.slice(Math.max(0, k - 12), k + 1) ?? [])
+          : matchesDigitTrigger(quote.direction, marketData?.digits[k]);
+      });
       if (best) decision = { ...best, stake: baseStake };
     } else {
       const recoveryMarket = observation?.market ?? event.market;

@@ -1244,7 +1244,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (k === 'barrier_preference' && typeof v === 'string') patch[k] = v;
       else if (k === 'strategy_mode' && typeof v === 'string') patch[k] = v;
       else if (k === 'bot_mode' && (v === 'rapid' || v === 'balanced' || v === 'strict')) patch[k] = v;
-      else if (k === 'entry_mode' && (v === 'model' || v === 'digit_trigger')) patch[k] = v;
+      else if (k === 'entry_mode' && (v === 'model' || v === 'digit_trigger' || v === 'digit_trigger_confirmed')) patch[k] = v;
       else if (numeric.includes(k) && (typeof v === 'number') && Number.isFinite(v)) patch[k] = v;
       else if (k === 'pattern_weight_conservative' || k === 'pattern_weight_martingale' || k === 'pattern_weight_boosted_martingale' || k === 'pattern_weight_chase') {
         if (v === null) patch[k] = null;
@@ -1608,7 +1608,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const direction = body.direction;
     const barrier = Number(body.barrier);
     const stake = Number(body.stake);
-    const entryMode = body.entryMode === 'digit-trigger' ? 'digit-trigger' : 'model';
+    const entryMode = body.entryMode === 'digit-trigger-confirmed' ? 'digit-trigger-confirmed' : body.entryMode === 'digit-trigger' ? 'digit-trigger' : 'model';
     const theoreticalWin = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
     const requestedEstWin = Number(body.estWin);
     const estWin = Number.isFinite(requestedEstWin) && requestedEstWin > 0 && requestedEstWin < 1
@@ -1688,7 +1688,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         status: 'purchasing',
         contract_id: '',
         purchase_id: `manual-${Date.now()}`,
-        reason: entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
+        reason: entryMode === 'digit-trigger-confirmed' ? 'manual two-pass digit-trigger hypothesis' : entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
         origin: 'manual',
       });
       const bought = await client.placeBuy(quote.id, quote.askPrice);
@@ -1849,7 +1849,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const sPatch: Record<string, unknown> = {};
     if (typeof body.strategy_mode === 'string') sPatch.strategy_mode = body.strategy_mode;
-    if (body.entry_mode === 'model' || body.entry_mode === 'digit_trigger') sPatch.entry_mode = body.entry_mode;
+    if (body.entry_mode === 'model' || body.entry_mode === 'digit_trigger' || body.entry_mode === 'digit_trigger_confirmed') sPatch.entry_mode = body.entry_mode;
     if (typeof body.base_stake === 'number' && Number.isFinite(body.base_stake) && body.base_stake > 0) {
       sPatch.base_stake = body.base_stake;
     }
@@ -1917,7 +1917,7 @@ function parseTestConfigs(entries: string[]): TestConfig[] {
       out.push({
         strategyMode: strategyMode as (typeof TEST_STRATEGIES)[number],
         botMode: botMode as (typeof TEST_MODES)[number],
-        entryMode: entryMode === 'digit_trigger' ? 'digit_trigger' : 'model',
+        entryMode: entryMode === 'digit_trigger_confirmed' ? 'digit_trigger_confirmed' : entryMode === 'digit_trigger' ? 'digit_trigger' : 'model',
       });
     }
   }

@@ -105,6 +105,9 @@
 .inline-entry-mode > span { color: var(--muted); font-size: 8px; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
 .inline-entry-mode select { width: 100%; height: 32px; padding: 0 8px; border: 1px solid rgba(139,92,246,.3); border-radius: 8px; color: var(--text); background: #11141c; font: inherit; font-size: 9px; font-weight: 750; }
 .inline-entry-mode small { color: var(--muted-2); font-size: 8px; line-height: 1.35; }
+.inline-trigger-progress { display: grid; gap: 4px; padding: 8px; border: 1px solid rgba(139,92,246,.24); border-radius: 8px; background: rgba(139,92,246,.06); }
+.inline-trigger-progress span { color: var(--muted); font-size: 9px; font-weight: 750; }
+.inline-trigger-progress span.pass { color: var(--green); }
 
 .inline-direction { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .inline-direction button {
@@ -187,6 +190,7 @@
   .inline-market-select,
   .inline-stake,
   .inline-entry-mode,
+  .inline-trigger-progress,
   .inline-confidence,
   .inline-market-chooser > p,
   .inline-basket-list,
@@ -219,6 +223,7 @@
   .cockpit.manual-open .inline-barrier,
   .cockpit.manual-open .inline-stake,
   .cockpit.manual-open .inline-entry-mode,
+  .cockpit.manual-open .inline-trigger-progress,
   .cockpit.manual-open .inline-confidence,
   .cockpit.manual-open .inline-market-chooser > p,
   .cockpit.manual-open .inline-basket-list,

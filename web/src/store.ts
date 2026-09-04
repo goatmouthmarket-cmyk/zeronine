@@ -69,7 +69,7 @@ export interface Settings {
   barrier_number: number;
   strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
   bot_mode: 'rapid' | 'balanced' | 'strict';
-  entry_mode: 'model' | 'digit_trigger';
+  entry_mode: 'model' | 'digit_trigger' | 'digit_trigger_confirmed';
   strategy_multiplier: number;
   recovery_buffer: number;
   chase_amortize: number;
@@ -256,7 +256,7 @@ export interface TestRunRow {
   source: 'manual' | 'auto';
   strategy_mode: string;
   bot_mode: string;
-  entry_mode: 'model' | 'digit_trigger';
+  entry_mode: 'model' | 'digit_trigger' | 'digit_trigger_confirmed';
   base_stake: number;
   target: number;
   trades: number;
@@ -1809,7 +1809,7 @@ export interface ManualOrder {
   barrier: number;
   stake: number;
   estWin: number;
-  entryMode?: 'model' | 'digit-trigger';
+  entryMode?: 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
 }
 
 export interface ManualBasketResult {

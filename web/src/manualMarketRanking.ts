@@ -1,5 +1,5 @@
 export type ManualDirection = 'over' | 'under';
-export type ManualEntryMode = 'model' | 'digit-trigger';
+export type ManualEntryMode = 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
 
 /**
  * A deliberately narrow, operator-selected trigger hypothesis. It is not an
@@ -9,6 +9,23 @@ export type ManualEntryMode = 'model' | 'digit-trigger';
 export function matchesDigitTrigger(direction: ManualDirection, digit: number | null | undefined): boolean {
   if (!Number.isInteger(digit)) return false;
   return direction === 'over' ? Number(digit) >= 8 : Number(digit) <= 1;
+}
+
+export function confirmedDigitTriggerProgress(direction: ManualDirection, digits: readonly number[]): { first: boolean; follow: boolean; reentry: boolean } {
+  const clean = digits.filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
+  const reentry = matchesDigitTrigger(direction, clean.at(-1));
+  let first = false;
+  let follow = false;
+  for (const digit of clean.slice(0, -1)) {
+    if (!first && matchesDigitTrigger(direction, digit)) first = true;
+    else if (first && (direction === 'over' ? digit >= 6 : digit <= 3)) follow = true;
+  }
+  return { first, follow, reentry };
+}
+
+export function matchesConfirmedDigitTrigger(direction: ManualDirection, digits: readonly number[]): boolean {
+  const progress = confirmedDigitTriggerProgress(direction, digits);
+  return progress.first && progress.follow && progress.reentry;
 }
 
 export interface ManualMarket {
