@@ -52,11 +52,11 @@
 }
 
 .inline-chooser-head { justify-content: space-between; }
-.inline-entry-status { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px 8px; padding: 6px 8px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(255,255,255,.025); }
+.inline-entry-status { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 9px; padding: 12px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(255,255,255,.025); }
 .inline-entry-status.queued { border-color: rgba(139,92,246,.42); background: rgba(139,92,246,.1); }
 .inline-entry-status span { color: var(--purple-light); font-size: 8px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
-.inline-entry-status b { min-width: 0; color: var(--muted); font-size: 9px; line-height: 1.25; }
-.inline-entry-status button { grid-column: 1 / -1; justify-self: start; padding: 0; border: 0; background: transparent; color: var(--purple-light); font: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
+.inline-entry-status b { min-width: 0; color: var(--text); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.inline-entry-status button { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--purple-light); font: inherit; font-size: 10px; font-weight: 850; cursor: pointer; }
 .inline-chooser-head > span,
 .inline-market-select > span,
 .inline-barrier > span,
