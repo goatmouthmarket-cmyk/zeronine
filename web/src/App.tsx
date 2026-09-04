@@ -875,6 +875,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               }}
               onManualTimedSetup={setTimedManualSetup}
               onManualBasket={placeManualBasket}
+              onManualPlace={(direction, barrier, marketSymbol) => placeManual(direction, barrier, marketSymbol)}
               manualStatus={manualMsg}
               manualQueued={Boolean(pendingManualIntent)}
               onCancelManualQueue={() => {
@@ -885,7 +886,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             />
 
             <div class={`manual-slot${marketChooserOpen ? ' setup-open' : ''}`}>
-              {!automation && !decision && (
+              {!marketChooserOpen && !automation && !decision && (
                 <div class="side-selector">
                   <button
                     class={`side-btn over${manualDirection === 'over' ? ' active' : ''}`}
@@ -1407,6 +1408,7 @@ function InlineMarketChooser({
   onTimedSetup,
   onStake,
   onBasket,
+  onPlace,
   onClose,
   manualStatus,
   manualQueued,
@@ -1426,6 +1428,7 @@ function InlineMarketChooser({
   onTimedSetup: (setup: ManualSetup) => void;
   onStake: (stake: string) => void;
   onBasket: (setups: ManualSetup[]) => Promise<boolean>;
+  onPlace: (direction: 'over' | 'under', barrier: number, market?: string) => Promise<boolean>;
   onClose: () => void;
   manualStatus: string;
   manualQueued: boolean;
@@ -1546,6 +1549,9 @@ function InlineMarketChooser({
         </div>
       </div>
       <p>Best selections queue a specific entry setup. The trade waits for a fresh digit plus validated transition, edge, return, and consistency checks before it can fire.</p>
+      <button class="inline-place-single" type="button" disabled={!selectedMarket} onClick={() => void onPlace(direction, barrier, selectedMarket?.symbol)}>
+        {entryMode === 'digit-trigger' ? `Arm ${sideLabel(direction, barrier)} trigger` : `Place ${sideLabel(direction, barrier)}`}
+      </button>
       </> : <>
         <div class="inline-basket-list" aria-label="Five basket predictions">
           {basket.map((setup, index) => {
@@ -1742,6 +1748,7 @@ function DecisionHero({
   onManualTimedSetup,
   onManualStake,
   onManualBasket,
+  onManualPlace,
   manualStatus,
   manualQueued,
   onCancelManualQueue,
@@ -1775,6 +1782,7 @@ function DecisionHero({
   onManualTimedSetup: (setup: ManualSetup) => void;
   onManualStake: (stake: string) => void;
   onManualBasket: (setups: ManualSetup[]) => Promise<boolean>;
+  onManualPlace: (direction: 'over' | 'under', barrier: number, market?: string) => Promise<boolean>;
   manualStatus: string;
   manualQueued: boolean;
   onCancelManualQueue: () => void;
@@ -1903,6 +1911,7 @@ function DecisionHero({
           onTimedSetup={onManualTimedSetup}
           onStake={onManualStake}
           onBasket={onManualBasket}
+          onPlace={onManualPlace}
           manualStatus={manualStatus}
           manualQueued={manualQueued}
           onCancelManualQueue={onCancelManualQueue}

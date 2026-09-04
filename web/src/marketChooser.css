@@ -170,6 +170,8 @@
 .inline-basket-total b { color: var(--text); font-size: 11px; font-variant-numeric: tabular-nums; }
 .inline-basket-place { min-height: 30px; border: 0; border-radius: 8px; background: var(--purple); color: white; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
 .inline-basket-place:disabled { opacity: .42; cursor: default; }
+.inline-place-single { min-height: 34px; border: 0; border-radius: 8px; background: linear-gradient(100deg, #7c3aed, #8b5cf6); color: #fff; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }
+.inline-place-single:disabled { opacity: .42; cursor: default; }
 
 /* The chooser replaces the small chart on desktop. A two-column control grid
    keeps it inside that footprint so the manual trade rail remains unobscured. */
@@ -191,6 +193,7 @@
   .inline-basket-place {
     grid-column: 1 / -1;
   }
+  .inline-place-single { grid-column: 1 / -1; }
   .inline-chooser-head button { width: 22px; height: 22px; }
   .inline-market-select { gap: 2px; }
   .inline-market-select select,
@@ -220,6 +223,7 @@
   .cockpit.manual-open .inline-basket-list,
   .cockpit.manual-open .inline-basket-total,
   .cockpit.manual-open .inline-basket-place { grid-column: 1; }
+  .cockpit.manual-open .inline-place-single { grid-column: 1; }
 }
 
 @keyframes inline-chooser-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }
@@ -262,6 +266,7 @@
   .inline-confidence button { min-height: 46px; height: auto; padding: 8px; font-size: 9px; line-height: 1.2; }
   .inline-market-chooser > p { display: none; }
   .inline-basket-list, .basket-stake, .inline-basket-total, .inline-basket-place { grid-column: 1 / -1; }
+  .inline-place-single { grid-column: 1 / -1; min-height: 46px; }
   .inline-basket-list { grid-row: 3; }
   .basket-stake { grid-row: 4; }
   .inline-basket-total { grid-row: 5; }
