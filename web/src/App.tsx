@@ -55,7 +55,7 @@ import {
   runGoldBacktest,
 } from './store';
 import './marketChooser.css';
-import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesConfirmedDigitTrigger, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
+import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
@@ -471,6 +471,15 @@ interface TimedManualIntent extends ManualSetup {
   entryMode: ManualEntryMode;
   armedAfterEpoch: number;
   expiresAt: number;
+  twoPassStage?: 0 | 1 | 2 | 3;
+  firstTriggerQuote?: number;
+  firstTriggerDigit?: number;
+  followThroughQuote?: number;
+  followThroughDigit?: number;
+  reentryQuote?: number;
+  reentryDigit?: number;
+  lastObservedEpoch?: number;
+  lastObservedQuote?: number;
 }
 
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
@@ -521,7 +530,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const candidates = s.signal?.signal.candidates ?? [];
   const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
   const queuedMarket = pendingManualIntent
-    ? s.markets.find((item) => item.symbol === pendingManualIntent.market)
+    ? s.markets.find((item) => item.symbol === pendingManualIntent.market) ?? null
     : null;
   const queuedCandidate = pendingManualIntent
     ? exactCandidateForSetup(candidates, pendingManualIntent.market, pendingManualIntent.direction, pendingManualIntent.barrier) ?? null
@@ -532,7 +541,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const queuedBaseline = pendingManualIntent ? theoreticalWinForSetup(pendingManualIntent.direction, pendingManualIntent.barrier) : 0;
   const queuedTriggerReady = Boolean(!pendingManualIntent || pendingManualIntent.entryMode === 'model'
     || (pendingManualIntent.entryMode === 'digit-trigger-confirmed'
-      ? matchesConfirmedDigitTrigger(pendingManualIntent.direction, queuedMarket?.recentDigits ?? [])
+      ? pendingManualIntent.twoPassStage === 3
       : matchesDigitTrigger(pendingManualIntent.direction, queuedMarket?.lastDigit)));
   const tickerPredictions = useMemo(() => new Map(
     (s.signal?.signal.candidates ?? []).map((candidate) => [candidate.market, candidate]),
@@ -664,6 +673,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entryMode: manualEntryMode,
       armedAfterEpoch: selectedMarket?.lastEpoch ?? 0,
       expiresAt: Date.now() + 3 * 60_000,
+      twoPassStage: manualEntryMode === 'digit-trigger-confirmed' ? 0 : undefined,
+      lastObservedEpoch: selectedMarket?.lastEpoch ?? 0,
+      lastObservedQuote: selectedMarket?.lastQuote,
     });
     setManualError(false);
     setManualMsg(`${sideLabel(direction, barrier)} armed · waiting up to 3 minutes for a validated fresh entry digit`);
@@ -693,9 +705,44 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     );
     const assessment = assessTimedManualEntry(candidate);
     const freshTick = Boolean(liveMarket && liveMarket.lastEpoch > pendingManualIntent.armedAfterEpoch);
+    const hasNewQuote = Boolean(liveMarket && (
+      (liveMarket.lastEpoch ?? 0) > (pendingManualIntent.lastObservedEpoch ?? 0)
+      || liveMarket.lastQuote !== pendingManualIntent.lastObservedQuote
+    ));
+    if (pendingManualIntent.entryMode === 'digit-trigger-confirmed' && liveMarket && hasNewQuote) {
+      const digit = liveMarket.lastDigit;
+      const isExtreme = matchesDigitTrigger(pendingManualIntent.direction, digit);
+      const isFollowThrough = pendingManualIntent.direction === 'over' ? digit >= 6 : digit <= 3;
+      const observed = { lastObservedEpoch: liveMarket.lastEpoch, lastObservedQuote: liveMarket.lastQuote };
+      const stage = pendingManualIntent.twoPassStage ?? 0;
+      if (stage === 0 && isExtreme) {
+        setPendingManualIntent({ ...pendingManualIntent, ...observed, twoPassStage: 1, firstTriggerQuote: liveMarket.lastQuote, firstTriggerDigit: digit });
+        setManualMsg(`First ${pendingManualIntent.direction === 'over' ? '8/9' : '0/1'} captured · waiting for follow-through`);
+        return;
+      }
+      if (stage === 1) {
+        if (isFollowThrough) {
+          setPendingManualIntent({ ...pendingManualIntent, ...observed, twoPassStage: 2, followThroughQuote: liveMarket.lastQuote, followThroughDigit: digit });
+          setManualMsg(`${pendingManualIntent.direction === 'over' ? 'High' : 'Low'} follow-through captured · waiting for a new ${pendingManualIntent.direction === 'over' ? '8/9' : '0/1'} entry`);
+          return;
+        }
+        setPendingManualIntent({ ...pendingManualIntent, ...observed, twoPassStage: isExtreme ? 1 : 0, firstTriggerQuote: isExtreme ? liveMarket.lastQuote : undefined, firstTriggerDigit: isExtreme ? digit : undefined, followThroughQuote: undefined, followThroughDigit: undefined, reentryQuote: undefined, reentryDigit: undefined });
+        setManualMsg(isExtreme ? 'New first extreme captured · waiting for follow-through' : 'Sequence reset · waiting for a fresh first extreme');
+        return;
+      }
+      if (stage === 2 && isExtreme) {
+        setPendingManualIntent({ ...pendingManualIntent, ...observed, twoPassStage: 3, reentryQuote: liveMarket.lastQuote, reentryDigit: digit });
+        setManualMsg(`New ${pendingManualIntent.direction === 'over' ? '8/9' : '0/1'} captured · all entry checks are being confirmed`);
+        return;
+      }
+      if (stage < 3) {
+        setPendingManualIntent({ ...pendingManualIntent, ...observed });
+        return;
+      }
+    }
     const triggerReady = pendingManualIntent.entryMode === 'model'
       || (pendingManualIntent.entryMode === 'digit-trigger-confirmed'
-        ? matchesConfirmedDigitTrigger(pendingManualIntent.direction, liveMarket?.recentDigits ?? [])
+        ? pendingManualIntent.twoPassStage === 3
         : matchesDigitTrigger(pendingManualIntent.direction, liveMarket?.lastDigit));
     if (!freshTick || !triggerReady || !assessment.ready) {
       const seconds = Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000));
@@ -882,6 +929,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               onManualPlace={(direction, barrier, marketSymbol) => placeManual(direction, barrier, marketSymbol)}
               manualStatus={manualMsg}
               manualQueued={Boolean(pendingManualIntent)}
+              queuedIntent={pendingManualIntent}
+              queuedMarket={queuedMarket}
               onCancelManualQueue={() => {
                 setPendingManualIntent(null);
                 setManualError(false);
@@ -1397,6 +1446,18 @@ function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: ()
   );
 }
 
+function QueueQuote({ quote, digit }: { quote: number; digit: number }): JSX.Element {
+  const formatted = quote.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+  // Number values lose trailing zeroes, while Deriv supplies the canonical last
+  // digit separately. Replace the displayed final decimal with that canonical digit.
+  const text = `${formatted.slice(0, -1)}${digit}`;
+  const index = text.length - 1;
+  return <span class="queue-live-quote" aria-label={`Live quote ${text}, final digit ${digit}`}>
+    <small>Live quote</small>
+    <b>{text.slice(0, index)}<mark>{text.charAt(index)}</mark></b>
+  </span>;
+}
+
 function InlineMarketChooser({
   markets,
   candidates,
@@ -1416,6 +1477,8 @@ function InlineMarketChooser({
   onClose,
   manualStatus,
   manualQueued,
+  queuedIntent,
+  queuedMarket,
   onCancelManualQueue,
 }: {
   markets: Market[];
@@ -1436,6 +1499,8 @@ function InlineMarketChooser({
   onClose: () => void;
   manualStatus: string;
   manualQueued: boolean;
+  queuedIntent: TimedManualIntent | null;
+  queuedMarket: Market | null;
   onCancelManualQueue: () => void;
 }): JSX.Element {
   const [execution, setExecution] = useState<'single' | 'basket'>('single');
@@ -1455,6 +1520,11 @@ function InlineMarketChooser({
   const exact = selectedMarket ? exactCandidateForSetup(candidates, selectedMarket.symbol, direction, barrier) ?? null : null;
   const selectedConfidence = selectedMarket ? exact?.estWin ?? confidenceForSetup(selectedMarket, direction, barrier) : null;
   const twoPass = confirmedDigitTriggerProgress(direction, selectedMarket?.recentDigits ?? []);
+  const queueDirection = queuedIntent?.direction ?? direction;
+  const queueStage = queuedIntent?.twoPassStage ?? 0;
+  const queueProgress = queuedIntent?.entryMode === 'digit-trigger-confirmed'
+    ? { first: queueStage >= 1, follow: queueStage >= 2, reentry: queueStage >= 3 }
+    : twoPass;
   const basket = strongestManualSetups(markets, candidates, 5);
   const basketStake = Math.max(0.1, Number(stake) || 1);
   const min = direction === 'over' ? 0 : 1;
@@ -1503,10 +1573,20 @@ function InlineMarketChooser({
       <div class={`inline-entry-status${manualQueued ? ' queued' : ''}`} aria-live="polite">
         <span>{manualQueued ? 'Queued trade · waiting for entry' : 'Trade queue · idle'}</span>
         <b>{manualStatus || 'Choose Best for barrier or Best overall to arm a setup. It will wait for the required live entry checks before sending a contract.'}</b>
-        {entryMode === 'digit-trigger-confirmed' && <div class="queue-trigger-progress" aria-label="Two-pass trigger progress">
-          <span class={twoPass.first ? 'pass' : ''}>1. First {direction === 'over' ? '8/9' : '0/1'}</span>
-          <span class={twoPass.follow ? 'pass' : ''}>2. {direction === 'over' ? 'High follow-through' : 'Low follow-through'}</span>
-          <span class={twoPass.reentry ? 'pass' : ''}>3. New {direction === 'over' ? '8/9' : '0/1'} entry</span>
+        {queuedIntent && queuedMarket && <small class="queue-market-watch">Watching {shortMarketName(queuedMarket.display)} live ticks</small>}
+        {(queuedIntent?.entryMode === 'digit-trigger-confirmed' || (!manualQueued && entryMode === 'digit-trigger-confirmed')) && <div class="queue-trigger-progress" aria-label="Two-pass trigger progress">
+          <div class={`queue-trigger-step${queueProgress.first ? ' pass' : ''}${queueStage === 0 ? ' active' : ''}`}>
+            <span>1. First {queueDirection === 'over' ? '8/9' : '0/1'}</span>
+            {queuedIntent?.firstTriggerQuote != null && queuedIntent.firstTriggerDigit != null && <QueueQuote quote={queuedIntent.firstTriggerQuote} digit={queuedIntent.firstTriggerDigit} />}
+          </div>
+          <div class={`queue-trigger-step${queueProgress.follow ? ' pass' : ''}${queueStage === 1 ? ' active' : ''}`}>
+            <span>2. {queueDirection === 'over' ? 'High' : 'Low'} follow-through</span>
+            {queuedIntent?.followThroughQuote != null && queuedIntent.followThroughDigit != null && <QueueQuote quote={queuedIntent.followThroughQuote} digit={queuedIntent.followThroughDigit} />}
+          </div>
+          <div class={`queue-trigger-step${queueProgress.reentry ? ' pass' : ''}${queueStage === 2 ? ' active' : ''}`}>
+            <span>3. New {queueDirection === 'over' ? '8/9' : '0/1'} entry</span>
+            {queuedIntent?.reentryQuote != null && queuedIntent.reentryDigit != null && <QueueQuote quote={queuedIntent.reentryQuote} digit={queuedIntent.reentryDigit} />}
+          </div>
         </div>}
         {manualQueued && <button type="button" onClick={onCancelManualQueue}>Cancel queue</button>}
       </div>
@@ -1762,6 +1842,8 @@ function DecisionHero({
   onManualPlace,
   manualStatus,
   manualQueued,
+  queuedIntent,
+  queuedMarket,
   onCancelManualQueue,
 }: {
   markets: Market[];
@@ -1796,6 +1878,8 @@ function DecisionHero({
   onManualPlace: (direction: 'over' | 'under', barrier: number, market?: string) => Promise<boolean>;
   manualStatus: string;
   manualQueued: boolean;
+  queuedIntent: TimedManualIntent | null;
+  queuedMarket: Market | null;
   onCancelManualQueue: () => void;
 }): JSX.Element {
   // Manual mode stays pinned to the operator's chosen market. Automation may
@@ -1925,6 +2009,8 @@ function DecisionHero({
           onPlace={onManualPlace}
           manualStatus={manualStatus}
           manualQueued={manualQueued}
+          queuedIntent={queuedIntent}
+          queuedMarket={queuedMarket}
           onCancelManualQueue={onCancelManualQueue}
             onClose={onCloseMarketChooser}
           />

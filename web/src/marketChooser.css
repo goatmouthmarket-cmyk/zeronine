@@ -57,9 +57,17 @@
 .inline-entry-status span { color: var(--purple-light); font-size: 8px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
 .inline-entry-status b { min-width: 0; color: var(--text); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 .inline-entry-status button { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--purple-light); font: inherit; font-size: 10px; font-weight: 850; cursor: pointer; }
-.queue-trigger-progress { display: grid; gap: 5px; padding: 9px; border: 1px solid rgba(139,92,246,.28); border-radius: 7px; background: rgba(139,92,246,.07); }
-.queue-trigger-progress span { color: var(--muted); font-size: 10px; font-weight: 800; }
-.queue-trigger-progress span.pass { color: var(--green); }
+.queue-market-watch { color: var(--muted); font-size: 9px; font-weight: 700; }
+.queue-trigger-progress { display: grid; gap: 5px; padding: 8px; border: 1px solid rgba(139,92,246,.28); border-radius: 7px; background: rgba(139,92,246,.07); }
+.queue-trigger-step { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px; min-height: 24px; padding: 5px 6px; border: 1px solid transparent; border-radius: 6px; }
+.queue-trigger-step > span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.queue-trigger-step.pass > span { color: var(--green); }
+.queue-trigger-step.active { border-color: rgba(139,92,246,.5); background: rgba(139,92,246,.13); }
+.queue-trigger-step.active > span { color: var(--purple-light); }
+.queue-live-quote { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.queue-live-quote small { color: var(--muted-2); font-size: 8px; font-weight: 750; }
+.queue-live-quote b { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; font-variant-numeric: tabular-nums; }
+.queue-live-quote mark { display: inline-grid; min-width: 15px; height: 17px; margin-left: 1px; place-items: center; border-radius: 4px; background: rgba(34,197,94,.18); color: var(--green); font: inherit; font-weight: 900; }
 .inline-chooser-head > span,
 .inline-market-select > span,
 .inline-barrier > span,
