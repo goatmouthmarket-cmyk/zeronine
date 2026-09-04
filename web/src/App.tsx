@@ -1191,8 +1191,9 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
             <Detail label="Payout" value={fmtMoney(trade.payout, '$')} />
             <Detail label="Estimated win" value={digitContract ? `${(estimatedWin * 100).toFixed(1)}%${storedEstimate ? '' : ' baseline'}` : storedEstimate ? `${(estimatedWin * 100).toFixed(1)}%` : '--'} />
             <Detail label="Entry spot" value={trade.entry_spot != null ? String(trade.entry_spot) : '--'} />
+            <Detail label="Entry digit" value={trade.entry_digit != null ? String(trade.entry_digit) : '--'} />
             <Detail label="Exit" value={trade.exit_spot != null ? String(trade.exit_spot) : '--'} />
-            <Detail label="Reason" value={trade.reason || '--'} />
+            <Detail label="Entry intent & wait" value={trade.reason || '--'} />
             <Detail label="Result" value={trade.status} color={trade.status === 'won' ? 'green' : trade.status === 'lost' ? 'red' : undefined} />
             <div class={`detail-learning${settledForLearning ? ' settled' : ''}`}>
               <span class="detail-learning-label">Prediction learning</span>
@@ -1203,6 +1204,7 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
           <div class="detail-grid">
             <Detail label="Strategy" value={run.strategy_mode.replace('_', ' ')} />
             <Detail label="Mode" value={run.bot_mode} />
+            <Detail label="Entry mode" value={run.entry_mode === 'digit_trigger' ? '8/9 · 0/1 trigger' : 'Model'} />
             <Detail label="Trades" value={String(run.trades)} />
             <Detail label="Win rate" value={run.win_rate != null ? `${run.win_rate.toFixed(1)}%` : '--'} />
             <Detail label="Net PnL" value={fmtSigned(run.net_pnl, '$')} color={run.net_pnl >= 0 ? 'green' : 'red'} />
@@ -2060,6 +2062,7 @@ function BotPage(): JSX.Element {
   const [maxTradesText, setMaxTradesText] = useState('0');
   const [strategy, setStrategy] = useState<Settings['strategy_mode']>(s.settings?.strategy_mode ?? 'conservative');
   const [mode, setMode] = useState<Settings['bot_mode']>(s.settings?.bot_mode ?? 'balanced');
+  const [entryMode, setEntryMode] = useState<Settings['entry_mode']>(s.settings?.entry_mode ?? 'model');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState('');
   const [settlementBusy, setSettlementBusy] = useState(false);
@@ -2100,6 +2103,11 @@ function BotPage(): JSX.Element {
     void updateSettings({ bot_mode: m });
   };
 
+  const pickEntryMode = (m: Settings['entry_mode']) => {
+    setEntryMode(m);
+    void updateSettings({ entry_mode: m });
+  };
+
   const restoreRecommended = () => {
     setMode('balanced');
     setStrategy('conservative');
@@ -2132,6 +2140,7 @@ function BotPage(): JSX.Element {
       const maxTrades = Math.max(0, Math.floor(Number(maxTradesText) || 0));
       await startAutomation({
         strategyMode: strategy,
+        entryMode,
         baseStake: stake,
         maxTrades: maxTrades > 0 ? maxTrades : undefined,
       });
@@ -2210,6 +2219,15 @@ function BotPage(): JSX.Element {
             ))}
           </div>
           <div class="set-hint">{MODE_META[mode].hint}</div>
+        </div>
+
+        <div class="set-group bot-entry-mode">
+          <div class="set-label-top">Entry instruction</div>
+          <div class="seg">
+            <button class={`seg-btn${entryMode === 'model' ? ' active' : ''}`} onClick={() => pickEntryMode('model')}>Model</button>
+            <button class={`seg-btn${entryMode === 'digit_trigger' ? ' active' : ''}`} onClick={() => pickEntryMode('digit_trigger')}>8/9 · 0/1 trigger</button>
+          </div>
+          <div class="set-hint">Trigger waits for 8/9 before Over or 0/1 before Under; it still needs validated transition, price, risk, and confirmation evidence.</div>
         </div>
 
         <div class="bot-advanced-toggle-wrap">

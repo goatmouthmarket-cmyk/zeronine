@@ -18,6 +18,7 @@ import {
 import type { RecoveryObservationState } from '../intelligence/recoveryObservation.ts';
 import { digitCandidateQuality, isSensibleDigitCandidate, pickSignalFromSnapshot } from '../strategy/signal.ts';
 import { config } from '../config.ts';
+import { matchesDigitTrigger } from '../strategy/entryMode.ts';
 import { digitHistory, getQuoteStats, getSettings, insertTestRun, listMarkets, listTestRuns, patternRowsByPrev, patternWeightForStrategy } from '../db/store.ts';
 import type { TestRunRow } from '../db/store.ts';
 import { computeMetrics, runRow, round2 } from './metrics.ts';
@@ -25,16 +26,18 @@ import type { Aggregate } from './metrics.ts';
 
 export const TEST_STRATEGIES = ['conservative', 'martingale', 'boosted_martingale', 'chase'] as const;
 export const TEST_MODES = ['rapid', 'balanced', 'strict'] as const;
+export const TEST_ENTRY_MODES = ['model', 'digit_trigger'] as const;
 
 export interface TestConfig {
   strategyMode: (typeof TEST_STRATEGIES)[number];
   botMode: (typeof TEST_MODES)[number];
+  entryMode?: (typeof TEST_ENTRY_MODES)[number];
 }
 
 export function allConfigs(): TestConfig[] {
   const out: TestConfig[] = [];
   for (const strategyMode of TEST_STRATEGIES) {
-    for (const botMode of TEST_MODES) out.push({ strategyMode, botMode });
+    for (const botMode of TEST_MODES) for (const entryMode of TEST_ENTRY_MODES) out.push({ strategyMode, botMode, entryMode });
   }
   return out;
 }
@@ -42,8 +45,8 @@ export function allConfigs(): TestConfig[] {
 function allowedBarriers(strategyMode: TestConfig['strategyMode']): Array<{ direction: Direction; barrier: number }> {
   if (strategyMode === 'conservative') {
     return [
-      { direction: 'over', barrier: 0 },
-      { direction: 'under', barrier: 9 },
+      { direction: 'over', barrier: 1 },
+      { direction: 'under', barrier: 8 },
     ];
   }
   const out: Array<{ direction: Direction; barrier: number }> = [];
@@ -221,6 +224,7 @@ function replayOne(
   startBalance: number,
   ratioFor: (market: string, direction: Direction, barrier: number) => number,
 ): BacktestRunResult {
+  const entryMode = cfg.entryMode ?? 'model';
   const gates = modeGates(cfg.botMode, settingsLike.min_edge);
   const allowed = allowedBarriers(cfg.strategyMode);
   let st: ReplayState = {
@@ -322,7 +326,9 @@ function replayOne(
             expectedROI: quote.realEV,
           }))
           .sort((a, b) => replayQuoteQuality(b) - replayQuoteQuality(a) || b.realEV - a.realEV || b.estWin - a.estWin);
-      const best = eligible[0];
+      const best = entryMode === 'digit_trigger'
+        ? eligible.find((quote) => matchesDigitTrigger(quote.direction, markets.find((market) => market.symbol === quote.market)?.digits[currentSamples.get(quote.market)?.k ?? -1]))
+        : eligible[0];
       if (best) decision = { ...best, stake: baseStake };
     } else {
       const recoveryMarket = observation?.market ?? event.market;
@@ -487,7 +493,7 @@ export async function runBacktest(opts: BacktestOptions = {}): Promise<BacktestO
     opts.onProgress?.({ phase: 'replaying', configIndex: i, totalConfigs: configKeys.length, message: `${cfg.strategyMode} · ${cfg.botMode}` });
     const result = replayOne(cfg, ensureMarkets(weightForStrategy(cfg.strategyMode)), settingsLike, baseStake, target, startBalance, ratioFor);
     results.push(result);
-    const row = insertTestRun({ ...runRow('backtest', cfg.strategyMode, cfg.botMode, baseStake, target, result.metrics, Date.now()), source: opts.source ?? 'manual' });
+    const row = insertTestRun({ ...runRow('backtest', cfg.strategyMode, cfg.botMode, cfg.entryMode ?? 'model', baseStake, target, result.metrics, Date.now()), source: opts.source ?? 'manual' });
     runs.push(row);
     await sleep(0); // let ws progress frames flush
   }

@@ -235,6 +235,7 @@ export interface SettingsRow {
   barrier_number: number;
   strategy_mode: string;
   bot_mode: string;
+  entry_mode: 'model' | 'digit_trigger';
   strategy_multiplier: number;
   recovery_buffer: number;
   chase_amortize: number;
@@ -557,6 +558,9 @@ function migrate(d: DatabaseSync): void {
       consistency REAL,
       entropy REAL,
       momentum REAL,
+      entry_mode TEXT,
+      entry_wait_ms INTEGER,
+      entry_intent TEXT,
       result TEXT,
       profit REAL
     );
@@ -604,6 +608,7 @@ function migrate(d: DatabaseSync): void {
       barrier_number REAL,
       strategy_mode TEXT,
       bot_mode TEXT,
+      entry_mode TEXT NOT NULL DEFAULT 'model',
       strategy_multiplier REAL,
       recovery_buffer REAL,
       chase_amortize REAL,
@@ -626,6 +631,7 @@ function migrate(d: DatabaseSync): void {
       kind TEXT NOT NULL,
       strategy_mode TEXT NOT NULL,
       bot_mode TEXT NOT NULL,
+      entry_mode TEXT NOT NULL DEFAULT 'model',
       base_stake REAL NOT NULL DEFAULT 1,
       target INTEGER NOT NULL DEFAULT 0,
       trades INTEGER NOT NULL DEFAULT 0,
@@ -724,6 +730,7 @@ function migrate(d: DatabaseSync): void {
   if (!settingsCols.has('max_recovery_exposure')) d.exec(`ALTER TABLE settings ADD COLUMN max_recovery_exposure REAL`);
   if (!settingsCols.has('max_drawdown_pct')) d.exec(`ALTER TABLE settings ADD COLUMN max_drawdown_pct REAL`);
   if (!settingsCols.has('bot_mode')) d.exec(`ALTER TABLE settings ADD COLUMN bot_mode TEXT DEFAULT 'balanced'`);
+  if (!settingsCols.has('entry_mode')) d.exec(`ALTER TABLE settings ADD COLUMN entry_mode TEXT NOT NULL DEFAULT 'model'`);
   if (!settingsCols.has('pattern_weight')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight REAL NOT NULL DEFAULT 0`);
   if (!settingsCols.has('pattern_weight_conservative')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight_conservative REAL`);
   if (!settingsCols.has('pattern_weight_martingale')) d.exec(`ALTER TABLE settings ADD COLUMN pattern_weight_martingale REAL`);
@@ -751,6 +758,11 @@ function migrate(d: DatabaseSync): void {
     (d.prepare(`PRAGMA table_info(test_runs)`).all() as Array<{ name: string }>).map((c) => c.name),
   );
   if (!runCols.has('source')) d.exec(`ALTER TABLE test_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`);
+  if (!runCols.has('entry_mode')) d.exec(`ALTER TABLE test_runs ADD COLUMN entry_mode TEXT NOT NULL DEFAULT 'model'`);
+  const scannerCols = new Set((d.prepare(`PRAGMA table_info(scanner_logs)`).all() as Array<{ name: string }>).map((c) => c.name));
+  if (!scannerCols.has('entry_mode')) d.exec(`ALTER TABLE scanner_logs ADD COLUMN entry_mode TEXT`);
+  if (!scannerCols.has('entry_wait_ms')) d.exec(`ALTER TABLE scanner_logs ADD COLUMN entry_wait_ms INTEGER`);
+  if (!scannerCols.has('entry_intent')) d.exec(`ALTER TABLE scanner_logs ADD COLUMN entry_intent TEXT`);
   void runCols;
 
   // Earlier versions kept one global baseline and recovery row. Preserve it
@@ -809,12 +821,12 @@ INSERT OR IGNORE INTO recovery_state (id, mode, streak, lost, debt, attempts, cy
       VALUES (1, 0, 0, 0, 0, 0);
     INSERT OR IGNORE INTO settings (id, base_stake, max_stake, martingale_steps,
       max_consecutive_losses, min_edge, min_recovery_win, barrier_preference,
-      barrier_number, strategy_mode, bot_mode, strategy_multiplier, recovery_buffer, chase_amortize,
+      barrier_number, strategy_mode, bot_mode, entry_mode, strategy_multiplier, recovery_buffer, chase_amortize,
       max_recovery_debt, max_recovery_exposure, max_drawdown_pct)
       VALUES (1, ${config.baseStake}, ${config.maxStake}, ${config.martingaleSteps},
         ${config.maxConsecutiveLosses}, ${config.minEdge},
         ${config.minRecoveryWinRate}, '${config.barrierPreference}', ${config.barrierNumber},
-        '${config.strategyMode}', '${config.botMode}',
+        '${config.strategyMode}', '${config.botMode}', 'model',
         ${config.strategyMultiplier}, ${config.recoveryBuffer}, ${config.chaseAmortize},
         ${config.maxRecoveryDebt}, ${config.maxRecoveryExposure},
         ${config.maxDrawdownPct});
@@ -868,6 +880,7 @@ export function getSettings(): SettingsRow {
     barrier_number,
     strategy_mode,
     bot_mode: ['rapid', 'balanced', 'strict'].includes(String(row.bot_mode)) ? String(row.bot_mode) : 'balanced',
+    entry_mode: row.entry_mode === 'digit_trigger' ? 'digit_trigger' : 'model',
     strategy_multiplier: Number(row.strategy_multiplier ?? 3),
     recovery_buffer: Number(row.recovery_buffer ?? 0.5),
     chase_amortize: Number(row.chase_amortize ?? 0.35),
@@ -889,7 +902,7 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
     .prepare(
       `UPDATE settings SET base_stake=?, max_stake=?, martingale_steps=?, max_consecutive_losses=?,
        min_edge=?, min_recovery_win=?, barrier_preference=?, barrier_number=?,
-       strategy_mode=?, bot_mode=?,
+       strategy_mode=?, bot_mode=?, entry_mode=?,
        strategy_multiplier=?, recovery_buffer=?, chase_amortize=?, max_recovery_debt=?, max_recovery_exposure=?, max_drawdown_pct=?, pattern_weight=?, pattern_weight_conservative=?, pattern_weight_martingale=?, pattern_weight_boosted_martingale=?, pattern_weight_chase=? WHERE id=1`,
     )
     .run(
@@ -903,6 +916,7 @@ export function updateSettings(patch: Partial<SettingsRow>): SettingsRow {
       next.barrier_number,
       next.strategy_mode,
       next.bot_mode,
+      next.entry_mode,
       next.strategy_multiplier,
       next.recovery_buffer,
       next.chase_amortize,
@@ -1022,6 +1036,9 @@ export interface ScannerLogRow {
   consistency: number;
   entropy: number;
   momentum: number;
+  entry_mode?: 'model' | 'digit_trigger';
+  entry_wait_ms?: number;
+  entry_intent?: string;
 }
 
 export function insertScannerLog(t: ScannerLogRow): number {
@@ -1791,6 +1808,7 @@ export interface TestRunRow {
   source: 'manual' | 'auto';
   strategy_mode: string;
   bot_mode: string;
+  entry_mode: 'model' | 'digit_trigger';
   base_stake: number;
   target: number;
   trades: number;
@@ -1810,15 +1828,16 @@ export interface TestRunRow {
 export function insertTestRun(r: Omit<TestRunRow, 'id'>): TestRunRow {
   const info = getDb()
     .prepare(
-      `INSERT INTO test_runs (kind, source, strategy_mode, bot_mode, base_stake, target, trades, wins, losses,
+      `INSERT INTO test_runs (kind, source, strategy_mode, bot_mode, entry_mode, base_stake, target, trades, wins, losses,
          net_pnl, win_rate, avg_stake, max_drawdown_pct, best_streak, worst_streak, final_balance, started_at, finished_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       r.kind,
       r.source,
       r.strategy_mode,
       r.bot_mode,
+      r.entry_mode,
       r.base_stake,
       r.target,
       r.trades,

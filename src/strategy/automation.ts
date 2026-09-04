@@ -41,6 +41,7 @@ import {
 import { calibrateResearchProbability, observeResearchOutcome } from '../intelligence/researchCalibration.ts';
 import { SignalConfirmationGate, confirmationTicksForMode } from './signalConfirmation.ts';
 import { assessExtremeEntryTiming } from './entryTiming.ts';
+import { entryIntent, matchesDigitTrigger } from './entryMode.ts';
 
 const HOLD = 'hold';
 
@@ -117,12 +118,18 @@ function barrierAllowed(settings: SettingsRow): Array<{ direction: Direction; ba
     raw === 'over' || raw.startsWith('over') ? 'over' : raw === 'under' || raw.startsWith('under') ? 'under' : 'auto';
   const barrier = settings.barrier_number ?? (mode === 'under' ? 9 : 0);
 
+  if (settings.entry_mode === 'digit_trigger') {
+    if (mode === 'over') return [{ direction: 'over', barrier: 5 }];
+    if (mode === 'under') return [{ direction: 'under', barrier: 5 }];
+    return [{ direction: 'over', barrier: 5 }, { direction: 'under', barrier: 5 }];
+  }
+
   if (settings.strategy_mode === 'conservative') {
-    if (mode === 'over') return [{ direction: 'over', barrier: 0 }];
-    if (mode === 'under') return [{ direction: 'under', barrier: 9 }];
+    if (mode === 'over') return [{ direction: 'over', barrier: 1 }];
+    if (mode === 'under') return [{ direction: 'under', barrier: 8 }];
     return [
-      { direction: 'over', barrier: 0 },
-      { direction: 'under', barrier: 9 },
+      { direction: 'over', barrier: 1 },
+      { direction: 'under', barrier: 8 },
     ];
   }
   if (mode === 'over') return [{ direction: 'over', barrier: Math.max(0, Math.min(8, Math.trunc(barrier))) }];
@@ -173,6 +180,7 @@ export class Automation {
   private runTrades = 0;
   private stopReason: string | null = null;
   private coolOffs = new Map<string, number>();
+  private entryWaitStarted = new Map<string, number>();
   private runOrigin: 'bot' | 'paper' = 'bot';
 
   constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub, memory = new DecisionMemory()) {
@@ -246,6 +254,7 @@ export class Automation {
     this.runTarget = Math.max(0, Math.floor(opts.maxTrades ?? 0) || 0);
     this.runTrades = 0;
     this.runOrigin = opts.origin ?? 'bot';
+    this.entryWaitStarted.clear();
     this.confirmation.reset();
     resetRecovery();
     setAutomation({
@@ -619,13 +628,36 @@ export class Automation {
         return { option, assessment, liveDigit: this.registry.snapshot(option.market).lastDigit };
       }).filter((item) => item.assessment.validated && item.liveDigit === item.assessment.triggerDigit)
         .sort((left, right) => (right.assessment.triggerWinRate ?? 0) - (left.assessment.triggerWinRate ?? 0));
-      const selected = timed[0]?.option ?? eligible[0];
-      const timingReason = timed[0]?.assessment.reason;
+      const triggered = eligible.filter((option) => matchesDigitTrigger(option.direction, this.registry.snapshot(option.market).lastDigit));
+      const triggerReady = triggered.filter((option) => {
+        const digit = this.registry.snapshot(option.market).lastDigit;
+        const assessment = assessExtremeEntryTiming(
+          option.direction,
+          option.barrier,
+          getEntryTimingProfile(option.market, option.direction, option.barrier, digit ?? (option.direction === 'over' ? 9 : 0)),
+          option.ask > 0 && option.payout > 0 ? option.ask / option.payout : 1,
+        );
+        return assessment.validated;
+      });
+      if (settings.entry_mode === 'digit_trigger' && triggerReady.length === 0) {
+        const desired = eligible[0];
+        const key = coolKey(desired);
+        if (!this.entryWaitStarted.has(key)) this.entryWaitStarted.set(key, Date.now());
+        this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
+        this.phase = 'waiting-entry-trigger';
+        this.emit({ type: HOLD, ts: Date.now(), reason: `waiting for validated ${desired.direction === 'over' ? '8/9 high' : '0/1 low'} entry trigger; ${Math.floor((Date.now() - (this.entryWaitStarted.get(key) ?? Date.now())) / 1000)}s watched` });
+        return 250;
+      }
+      const selected = settings.entry_mode === 'digit_trigger' ? triggerReady[0] : (timed[0]?.option ?? eligible[0]);
+      const timingReason = settings.entry_mode === 'digit_trigger' ? 'digit_trigger' : timed[0]?.assessment.reason;
+      const entryKey = coolKey(selected);
+      const entryWaitMs = Date.now() - (this.entryWaitStarted.get(entryKey) ?? Date.now());
+      this.entryWaitStarted.delete(entryKey);
       decision = {
         stake: settings.base_stake,
         direction: selected.direction,
         barrier: selected.barrier,
-        reason: timingReason ? 'entry_timing' : 'base',
+        reason: `${timingReason ? 'entry timing' : 'model'} · ${entryIntent(settings.entry_mode, selected.direction, this.registry.snapshot(selected.market).lastDigit)} · waited ${Math.floor(entryWaitMs / 1000)}s`,
         estWin: selected.estWin,
         payout: selected.payout,
         holds: false,

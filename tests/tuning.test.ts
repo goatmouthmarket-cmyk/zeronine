@@ -11,6 +11,7 @@ function run(strategy: string, mode: string, trades: number, netPnl: number, avg
     source: 'manual',
     strategy_mode: strategy,
     bot_mode: mode,
+    entry_mode: 'model',
     base_stake: 1,
     target: trades,
     trades,

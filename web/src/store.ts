@@ -69,6 +69,7 @@ export interface Settings {
   barrier_number: number;
   strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
   bot_mode: 'rapid' | 'balanced' | 'strict';
+  entry_mode: 'model' | 'digit_trigger';
   strategy_multiplier: number;
   recovery_buffer: number;
   chase_amortize: number;
@@ -255,6 +256,7 @@ export interface TestRunRow {
   source: 'manual' | 'auto';
   strategy_mode: string;
   bot_mode: string;
+  entry_mode: 'model' | 'digit_trigger';
   base_stake: number;
   target: number;
   trades: number;
@@ -1558,12 +1560,14 @@ export async function logout(): Promise<void> {
 
 export async function startAutomation(opts?: {
   strategyMode?: Settings['strategy_mode'];
+  entryMode?: Settings['entry_mode'];
   baseStake?: number;
   maxTrades?: number;
 }): Promise<void> {
   try {
     const body: Record<string, unknown> = {};
     if (opts?.strategyMode !== undefined) body.strategy_mode = opts.strategyMode;
+    if (opts?.entryMode !== undefined) body.entry_mode = opts.entryMode;
     if (opts?.baseStake !== undefined) body.base_stake = opts.baseStake;
     if (opts?.maxTrades !== undefined) body.max_trades = opts.maxTrades;
     const res = await api<{ state: AutomationState }>('/api/automation/start', {

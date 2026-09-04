@@ -64,6 +64,7 @@ function hold(reason: RecoveryReason, holdReason: string): RecoveryDecision {
 // Boosted adds a profit buffer so a win lands ahead, Chase amortizes the debt
 // over several favorable bets (35% per bet by default).
 function profileTarget(ctx: RecoveryContext): number {
+  if (ctx.strategy === 'conservative') return Math.min(ctx.debt, ctx.baseStake * 0.5);
   if (ctx.strategy === 'boosted_martingale') {
     return ctx.debt + ctx.baseStake * ctx.recoveryBuffer;
   }

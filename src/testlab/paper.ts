@@ -115,7 +115,8 @@ export async function runPaperSweep(
       break;
     }
 
-    updateSettings({ strategy_mode: cfg.strategyMode, bot_mode: cfg.botMode });
+    const entryMode = cfg.entryMode ?? 'model';
+    updateSettings({ strategy_mode: cfg.strategyMode, bot_mode: cfg.botMode, entry_mode: entryMode });
     const boundary = maxTradeId();
     const startedAt = Date.now();
 
@@ -139,7 +140,7 @@ export async function runPaperSweep(
 
       const trades = tradesAfterId(boundary).filter((t) => t.status === 'won' || t.status === 'lost');
       const metrics = computeMetrics(trades, startBalance);
-      const row = insertTestRun({ ...runRow('paper', cfg.strategyMode, cfg.botMode, baseStake, tradesTarget, metrics, startedAt), source: opts.source ?? 'manual' });
+      const row = insertTestRun({ ...runRow('paper', cfg.strategyMode, cfg.botMode, entryMode, baseStake, tradesTarget, metrics, startedAt), source: opts.source ?? 'manual' });
       runs.push(row);
       completed += 1;
       progress(trades.length, `completed ${trades.length} trades for ${cfg.strategyMode} · ${cfg.botMode}`, 'done');
@@ -150,7 +151,7 @@ export async function runPaperSweep(
       if (cancelled) break;
     } finally {
       automation.stop('sweep: next config');
-      updateSettings({ strategy_mode: snapshot.strategy_mode, bot_mode: snapshot.bot_mode });
+      updateSettings({ strategy_mode: snapshot.strategy_mode, bot_mode: snapshot.bot_mode, entry_mode: snapshot.entry_mode });
     }
   }
 
