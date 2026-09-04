@@ -51,6 +51,11 @@
 }
 
 .inline-chooser-head { justify-content: space-between; }
+.inline-entry-status { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 5px 8px; padding: 6px 8px; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(255,255,255,.025); }
+.inline-entry-status.queued { border-color: rgba(139,92,246,.42); background: rgba(139,92,246,.1); }
+.inline-entry-status span { color: var(--purple-light); font-size: 8px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.inline-entry-status b { min-width: 0; color: var(--muted); font-size: 9px; line-height: 1.25; }
+.inline-entry-status button { grid-column: 1 / -1; justify-self: start; padding: 0; border: 0; background: transparent; color: var(--purple-light); font: inherit; font-size: 9px; font-weight: 850; cursor: pointer; }
 .inline-chooser-head > span,
 .inline-market-select > span,
 .inline-barrier > span,
@@ -199,6 +204,22 @@
   .inline-entry-mode { grid-column: 1 / -1; }
   .inline-confidence { min-height: 34px; }
   .inline-market-chooser > p { line-height: 10px; }
+
+  /* In the full manual cockpit, controls stay in one focused left column;
+     the live queued-trade explanation occupies its own readable right rail. */
+  .cockpit.manual-open .inline-market-chooser { grid-template-columns: minmax(280px, 1fr) minmax(250px, .82fr); gap: 7px 14px; }
+  .cockpit.manual-open .inline-entry-status { grid-column: 2; grid-row: 2 / span 7; align-self: stretch; align-content: start; }
+  .cockpit.manual-open .inline-execution,
+  .cockpit.manual-open .inline-market-select,
+  .cockpit.manual-open .inline-direction,
+  .cockpit.manual-open .inline-barrier,
+  .cockpit.manual-open .inline-stake,
+  .cockpit.manual-open .inline-entry-mode,
+  .cockpit.manual-open .inline-confidence,
+  .cockpit.manual-open .inline-market-chooser > p,
+  .cockpit.manual-open .inline-basket-list,
+  .cockpit.manual-open .inline-basket-total,
+  .cockpit.manual-open .inline-basket-place { grid-column: 1; }
 }
 
 @keyframes inline-chooser-in { from { opacity: 0; transform: translateY(4px) scale(.985); } }
@@ -214,6 +235,7 @@
     padding: 12px;
     overflow: visible;
   }
+  .cockpit.manual-open .inline-entry-status { grid-column: 1 / -1; grid-row: auto; }
   .inline-chooser-head { display: flex; grid-row: 1; grid-column: 1 / -1; }
   .inline-execution { grid-row: 2; grid-column: 1 / -1; }
   .inline-execution button { min-height: 44px; font-size: 11px; }

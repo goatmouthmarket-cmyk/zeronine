@@ -875,6 +875,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               }}
               onManualTimedSetup={setTimedManualSetup}
               onManualBasket={placeManualBasket}
+              manualStatus={manualMsg}
+              manualQueued={Boolean(pendingManualIntent)}
+              onCancelManualQueue={() => {
+                setPendingManualIntent(null);
+                setManualError(false);
+                setManualMsg('Queued trade cancelled - no contract was purchased');
+              }}
             />
 
             <div class={`manual-slot${marketChooserOpen ? ' setup-open' : ''}`}>
@@ -1401,6 +1408,9 @@ function InlineMarketChooser({
   onStake,
   onBasket,
   onClose,
+  manualStatus,
+  manualQueued,
+  onCancelManualQueue,
 }: {
   markets: Market[];
   candidates: SignalCandidate[];
@@ -1417,6 +1427,9 @@ function InlineMarketChooser({
   onStake: (stake: string) => void;
   onBasket: (setups: ManualSetup[]) => Promise<boolean>;
   onClose: () => void;
+  manualStatus: string;
+  manualQueued: boolean;
+  onCancelManualQueue: () => void;
 }): JSX.Element {
   const [execution, setExecution] = useState<'single' | 'basket'>('single');
   const calculateRanking = () => rankMarketsForSetup(markets, candidates, direction, barrier);
@@ -1479,6 +1492,11 @@ function InlineMarketChooser({
         <span>Manual setup</span>
         <button type="button" onClick={onClose} aria-label="Return to live chart">×</button>
       </div>
+      {(manualStatus || manualQueued) && <div class={`inline-entry-status${manualQueued ? ' queued' : ''}`} aria-live="polite">
+        <span>{manualQueued ? 'Queued trade · waiting for entry' : 'Manual status'}</span>
+        <b>{manualStatus || 'Choosing a validated entry setup'}</b>
+        {manualQueued && <button type="button" onClick={onCancelManualQueue}>Cancel queue</button>}
+      </div>}
       <div class="inline-execution" role="group" aria-label="Manual execution mode">
         <button type="button" class={execution === 'single' ? 'active' : ''} onClick={() => setExecution('single')}>Single</button>
         <button type="button" class={execution === 'basket' ? 'active' : ''} onClick={() => setExecution('basket')}>5 at once</button>
@@ -1724,6 +1742,9 @@ function DecisionHero({
   onManualTimedSetup,
   onManualStake,
   onManualBasket,
+  manualStatus,
+  manualQueued,
+  onCancelManualQueue,
 }: {
   markets: Market[];
   selectedMarket: Market | null;
@@ -1754,6 +1775,9 @@ function DecisionHero({
   onManualTimedSetup: (setup: ManualSetup) => void;
   onManualStake: (stake: string) => void;
   onManualBasket: (setups: ManualSetup[]) => Promise<boolean>;
+  manualStatus: string;
+  manualQueued: boolean;
+  onCancelManualQueue: () => void;
 }): JSX.Element {
   // Manual mode stays pinned to the operator's chosen market. Automation may
   // scan broadly until it emits a decision, after which the decision itself
@@ -1879,6 +1903,9 @@ function DecisionHero({
           onTimedSetup={onManualTimedSetup}
           onStake={onManualStake}
           onBasket={onManualBasket}
+          manualStatus={manualStatus}
+          manualQueued={manualQueued}
+          onCancelManualQueue={onCancelManualQueue}
             onClose={onCloseMarketChooser}
           />
         </div>
