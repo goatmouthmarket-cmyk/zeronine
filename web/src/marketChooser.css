@@ -40,6 +40,7 @@
 }
 .cockpit.manual-open .cockpit-primary { display: none; }
 .cockpit.manual-open .inline-market-chooser { width: 100%; min-height: 0; }
+.manual-cockpit-takeover { grid-column: 1 / -1; min-width: 0; width: 100%; }
 .cockpit:not(.manual-open) .market-pulse { animation: cockpit-market-return .16s ease-out; }
 
 .inline-chooser-head,

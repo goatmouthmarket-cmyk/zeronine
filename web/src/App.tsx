@@ -877,7 +877,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               onManualBasket={placeManualBasket}
             />
 
-            <div class="manual-slot">
+            <div class={`manual-slot${marketChooserOpen ? ' setup-open' : ''}`}>
               {!automation && !decision && (
                 <div class="side-selector">
                   <button
@@ -930,17 +930,17 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               )}
             </div>
 
-            {startError && (
+            {!marketChooserOpen && startError && (
               <div class="bot-feedback" aria-live="polite">
                 <div class="bot-error">{startError}</div>
               </div>
             )}
 
-            <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && !guest && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
+            {!marketChooserOpen && <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && !guest && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
               <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
               <span>{automation ? 'Stop Bot' : guest ? 'Connect Deriv to trade' : startLocked ? 'Waiting for outcome' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
-            </button>
-            {openAccountTrade && <button class="bot-inline-action" type="button" disabled={settlementBusy} onClick={() => void recoverOpenTrade()}>
+            </button>}
+            {!marketChooserOpen && openAccountTrade && <button class="bot-inline-action" type="button" disabled={settlementBusy} onClick={() => void recoverOpenTrade()}>
               {settlementBusy ? 'Checking outcome...' : openAccountTrade.contract_id ? 'Refresh outcome' : 'Check submitted order'}
             </button>}
           </section>
@@ -1826,7 +1826,7 @@ function DecisionHero({
 
   return (
     <div class={`cockpit${marketChooserOpen ? ' manual-open' : ''}`}>
-      <div class="cockpit-primary">
+      {!marketChooserOpen && <div class="cockpit-primary">
       <div class="cockpit-market">{bestLabel}</div>
 
       <div class="cockpit-pick">
@@ -1861,9 +1861,10 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
-      </div>
+      </div>}
       {marketChooserOpen ? (
-        <InlineMarketChooser
+        <div class="manual-cockpit-takeover">
+          <InlineMarketChooser
           markets={markets}
           candidates={candidates}
           selectedMarket={selectedMarket}
@@ -1878,8 +1879,9 @@ function DecisionHero({
           onTimedSetup={onManualTimedSetup}
           onStake={onManualStake}
           onBasket={onManualBasket}
-          onClose={onCloseMarketChooser}
-        />
+            onClose={onCloseMarketChooser}
+          />
+        </div>
       ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} />}
     </div>
   );
