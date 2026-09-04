@@ -516,8 +516,34 @@ export class MomentumObserver {
       const requestId = this.req++; this.scanRequests.set(requestId, market.symbol);
       this.ws!.send(JSON.stringify({ ticks: market.symbol, subscribe: 1, req_id: requestId }));
     }
+    // Real-market subscriptions may stay silent until the next price change.
+    // Seed every verified candidate with recent provider history so the
+    // comparison can rank quiet markets instead of displaying 12 empty feeds.
+    void Promise.allSettled(candidates.map((market) => this.seedScanHistory(market.symbol, generation)));
     this.scanTimer = setTimeout(() => this.finishScan(generation), SCAN_SECONDS * 1_000); this.scanTimer.unref();
     this.emit(); return this.state();
+  }
+
+  private async seedScanHistory(symbol: string, generation: number): Promise<void> {
+    const response = await this.request({
+      ticks_history: symbol,
+      style: 'ticks',
+      count: 120,
+      end: 'latest',
+    });
+    if (generation !== this.generation || !this.running || this.phase !== 'scanning') return;
+    const prices = Array.isArray(response.history?.prices) ? response.history.prices : [];
+    const times = Array.isArray(response.history?.times) ? response.history.times : [];
+    const seeded = prices.map((price: unknown, index: number) => ({
+      quote: Number(price),
+      epoch: Number(times[index]),
+    })).filter((tick: Tick) => Number.isFinite(tick.quote) && Number.isFinite(tick.epoch));
+    const live = this.scanTicks.get(symbol);
+    if (!live || seeded.length === 0) return;
+    const merged = new Map<number, Tick>();
+    for (const tick of [...seeded, ...live]) merged.set(tick.epoch, tick);
+    this.scanTicks.set(symbol, [...merged.values()].sort((left, right) => left.epoch - right.epoch).slice(-2_000));
+    this.emit();
   }
 
   /** Focus consumes the selected scan series then drops every other market feed. */

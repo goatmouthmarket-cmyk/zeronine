@@ -55,7 +55,7 @@ import {
   runGoldBacktest,
 } from './store';
 import './marketChooser.css';
-import { assessTimedManualEntry, confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, type ManualSetup } from './manualMarketRanking';
+import { assessTimedManualEntry, confidenceForSetup, exactCandidateForSetup, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, theoreticalWinForSetup, type ManualSetup } from './manualMarketRanking';
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
@@ -486,9 +486,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [manualOverBarrier, setManualOverBarrier] = useState(0);
   const [manualUnderBarrier, setManualUnderBarrier] = useState(9);
   const [manualStakeText, setManualStakeText] = useState('');
-  const [timedManualSetup, setTimedManualSetup] = useState<ManualSetup | null>(null);
-  const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
-  const timedManualExecuting = useRef(false);
   const cooldownLeft = useBotCooldown();
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
 
@@ -518,6 +515,16 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
 
   const candidates = s.signal?.signal.candidates ?? [];
   const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
+  const queuedMarket = pendingManualIntent
+    ? s.markets.find((item) => item.symbol === pendingManualIntent.market)
+    : null;
+  const queuedCandidate = pendingManualIntent
+    ? exactCandidateForSetup(candidates, pendingManualIntent.market, pendingManualIntent.direction, pendingManualIntent.barrier) ?? null
+    : null;
+  const queuedAssessment = assessTimedManualEntry(queuedCandidate);
+  const queuedFreshTick = Boolean(queuedMarket && pendingManualIntent && queuedMarket.lastEpoch > pendingManualIntent.armedAfterEpoch);
+  const queuedSecondsLeft = pendingManualIntent ? Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000)) : 0;
+  const queuedBaseline = pendingManualIntent ? theoreticalWinForSetup(pendingManualIntent.direction, pendingManualIntent.barrier) : 0;
   const tickerPredictions = useMemo(() => new Map(
     (s.signal?.signal.candidates ?? []).map((candidate) => [candidate.market, candidate]),
   ), [s.signal]);
@@ -870,15 +877,32 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                   </button>
                   <div class={`manual-msg${manualError ? ' error' : ''}`} aria-live="polite">{manualMsg}</div>
                   {pendingManualIntent && (
-                    <button
-                      type="button"
-                      class="manual-cancel-entry"
-                      onClick={() => {
-                        setPendingManualIntent(null);
-                        setManualError(false);
-                        setManualMsg('Timed manual entry cancelled - no contract was purchased');
-                      }}
-                    >Cancel queued entry</button>
+                    <div class="manual-queued-entry" aria-live="polite">
+                      <div class="manual-queued-head">
+                        <span>Queued trade</span>
+                        <b>{queuedSecondsLeft}s safety limit</b>
+                      </div>
+                      <strong>{sideLabel(pendingManualIntent.direction, pendingManualIntent.barrier)} on {shortMarketName(queuedMarket?.display ?? pendingManualIntent.market)}</strong>
+                      <small>It will place only after every entry check passes. The safety limit cancels the queue; it never buys by itself.</small>
+                      <div class="manual-queued-checks" aria-label="Queued trade entry checks">
+                        <span class={queuedFreshTick ? 'pass' : ''}>Fresh tick</span>
+                        <span class={(queuedCandidate?.transitionSamples ?? 0) >= 20 ? 'pass' : ''}>Transitions {Math.min(20, queuedCandidate?.transitionSamples ?? 0)}/20</span>
+                        <span class={(queuedCandidate?.transitionProb ?? 0) >= queuedBaseline + .03 ? 'pass' : ''}>Lift {queuedCandidate?.transitionProb != null ? `${((queuedCandidate.transitionProb - queuedBaseline) * 100).toFixed(1)}%` : '--'}</span>
+                        <span class={(queuedCandidate?.edge ?? 0) >= .01 ? 'pass' : ''}>Edge {queuedCandidate?.edge != null ? `${(queuedCandidate.edge * 100).toFixed(1)}%` : '--'}</span>
+                        <span class={(queuedCandidate?.expectedROI ?? 0) >= .01 ? 'pass' : ''}>ROI {queuedCandidate?.expectedROI != null ? `${(queuedCandidate.expectedROI * 100).toFixed(1)}%` : '--'}</span>
+                        <span class={(queuedCandidate?.consistency ?? 0) >= .55 ? 'pass' : ''}>Consistency {queuedCandidate?.consistency != null ? `${(queuedCandidate.consistency * 100).toFixed(0)}%` : '--'}</span>
+                      </div>
+                      <em>{queuedFreshTick ? queuedAssessment.reason : 'Waiting for a new digit after the queue was armed.'}</em>
+                      <button
+                        type="button"
+                        class="manual-cancel-entry"
+                        onClick={() => {
+                          setPendingManualIntent(null);
+                          setManualError(false);
+                          setManualMsg('Queued trade cancelled - no contract was purchased');
+                        }}
+                      >Cancel queued trade</button>
+                    </div>
                   )}
                 </div>
               )}
@@ -1469,7 +1493,7 @@ function InlineMarketChooser({
           <button type="button" class="secondary" onClick={useStrongest} disabled={!ranked.length}>Best overall</button>
         </div>
       </div>
-      <p>Best selections arm a timed entry below. The order waits for a fresh, validated digit pattern instead of firing immediately.</p>
+      <p>Best selections queue a specific entry setup. The trade waits for a fresh digit plus validated transition, edge, return, and consistency checks before it can fire.</p>
       </> : <>
         <div class="inline-basket-list" aria-label="Five basket predictions">
           {basket.map((setup, index) => {
@@ -2682,6 +2706,7 @@ function MomentumTradeDesk({
   symbol,
   display,
   samples,
+  previewing = false,
   entryPrice,
   configuredMultiplier,
   session,
@@ -2695,6 +2720,7 @@ function MomentumTradeDesk({
   symbol?: string;
   display?: string;
   samples?: MomentumScanSample[];
+  previewing?: boolean;
   entryPrice?: number;
   configuredMultiplier?: number | null;
   session: ReturnType<typeof useStore>['session'];
@@ -3022,7 +3048,7 @@ function MomentumTradeDesk({
       <div>
         <span class="mom-kicker">Momentum trade</span>
         <strong>{chartDisplay ?? 'No focused market'}</strong>
-        <small>{hasActiveTradeEntry ? 'Pinned to the active Momentum contract' : symbol ? 'Live market selected from current research' : 'Research selection required'}</small>
+        <small>{hasActiveTradeEntry ? 'Pinned to the active Momentum contract' : previewing ? 'Live scan preview - orders unlock after validation' : symbol ? 'Live market selected from current research' : 'Research selection required'}</small>
       </div>
       <div class="mom-trade-badges">
         <span class={`mom-trade-suggestion ${suggestionTone}`} title={suggestedReason ?? undefined}>
@@ -3138,6 +3164,12 @@ function MomentumPage(): JSX.Element {
   const market = momentum?.markets.find((item) => item.symbol === momentum.config?.symbol);
   const watchedMarkets = momentum?.scan?.markets ?? [];
   const focusedMarket = watchedMarkets.find((item) => item.symbol === momentum?.config?.symbol) ?? null;
+  const scanPreview = !momentum?.config?.symbol
+    ? [...watchedMarkets]
+      .filter((item) => item.samples?.length)
+      .sort((left, right) => (right.opportunityScore ?? 0) - (left.opportunityScore ?? 0)
+        || right.sampleCount - left.sampleCount)[0] ?? null
+    : null;
   const canReturnToWatchboard = Boolean(momentum?.running && momentum.phase === 'observing' && momentum.config?.symbol);
   const secondsLeft = w ? Math.max(0, w.endsAt - Math.floor(Date.now() / 1000)) : 300;
   const elapsed = w ? Math.max(0, 300 - secondsLeft) : 0;
@@ -3199,9 +3231,10 @@ function MomentumPage(): JSX.Element {
       </div>
     </header>
     {activeTab === 'ledger' ? <MomentumLedgerWorkspace rows={research?.recent} trades={s.trades} currency={s.session?.currency ?? 'USD'} /> : activeTab === 'trade' ? <MomentumTradeDesk
-      symbol={momentum?.config?.symbol}
-      display={focusedMarket?.display ?? market?.display}
-      samples={w?.samples ?? focusedMarket?.samples}
+      symbol={momentum?.config?.symbol ?? scanPreview?.symbol}
+      display={focusedMarket?.display ?? market?.display ?? scanPreview?.display}
+      samples={w?.samples ?? focusedMarket?.samples ?? scanPreview?.samples}
+      previewing={Boolean(scanPreview && !momentum?.config?.symbol)}
       entryPrice={w?.openPrice}
       configuredMultiplier={momentum?.config?.multiplier}
       session={s.session}
@@ -6073,3 +6106,6 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
     </div>
   );
 }
+  const [timedManualSetup, setTimedManualSetup] = useState<ManualSetup | null>(null);
+  const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
+  const timedManualExecuting = useRef(false);
