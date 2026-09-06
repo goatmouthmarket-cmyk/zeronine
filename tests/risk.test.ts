@@ -78,5 +78,5 @@ test('risk lanes isolate Gold and Momentum while retaining each product lock', a
     purchase_id: 'digit-two-lane', reason: 'manual', origin: 'manual',
   });
   assert.match(riskCheck({ ...base, lane: 'digit' }).reason, /digit contract still settling/);
-  assert.equal(store.listOpenTrades('deriv:VRTC_TWO_LANE').length, 2);
+  assert.equal(store.listOpenTrades('deriv:VRTC_TWO_LANE').length, 3);
 });

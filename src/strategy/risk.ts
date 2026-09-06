@@ -49,6 +49,8 @@ export function riskCheck(params: {
   now: number;
   accountId?: string;
   skipRecoveryDebtCap?: boolean;
+  /** Multi-lot routes enforce their own bounded product/account admission. */
+  skipOpenContractCheck?: boolean;
   lane?: 'digit' | 'multiplier' | 'momentum' | 'gold';
   /** Run-level realized-profit trailing lock. It is optional so manual and
    * multiplier routes retain their existing explicit risk policy. */
@@ -93,9 +95,11 @@ export function riskCheck(params: {
     }
   }
 
-  const lane = params.lane ?? 'digit';
-  const open = getOpenTradeByLane(lane, params.accountId);
-  if (open) return { ok: false, reason: `${lane} contract still settling (${open.status})` };
+  if (!params.skipOpenContractCheck) {
+    const lane = params.lane ?? 'digit';
+    const open = getOpenTradeByLane(lane, params.accountId);
+    if (open) return { ok: false, reason: `${lane} contract still settling (${open.status})` };
+  }
 
   if (tradeGapMs > 0 && lastTradeAt > 0 && params.now - lastTradeAt < tradeGapMs) {
     return { ok: false, reason: 'trade gap not elapsed' };

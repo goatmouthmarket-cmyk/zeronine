@@ -2928,6 +2928,7 @@ function MomentumTradeDesk({
   suggestedReason,
   trades,
   contract,
+  contracts,
 }: {
   symbol?: string;
   display?: string;
@@ -2942,6 +2943,7 @@ function MomentumTradeDesk({
   suggestedReason?: string | null;
   trades: TradeRow[];
   contract: ContractEvt | null;
+  contracts: Record<string, ContractEvt>;
 }): JSX.Element {
   const [direction, setDirection] = useState<'up' | 'down'>(suggestedDirection ?? 'up');
   const [stakeText, setStakeText] = useState('1');
@@ -2975,14 +2977,15 @@ function MomentumTradeDesk({
     : [10, 20, 30, 50, 100, 200, 500, 1000];
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
-  const openMomentumTrade = trades.find((trade) =>
+  const openMomentumTrades = trades.filter((trade) =>
     isOpenAccountTrade(trade) && isMultiplierTrade(trade) && multiplierTradeFamily(trade) === 'Momentum'
-  ) ?? null;
+  );
+  const openMomentumTrade = openMomentumTrades[0] ?? null;
   const closableMomentumTrade = openMomentumTrade;
   const closedMomentumTrade = closed?.contractId
     ? trades.find((item) => item.contract_id === closed.contractId) ?? null
     : null;
-  const canPlace = canQuote && multiplierWithinLiveMax && Boolean(suggestedDirection) && !openMomentumTrade;
+  const canPlace = canQuote && multiplierWithinLiveMax && Boolean(suggestedDirection) && openMomentumTrades.length < 2;
   const trade = purchase?.id == null
     ? closableMomentumTrade ?? closedMomentumTrade
     : trades.find((item) => item.id === purchase.id) ?? closableMomentumTrade ?? closedMomentumTrade;
@@ -3072,8 +3075,10 @@ function MomentumTradeDesk({
       ? 'Closing contract'
     : settlementOverdue
       ? `Provider still reports contract ${trackedContractId || ''} open after scheduled expiry; waiting for settlement recovery`
-    : openMomentumTrade
-      ? `Waiting for contract ${openMomentumTrade.contract_id || openMomentumTrade.id} to settle`
+    : openMomentumTrades.length >= 2
+      ? 'Momentum lot limit reached (2 open)'
+      : openMomentumTrades.length
+        ? `${openMomentumTrades.length}/2 Momentum lots open`
       : !(Number.isFinite(stake) && stake > 0)
         ? 'Enter a positive stake'
       : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
@@ -3105,7 +3110,7 @@ function MomentumTradeDesk({
   }, [symbol]);
 
   useEffect(() => {
-    if (!symbol || !owner || !isDemo || !suggestedDirection || !(Number.isFinite(stake) && stake > 0) || openMomentumTrade) {
+    if (!symbol || !owner || !isDemo || !suggestedDirection || !(Number.isFinite(stake) && stake > 0) || openMomentumTrades.length >= 2) {
       setMultiplierProbe(null);
       setMultiplierProbeStatus('idle');
       return;
@@ -3136,7 +3141,7 @@ function MomentumTradeDesk({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [isDemo, openMomentumTrade, owner, selectedMultiplier, stake, suggestedDirection, symbol]);
+  }, [isDemo, openMomentumTrades.length, owner, selectedMultiplier, stake, suggestedDirection, symbol]);
 
   useEffect(() => {
     if (contractPnl != null && Number.isFinite(contractPnl)) setLastKnownPnl(contractPnl);
@@ -3220,12 +3225,12 @@ function MomentumTradeDesk({
     }
   };
 
-  const closeOpenTrade = async () => {
+  const closeOpenTrade = async (target = closableMomentumTrade) => {
     if (!canClose) return;
     setClosing(true);
     setError('');
     try {
-      setClosed(await closeMomentumDemoTrade({ tradeId: closableMomentumTrade?.id, contractId: closableMomentumTrade?.contract_id || undefined }));
+      setClosed(await closeMomentumDemoTrade({ tradeId: target?.id, contractId: target?.contract_id || undefined }));
       setPurchase(null);
       await refreshTrades();
     } catch (cause) {
@@ -3243,8 +3248,8 @@ function MomentumTradeDesk({
         ? 'Momentum execution is unavailable for the selected account.'
       : !owner
         ? 'Unlock the dashboard owner controls to place a trade.'
-        : openMomentumTrade
-          ? `Wait for open contract ${openMomentumTrade.contract_id || openMomentumTrade.id} to settle before placing another Momentum trade.`
+        : openMomentumTrades.length >= 2
+          ? 'Two Momentum lots are open. Close one before placing another.'
           : null;
 
   return <section class="mom-trade-desk" aria-label="Momentum trade">
@@ -3296,15 +3301,32 @@ function MomentumTradeDesk({
       </div>
     </div>
 
+    {openMomentumTrades.length > 1 && <section class="mom-open-lots" aria-label="Open Momentum lots">
+      <div class="mom-open-lots-head"><span>Open Momentum lots</span><strong>{openMomentumTrades.length}/2</strong></div>
+      {openMomentumTrades.map((lot) => {
+        const lotContract = lot.contract_id ? contracts[lot.contract_id] ?? (contract?.contractId === lot.contract_id ? contract : null) : null;
+        const lotPnl = Number.isFinite(Number(lotContract?.profit)) ? Number(lotContract?.profit) : null;
+        const lotSell = Number.isFinite(Number(lotContract?.sellPrice ?? lotContract?.update?.sellPrice))
+          ? Number(lotContract?.sellPrice ?? lotContract?.update?.sellPrice)
+          : null;
+        const lotMultiplier = Number((lot.reason ?? '').match(/multiplier x(\d+)/i)?.[1] ?? NaN);
+        return <article class={`mom-open-lot ${lotPnl == null ? '' : lotPnl >= 0 ? 'up' : 'down'}`} key={lot.id}>
+          <div><span>{lot.contract_type === 'MULTDOWN' ? 'Down' : 'Up'} · x{Number.isFinite(lotMultiplier) ? lotMultiplier : '--'}</span><strong>{fmtSigned(lotPnl ?? 0, session?.currency ?? 'USD')}</strong><small>{lotPnl == null ? 'P&L updating' : `Stake ${fmtMoney(lot.stake, session?.currency ?? 'USD')}`}</small></div>
+          <div><span>Contract</span><strong>{lot.contract_id || 'Submitting'}</strong><small>{lotSell == null ? 'Cash-out updating' : `Sell ${fmtMoney(lotSell, session?.currency ?? 'USD')}`}</small></div>
+          <button class="mom-trade-close mini" type="button" disabled={!lot.contract_id || closing} onClick={() => void closeOpenTrade(lot)}><Icon name="x" size={13} />{closing ? 'Closing' : 'Close'}</button>
+        </article>;
+      })}
+    </section>}
+
     <div class="mom-trade-order">
       <div class="mom-trade-direction" aria-label="Place a trade">
         <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up trade' : 'Place up trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
         <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down trade' : 'Place down trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
-      <label class="mom-trade-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openMomentumTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
-      <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openMomentumTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
-      <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openMomentumTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
-      <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openMomentumTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || openMomentumTrades.length >= 2} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
+      <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
       <div class="mom-trade-quote">
         <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
@@ -3448,6 +3470,7 @@ function MomentumPage(): JSX.Element {
       suggestedReason={tradeSignal?.reason}
       trades={s.trades}
       contract={s.contract}
+      contracts={s.contracts}
     /> : showRestoring ? <section class="mom-restoring" aria-live="polite" aria-busy="true">
       <span class="mom-restoring-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <div><span class="mom-kicker">Momentum workspace</span><strong>Restoring live research state</strong><small>Checking the latest scanner status.</small></div>
@@ -5282,10 +5305,19 @@ function GoldDerivTradeWorkspace({
   const quote = research?.quote ?? null;
   const signal = research?.signal ?? null;
   const sideFromSignal: GoldSide | null = signal?.direction === 'BUY' || signal?.direction === 'SELL' ? signal.direction : null;
-  const serverOpenGoldTrade = deriv?.openTrade ?? null;
-  const localOpenGoldTrade = trades.find((trade) => unusedGoldDerivIsGoldTrade(trade) && unusedGoldDerivIsOpenTrade(trade)) ?? null;
-  const openGoldTrade = serverOpenGoldTrade ?? localOpenGoldTrade;
-  const openAnyTrade = deriv?.blockedByOpenTrade ?? trades.find((trade) => unusedGoldDerivIsOpenTrade(trade) && isMultiplierTrade(trade)) ?? null;
+  // The server is the source of truth for active lots. Keep the local list as a
+  // short-lived fallback while a just-bought contract is being persisted.
+  const derivLots = deriv as (typeof deriv & { openTrade?: TradeRow | null; openTrades?: TradeRow[] }) | null;
+  const derivOpenTrades = Array.isArray(derivLots?.openTrades)
+    ? derivLots.openTrades
+    : derivLots?.openTrade ? [derivLots.openTrade] : [];
+  const localOpenGoldTrades = trades.filter((trade) => unusedGoldDerivIsGoldTrade(trade) && unusedGoldDerivIsOpenTrade(trade));
+  const openGoldTrades = [...derivOpenTrades, ...localOpenGoldTrades]
+    .filter((trade, index, list) => list.findIndex((candidate) => candidate.id === trade.id || (candidate.contract_id && candidate.contract_id === trade.contract_id)) === index);
+  const openGoldTrade = openGoldTrades[0] ?? null;
+  const openAnyTrade = deriv?.blockedByOpenTrade
+    ?? trades.find((trade) => unusedGoldDerivIsOpenTrade(trade) && isMultiplierTrade(trade) && !unusedGoldDerivIsGoldTrade(trade))
+    ?? null;
   const [side, setSide] = useState<GoldSide>(sideFromSignal ?? 'BUY');
   const [stakeText, setStakeText] = useState('1');
   const [multiplierText, setMultiplierText] = useState(String(deriv?.defaultMultiplier ?? 20));
@@ -5297,7 +5329,7 @@ function GoldDerivTradeWorkspace({
   const [closed, setClosed] = useState<GoldDerivTradeClose | null>(null);
   const [chartTimeframe, setChartTimeframe] = useState<Extract<GoldTimeframe, '1m' | '5m'>>('1m');
   const [busy, setBusy] = useState(false);
-  const [closing, setClosing] = useState(false);
+  const [closingContractId, setClosingContractId] = useState<string | null>(null);
   const [backtestBusy, setBacktestBusy] = useState(false);
   const [error, setError] = useState('');
   const [contractClock, setContractClock] = useState(Date.now());
@@ -5324,6 +5356,7 @@ function GoldDerivTradeWorkspace({
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
   const canPlace = owner && demoConnected && marketReady && !marketClosed && !automation?.running && !openAnyTrade && Number.isFinite(stake) && stake > 0
     && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && multiplierWithinLiveMax && limitsValid && !busy;
+  const closing = closingContractId !== null;
   const canClose = owner && demoConnected && Boolean(openGoldTrade?.contract_id) && !closing;
   const activeTrade = openGoldTrade ?? (purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null);
   const trackedContractId = activeTrade?.contract_id || purchase?.contractId || purchase?.contract_id || closed?.contractId || '';
@@ -5350,6 +5383,17 @@ function GoldDerivTradeWorkspace({
   const reversalForecast = Boolean(contractSide && sideFromSignal && contractSide !== sideFromSignal);
   const contractOpenedAt = activeTrade?.ts ?? 0;
   const contractElapsed = contractOpenedAt ? fmtElapsed(Math.max(0, contractClock - contractOpenedAt)) : '--';
+  const openGoldLots = openGoldTrades.map((trade) => {
+    const contractId = trade.contract_id || '';
+    const live = contractId ? contracts[contractId] ?? (contract?.contractId === contractId ? contract : null) : null;
+    const pnl = Number.isFinite(Number(live?.profit)) ? Number(live?.profit) : null;
+    const sellPrice = Number.isFinite(Number(live?.sellPrice ?? live?.update?.sellPrice))
+      && Number(live?.sellPrice ?? live?.update?.sellPrice) > 0
+      ? Number(live?.sellPrice ?? live?.update?.sellPrice)
+      : null;
+    return { trade, contractId, live, pnl, sellPrice };
+  });
+  const totalOpenPnl = openGoldLots.reduce((sum, lot) => sum + (lot.pnl ?? 0), 0);
   const candles = research?.candles?.[chartTimeframe] ?? research?.candles?.[research.timeframe ?? '1m'] ?? [];
   const forecastNow = Date.now();
   const forecastTimeframe = research?.timeframe ?? '1m';
@@ -5530,12 +5574,15 @@ const modelWeights = [
     }
   };
 
-  const close = async (): Promise<boolean> => {
-    if (!canClose) return false;
-    setClosing(true);
+  const close = async (trade: TradeRow): Promise<boolean> => {
+    const contractId = trade.contract_id;
+    if (!owner || !demoConnected || !contractId || closingContractId) return false;
+    setClosingContractId(contractId);
     setError('');
     try {
-      setClosed(await closeGoldDerivTrade());
+      // Send both identifiers so the server closes this exact lot, never an
+      // arbitrary currently-open account contract.
+      setClosed(await closeGoldDerivTrade({ tradeId: trade.id, contractId }));
       setPurchase(null);
       await refreshTrades();
       await loadGoldState();
@@ -5544,7 +5591,7 @@ const modelWeights = [
       setError(cause instanceof Error ? cause.message : String(cause));
       return false;
     } finally {
-      setClosing(false);
+      setClosingContractId(null);
     }
   };
 
@@ -5662,9 +5709,22 @@ const modelWeights = [
             <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
             <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
           </div>
-          <button class="gold-live-close" type="button" disabled={!canClose} onClick={() => void close()}>
-            <Icon name="x" size={14} />{closing ? 'Cashing out' : openGoldTrade ? 'Close / Cash out' : 'No open trade'}
-          </button>
+          {openGoldLots.length > 0 && <div class="gold-open-contracts" aria-label="Open Gold contracts">
+            {openGoldLots.map(({ trade, contractId, pnl, sellPrice, live }) => {
+              const lotSide = trade.contract_type === 'MULTDOWN' ? 'SELL' : 'BUY';
+              const lotClosing = closingContractId === contractId;
+              return <div class={`gold-contract-details gold-open-contract ${pnl == null ? '' : pnl >= 0 ? 'up' : 'down'}`} key={trade.id}>
+                <div><span>Contract P&amp;L</span><b>{pnl == null ? 'â€”' : fmtSigned(pnl, currency)}</b></div>
+                <div><span>Side</span><b class={lotSide === 'SELL' ? 'sell' : 'buy'}>{lotSide}</b></div>
+                <div><span>Stake</span><b>{fmtMoney(trade.stake, currency)}</b></div>
+                <div><span>Cash-out value</span><b>{sellPrice == null ? 'â€”' : fmtMoney(sellPrice, currency)}</b></div>
+                <div class="contract-id"><span>Contract</span><b title={contractId}>{contractId || String(trade.id)}</b></div>
+                <button class="gold-live-close" type="button" disabled={!owner || !demoConnected || !contractId || closing || live?.isValidToSell === false} onClick={() => void close(trade)}>
+                  <Icon name="x" size={14} />{lotClosing ? 'Cashing out' : live?.isValidToSell === false ? 'Cash-out unavailable' : 'Close / Cash out'}
+                </button>
+              </div>;
+            })}
+          </div>}
           {(activeTrade || purchase || openGoldTrade) && <div class="gold-contract-details" aria-label="Gold contract details">
             <div><span>Side</span><b class={contractSide === 'SELL' ? 'sell' : contractSide === 'BUY' ? 'buy' : ''}>{contractSide ?? '—'}</b></div>
             <div><span>Stake</span><b>{activeTrade || purchase ? fmtMoney(contractStake, currency) : '—'}</b></div>
@@ -5699,14 +5759,14 @@ const modelWeights = [
       <GoldSentimentPanel state={state} />
 
       {signal && <div class="gold-trade-note">{signal.reasons.length ? signal.reasons.join(' · ') : signal.blockers.join(' · ') || 'Gold research is waiting for stronger evidence.'}</div>}
-      {(purchase || openGoldTrade) && <div class="gold-trade-note">Deriv contract {trackedContractId || 'submitted'} is tracked against this account balance.</div>}
+      {(purchase || openGoldTrades.length > 0) && <div class="gold-trade-note">{openGoldTrades.length > 1 ? `${openGoldTrades.length} Deriv Gold contracts are tracked against this account balance.` : `Deriv contract ${trackedContractId || 'submitted'} is tracked against this account balance.`}</div>}
       {accountBlocked && <div class="gold-trade-note">Another account contract is open. Gold waits for the shared account lock to clear.</div>}
       {error && <div class="tl-err">{error}</div>}
     </section>
 
     <section class="mom-pnl gold-pnl" aria-label="Gold Deriv profit and loss">
       <div><span>Contract stake</span><strong>{activeTrade ? fmtMoney(activeTrade.stake, currency) : Number.isFinite(stake) && stake > 0 ? fmtMoney(stake, currency) : '—'}</strong></div>
-      <div><span>Open contract P&amp;L</span><strong class={(contractPnl ?? 0) >= 0 ? 'up' : 'down'}>{contractPnl == null ? '—' : fmtSigned(contractPnl, currency)}</strong></div>
+      <div><span>Open contract P&amp;L</span><strong class={totalOpenPnl >= 0 ? 'up' : 'down'}>{openGoldLots.length ? fmtSigned(totalOpenPnl, currency) : '—'}</strong></div>
       <div><span>Realized Gold P&amp;L</span><strong class={goldRealizedPnl >= 0 ? 'up' : 'down'}>{fmtSigned(goldRealizedPnl, currency)}</strong></div>
       <div><span>Current exposure</span><strong>{exposure > 0 ? fmtMoney(exposure, currency) : '—'}</strong></div>
     </section>

@@ -159,6 +159,25 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN')
       && (isGoldMultiplierTrade(trade) || trade.market === config.goldDerivSymbol),
     );
+  const MULTIPLIER_LOT_LIMITS = { total: 4, momentum: 2, gold: 2 } as const;
+  const openMultiplierLots = (accountId: string, product?: 'momentum' | 'gold'): TradeRow[] =>
+    listOpenTrades(accountId).filter((trade) => {
+      if (trade.contract_type !== 'MULTUP' && trade.contract_type !== 'MULTDOWN') return false;
+      if (!product) return true;
+      return product === 'gold' ? isGoldDerivTrade(trade) : !isGoldDerivTrade(trade);
+    });
+  const multiplierLotAdmission = (accountId: string, product: 'momentum' | 'gold', nextStake: number, balance: number): string | null => {
+    const all = openMultiplierLots(accountId);
+    const productLots = openMultiplierLots(accountId, product);
+    if (productLots.some((trade) => trade.status === 'purchasing' && /purchase outcome unknown; reconciliation required/i.test(trade.reason ?? ''))) {
+      return `${product} has an unresolved purchase; reconcile it before opening another lot`;
+    }
+    if (all.length >= MULTIPLIER_LOT_LIMITS.total) return `account limit of ${MULTIPLIER_LOT_LIMITS.total} open multiplier lots reached`;
+    if (productLots.length >= MULTIPLIER_LOT_LIMITS[product]) return `${product} limit of ${MULTIPLIER_LOT_LIMITS[product]} open lots reached`;
+    const reservedStake = all.reduce((sum, trade) => sum + Math.max(0, Number(trade.stake) || 0), 0);
+    if (balance > 0 && reservedStake + nextStake > balance * .9) return 'open-lot stake reserve would exceed 90% of account balance';
+    return null;
+  };
   type CloseTarget = { tradeId?: unknown; contractId?: unknown };
   const findOpenTradeForClose = (
     body: CloseTarget | undefined,
@@ -222,7 +241,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   };
   const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
-    const openTrade = owner ? getOpenTradeByLane('gold') : null;
+    const openTrades = owner && session ? openMultiplierLots(`deriv:${session.loginid}`, 'gold') : [];
     const predictionRows = listGoldPredictionEvidence(500);
     const tradeKnowledge = listGoldTradeKnowledge(500);
     const resolvedPredictions = predictionRows.filter((row) => row.status !== 'pending');
@@ -256,7 +275,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         accountId: owner ? session?.loginid ?? null : null,
         multiplierOptions: [10, 20, 30, 50, 100, 200, 500],
         defaultMultiplier: 20,
-        openTrade: isGoldDerivTrade(openTrade) ? openTrade : null,
+        openTrades,
         blockedByOpenTrade: null,
         message: !owner
           ? 'Unlock owner controls before placing Deriv Gold trades.'
@@ -528,27 +547,28 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    const openTrade = getOpenTradeByLane('gold');
-    if (openTrade) {
-      if (openTrade.contract_id) {
-        settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
-      }
+    const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'gold', stake, session.balance);
+    if (admission) {
       reply.code(409);
-      return { error: 'wait for the open contract to settle before placing a Gold trade' };
+      return { error: `Gold trade blocked: ${admission}` };
     }
     const gate = riskCheck({
       stake,
       settings,
       balance: session.balance,
       context: buildRecoveryContext(settings),
-      lastTradeAt: listTrades(1)[0]?.ts ?? 0,
-      tradeGapMs: config.tradeGapMs,
+      // Account commands are serialized and each position gets a durable
+      // reservation, so a second permitted lot need not wait on the legacy
+      // single-contract cooldown.
+      lastTradeAt: 0,
+      tradeGapMs: 0,
       now: Date.now(),
       // Gold multipliers are not digit-recovery bets. Keep the shared balance,
       // drawdown, loss-streak, cooldown, and open-contract rails, but do not
       // reject a manual Gold order solely because the digit strategy has debt.
       skipRecoveryDebtCap: true,
       lane: 'gold',
+      skipOpenContractCheck: true,
     });
     if (!gate.ok) {
       reply.code(409);
@@ -595,9 +615,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         throw new Error('Gold multiplier proposal returned an invalid purchase price');
       }
       stage = 'reserve';
-      if (getOpenTradeByLane('gold')) {
+      const afterQuoteAdmission = multiplierLotAdmission(`deriv:${session.loginid}`, 'gold', quote.askPrice, session.balance);
+      if (afterQuoteAdmission) {
         reply.code(409);
-        return { error: 'another Gold contract opened while the quote was loading' };
+        return { error: `Gold trade blocked: ${afterQuoteAdmission}` };
       }
       const reason = [
         `gold deriv manual ${side}`,
@@ -921,26 +942,26 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    const openTrade = getOpenTradeByLane('momentum');
-    if (openTrade) {
-      if (openTrade.contract_id) {
-        settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
-      }
+    const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'momentum', stake, session.balance);
+    if (admission) {
       reply.code(409);
-      return { error: 'wait for the open contract to settle before placing a Momentum trade' };
+      return { error: `Momentum trade blocked: ${admission}` };
     }
     const gate = riskCheck({
       stake,
       settings,
       balance: session.balance,
       context: buildRecoveryContext(settings),
-      lastTradeAt: listTrades(1)[0]?.ts ?? 0,
-      tradeGapMs: config.tradeGapMs,
+      // The product caps and serialized command lane replace the old
+      // single-contract cooldown for independently managed Momentum lots.
+      lastTradeAt: 0,
+      tradeGapMs: 0,
       now: Date.now(),
       // Momentum demo orders never join the digit recovery cycle, so its debt
       // cap must not gate them; every other rail above still applies.
       skipRecoveryDebtCap: true,
       lane: 'momentum',
+      skipOpenContractCheck: true,
     });
     if (!gate.ok) {
       reply.code(409);
@@ -1031,12 +1052,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         reply.code(409);
         return { error: 'Momentum research changed while the quote was loading; review it before trading' };
       }
-      // This synchronous insert reserves Momentum's product slot before the
-      // buy. Gold has its own slot and is coordinated at the provider-command
-      // layer, so it must not block a Momentum order.
-      if (getOpenTradeByLane('momentum')) {
+      // The synchronous insert below is the durable reservation.  Commands
+      // remain serialized, while separate lots may coexist within the caps.
+      const afterQuoteAdmission = multiplierLotAdmission(`deriv:${session.loginid}`, 'momentum', quote.askPrice, session.balance);
+      if (afterQuoteAdmission) {
         reply.code(409);
-        return { error: 'another Momentum contract opened while the quote was loading' };
+        return { error: `Momentum trade blocked: ${afterQuoteAdmission}` };
       }
       const trade = recordedTrade = insertTrade({
         ts: Date.now(),

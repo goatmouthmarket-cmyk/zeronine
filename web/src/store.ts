@@ -868,7 +868,7 @@ export interface GoldDerivState {
   accountId: string | null;
   multiplierOptions: number[];
   defaultMultiplier: number;
-  openTrade: TradeRow | null;
+  openTrades: TradeRow[];
   blockedByOpenTrade: TradeRow | null;
   message: string;
 }

@@ -31,6 +31,7 @@ test('explicit Momentum trade is demo-only and records the selected research con
     import('../src/config.ts'),
   ]);
   cfg.config.dashboardAdminToken = '';
+  cfg.config.tradeGapMs = 0;
   store.setSession({
     id: 'momentum-demo', loginid: 'VRTC_MOMENTUM', balance: 250, currency: 'USD', mode: 'demo', auth_kind: 'pat',
     token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
@@ -112,9 +113,11 @@ test('explicit Momentum trade is demo-only and records the selected research con
   assert.equal(liveContractEvent.sellPrice, 3.42);
   assert.equal(liveContractEvent.phase, 'open');
 
-  const blockedByOpen = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'down', stake: 3, multiplier: 50 } });
-  assert.equal(blockedByOpen.statusCode, 409);
-  assert.match(blockedByOpen.json().error, /open contract/i);
+  const secondLot = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 50 } });
+  assert.equal(secondLot.statusCode, 200, 'a second independent Momentum lot is allowed');
+  const cappedLot = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 50 } });
+  assert.equal(cappedLot.statusCode, 409);
+  assert.match(cappedLot.json().error, /momentum limit of 2 open lots/i);
 
   automation.dispose();
   await app.close();
