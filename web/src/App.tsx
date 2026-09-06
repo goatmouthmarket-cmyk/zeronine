@@ -1496,8 +1496,11 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const waitingForEntry = automation && state === 'waiting'
     && (phase === 'waiting-edge' || phase === 'waiting-entry-trigger')
     && !protectionHold && recovery?.mode !== 'recovering';
+  // A game is a user-confirmed manual choice using the current displayed
+  // prediction. It needs a live setup to explain, not a positive-edge bot
+  // decision (the bot itself still keeps its stricter execution gates).
   const canOfferGame = automation && state === 'waiting' && !protectionHold
-    && recovery?.mode !== 'recovering' && Boolean(forceSetup?.eligible);
+    && recovery?.mode !== 'recovering' && Boolean(forceSetup);
   const entryWaitRef = useRef(waitingForEntry);
   useEffect(() => { entryWaitRef.current = waitingForEntry; }, [waitingForEntry]);
   const prompts = promptContext ? [
@@ -1623,6 +1626,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
         {!promptReply && promptContext && <small class="scanner-option-badge">{promptContext}</small>}
+        {!promptReply && prompt.kind === 'coin' && <svg class="scanner-game-stage coin-stage" viewBox="0 0 56 32" aria-label="Coin flip ready"><ellipse cx="28" cy="16" rx="13" ry="13" /><path d="M28 5V27M19 16H37" /><text x="28" y="19" text-anchor="middle">H/T</text></svg>}
+        {!promptReply && prompt.kind === 'rps' && <svg class="scanner-game-stage rps-stage" viewBox="0 0 56 32" aria-label="Rock paper scissors ready"><path d="M10 23C10 17 14 12 20 12H27C32 12 36 16 36 21V23H10Z" /><path d="M38 9L45 16M45 9L38 16" /><circle cx="27" cy="8" r="3" /></svg>}
         {!promptReply && promptContext && <div class="scanner-option-contexts" aria-hidden="true">{prompt.choices.map((choice) => <small>{choice} · {promptContext}</small>)}</div>}
         {!promptReply && <div>{prompt.question.includes('heads or tails') && <i class="scanner-game coin">◒</i>}{prompt.question.includes('rock, paper') && <i class="scanner-game rps">✊</i>}{prompt.choices.map((choice) => <button type="button" onClick={(event) => { event.stopPropagation(); void answerPrompt(choice); }}>{choice}</button>)}</div>}
       </div>}
