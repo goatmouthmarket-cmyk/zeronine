@@ -953,7 +953,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               }}
               onManualTimedSetup={setTimedManualSetup}
               onManualBasket={placeManualBasket}
-              onManualPlace={(direction, barrier, marketSymbol) => placeManual(direction, barrier, marketSymbol)}
+              onManualPlace={(direction, barrier, marketSymbol, companionDemo) => placeManual(direction, barrier, marketSymbol, companionDemo)}
               manualStatus={manualMsg}
               manualQueued={Boolean(pendingManualIntent)}
               queuedIntent={pendingManualIntent}
@@ -1409,7 +1409,9 @@ function ObservationRail({
   );
 }
 
-function MarketScannerCompanion({ automation, phase, observation, market, recovery, lastResult, strategyMode, holdReason, forceSetup, onForceDemoTrade }: {
+type CompanionSetup = { market: string; symbol: string; direction: 'over' | 'under'; barrier: number; confidence: number; edge: number };
+
+function MarketScannerCompanion({ automation, phase, observation, market, recovery, lastResult, strategyMode, holdReason, forceSetup, gameSetups, onForceDemoTrade }: {
   automation: boolean;
   phase?: string;
   observation?: AutomationState['observation'];
@@ -1419,7 +1421,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   strategyMode?: Settings['strategy_mode'];
   holdReason?: string | null;
   forceSetup: { market: string; direction: 'over' | 'under'; barrier: number; confidence: number; eligible: boolean } | null;
-  onForceDemoTrade: () => Promise<boolean>;
+  gameSetups: CompanionSetup[];
+  onForceDemoTrade: (setup: CompanionSetup) => Promise<boolean>;
 }): JSX.Element {
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [motionEnabled, setMotionEnabled] = useState(true);
@@ -1433,6 +1436,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [brainCheckIn, setBrainCheckIn] = useState<number | null>(null);
   const [miniGameShown, setMiniGameShown] = useState(false);
   const [checkInCycle, setCheckInCycle] = useState(0);
+  const [gamePhase, setGamePhase] = useState<'offer' | 'spinning' | 'submitting' | 'result'>('offer');
+  const [gameWinner, setGameWinner] = useState<CompanionSetup | null>(null);
   const automationRef = useRef(automation);
   useEffect(() => { automationRef.current = automation; }, [automation]);
   // This is deliberately independent of the entry-phase timer. The visual
@@ -1500,13 +1505,12 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   // prediction. It needs a live setup to explain, not a positive-edge bot
   // decision (the bot itself still keeps its stricter execution gates).
   const canOfferGame = automation && phase !== 'buying' && phase !== 'settling' && phase !== 'settled'
-    && !protectionHold && recovery?.mode !== 'recovering' && Boolean(forceSetup);
+    && !protectionHold && recovery?.mode !== 'recovering' && gameSetups.length >= 2;
   const entryWaitRef = useRef(waitingForEntry);
   useEffect(() => { entryWaitRef.current = waitingForEntry; }, [waitingForEntry]);
-  const prompts = promptContext ? [
+  const prompts = gameSetups.length >= 2 ? [
     { kind: 'coin', question: 'Heads or tails?', choices: ['Heads', 'Tails'] },
     { kind: 'rps', question: 'Rock, paper, or scissors?', choices: ['Rock', 'Paper', 'Scissors'] },
-    { kind: 'trade', question: `Place ${setupLabel} on demo?`, choices: ['No, keep watching', `Place ${setupLabel}`] },
   ] : [];
   const prompt = prompts[promptIndex % Math.max(prompts.length, 1)];
 
@@ -1545,30 +1549,28 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
     if (!automation) { setMiniGameShown(false); return; }
     if (brainCheckIn !== 0 || !canOfferGame || miniGameShown || promptVisible) return;
     setPromptIndex(0);
+    setGamePhase('offer');
+    setGameWinner(null);
     setMiniGameShown(true);
     setPromptVisible(true);
   }, [automation, brainCheckIn, canOfferGame, miniGameShown, promptVisible]);
 
-  useEffect(() => {
-    if (!promptVisible) return;
-    const hide = window.setTimeout(() => {
-      setPromptVisible(false);
-      setPromptIndex((index) => index + 1);
-      setMiniGameShown(false);
-      setCheckInCycle((cycle) => cycle + 1);
-    }, 12_000);
-    return () => window.clearTimeout(hide);
-  }, [promptVisible]);
-
-  const answerPrompt = async (answer: string) => {
-    if ((prompt.kind === 'trade' || prompt.kind === 'coin' || prompt.kind === 'rps') && !answer.startsWith('No,')) {
+  const playGame = async () => {
+    if (gamePhase !== 'offer' || gameSetups.length < 2) return;
+    setGamePhase('spinning');
+    setPromptReply(null);
+    window.setTimeout(async () => {
+      const winner = gameSetups[Math.floor(Math.random() * gameSetups.length)];
+      setGameWinner(winner);
+      setGamePhase('submitting');
       setPromptReply('Sending your demo trade…');
-      const placed = await onForceDemoTrade();
+      const placed = await onForceDemoTrade(winner);
       // A stopped bot must not revive an old companion message after a
       // submitted prompt action resolves.
-      if (!automationRef.current || !entryWaitRef.current) return;
-      const gameLabel = prompt.kind === 'coin' || prompt.kind === 'rps' ? `${answer} selected - ${setupLabel}` : setupLabel;
-      setPromptReply(placed ? `${gameLabel} sent on demo. I am watching it now.` : `That ${setupLabel} demo trade could not be placed. I will keep scanning.`);
+      if (!automationRef.current) return;
+      setGamePhase('result');
+      const gameLabel = `${winner.market} ${winner.direction === 'over' ? 'Over' : 'Under'} ${winner.barrier}`;
+      setPromptReply(placed ? `${gameLabel} sent on demo. I am watching it now.` : `That ${gameLabel} demo trade could not be placed. I will keep scanning.`);
       window.setTimeout(() => {
         setPromptReply(null);
         setPromptVisible(false);
@@ -1576,17 +1578,9 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
         setMiniGameShown(false);
         setCheckInCycle((cycle) => cycle + 1);
       }, 2_200);
-      return;
-    }
-    setPromptReply(answer);
-    window.setTimeout(() => {
-      setPromptReply(null);
-      setPromptVisible(false);
-      setPromptIndex((index) => index + 1);
-      setMiniGameShown(false);
-      setCheckInCycle((cycle) => cycle + 1);
-    }, 1_600);
+    }, 900);
   };
+  const answerPrompt = (_answer: string) => { void playGame(); };
 
   return (
     <div class={`market-scanner-companion state-${state} style-${style}${motionEnabled ? '' : ' motion-off'}`} role="group" aria-label={label} onClick={() => { if (customizerOpen) setCustomizerOpen(false); }}>
@@ -1629,7 +1623,9 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{gameCountdown != null && !promptVisible ? `Coin flip available in ${gameCountdown}s — still prioritizing a trade.` : nextStep}</small></div></div>}
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
-        {!promptReply && promptContext && <small class="scanner-option-badge">{promptContext}</small>}
+        {gamePhase === 'offer' && <>
+          <div class="scanner-game-setups">{gameSetups.slice(0, 2).map((setup) => <small key={`${setup.symbol}-${setup.direction}-${setup.barrier}`}><b>{setup.market}</b> · {setup.direction === 'over' ? 'Over' : 'Under'} {setup.barrier}<em>{Math.round(setup.confidence * 100)}% · {setup.edge >= 0 ? '+' : ''}{(setup.edge * 100).toFixed(1)}%</em></small>)}</div>
+        </>}
         {!promptReply && prompt.kind === 'coin' && <svg class="scanner-game-stage coin-stage" viewBox="0 0 56 32" aria-label="Coin flip ready"><ellipse cx="28" cy="16" rx="13" ry="13" /><path d="M28 5V27M19 16H37" /><text x="28" y="19" text-anchor="middle">H/T</text></svg>}
         {!promptReply && prompt.kind === 'rps' && <svg class="scanner-game-stage rps-stage" viewBox="0 0 56 32" aria-label="Rock paper scissors ready"><path d="M10 23C10 17 14 12 20 12H27C32 12 36 16 36 21V23H10Z" /><path d="M38 9L45 16M45 9L38 16" /><circle cx="27" cy="8" r="3" /></svg>}
         {!promptReply && promptContext && <div class="scanner-option-contexts" aria-hidden="true">{prompt.choices.map((choice) => <small>{choice} · {promptContext}</small>)}</div>}
@@ -2170,6 +2166,21 @@ function DecisionHero({
     consistency: 0.5,
     learnedWin: null,
   } : null);
+  // A companion game never invents a trade. It compares two distinct,
+  // positive-edge live setups already ranked by the signal engine.
+  const companionGameSetups = candidates
+    .filter((candidate) => candidate.edge > 0)
+    .sort((a, b) => b.estWin - a.estWin || b.edge - a.edge)
+    .filter((candidate, index, list) => list.findIndex((other) => other.market === candidate.market) === index)
+    .slice(0, 2)
+    .map((candidate) => ({
+      market: shortMarketName(markets.find((market) => market.symbol === candidate.market)?.display ?? candidate.market),
+      symbol: candidate.market,
+      direction: candidate.direction,
+      barrier: candidate.barrier,
+      confidence: candidate.estWin,
+      edge: candidate.edge,
+    }));
 
   const status = !automation
     ? stopReason
@@ -2259,7 +2270,7 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
-        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} recovery={recovery} lastResult={lastResult} strategyMode={settings?.strategy_mode} holdReason={holdReason} forceSetup={best ? { market: shortMarketName(markets.find((market) => market.symbol === best.market)?.display ?? best.market), direction: best.direction, barrier: best.barrier, confidence: best.estWin, eligible: best.edge > 0 && best.estWin >= best.breakeven } : null} onForceDemoTrade={() => best ? onManualPlace(best.direction, best.barrier, best.market, true) : Promise.resolve(false)} />
+        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} recovery={recovery} lastResult={lastResult} strategyMode={settings?.strategy_mode} holdReason={holdReason} forceSetup={best ? { market: shortMarketName(markets.find((market) => market.symbol === best.market)?.display ?? best.market), direction: best.direction, barrier: best.barrier, confidence: best.estWin, eligible: best.edge > 0 && best.estWin >= best.breakeven } : null} gameSetups={companionGameSetups} onForceDemoTrade={(setup) => onManualPlace(setup.direction, setup.barrier, setup.symbol, true)} />
       </div>}
       {marketChooserOpen ? (
         <div class="manual-cockpit-takeover">
