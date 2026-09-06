@@ -120,11 +120,22 @@ export class DerivPrivateClient {
   private contractSubs = new Map<string, Set<(u: ContractUpdate) => void>>();
   private pingTimer: NodeJS.Timeout | null = null;
   private lastMessageAt = 0;
+  /** All connection attempts share one promise so API calls and the
+   * background reconnect timer cannot open competing private sockets. */
+  private connectPromise: Promise<SessionInfo> | null = null;
   private reconnectPromise: Promise<SessionInfo> | null = null;
   onSession: ((s: SessionInfo) => void) | null = null;
   onBalance: ((balance: number) => void) | null = null;
   onDisconnect: (() => void) | null = null;
   private connected = false;
+
+  private rejectPending(reason: string): void {
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timeout);
+      p.reject(new Error(`${p.type}: ${reason}`));
+    }
+    this.pending.clear();
+  }
 
   get isConnected(): boolean {
     return this.connected;
@@ -135,6 +146,17 @@ export class DerivPrivateClient {
   }
 
   async connect(token: string, accountId?: string): Promise<SessionInfo> {
+    if (this.connected && this.ws?.readyState === WebSocket.OPEN) {
+      throw new Error('private socket is already connected; use reconnect to change accounts');
+    }
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = this.connectOnce(token, accountId).finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
+  }
+
+  private async connectOnce(token: string, accountId?: string): Promise<SessionInfo> {
     let lastErr: unknown = new Error('connect failed');
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
@@ -161,9 +183,13 @@ export class DerivPrivateClient {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url, { perMessageDeflate: false, handshakeTimeout: 15000 });
       this.ws = ws;
+      let handshakeDone = false;
 
       const handshakeTimer = setTimeout(() => {
-        reject(new Error('private handshake timeout'));
+        if (!handshakeDone) {
+          handshakeDone = true;
+          reject(new Error('private handshake timeout'));
+        }
         try {
           ws.close();
         } catch {
@@ -172,6 +198,8 @@ export class DerivPrivateClient {
       }, 20000);
 
       ws.on('open', () => {
+        if (this.ws !== ws) return;
+        handshakeDone = true;
         clearTimeout(handshakeTimer);
         this.connected = true;
         this.lastMessageAt = Date.now();
@@ -188,6 +216,7 @@ export class DerivPrivateClient {
       });
 
       ws.on('message', (raw) => {
+        if (this.ws !== ws) return;
         this.lastMessageAt = Date.now();
         try {
           this.handleMessage(JSON.parse(raw.toString()));
@@ -197,15 +226,19 @@ export class DerivPrivateClient {
       });
 
       ws.on('error', (err) => {
-        clearTimeout(handshakeTimer);
-        reject(new Error(`private socket error: ${err.message}`));
+        if (!handshakeDone) {
+          handshakeDone = true;
+          clearTimeout(handshakeTimer);
+          reject(new Error(`private socket error: ${err.message}`));
+        }
       });
 
       ws.on('close', () => {
+        if (this.ws !== ws) return;
         this.connected = false;
         this.stopPing();
-        for (const p of this.pending.values()) clearTimeout(p.timeout);
-        this.pending.clear();
+        this.rejectPending('private socket closed');
+        this.ws = null;
         this.onDisconnect?.();
       });
     });
@@ -461,9 +494,9 @@ export class DerivPrivateClient {
       }
       this.ws = null;
     }
-    // Clear all pending requests
-    for (const p of this.pending.values()) clearTimeout(p.timeout);
-    this.pending.clear();
+    // Reject rather than merely clearing: callers must never remain stuck
+    // forever while a stale socket is being replaced.
+    this.rejectPending('private socket disconnected');
     this.contractSubs.clear();
   }
 
