@@ -622,14 +622,14 @@ export class Automation {
       // a hot extreme digit (0 for Over, 9 for Under) skips that side until
       // it cools off, and neither side is re-fired right after a loss.
       const now = Date.now();
-      const eligible = conservative
+      const accountId = accountIdForLogin(session?.loginid ?? '');
+      const baseEligible = conservative
         ? quotes
-            .filter((o) => o.estWin >= Math.max(minWin, config.minExtremeWin) && !this.cooled(o, now) && !isSetupCoolingDown(o.market, o.direction, o.barrier, accountIdForLogin(session?.loginid ?? ''), now))
+            .filter((o) => o.estWin >= Math.max(minWin, config.minExtremeWin) && !this.cooled(o, now))
             .sort((a, b) => b.estWin - a.estWin || b.realEV - a.realEV)
         : quotes
             .filter((o) => o.estWin >= minWin
               && o.realEdge >= minEdge
-              && !isSetupCoolingDown(o.market, o.direction, o.barrier, accountIdForLogin(session?.loginid ?? ''), now)
               && isSensibleDigitCandidate({
                 baseWin: o.baseWin || theoreticalDigitWinRate(o.direction, o.barrier),
                 estWin: o.estWin,
@@ -637,8 +637,18 @@ export class Automation {
                 expectedROI: o.realEV,
               }))
             .sort((a, b) => b.quality - a.quality || b.realEV - a.realEV || b.estWin - a.estWin);
+      const lossBlocked = baseEligible.filter((o) => isSetupCoolingDown(o.market, o.direction, o.barrier, accountId, now));
+      const eligible = baseEligible.filter((o) => !isSetupCoolingDown(o.market, o.direction, o.barrier, accountId, now));
       if (eligible.length === 0) {
         this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
+        if (lossBlocked.length > 0) {
+          const blocked = lossBlocked[0];
+          const reason = `${blocked.market} ${blocked.direction === 'under' ? 'Under' : 'Over'} ${blocked.barrier} lost 3 times in 5 minutes; setup paused to protect the balance`;
+          this.emit({ type: HOLD, ts: Date.now(), reason });
+          this.emit({ type: 'cooldown', ts: Date.now(), seconds: 300, reason });
+          this.stop(reason);
+          return 0;
+        }
         this.emit({ type: HOLD, ts: Date.now(), reason: conservative ? 'extreme digit too hot' : 'no live quote available' });
         this.phase = 'waiting-edge';
         return 1500;
@@ -783,6 +793,23 @@ export class Automation {
     if (!(safeStake > 0)) {
       this.emit({ type: HOLD, ts: Date.now(), reason: 'balance-aware risk budget is exhausted' });
       return 900;
+    }
+    // A larger slice of the account needs a better-than-normal setup. This is
+    // deliberately an eligibility rail, not a sizing hint: we wait instead of
+    // placing a large bet at the same confidence used for a small probe.
+    const stakeFraction = session.balance > 0 ? safeStake / session.balance : 0;
+    const stakeMultiple = settings.base_stake > 0 ? safeStake / settings.base_stake : 1;
+    const requiredWinForStake = Math.max(
+      minWin,
+      stakeFraction >= 0.05 || stakeMultiple >= 4 ? 0.72
+        : stakeFraction >= 0.02 || stakeMultiple >= 2 ? 0.64
+          : minWin,
+    );
+    if (decision.estWin < requiredWinForStake) {
+      this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
+      this.phase = 'waiting-edge';
+      this.emit({ type: HOLD, ts: Date.now(), reason: `large stake needs at least ${Math.round(requiredWinForStake * 100)}% confidence; current setup is ${Math.round(decision.estWin * 100)}%` });
+      return 1500;
     }
     decision = { ...decision, stake: safeStake };
 
