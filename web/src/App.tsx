@@ -1430,8 +1430,20 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [promptReply, setPromptReply] = useState<string | null>(null);
   const [waitPromptEligible, setWaitPromptEligible] = useState(false);
   const [gameCountdown, setGameCountdown] = useState<number | null>(null);
+  const [brainCheckIn, setBrainCheckIn] = useState<number | null>(null);
   const automationRef = useRef(automation);
   useEffect(() => { automationRef.current = automation; }, [automation]);
+  // This is deliberately independent of the entry-phase timer. The visual
+  // belongs to the companion for the entire active run, so transient scanner
+  // phases cannot make it flicker out of view.
+  useEffect(() => {
+    if (!automation) { setBrainCheckIn(null); return; }
+    const started = Date.now();
+    const update = () => setBrainCheckIn(Math.max(0, 30 - Math.floor((Date.now() - started) / 1_000)));
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [automation]);
   const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
   // A stopped bot has no current analysis. Make that the first branch so a
   // recent settlement, old recovery record, or stale phase cannot speak as
@@ -1575,7 +1587,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
       </svg>
-      {automation && gameCountdown != null && !promptVisible && <div class="scanner-countdown" aria-live="polite"><i></i><span>CHECK-IN</span><b>{gameCountdown > 0 ? `${gameCountdown}s` : 'READY'}</b></div>}
+      {automation && brainCheckIn != null && !promptVisible && <div class="scanner-countdown" aria-live="polite"><i></i><span>CHECK-IN</span><b>{brainCheckIn > 0 ? `${brainCheckIn}s` : 'READY'}</b></div>}
       {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{gameCountdown != null && !promptVisible ? `Coin flip available in ${gameCountdown}s — still prioritizing a trade.` : nextStep}</small></div></div>}
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
