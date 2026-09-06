@@ -1431,6 +1431,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [waitPromptEligible, setWaitPromptEligible] = useState(false);
   const [gameCountdown, setGameCountdown] = useState<number | null>(null);
   const [brainCheckIn, setBrainCheckIn] = useState<number | null>(null);
+  const [miniGameShown, setMiniGameShown] = useState(false);
   const automationRef = useRef(automation);
   useEffect(() => { automationRef.current = automation; }, [automation]);
   // This is deliberately independent of the entry-phase timer. The visual
@@ -1494,7 +1495,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const waitingForEntry = automation && state === 'waiting'
     && (phase === 'waiting-edge' || phase === 'waiting-entry-trigger')
     && !protectionHold && recovery?.mode !== 'recovering';
-  const canOfferGame = waitingForEntry && Boolean(forceSetup?.eligible);
+  const canOfferGame = automation && state === 'waiting' && !protectionHold
+    && recovery?.mode !== 'recovering' && Boolean(forceSetup?.eligible);
   const entryWaitRef = useRef(waitingForEntry);
   useEffect(() => { entryWaitRef.current = waitingForEntry; }, [waitingForEntry]);
   const prompts = promptContext ? [
@@ -1529,6 +1531,17 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
     const show = window.setTimeout(() => setPromptVisible(true), 250);
     return () => window.clearTimeout(show);
   }, [waitPromptEligible, waitingForEntry, promptIndex, prompt]);
+
+  // The visible top-left countdown is the companion's source of truth. Once
+  // it reaches READY, offer one optional game for this wait—not a stream of
+  // prompts—and never during an active trade or confirmation.
+  useEffect(() => {
+    if (!automation) { setMiniGameShown(false); return; }
+    if (brainCheckIn !== 0 || !canOfferGame || miniGameShown || promptVisible) return;
+    setPromptIndex(0);
+    setMiniGameShown(true);
+    setPromptVisible(true);
+  }, [automation, brainCheckIn, canOfferGame, miniGameShown, promptVisible]);
 
   useEffect(() => {
     if (!promptVisible) return;
