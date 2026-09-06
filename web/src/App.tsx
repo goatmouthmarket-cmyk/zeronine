@@ -1574,6 +1574,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
       </svg>
+      {automation && gameCountdown != null && !promptVisible && <div class="scanner-countdown" aria-live="polite"><i></i><span>CHECK-IN</span><b>{gameCountdown}s</b></div>}
       {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{gameCountdown != null && !promptVisible ? `Coin flip available in ${gameCountdown}s — still prioritizing a trade.` : nextStep}</small></div></div>}
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
