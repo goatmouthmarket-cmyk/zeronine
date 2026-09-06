@@ -40,6 +40,7 @@ import {
   getMomentumResearchProfile,
   getOpenTrade,
   getOpenTradeByLane,
+  isGoldMultiplierTrade,
   getTrade,
   getPerformanceSummary,
   getPaperTrade,
@@ -156,7 +157,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     Boolean(
       trade
       && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN')
-      && (/gold deriv manual/i.test(trade.reason ?? '') || trade.market === config.goldDerivSymbol),
+      && (isGoldMultiplierTrade(trade) || trade.market === config.goldDerivSymbol),
     );
   type CloseTarget = { tradeId?: unknown; contractId?: unknown };
   const findOpenTradeForClose = (
@@ -221,7 +222,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   };
   const goldState = (owner: boolean, session: ReturnType<typeof getSession>) => {
-    const openTrade = owner ? getOpenTradeByLane('multiplier') : null;
+    const openTrade = owner ? getOpenTradeByLane('gold') : null;
     const predictionRows = listGoldPredictionEvidence(500);
     const tradeKnowledge = listGoldTradeKnowledge(500);
     const resolvedPredictions = predictionRows.filter((row) => row.status !== 'pending');
@@ -256,7 +257,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         multiplierOptions: [10, 20, 30, 50, 100, 200, 500],
         defaultMultiplier: 20,
         openTrade: isGoldDerivTrade(openTrade) ? openTrade : null,
-        blockedByOpenTrade: openTrade && !isGoldDerivTrade(openTrade) ? openTrade : null,
+        blockedByOpenTrade: null,
         message: !owner
           ? 'Unlock owner controls before placing Deriv Gold trades.'
           : !session
@@ -527,7 +528,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    const openTrade = getOpenTradeByLane('multiplier');
+    const openTrade = getOpenTradeByLane('gold');
     if (openTrade) {
       if (openTrade.contract_id) {
         settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
@@ -547,7 +548,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       // drawdown, loss-streak, cooldown, and open-contract rails, but do not
       // reject a manual Gold order solely because the digit strategy has debt.
       skipRecoveryDebtCap: true,
-      lane: 'multiplier',
+      lane: 'gold',
     });
     if (!gate.ok) {
       reply.code(409);
@@ -594,9 +595,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         throw new Error('Gold multiplier proposal returned an invalid purchase price');
       }
       stage = 'reserve';
-      if (getOpenTradeByLane('multiplier')) {
+      if (getOpenTradeByLane('gold')) {
         reply.code(409);
-        return { error: 'another account contract opened while the Gold quote was loading' };
+        return { error: 'another Gold contract opened while the quote was loading' };
       }
       const reason = [
         `gold deriv manual ${side}`,
@@ -920,7 +921,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    const openTrade = getOpenTradeByLane('multiplier');
+    const openTrade = getOpenTradeByLane('momentum');
     if (openTrade) {
       if (openTrade.contract_id) {
         settleInBackground(client, hub, openTrade.id, openTrade.contract_id, openTrade.stake, openTrade.payout, openTrade.account_id);
@@ -939,7 +940,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       // Momentum demo orders never join the digit recovery cycle, so its debt
       // cap must not gate them; every other rail above still applies.
       skipRecoveryDebtCap: true,
-      lane: 'multiplier',
+      lane: 'momentum',
     });
     if (!gate.ok) {
       reply.code(409);
@@ -1030,11 +1031,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         reply.code(409);
         return { error: 'Momentum research changed while the quote was loading; review it before trading' };
       }
-      // This synchronous insert reserves the shared account contract slot
-      // before the buy. Concurrent click handlers cannot create a second order.
-      if (getOpenTradeByLane('multiplier')) {
+      // This synchronous insert reserves Momentum's product slot before the
+      // buy. Gold has its own slot and is coordinated at the provider-command
+      // layer, so it must not block a Momentum order.
+      if (getOpenTradeByLane('momentum')) {
         reply.code(409);
-        return { error: 'another account contract opened while the Momentum quote was loading' };
+        return { error: 'another Momentum contract opened while the quote was loading' };
       }
       const trade = recordedTrade = insertTrade({
         ts: Date.now(),

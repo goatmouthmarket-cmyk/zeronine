@@ -49,7 +49,7 @@ export function riskCheck(params: {
   now: number;
   accountId?: string;
   skipRecoveryDebtCap?: boolean;
-  lane?: 'digit' | 'multiplier';
+  lane?: 'digit' | 'multiplier' | 'momentum' | 'gold';
   /** Run-level realized-profit trailing lock. It is optional so manual and
    * multiplier routes retain their existing explicit risk policy. */
   profitLock?: { runProfit: number; peakRunProfit: number; triggerProfit: number; retainRatio: number };

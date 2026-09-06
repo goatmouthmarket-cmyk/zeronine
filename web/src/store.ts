@@ -1740,8 +1740,11 @@ export async function placeGoldDerivTrade(input: {
   return res.trade;
 }
 
-export async function closeGoldDerivTrade(): Promise<GoldDerivTradeClose> {
-  const res = await api<{ ok: boolean; sold: GoldDerivTradeClose }>('/api/gold/close', { method: 'POST' });
+export async function closeGoldDerivTrade(target?: { tradeId?: number; contractId?: string }): Promise<GoldDerivTradeClose> {
+  const res = await api<{ ok: boolean; sold: GoldDerivTradeClose }>('/api/gold/close', {
+    method: 'POST',
+    body: JSON.stringify(target ?? {}),
+  });
   void refreshCoreState();
   return res.sold;
 }
@@ -1806,9 +1809,10 @@ export async function placeMomentumDemoTrade(input: {
   return res.trade;
 }
 
-export async function closeMomentumDemoTrade(): Promise<MomentumTradeClose> {
+export async function closeMomentumDemoTrade(target?: { tradeId?: number; contractId?: string }): Promise<MomentumTradeClose> {
   const res = await api<{ ok?: boolean; sold?: MomentumTradeClose; trade?: TradeRow; session?: SessionInfo }>('/api/momentum/close', {
     method: 'POST',
+    body: JSON.stringify(target ?? {}),
   });
   if (res.trade) set({ trades: [res.trade, ...state.trades.filter((trade) => trade.id !== res.trade!.id)].slice(0, 50) });
   if (res.session) set({ session: res.session });

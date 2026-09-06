@@ -2975,22 +2975,14 @@ function MomentumTradeDesk({
     : [10, 20, 30, 50, 100, 200, 500, 1000];
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
-  const openAccountTrade = trades.find((trade) => isOpenAccountTrade(trade) && isMultiplierTrade(trade)) ?? null;
-  const openMomentumTrade = trades.find((item) =>
-    (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
-    && /momentum manual/i.test(item.reason ?? '')
-    && (item.status === 'pending' || item.status === 'purchasing')
+  const openMomentumTrade = trades.find((trade) =>
+    isOpenAccountTrade(trade) && isMultiplierTrade(trade) && multiplierTradeFamily(trade) === 'Momentum'
   ) ?? null;
-  const openMultiplierTrade = openAccountTrade
-    && (openAccountTrade.contract_type === 'MULTUP' || openAccountTrade.contract_type === 'MULTDOWN')
-    && multiplierTradeFamily(openAccountTrade) === 'Momentum'
-    ? openAccountTrade
-    : null;
-  const closableMomentumTrade = openMomentumTrade ?? openMultiplierTrade;
+  const closableMomentumTrade = openMomentumTrade;
   const closedMomentumTrade = closed?.contractId
     ? trades.find((item) => item.contract_id === closed.contractId) ?? null
     : null;
-  const canPlace = canQuote && multiplierWithinLiveMax && Boolean(suggestedDirection) && !openAccountTrade;
+  const canPlace = canQuote && multiplierWithinLiveMax && Boolean(suggestedDirection) && !openMomentumTrade;
   const trade = purchase?.id == null
     ? closableMomentumTrade ?? closedMomentumTrade
     : trades.find((item) => item.id === purchase.id) ?? closableMomentumTrade ?? closedMomentumTrade;
@@ -3080,8 +3072,8 @@ function MomentumTradeDesk({
       ? 'Closing contract'
     : settlementOverdue
       ? `Provider still reports contract ${trackedContractId || ''} open after scheduled expiry; waiting for settlement recovery`
-    : openAccountTrade
-      ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
+    : openMomentumTrade
+      ? `Waiting for contract ${openMomentumTrade.contract_id || openMomentumTrade.id} to settle`
       : !(Number.isFinite(stake) && stake > 0)
         ? 'Enter a positive stake'
       : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
@@ -3113,7 +3105,7 @@ function MomentumTradeDesk({
   }, [symbol]);
 
   useEffect(() => {
-    if (!symbol || !owner || !isDemo || !suggestedDirection || !(Number.isFinite(stake) && stake > 0) || openAccountTrade) {
+    if (!symbol || !owner || !isDemo || !suggestedDirection || !(Number.isFinite(stake) && stake > 0) || openMomentumTrade) {
       setMultiplierProbe(null);
       setMultiplierProbeStatus('idle');
       return;
@@ -3144,7 +3136,7 @@ function MomentumTradeDesk({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [isDemo, openAccountTrade, owner, selectedMultiplier, stake, suggestedDirection, symbol]);
+  }, [isDemo, openMomentumTrade, owner, selectedMultiplier, stake, suggestedDirection, symbol]);
 
   useEffect(() => {
     if (contractPnl != null && Number.isFinite(contractPnl)) setLastKnownPnl(contractPnl);
@@ -3233,7 +3225,7 @@ function MomentumTradeDesk({
     setClosing(true);
     setError('');
     try {
-      setClosed(await closeMomentumDemoTrade());
+      setClosed(await closeMomentumDemoTrade({ tradeId: closableMomentumTrade?.id, contractId: closableMomentumTrade?.contract_id || undefined }));
       setPurchase(null);
       await refreshTrades();
     } catch (cause) {
@@ -3251,8 +3243,8 @@ function MomentumTradeDesk({
         ? 'Momentum execution is unavailable for the selected account.'
       : !owner
         ? 'Unlock the dashboard owner controls to place a trade.'
-        : openAccountTrade
-          ? `Wait for open contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle before placing another Momentum trade.`
+        : openMomentumTrade
+          ? `Wait for open contract ${openMomentumTrade.contract_id || openMomentumTrade.id} to settle before placing another Momentum trade.`
           : null;
 
   return <section class="mom-trade-desk" aria-label="Momentum trade">
@@ -3309,10 +3301,10 @@ function MomentumTradeDesk({
         <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up trade' : 'Place up trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
         <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down trade' : 'Place down trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
-      <label class="mom-trade-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
-      <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAccountTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
-      <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
-      <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openMomentumTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openMomentumTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
+      <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openMomentumTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openMomentumTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
       <div class="mom-trade-quote">
         <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
@@ -4700,11 +4692,8 @@ function UnusedGoldDerivTradeWorkspace({
   const validLimits = takeProfit !== undefined && stopLoss !== undefined;
   const marketReady = state?.research.ready === true;
   const isDemo = session?.mode === 'demo';
-  const openAccountTrade = trades.find((item) => isMultiplierTrade(item) && (item.status === 'pending' || item.status === 'purchasing')) ?? null;
   const openGoldTrade = trades.find((item) =>
-    (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
-    && /gold deriv manual/i.test(item.reason ?? '')
-    && (item.status === 'pending' || item.status === 'purchasing')
+    isOpenAccountTrade(item) && isMultiplierTrade(item) && multiplierTradeFamily(item) === 'Gold'
   ) ?? null;
   const lastGoldTrade = trades.find((item) =>
     (item.contract_type === 'MULTUP' || item.contract_type === 'MULTDOWN')
@@ -4712,7 +4701,7 @@ function UnusedGoldDerivTradeWorkspace({
     && item.status !== 'pending'
     && item.status !== 'purchasing'
   ) ?? null;
-  const canOpen = owner && marketReady && isDemo && Boolean(sideFromSignal) && !openAccountTrade
+  const canOpen = owner && marketReady && isDemo && Boolean(sideFromSignal) && !openGoldTrade
     && Number.isFinite(stake) && stake > 0 && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && validLimits;
   const canClose = owner && isDemo && Boolean(openGoldTrade?.contract_id) && !closing;
   const trackedContractId = purchase?.contractId ?? purchase?.contract_id ?? closed?.contractId ?? openGoldTrade?.contract_id ?? lastGoldTrade?.contract_id ?? '';
@@ -4762,8 +4751,8 @@ function UnusedGoldDerivTradeWorkspace({
             ? 'Select an eligible Deriv account'
             : !marketReady
               ? readinessReason
-              : openAccountTrade
-                ? `Waiting for contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle`
+              : openGoldTrade
+                ? `Waiting for contract ${openGoldTrade.contract_id || openGoldTrade.id} to settle`
                 : !(Number.isFinite(stake) && stake > 0)
                   ? 'Enter a positive stake'
                   : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
@@ -4823,7 +4812,7 @@ function UnusedGoldDerivTradeWorkspace({
     setClosing(true);
     setError('');
     try {
-      setClosed(await closeGoldDerivTrade());
+      setClosed(await closeGoldDerivTrade({ tradeId: openGoldTrade?.id, contractId: openGoldTrade?.contract_id || undefined }));
       setPurchase(null);
       await refreshTrades();
       await loadGoldState();
@@ -4840,8 +4829,8 @@ function UnusedGoldDerivTradeWorkspace({
       ? 'Gold execution is unavailable for the selected account.'
       : !owner
         ? 'Unlock the dashboard owner controls to place a trade.'
-        : openAccountTrade && !openGoldTrade
-          ? `Wait for open contract ${openAccountTrade.contract_id || openAccountTrade.id} to settle before placing a Gold trade.`
+        : openGoldTrade
+          ? `Wait for open contract ${openGoldTrade.contract_id || openGoldTrade.id} to settle before placing another Gold trade.`
           : null;
 
   return <>
@@ -4891,10 +4880,10 @@ function UnusedGoldDerivTradeWorkspace({
           <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canOpen || sideFromSignal !== 'BUY' || busy} onClick={() => void open('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Opening' : 'Buy'}</button>
           <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canOpen || sideFromSignal !== 'SELL' || busy} onClick={() => void open('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Opening' : 'Sell'}</button>
         </div>
-        <label class="gold-trade-field"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
-        <label class="gold-trade-field"><span>Multiplier</span><select value={multiplierText} disabled={busy || Boolean(openAccountTrade)} onChange={(event) => setMultiplierText((event.currentTarget as HTMLSelectElement).value)}><option value="10">x10</option><option value="20">x20</option><option value="30">x30</option><option value="50">x50</option><option value="100">x100</option><option value="200">x200</option><option value="500">x500</option></select></label>
-        <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={tpText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setTpText((event.currentTarget as HTMLInputElement).value)} /></label>
-        <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={slText} disabled={busy || Boolean(openAccountTrade)} onInput={(event) => setSlText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openGoldTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>Multiplier</span><select value={multiplierText} disabled={busy || Boolean(openGoldTrade)} onChange={(event) => setMultiplierText((event.currentTarget as HTMLSelectElement).value)}><option value="10">x10</option><option value="20">x20</option><option value="30">x30</option><option value="50">x50</option><option value="100">x100</option><option value="200">x200</option><option value="500">x500</option></select></label>
+        <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={tpText} disabled={busy || Boolean(openGoldTrade)} onInput={(event) => setTpText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={slText} disabled={busy || Boolean(openGoldTrade)} onInput={(event) => setSlText((event.currentTarget as HTMLInputElement).value)} /></label>
         <div class="gold-trade-quote">
           <span>{purchase ? 'Last order potential' : 'Gold quote'}</span>
           <strong>{potentialProfit == null ? quote ? `${goldPrice(quote.bid, digits)} / ${goldPrice(quote.ask, digits)}` : '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>
@@ -4914,7 +4903,7 @@ function UnusedGoldDerivTradeWorkspace({
       <div><span>Market data</span><strong>{state?.research.ready ? 'Validated' : 'Waiting'}</strong><small>{state?.research.reason ?? 'Live quote accepted'}</small></div>
       <div><span>Trading access</span><strong>{isDemo ? 'Ready' : 'Locked'}</strong><small>{isDemo ? 'Deriv session connected' : 'Select an eligible Deriv account'}</small></div>
       <div><span>Execution adapter</span><strong>{diagnostics?.executionCapable ? 'Deriv multipliers' : 'Checking'}</strong><small>MT5/cTrader CFD orders are not used</small></div>
-      <div><span>Account lock</span><strong>{openAccountTrade ? 'Open contract' : 'Clear'}</strong><small>{openAccountTrade ? `Contract ${openAccountTrade.contract_id || openAccountTrade.id}` : 'One account contract at a time'}</small></div>
+      <div><span>Gold contract</span><strong>{openGoldTrade ? 'Open' : 'Clear'}</strong><small>{openGoldTrade ? `Contract ${openGoldTrade.contract_id || openGoldTrade.id}` : 'Momentum can trade independently'}</small></div>
     </section>
   </>;
 }

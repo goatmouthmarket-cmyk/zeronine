@@ -1300,10 +1300,22 @@ export function getOpenTrade(accountId = currentAccountId()): TradeRow | null {
   return row ? (row as unknown as TradeRow) : null;
 }
 
-export type TradeLane = 'digit' | 'multiplier';
+export type TradeLane = 'digit' | 'multiplier' | 'momentum' | 'gold';
 
 export function tradeLane(trade: Pick<TradeRow, 'contract_type'>): TradeLane {
   return trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN' ? 'multiplier' : 'digit';
+}
+
+/**
+ * Multiplier products share a Deriv account but not an execution slot.  The
+ * explicit reason prefix is persisted with every Gold order and keeps the
+ * product split available to recovery after a refresh or reconnect.
+ */
+export function isGoldMultiplierTrade(trade: { contract_type?: string; reason?: string | null } | null | undefined): boolean {
+  return Boolean(
+    trade && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN')
+    && /gold deriv manual/i.test(trade.reason ?? ''),
+  );
 }
 
 export function listOpenTrades(accountId = currentAccountId()): TradeRow[] {
@@ -1313,7 +1325,11 @@ export function listOpenTrades(accountId = currentAccountId()): TradeRow[] {
 }
 
 export function getOpenTradeByLane(lane: TradeLane, accountId = currentAccountId()): TradeRow | null {
-  return listOpenTrades(accountId).find((trade) => tradeLane(trade) === lane) ?? null;
+  return listOpenTrades(accountId).find((trade) => {
+    if (lane === 'momentum') return tradeLane(trade) === 'multiplier' && !isGoldMultiplierTrade(trade);
+    if (lane === 'gold') return isGoldMultiplierTrade(trade);
+    return tradeLane(trade) === lane;
+  }) ?? null;
 }
 
 export interface EntryTimingProfile {

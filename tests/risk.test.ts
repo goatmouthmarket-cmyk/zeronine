@@ -40,7 +40,7 @@ test('profit lock preserves 75% of a bot-run profit peak and leaves only the rem
   assert.match(riskCheck({ ...base, stake: 1, profitLock: { ...base.profitLock, runProfit: 75 } }).reason, /profit lock preserving 75%/);
 });
 
-test('risk lanes allow one digit and one multiplier contract concurrently', async () => {
+test('risk lanes isolate Gold and Momentum while retaining each product lock', async () => {
   const [{ buildRecoveryContext, riskCheck }, store] = await Promise.all([
     import('../src/strategy/risk.ts'),
     import('../src/db/store.ts'),
@@ -61,6 +61,16 @@ test('risk lanes allow one digit and one multiplier contract concurrently', asyn
   };
   assert.deepEqual(riskCheck({ ...base, lane: 'digit' }), { ok: true, reason: 'ok' });
   assert.match(riskCheck({ ...base, lane: 'multiplier' }).reason, /multiplier contract still settling/);
+  assert.deepEqual(riskCheck({ ...base, lane: 'momentum' }), { ok: true, reason: 'ok' });
+  assert.match(riskCheck({ ...base, lane: 'gold' }).reason, /gold contract still settling/);
+
+  store.insertTrade({
+    ts: Date.now(), market: 'BOOM300N', contract_type: 'MULTDOWN', barrier: 0, duration: 5, duration_unit: 'm',
+    stake: 1, ask_price: 1, payout: 2, est_win: .5, profit: 0, status: 'pending', contract_id: 'momentum-open',
+    purchase_id: 'momentum-two-lane', reason: 'momentum manual DOWN', origin: 'manual',
+  });
+  assert.match(riskCheck({ ...base, lane: 'momentum' }).reason, /momentum contract still settling/);
+  assert.match(riskCheck({ ...base, lane: 'gold' }).reason, /gold contract still settling/);
 
   store.insertTrade({
     ts: Date.now(), market: 'R_100', contract_type: 'DIGITOVER', barrier: 0, duration: 1, duration_unit: 't',
