@@ -908,6 +908,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               trades={s.trades}
               feedConnected={s.feed?.connected ?? false}
               recovery={s.recovery}
+              settings={s.settings}
               onChooseMarket={openMarketChooser}
               marketChooserOpen={marketChooserOpen}
               onCloseMarketChooser={closeMarketChooser}
@@ -1397,23 +1398,36 @@ function ObservationRail({
   );
 }
 
-function MarketScannerCompanion({ automation, phase, observation, market }: {
+function MarketScannerCompanion({ automation, phase, observation, market, recovery, lastResult, strategyMode, holdReason }: {
   automation: boolean;
   phase?: string;
   observation?: AutomationState['observation'];
   market: Market | null;
+  recovery: Recovery | null;
+  lastResult?: string | null;
+  strategyMode?: Settings['strategy_mode'];
+  holdReason?: string | null;
 }): JSX.Element {
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [motionEnabled, setMotionEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [style, setStyle] = useState<'focus' | 'calm' | 'vivid'>('focus');
   const [playMode, setPlayMode] = useState(0);
-  const state = !automation ? 'idle'
-    : phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
+  const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
+  const state = phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
+    : protectionHold ? 'protecting'
+    : recovery?.mode === 'recovering' ? strategyMode === 'chase' ? 'chasing' : 'recovering'
+    : lastResult === 'won' ? 'win'
+    : lastResult === 'lost' ? 'loss'
+    : !automation ? 'idle'
       : observation?.phase === 'watching' || phase === 'watching-signal' ? 'confirming'
         : phase === 'waiting-edge' || phase === 'waiting-entry-trigger' ? 'waiting'
           : market?.lastEpoch ? 'scanning' : 'waiting';
-  const label = state === 'trading' ? 'Trading robot is monitoring the active order'
+  const label = state === 'recovering' || state === 'chasing' ? 'Trading robot is working toward recovery'
+    : state === 'protecting' ? 'Trading robot is protecting account profit'
+    : state === 'win' ? 'Trading robot recorded a win'
+    : state === 'loss' ? 'Trading robot recorded a loss'
+    : state === 'trading' ? 'Trading robot is monitoring the active order'
     : state === 'confirming' ? 'Trading robot is confirming a market setup'
       : state === 'waiting' ? 'Trading robot is waiting for a safe entry'
         : state === 'scanning' ? 'Trading robot is scanning the live market'
@@ -1425,6 +1439,11 @@ function MarketScannerCompanion({ automation, phase, observation, market }: {
           : 'I’m ready when you are.';
 
   const laymanInsight = state === 'trading' ? 'Your trade is open. I am watching it closely.'
+    : state === 'recovering' ? `We are down ${fmtMoney(recovery?.debt ?? 0)}. I will only take a sensible chance to recover it.`
+      : state === 'chasing' ? `We are working through ${fmtMoney(recovery?.debt ?? 0)} slowly. I will not try to win it all at once.`
+        : state === 'protecting' ? 'We made progress. I am keeping most of that profit safe.'
+          : state === 'win' ? 'That was a win. I am keeping the next move measured.'
+            : state === 'loss' ? 'That one did not work. I am reassessing before the next move.'
     : state === 'confirming' ? 'This looks promising. I am waiting for one more check.'
       : state === 'waiting' ? 'I am waiting for a safer moment before using your money.'
         : state === 'scanning' ? 'I am looking for the best time to enter.'
@@ -1926,6 +1945,7 @@ function DecisionHero({
   trades,
   feedConnected,
   recovery,
+  settings,
   onChooseMarket,
   marketChooserOpen,
   onCloseMarketChooser,
@@ -1962,6 +1982,7 @@ function DecisionHero({
   trades: TradeRow[];
   feedConnected: boolean;
   recovery: Recovery | null;
+  settings: Settings | null;
   onChooseMarket: () => void;
   marketChooserOpen: boolean;
   onCloseMarketChooser: () => void;
@@ -2114,7 +2135,7 @@ function DecisionHero({
           />
         </div>
       ) : automation ? <div class="cockpit-live-stage">
-        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} />
+        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} recovery={recovery} lastResult={lastResult} strategyMode={settings?.strategy_mode} holdReason={holdReason} />
         <div class="cockpit-live-chart"><MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} /></div>
       </div> : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} />}
     </div>
