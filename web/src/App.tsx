@@ -1504,7 +1504,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
     const gameAt = Date.now() + 30_000;
     setGameCountdown(30);
     const ticker = window.setInterval(() => setGameCountdown(Math.max(0, Math.ceil((gameAt - Date.now()) / 1_000))), 1_000);
-    const show = window.setTimeout(() => { setGameCountdown(null); setWaitPromptEligible(true); }, 30_000);
+    const show = window.setTimeout(() => { setGameCountdown(0); setWaitPromptEligible(true); }, 30_000);
     const stop = window.setTimeout(() => setWaitPromptEligible(false), 120_000);
     return () => { window.clearInterval(ticker); window.clearTimeout(show); window.clearTimeout(stop); };
   }, [waitingForEntry]);
@@ -1575,7 +1575,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
       </svg>
-      {automation && gameCountdown != null && !promptVisible && <div class="scanner-countdown" aria-live="polite"><i></i><span>CHECK-IN</span><b>{gameCountdown}s</b></div>}
+      {automation && gameCountdown != null && !promptVisible && <div class="scanner-countdown" aria-live="polite"><i></i><span>CHECK-IN</span><b>{gameCountdown > 0 ? `${gameCountdown}s` : 'READY'}</b></div>}
       {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{gameCountdown != null && !promptVisible ? `Coin flip available in ${gameCountdown}s — still prioritizing a trade.` : nextStep}</small></div></div>}
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
