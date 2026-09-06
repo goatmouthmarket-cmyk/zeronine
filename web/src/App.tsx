@@ -1462,10 +1462,10 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           {(['focus', 'calm', 'vivid'] as const).map((option) => <button type="button" class={style === option ? 'selected' : ''} onClick={() => setStyle(option)}>{option}</button>)}
         </div>
       </div>}
-      <svg viewBox="0 0 440 110" aria-hidden="true">
+      <svg viewBox="0 0 520 110" aria-hidden="true">
         <path class="scanner-ground" d="M18 87H422" />
-        <path class="scanner-link" d="M174 48C244 22 317 28 421 44" />
-        <path class="scanner-packets" d="M191 42C247 27 319 31 406 43" />
+        <path class="scanner-link" d="M180 48C290 14 408 18 520 43" />
+        <path class="scanner-link scanner-link-return" d="M180 55C302 88 411 77 520 57" />
         <g class="scanner-bot">
           <path class="scanner-antenna" d="M112 28V13M105 13H119" />
           <circle class="scanner-signal" cx="112" cy="9" r="4" />
