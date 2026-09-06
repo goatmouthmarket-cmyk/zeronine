@@ -1394,6 +1394,53 @@ function ObservationRail({
   );
 }
 
+function MarketScannerCompanion({ automation, phase, observation }: {
+  automation: boolean;
+  phase?: string;
+  observation?: AutomationState['observation'];
+}): JSX.Element {
+  const state = !automation ? 'idle'
+    : phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
+      : observation?.phase === 'watching' || phase === 'watching-signal' ? 'confirming'
+        : phase === 'waiting-edge' || phase === 'waiting-entry-trigger' ? 'waiting'
+          : 'scanning';
+  const label = state === 'trading' ? 'Trading robot is monitoring the active order'
+    : state === 'confirming' ? 'Trading robot is confirming a market setup'
+      : state === 'waiting' ? 'Trading robot is waiting for a safe entry'
+        : state === 'scanning' ? 'Trading robot is scanning the live market'
+          : 'Trading robot is standing by';
+
+  return (
+    <div class={`market-scanner-companion state-${state}`} role="img" aria-label={label}>
+      <svg viewBox="0 0 250 72" aria-hidden="true">
+        <defs>
+          <linearGradient id="scanner-panel" x1="0" x2="1"><stop stop-color="currentColor" stop-opacity=".2" /><stop offset="1" stop-color="currentColor" stop-opacity="0" /></linearGradient>
+          <filter id="scanner-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4" /></filter>
+        </defs>
+        <path class="scanner-ground" d="M12 59H238" />
+        <g class="scanner-screen">
+          <rect x="139" y="12" width="91" height="45" rx="6" />
+          <path class="scanner-grid" d="M151 19V50M172 19V50M193 19V50M214 19V50M146 28H223M146 39H223M146 50H223" />
+          <path class="scanner-chart" d="M146 46L156 39L165 43L176 26L187 35L198 22L208 30L222 18" />
+          <rect class="scanner-beam" x="144" y="15" width="13" height="39" rx="2" />
+        </g>
+        <g class="scanner-bot">
+          <path class="scanner-antenna" d="M84 18V9M79 9H89" />
+          <circle class="scanner-signal" cx="84" cy="6" r="3" />
+          <rect class="scanner-head" x="56" y="18" width="56" height="34" rx="12" />
+          <path class="scanner-face" d="M66 36H102" />
+          <circle class="scanner-eye left" cx="72" cy="33" r="3" />
+          <circle class="scanner-eye right" cx="96" cy="33" r="3" />
+          <path class="scanner-arm" d="M109 43C122 44 124 40 136 36" />
+          <circle class="scanner-hand" cx="137" cy="35" r="4" />
+          <path class="scanner-track" d="M63 55H105" />
+        </g>
+        <circle class="scanner-orbit" cx="137" cy="35" r="10" />
+      </svg>
+    </div>
+  );
+}
+
 function resolveTarget(
   candidates: SignalCandidate[],
   quotes: Record<string, QuoteEvt>,
@@ -2008,6 +2055,7 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
+      <MarketScannerCompanion automation={automation} phase={phase} observation={observation} />
       </div>}
       {marketChooserOpen ? (
         <div class="manual-cockpit-takeover">
