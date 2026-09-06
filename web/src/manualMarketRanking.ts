@@ -1,5 +1,5 @@
 export type ManualDirection = 'over' | 'under';
-export type ManualEntryMode = 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
+export type ManualEntryMode = 'instant' | 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
 
 /**
  * A deliberately narrow, operator-selected trigger hypothesis. It is not an

@@ -1697,7 +1697,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const direction = body.direction;
     const barrier = Number(body.barrier);
     const stake = Number(body.stake);
-    const entryMode = body.entryMode === 'digit-trigger-confirmed' ? 'digit-trigger-confirmed' : body.entryMode === 'digit-trigger' ? 'digit-trigger' : 'model';
+    const entryMode = body.entryMode === 'instant' ? 'instant' : body.entryMode === 'digit-trigger-confirmed' ? 'digit-trigger-confirmed' : body.entryMode === 'digit-trigger' ? 'digit-trigger' : 'model';
     const theoreticalWin = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
     const requestedEstWin = Number(body.estWin);
     const estWin = Number.isFinite(requestedEstWin) && requestedEstWin > 0 && requestedEstWin < 1
@@ -1777,7 +1777,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         status: 'purchasing',
         contract_id: '',
         purchase_id: `manual-${Date.now()}`,
-        reason: body.companionDemo ? 'companion-confirmed model entry' : entryMode === 'digit-trigger-confirmed' ? 'manual two-pass digit-trigger hypothesis' : entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
+        reason: body.companionDemo ? 'companion-confirmed model entry' : entryMode === 'instant' ? 'manual instant entry' : entryMode === 'digit-trigger-confirmed' ? 'manual two-pass digit-trigger hypothesis' : entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
         // Keep the persisted origin within the established audit enum; the
         // explicit reason retains the companion attribution.
         origin: 'manual',

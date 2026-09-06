@@ -669,6 +669,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     // Companion prompts are an explicit instruction to trade now. They still
     // use the current best model setup and all normal account/lane safeguards.
     if (companionDemo) return executeManualNow(direction, barrier, marketSymbol, manualStake, 'model', true);
+    if (manualEntryMode === 'instant') return executeManualNow(direction, barrier, marketSymbol, manualStake, 'instant');
     const shouldTimeEntry = manualEntryMode !== 'model' || (timedManualSetup?.market === marketSymbol
       && timedManualSetup.direction === direction
       && timedManualSetup.barrier === barrier);
@@ -1839,11 +1840,12 @@ function InlineMarketChooser({
       <label class="inline-entry-mode">
         <span>Entry instruction</span>
         <select value={entryMode} onChange={(event) => onEntryMode((event.currentTarget as HTMLSelectElement).value as ManualEntryMode)}>
+          <option value="instant">Instant — place selected setup now</option>
           <option value="model">Model validation (default)</option>
           <option value="digit-trigger">Trigger: 8/9 → Over, 0/1 → Under</option>
           <option value="digit-trigger-confirmed">Two-pass: extreme → follow-through → extreme</option>
         </select>
-        <small>Trigger mode still requires the model, quote edge, ROI, and consistency gates. It is stored as a testable hypothesis.</small>
+        <small>{entryMode === 'instant' ? 'Places the exact market, side, barrier, and stake you selected immediately. Account, proposal, and open-contract checks still apply.' : 'Trigger mode still requires the model, quote edge, ROI, and consistency gates. It is stored as a testable hypothesis.'}</small>
       </label>
       <div class="inline-confidence">
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
@@ -1853,9 +1855,9 @@ function InlineMarketChooser({
           <button type="button" class="secondary" onClick={useStrongest} disabled={!ranked.length}>Best overall</button>
         </div>
       </div>
-      <p>Best selections queue a specific entry setup. The trade waits for a fresh digit plus validated transition, edge, return, and consistency checks before it can fire.</p>
+      <p>{entryMode === 'instant' ? 'Instant sends the setup now. It still requires a valid account, fresh Deriv proposal, and no open digit contract.' : 'Best selections queue a specific entry setup. The trade waits for a fresh digit plus validated transition, edge, return, and consistency checks before it can fire.'}</p>
       <button class="inline-place-single" type="button" disabled={!selectedMarket} onClick={() => void onPlace(direction, barrier, selectedMarket?.symbol)}>
-        {entryMode === 'model' ? `Place ${sideLabel(direction, barrier)}` : `Arm ${sideLabel(direction, barrier)} trigger`}
+        {entryMode === 'instant' || entryMode === 'model' ? `Place ${sideLabel(direction, barrier)}` : `Arm ${sideLabel(direction, barrier)} trigger`}
       </button>
       </> : <>
         <div class="inline-basket-list" aria-label="Five basket predictions">
