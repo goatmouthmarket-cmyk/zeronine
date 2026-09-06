@@ -41,6 +41,7 @@ import {
 } from '../db/store.ts';
 import { calibrateResearchProbability, observeResearchOutcome } from '../intelligence/researchCalibration.ts';
 import { SignalConfirmationGate, confirmationTicksForMode } from './signalConfirmation.ts';
+import { assessBalanceAwareness } from './balanceAwareness.ts';
 import { assessExtremeEntryTiming } from './entryTiming.ts';
 import { entryIntent, matchesConfirmedDigitTrigger, matchesDigitTrigger } from './entryMode.ts';
 
@@ -187,6 +188,8 @@ export class Automation {
    * trades must never influence this trailing protection. */
   private runRealizedProfit = 0;
   private runPeakProfit = 0;
+  private runStartBalance = 0;
+  private runPeakBalance = 0;
 
   constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub, memory = new DecisionMemory()) {
     this.registry = registry;
@@ -261,6 +264,8 @@ export class Automation {
     this.runOrigin = opts.origin ?? 'bot';
     this.runRealizedProfit = 0;
     this.runPeakProfit = 0;
+    this.runStartBalance = getSession()?.balance ?? 0;
+    this.runPeakBalance = this.runStartBalance;
     this.entryWaitStarted.clear();
     this.confirmation.reset();
     resetRecovery();
@@ -424,6 +429,7 @@ export class Automation {
     }
     const accountId = accountIdForLogin(session.loginid);
     const runProfit = this.runRealizedProfit;
+    this.runPeakBalance = Math.max(this.runPeakBalance, session.balance);
     // Once a run has built a meaningful cushion, protect 75% of its best
     // realized profit. Recovery can only use the unprotected remainder.
     const profitLock = this.runOrigin === 'bot'
@@ -751,7 +757,28 @@ export class Automation {
       this.emit({ type: HOLD, ts: Date.now(), reason: 'capital allocation produced no executable stake' });
       return 900;
     }
-    decision = { ...decision, stake: allocation.stake };
+    const balanceAwareness = this.runOrigin === 'bot'
+      ? assessBalanceAwareness({
+        startBalance: this.runStartBalance,
+        currentBalance: session.balance,
+        peakBalance: this.runPeakBalance,
+        runProfit: this.runRealizedProfit,
+        peakRunProfit: this.runPeakProfit,
+        baseStake: settings.base_stake,
+        maxDrawdownPct: settings.max_drawdown_pct,
+      })
+      : null;
+    if (balanceAwareness?.action === 'hold') {
+      this.emit({ type: HOLD, ts: Date.now(), reason: balanceAwareness.reason });
+      this.stop(balanceAwareness.reason);
+      return 0;
+    }
+    const safeStake = balanceAwareness ? Math.min(allocation.stake, balanceAwareness.maxLoss) : allocation.stake;
+    if (!(safeStake > 0)) {
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'balance-aware risk budget is exhausted' });
+      return 900;
+    }
+    decision = { ...decision, stake: safeStake };
 
     const gate = riskCheck({
       stake: decision.stake,
