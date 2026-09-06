@@ -1363,9 +1363,10 @@ function ObservationRail({
       : reason || 'Comparing probability, payout edge, and market strength.';
   const steps = ['Observe', 'Watch', 'Confirm', 'Snipe'];
   const activityBars = Array.from({ length: 16 }, (_, index) => 28 + ((index * 23 + activeIndex * 17) % 62));
+  const visualState = !automation ? 'idle' : executing ? 'executing' : watching ? 'watching' : confirmed ? 'confirmed' : 'observing';
 
   return (
-    <div class={`observe-rail${compact ? ' compact' : ''}`} aria-live="polite" aria-label={`Automated decision state: ${steps[Math.max(0, activeIndex)]}`}>
+    <div class={`observe-rail${compact ? ' compact' : ''} state-${visualState}`} aria-live="polite" aria-label={`Automated decision state: ${steps[Math.max(0, activeIndex)]}`}>
       <div class="observe-rail-top">
         <span class="observe-rail-kicker">Observe → Observe → Snipe</span>
         <span class={`observe-rail-mode${automation ? ' live' : ''}`}><i></i>{automation ? 'LIVE INTELLIGENCE' : 'STANDBY'}</span>
@@ -1379,6 +1380,7 @@ function ObservationRail({
         ))}
       </div>
       <div class="observe-rail-message">
+        {automation && !executing && <i class="observe-state-beacon" aria-hidden="true"></i>}
         {watching && <span class="observe-mini-pulse" aria-hidden="true"></span>}
         <span>{message}</span>
         {automation && observation && !executing && <b>{progress}</b>}
