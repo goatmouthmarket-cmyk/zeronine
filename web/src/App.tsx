@@ -1360,8 +1360,9 @@ function ObservationRail({
       ? phase === 'settling' ? 'Snipe placed — watching the next tick settle.' : 'Qualified setup passed every gate.'
       : watching
         ? `Strongest setup is holding · ${progress}`
-        : reason || 'Comparing probability, payout edge, and market strength.';
+      : reason || 'Comparing probability, payout edge, and market strength.';
   const steps = ['Observe', 'Watch', 'Confirm', 'Snipe'];
+  const activityBars = Array.from({ length: 16 }, (_, index) => 28 + ((index * 23 + activeIndex * 17) % 62));
 
   return (
     <div class={`observe-rail${compact ? ' compact' : ''}`} aria-live="polite" aria-label={`Automated decision state: ${steps[Math.max(0, activeIndex)]}`}>
@@ -1382,6 +1383,11 @@ function ObservationRail({
         <span>{message}</span>
         {automation && observation && !executing && <b>{progress}</b>}
       </div>
+      {automation && !executing && <div class={`observe-lens phase-${activeIndex}`} aria-hidden="true">
+        <div class="observe-lens-bars">{activityBars.map((height, index) => <i key={index} style={{ height: `${height}%`, animationDelay: `${index * -0.11}s` }} />)}</div>
+        <span>{observation?.key ? `Watching ${observation.key}` : 'Reading live market flow'}</span>
+        <em>{observation?.lastTickEpoch ? `tick ${observation.lastTickEpoch}` : 'new ticks stream in here'}</em>
+      </div>}
     </div>
   );
 }
