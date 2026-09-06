@@ -1407,6 +1407,7 @@ function MarketScannerCompanion({ automation, phase, observation, market }: {
   const [motionEnabled, setMotionEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [style, setStyle] = useState<'focus' | 'calm' | 'vivid'>('focus');
+  const [playMode, setPlayMode] = useState(0);
   const state = !automation ? 'idle'
     : phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
       : observation?.phase === 'watching' || phase === 'watching-signal' ? 'confirming'
@@ -1430,8 +1431,8 @@ function MarketScannerCompanion({ automation, phase, observation, market }: {
           : 'I am ready when you are.';
 
   return (
-    <div class={`market-scanner-companion state-${state} style-${style}${motionEnabled ? '' : ' motion-off'}`} role="group" aria-label={label}>
-      <button class="scanner-gear" type="button" aria-label="Customize automation companion" aria-expanded={customizerOpen} onClick={() => setCustomizerOpen((open) => !open)}>
+    <div class={`market-scanner-companion state-${state} style-${style} mood-${playMode}${motionEnabled ? '' : ' motion-off'}`} role="button" tabIndex={0} aria-label={`${label}. Click to change its animation.`} onClick={() => setPlayMode((mode) => (mode + 1) % 3)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setPlayMode((mode) => (mode + 1) % 3); } }}>
+      <button class="scanner-gear" type="button" aria-label="Customize automation companion" aria-expanded={customizerOpen} onClick={(event) => { event.stopPropagation(); setCustomizerOpen((open) => !open); }}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.2 3.5 1.5-1.2-1.7-3-1.9.7a7.8 7.8 0 0 0-1.6-.9l-.3-2h-3.4l-.3 2a7.8 7.8 0 0 0-1.6.9L9 7.8l-1.7 3 1.5 1.2v.1l-1.5 1.2 1.7 3 1.9-.7c.5.4 1 .7 1.6.9l.3 2h3.4l.3-2c.6-.2 1.1-.5 1.6-.9l1.9.7 1.7-3-1.5-1.2V12Z" /></svg>
       </button>
       {customizerOpen && <div class="scanner-customizer" role="dialog" aria-label="Automation companion settings">
@@ -1454,7 +1455,10 @@ function MarketScannerCompanion({ automation, phase, observation, market }: {
           <path class="scanner-antenna" d="M112 28V13M105 13H119" />
           <circle class="scanner-signal" cx="112" cy="9" r="4" />
           <rect class="scanner-head" x="66" y="28" width="91" height="54" rx="19" />
-          <path class="scanner-face" d="M82 58H141" />
+          <path class="scanner-face face-neutral" d="M82 61H141" />
+          <path class="scanner-face face-alert" d="M82 64Q112 49 141 64" />
+          <path class="scanner-face face-happy" d="M84 58Q112 72 140 58" />
+          <path class="scanner-face face-waiting" d="M84 65Q112 56 140 65" />
           <circle class="scanner-eye left" cx="92" cy="53" r="5" />
           <circle class="scanner-eye right" cx="132" cy="53" r="5" />
           <path class="scanner-arm" d="M155 68C165 67 169 56 178 49" />
@@ -1532,7 +1536,7 @@ function MarketPulse({ market, onChoose, automation = false, phase, observation 
         </div>
         <div class={`market-pulse-chart${scanning ? ' scanning' : ''}`}>
           {quotes.length > 1 ? <MarketPulseChart quotes={quotes} lastEpoch={market?.lastEpoch ?? 0} up={up} label={label} /> : <span class="market-pulse-empty">Awaiting ticks</span>}
-          {scanning && <div class="market-pulse-scan" aria-hidden="true"><i></i></div>}
+          {scanning && <div class="market-pulse-analysis" aria-hidden="true"><i class="analysis-reticle"></i><i class="analysis-sweep"></i><i class="analysis-lock a"></i><i class="analysis-lock b"></i></div>}
         </div>
         <div class="market-pulse-foot">
           <span>{label}</span>
@@ -2050,7 +2054,7 @@ function DecisionHero({
   })();
 
   return (
-    <div class={`cockpit${marketChooserOpen ? ' manual-open' : ''}`}>
+    <div class={`cockpit${marketChooserOpen ? ' manual-open' : ''}${automation && !marketChooserOpen ? ' automation-active' : ''}`}>
       {!marketChooserOpen && <div class="cockpit-primary">
       <div class="cockpit-market">{bestLabel}</div>
 
@@ -2082,7 +2086,6 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
-      <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} />
       </div>}
       {marketChooserOpen ? (
         <div class="manual-cockpit-takeover">
@@ -2110,7 +2113,10 @@ function DecisionHero({
             onClose={onCloseMarketChooser}
           />
         </div>
-      ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} />}
+      ) : automation ? <div class="cockpit-live-stage">
+        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} />
+        <div class="cockpit-live-chart"><MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} /></div>
+      </div> : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} />}
     </div>
   );
 }
