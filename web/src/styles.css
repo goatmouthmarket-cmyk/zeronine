@@ -5493,6 +5493,8 @@ button.activity-row {
   .gold-facts > div, .gold-connection-facts > div { border-left: 0 !important; border-bottom: 1px solid var(--border); }
   .gold-facts > div:last-child, .gold-connection-facts > div:last-child { border-bottom: 0; }
 }
+.market-pulse-chart.scanning::after { position: absolute; z-index: 2; top: 0; bottom: 0; width: 18%; content: ""; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(139,92,246,.06), rgba(138,255,215,.22), transparent); animation: market-scan-sweep 2.8s cubic-bezier(.45,0,.55,1) infinite; }.market-pulse-scan { position: absolute; z-index: 3; right: 5px; bottom: 3px; display: flex; align-items: center; gap: 5px; padding: 3px 5px; border-radius: 3px; color: rgba(235,238,248,.8); background: rgba(9,10,15,.48); font-size: 7px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }.market-pulse-scan i { width: 4px; height: 4px; border-radius: 50%; background: var(--green); box-shadow: 0 0 7px rgba(34,197,94,.8); animation: observe-step-pulse 1.1s ease-in-out infinite; }.market-pulse-scan em { color: var(--purple-light); font-style: normal; font-variant-numeric: tabular-nums; } @keyframes market-scan-sweep { from { left: -20%; } to { left: 110%; } }
+.market-pulse.selected { box-shadow: inset 0 0 0 1px rgba(139,92,246,.12), 0 0 22px rgba(139,92,246,.04); }.market-pulse.selected .market-pulse-foot b { animation: market-price-tick .7s ease-out; } @keyframes market-price-tick { 35% { color: #fff; text-shadow: 0 0 10px rgba(138,255,215,.75); } }
 
 /* Entry Lab: deliberately contained so its live visual never causes page-wide layout work. */
 .entry-lab { margin-top: 16px; border-top: 1px solid var(--border); }

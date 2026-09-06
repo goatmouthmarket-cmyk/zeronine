@@ -1350,7 +1350,7 @@ function ObservationRail({
   const watching = observation?.phase === 'watching' || phase === 'watching-signal';
   const activeIndex = !automation ? -1 : executing ? 3 : confirmed ? 2 : watching ? 1 : 0;
   const progress = observation && observation.required > 1
-    ? `${observation.confirmations}/${observation.required} fresh ticks`
+    ? `${observation.confirmations}/${observation.required} fresh ticks · ${Math.round((observation.confirmations / observation.required) * 100)}%`
     : observation?.required === 1
       ? '1 fresh tick required'
       : 'evaluating every market';
@@ -1436,23 +1436,29 @@ function resolveTarget(
   };
 }
 
-function MarketPulse({ market, onChoose }: { market: Market | null; onChoose: () => void }): JSX.Element {
+function MarketPulse({ market, onChoose, automation = false, phase, observation }: { market: Market | null; onChoose: () => void; automation?: boolean; phase?: string; observation?: AutomationState['observation'] }): JSX.Element {
   const quotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0);
   const first = quotes[0] ?? 0;
   const last = quotes[quotes.length - 1] ?? market?.lastQuote ?? 0;
   const changePct = first > 0 ? ((last - first) / first) * 100 : 0;
   const up = last >= first;
   const label = shortMarketName(market?.display ?? 'Selected market');
+  const scanning = automation && !['buying', 'settling', 'settled'].includes(phase ?? '');
+  const required = Math.max(1, observation?.required ?? 3);
+  const progress = Math.min(100, Math.round(((observation?.confirmations ?? 0) / required) * 100));
 
   return (
     <div class="market-pulse-shell">
-      <button id="market-pulse-trigger" type="button" class={`market-pulse${up ? ' up' : ' down'}`} aria-label="Choose a market and manual barrier from the live quote chart" onClick={onChoose}>
+      <button id="market-pulse-trigger" type="button" class={`market-pulse${up ? ' up' : ' down'}${market ? ' selected' : ''}`} aria-label="Choose a market and manual barrier from the live quote chart" onClick={onChoose}>
         <div class="market-pulse-head">
           <span class="market-pulse-label">Live quote</span>
           <span class={`market-pulse-change${up ? ' up' : ' down'}`}>{quotes.length > 1 ? `${up ? '+' : ''}${changePct.toFixed(2)}%` : '--'}</span>
         </div>
-        <div class="market-pulse-chart">
+        <div class={`market-pulse-chart${scanning ? ' scanning' : ''}`}>
           {quotes.length > 1 ? <MarketPulseChart quotes={quotes} lastEpoch={market?.lastEpoch ?? 0} up={up} label={label} /> : <span class="market-pulse-empty">Awaiting ticks</span>}
+          {scanning && <div class="market-pulse-scan" aria-hidden="true">
+            <i></i><span>{observation?.phase === 'watching' ? `Confirming ${progress}%` : 'Scanning live flow'}</span><em>{observation?.phase === 'watching' ? `${observation?.confirmations ?? 0}/${required} ticks` : 'next tick'}</em>
+          </div>}
         </div>
         <div class="market-pulse-foot">
           <span>{label}</span>
@@ -2033,7 +2039,7 @@ function DecisionHero({
             onClose={onCloseMarketChooser}
           />
         </div>
-      ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} />}
+      ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} />}
     </div>
   );
 }
