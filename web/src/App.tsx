@@ -1464,8 +1464,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       </div>}
       <svg viewBox="0 0 520 110" aria-hidden="true">
         <path class="scanner-ground" d="M18 87H422" />
-        <path class="scanner-link" d="M180 48C290 14 408 18 520 43" />
-        <path class="scanner-link scanner-link-return" d="M180 55C302 88 411 77 520 57" />
+        <path class="scanner-link" d="M180 48C292 55 402 -92 520 -94" />
         <g class="scanner-bot">
           <path class="scanner-antenna" d="M112 28V13M105 13H119" />
           <circle class="scanner-signal" cx="112" cy="9" r="4" />
