@@ -1412,6 +1412,9 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [motionEnabled, setMotionEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [style, setStyle] = useState<'focus' | 'calm' | 'vivid'>('focus');
+  const [promptIndex, setPromptIndex] = useState(0);
+  const [promptVisible, setPromptVisible] = useState(false);
+  const [promptReply, setPromptReply] = useState<string | null>(null);
   const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
   const state = phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
     : protectionHold ? 'protecting'
@@ -1447,6 +1450,36 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       : state === 'waiting' ? 'I am waiting for a safer moment before using your money.'
         : state === 'scanning' ? 'I am looking for the best time to enter.'
           : 'I am ready when you are.';
+  const nextStep = state === 'trading' ? 'Next: wait for the contract result.'
+    : state === 'recovering' || state === 'chasing' ? 'Next: wait for a safer recovery chance.'
+      : state === 'protecting' ? 'Next: keep the protected profit untouched.'
+        : state === 'waiting' ? 'Next: keep checking until the numbers improve.'
+          : state === 'confirming' ? 'Next: check one more live move.'
+            : 'Next: compare the market price and payout.';
+  const prompts = [
+    { question: 'Still with me?', choices: ['I am here', 'Keep watching'] },
+    { question: 'Force a trade now?', choices: ['No, wait for an edge', 'Open manual setup'] },
+    { question: 'Quick focus check: heads or tails?', choices: ['Heads', 'Tails'] },
+    { question: 'Want a faster pace?', choices: ['Stay careful', 'Show my options'] },
+  ];
+  const prompt = prompts[promptIndex % prompts.length];
+
+  useEffect(() => {
+    if (!automation) { setPromptVisible(false); return; }
+    const show = window.setTimeout(() => setPromptVisible(true), 35_000);
+    return () => window.clearTimeout(show);
+  }, [automation, promptIndex]);
+
+  useEffect(() => {
+    if (!promptVisible) return;
+    const hide = window.setTimeout(() => { setPromptVisible(false); setPromptIndex((index) => index + 1); }, 12_000);
+    return () => window.clearTimeout(hide);
+  }, [promptVisible]);
+
+  const answerPrompt = (answer: string) => {
+    setPromptReply(answer);
+    window.setTimeout(() => { setPromptReply(null); setPromptVisible(false); setPromptIndex((index) => index + 1); }, 1_600);
+  };
 
   return (
     <div class={`market-scanner-companion state-${state} style-${style}${motionEnabled ? '' : ' motion-off'}`} role="group" aria-label={label} onClick={() => { if (customizerOpen) setCustomizerOpen(false); }}>
@@ -1483,7 +1516,11 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
       </svg>
-      {voiceEnabled && <div class="scanner-thought"><i></i><span>{laymanInsight}</span></div>}
+      {voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{nextStep}</small></div></div>}
+      {promptVisible && <div class="scanner-prompt" role="status">
+        <span>{promptReply ?? prompt.question}</span>
+        {!promptReply && <div>{prompt.choices.map((choice) => <button type="button" onClick={(event) => { event.stopPropagation(); answerPrompt(choice); }}>{choice}</button>)}</div>}
+      </div>}
     </div>
   );
 }
