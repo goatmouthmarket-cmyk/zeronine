@@ -119,8 +119,26 @@ async function main(): Promise<void> {
 
   const hub = new Hub();
   let lastProvenDigitsMode = '';
+  let entrySnapshot: ReturnType<EntryResearchRuntime['state']> | null = null;
+  let entrySnapshotQueued = false;
+  const savedEntryState = (() => {
+    try { const raw = getMeta('entry_research_state_v1'); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  })();
+  const queueEntrySnapshot = (state: ReturnType<EntryResearchRuntime['state']>): void => {
+    entrySnapshot = state;
+    if (entrySnapshotQueued) return;
+    entrySnapshotQueued = true;
+    setTimeout(() => {
+      entrySnapshotQueued = false;
+      const snapshot = entrySnapshot;
+      entrySnapshot = null;
+      try { if (snapshot) setMeta('entry_research_state_v1', JSON.stringify(snapshot)); } catch { /* telemetry cannot block trading */ }
+    }, 250);
+  };
   const entryResearch = new EntryResearchRuntime({
+    initialState: savedEntryState,
     onState: (state) => {
+      queueEntrySnapshot(state);
       const champion = state.products.find((product) => product.product === 'digits')?.champion.methodId;
       const resolved = champion === 'confirm_1' || champion === 'anti_chase' ? 'digit_trigger'
         : champion === 'confirm_2' || champion === 'stability_3' ? 'digit_trigger_confirmed'

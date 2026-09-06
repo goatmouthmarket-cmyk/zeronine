@@ -28,3 +28,16 @@ test('entry research ignores duplicate readiness and never lets observer failure
   const state = runtime.state().products.find((row) => row.product === 'multipliers')!;
   assert.equal(state.methods.find((row) => row.methodId === 'instant')!.openSamples, 1);
 });
+
+test('entry research restores resolved evidence and its champion after restart', () => {
+  let now = 10;
+  const first = new EntryResearchRuntime({ now: () => now, minSamples: 1, challengerMargin: 0 });
+  first.observe({ product: 'digits', market: 'R_10', signalId: 'persist-1', direction: 'up', epoch: 1 });
+  now += 1_000;
+  assert.equal(first.recordOutcome({ product: 'digits', methodId: 'instant', signalId: 'persist-1', pnl: 3 }), true);
+  const restored = new EntryResearchRuntime({ now: () => now, minSamples: 1, challengerMargin: 0, initialState: first.state() });
+  const method = restored.state().products.find((product) => product.product === 'digits')!.methods.find((row) => row.methodId === 'instant')!;
+  assert.equal(method.samples, 1);
+  assert.equal(method.netPnl, 3);
+  assert.equal(restored.state().products.find((product) => product.product === 'digits')!.champion.methodId, 'instant');
+});

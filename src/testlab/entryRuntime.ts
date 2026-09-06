@@ -48,6 +48,8 @@ export interface EntryResearchRuntimeOptions {
   minSamples?: number;
   freshnessMs?: number;
   challengerMargin?: number;
+  /** Durable, virtual-only aggregate evidence restored after a restart. */
+  initialState?: EntryResearchState | null;
   /** State transition notification. Keep observers lightweight; the runtime never awaits them. */
   onState?: (state: EntryResearchState) => void;
 }
@@ -177,6 +179,7 @@ export class EntryResearchRuntime {
       this.methods.set(product, rows);
       this.champions.set(product, { methodId: null, confidence: 0, reason: 'collecting entry evidence' });
     }
+    this.hydrate(options.initialState);
   }
 
   /** Advance all product-specific gates with one ordered, normalized observation. */
@@ -256,6 +259,33 @@ export class EntryResearchRuntime {
       updatedAt: row.updatedAt,
     }));
     this.champions.set(product, chooseEntryChampion(evidence, { product, incumbent, now, ...this.options }));
+  }
+
+  private hydrate(initial: EntryResearchState | null | undefined): void {
+    if (!initial || !Array.isArray(initial.products)) return;
+    for (const savedProduct of initial.products) {
+      const rows = this.methods.get(savedProduct.product);
+      if (!rows) continue;
+      for (const saved of savedProduct.methods ?? []) {
+        const row = rows.get(saved.methodId);
+        if (!row) continue;
+        row.samples = Math.max(0, Number(saved.samples) || 0);
+        row.netPnl = Number(saved.netPnl) || 0;
+        row.maxDrawdown = Math.max(0, Number(saved.maxDrawdown) || 0);
+        row.averageDelay = Math.max(0, Number(saved.averageDelay) || 0);
+        row.updatedAt = Math.max(0, Number(saved.updatedAt) || 0);
+        row.wins = Math.max(0, Number(saved.wins) || 0);
+        row.losses = Math.max(0, Number(saved.losses) || 0);
+        row.lastDecision = saved.lastDecision;
+        row.lastReason = saved.lastReason || row.lastReason;
+        row.equity = Array.isArray(saved.equity) && saved.equity.length ? saved.equity.filter(Number.isFinite).slice(-40) : [0];
+        row.peakEquity = Math.max(0, ...row.equity);
+        row.totalDelay = row.averageDelay * row.samples;
+      }
+      this.champions.set(savedProduct.product, savedProduct.champion ?? this.champions.get(savedProduct.product)!);
+      this.refreshChampion(savedProduct.product, Math.max(0, savedProduct.updatedAt));
+    }
+    this.updatedAt = Math.max(0, Number(initial.updatedAt) || 0);
   }
 
   private publish(now: number): void {
