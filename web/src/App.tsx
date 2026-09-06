@@ -1383,7 +1383,7 @@ function ObservationRail({
         <span>{message}</span>
         {automation && observation && !executing && <b>{progress}</b>}
       </div>
-      {automation && !executing && <div class={`observe-lens phase-${activeIndex}`} aria-hidden="true">
+      {automation && !executing && compact && <div class={`observe-lens phase-${activeIndex}`} aria-hidden="true">
         <div class="observe-lens-bars">{activityBars.map((height, index) => <i key={index} style={{ height: `${height}%`, animationDelay: `${index * -0.11}s` }} />)}</div>
         <span>{observation?.key ? `Watching ${observation.key}` : 'Reading live market flow'}</span>
         <em>{observation?.lastTickEpoch ? `tick ${observation.lastTickEpoch}` : 'new ticks stream in here'}</em>
