@@ -121,16 +121,24 @@ function barrierAllowed(settings: SettingsRow): Array<{ direction: Direction; ba
   const barrier = settings.barrier_number ?? (mode === 'under' ? 9 : 0);
 
   if (settings.entry_mode === 'digit_trigger' || settings.entry_mode === 'digit_trigger_confirmed') {
-    if (mode === 'over') return [{ direction: 'over', barrier: 5 }];
-    if (mode === 'under') return [{ direction: 'under', barrier: 5 }];
-    return [{ direction: 'over', barrier: 5 }, { direction: 'under', barrier: 5 }];
+    // Keep the proven mid-barrier trigger available, but let the same live
+    // trigger compare it with safer favourites. A direction lock limits only
+    // the side, never silently forces Under 5 again.
+    if (mode === 'over') return [{ direction: 'over', barrier: 0 }, { direction: 'over', barrier: 1 }, { direction: 'over', barrier: 5 }];
+    if (mode === 'under') return [{ direction: 'under', barrier: 9 }, { direction: 'under', barrier: 8 }, { direction: 'under', barrier: 5 }];
+    return [
+      { direction: 'over', barrier: 0 }, { direction: 'over', barrier: 1 }, { direction: 'under', barrier: 9 }, { direction: 'under', barrier: 8 },
+      { direction: 'over', barrier: 5 }, { direction: 'under', barrier: 5 },
+    ];
   }
 
   if (settings.strategy_mode === 'conservative') {
-    if (mode === 'over') return [{ direction: 'over', barrier: 1 }];
-    if (mode === 'under') return [{ direction: 'under', barrier: 8 }];
+    if (mode === 'over') return [{ direction: 'over', barrier: 0 }, { direction: 'over', barrier: 1 }];
+    if (mode === 'under') return [{ direction: 'under', barrier: 9 }, { direction: 'under', barrier: 8 }];
     return [
+      { direction: 'over', barrier: 0 },
       { direction: 'over', barrier: 1 },
+      { direction: 'under', barrier: 9 },
       { direction: 'under', barrier: 8 },
     ];
   }
@@ -572,9 +580,18 @@ export class Automation {
     let decision: RecoveryStake = recoveryHold();
     if (recovering) {
       const now = Date.now();
+      // After a loss, recovery may only consider the safer digit favourites.
+      // It must never bypass the exact-setup cooldown that protects the base
+      // path from repeatedly choosing the same losing contract.
+      const saferAfterLoss = ctx.streak > 0;
+      const isSafeFavourite = (o: QuotedOption) => (o.direction === 'over' && (o.barrier === 0 || o.barrier === 1))
+        || (o.direction === 'under' && (o.barrier === 8 || o.barrier === 9));
+      const recoveryPool = quotes.filter((o) => !this.cooled(o, now)
+        && !isSetupCoolingDown(o.market, o.direction, o.barrier, accountId, now)
+        && (!saferAfterLoss || isSafeFavourite(o)));
       const ladderSrc = conservative
-        ? quotes.filter((o) => !this.cooled(o, now))
-        : quotes.filter((o) => isSensibleDigitCandidate({
+        ? recoveryPool
+        : recoveryPool.filter((o) => isSensibleDigitCandidate({
             baseWin: o.baseWin,
             estWin: o.estWin,
             edge: o.realEdge,

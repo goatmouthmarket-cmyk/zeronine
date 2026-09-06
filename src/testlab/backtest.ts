@@ -45,7 +45,9 @@ export function allConfigs(): TestConfig[] {
 function allowedBarriers(strategyMode: TestConfig['strategyMode']): Array<{ direction: Direction; barrier: number }> {
   if (strategyMode === 'conservative') {
     return [
+      { direction: 'over', barrier: 0 },
       { direction: 'over', barrier: 1 },
+      { direction: 'under', barrier: 9 },
       { direction: 'under', barrier: 8 },
     ];
   }
