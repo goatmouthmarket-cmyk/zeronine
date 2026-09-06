@@ -1417,7 +1417,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   lastResult?: string | null;
   strategyMode?: Settings['strategy_mode'];
   holdReason?: string | null;
-  forceSetup: { direction: 'over' | 'under'; barrier: number; confidence: number } | null;
+  forceSetup: { market: string; direction: 'over' | 'under'; barrier: number; confidence: number; eligible: boolean } | null;
   onForceDemoTrade: () => Promise<boolean>;
 }): JSX.Element {
   const [customizerOpen, setCustomizerOpen] = useState(false);
@@ -1427,6 +1427,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [promptIndex, setPromptIndex] = useState(0);
   const [promptVisible, setPromptVisible] = useState(false);
   const [promptReply, setPromptReply] = useState<string | null>(null);
+  const [waitPromptEligible, setWaitPromptEligible] = useState(false);
   const automationRef = useRef(automation);
   useEffect(() => { automationRef.current = automation; }, [automation]);
   const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
@@ -1474,27 +1475,41 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           : state === 'confirming' ? 'Next: check one more live move.'
             : 'Next: compare the market price and payout.';
   const setupLabel = forceSetup ? `${forceSetup.direction === 'under' ? 'Under' : 'Over'} ${forceSetup.barrier}` : null;
-  const confidenceLabel = forceSetup ? `${Math.round(forceSetup.confidence * 100)}% model confidence` : null;
-  const prompts = [
-    { kind: 'presence', question: 'Still with me?', choices: ['I am here', 'Keep watching'] },
-    ...(setupLabel ? [
-      { kind: 'trade', question: `Place ${setupLabel} on demo?`, choices: ['No, keep watching', `Place ${setupLabel}`] },
-      { kind: 'coin', question: `Heads or tails for ${setupLabel}?`, choices: ['Heads', 'Tails'] },
-      { kind: 'rps', question: `Rock, paper, or scissors for ${setupLabel}?`, choices: ['Rock', 'Paper', 'Scissors'] },
-    ] : []),
-  ];
-  const prompt = prompts[promptIndex % prompts.length];
+  const confidenceLabel = forceSetup ? `${Math.round(forceSetup.confidence * 100)}%` : null;
+  const promptContext = forceSetup && setupLabel ? `${forceSetup.market} · ${setupLabel} · ${confidenceLabel}` : null;
+  const waitingForEntry = automation && state === 'waiting'
+    && (phase === 'waiting-edge' || phase === 'waiting-entry-trigger')
+    && !protectionHold && recovery?.mode !== 'recovering' && Boolean(forceSetup?.eligible);
+  const entryWaitRef = useRef(waitingForEntry);
+  useEffect(() => { entryWaitRef.current = waitingForEntry; }, [waitingForEntry]);
+  const prompts = promptContext ? [
+    { kind: 'trade', question: `Place ${setupLabel} on demo?`, choices: ['No, keep watching', `Place ${setupLabel}`] },
+    { kind: 'coin', question: 'Heads or tails?', choices: ['Heads', 'Tails'] },
+    { kind: 'rps', question: 'Rock, paper, or scissors?', choices: ['Rock', 'Paper', 'Scissors'] },
+  ] : [];
+  const prompt = prompts[promptIndex % Math.max(prompts.length, 1)];
 
   useEffect(() => {
-    if (!automation) {
+    if (!automation || !waitingForEntry) {
       setPromptVisible(false);
       setPromptReply(null);
       setPromptIndex(0);
+      setWaitPromptEligible(false);
       return;
     }
-    const show = window.setTimeout(() => setPromptVisible(true), 35_000);
+    const show = window.setTimeout(() => setWaitPromptEligible(true), 30_000);
+    const stop = window.setTimeout(() => setWaitPromptEligible(false), 120_000);
+    return () => { window.clearTimeout(show); window.clearTimeout(stop); };
+  }, [waitingForEntry]);
+
+  useEffect(() => {
+    if (!waitPromptEligible || !waitingForEntry || !prompt) {
+      setPromptVisible(false);
+      return;
+    }
+    const show = window.setTimeout(() => setPromptVisible(true), 250);
     return () => window.clearTimeout(show);
-  }, [automation, promptIndex]);
+  }, [waitPromptEligible, waitingForEntry, promptIndex, prompt]);
 
   useEffect(() => {
     if (!promptVisible) return;
@@ -1508,7 +1523,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       const placed = await onForceDemoTrade();
       // A stopped bot must not revive an old companion message after a
       // submitted prompt action resolves.
-      if (!automationRef.current) return;
+      if (!automationRef.current || !entryWaitRef.current) return;
       const gameLabel = prompt.kind === 'coin' || prompt.kind === 'rps' ? `${answer} selected - ${setupLabel}` : setupLabel;
       setPromptReply(placed ? `${gameLabel} sent on demo. I am watching it now.` : `That ${setupLabel} demo trade could not be placed. I will keep scanning.`);
       window.setTimeout(() => { setPromptReply(null); setPromptVisible(false); setPromptIndex((index) => index + 1); }, 2_200);
@@ -1556,6 +1571,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{nextStep}</small></div></div>}
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
+        {!promptReply && promptContext && <small class="scanner-option-badge">{promptContext}</small>}
+        {!promptReply && promptContext && <div class="scanner-option-contexts" aria-hidden="true">{prompt.choices.map((choice) => <small>{choice} · {promptContext}</small>)}</div>}
         {!promptReply && <div>{prompt.question.includes('heads or tails') && <i class="scanner-game coin">◒</i>}{prompt.question.includes('rock, paper') && <i class="scanner-game rps">✊</i>}{prompt.choices.map((choice) => <button type="button" onClick={(event) => { event.stopPropagation(); void answerPrompt(choice); }}>{choice}</button>)}</div>}
       </div>}
     </div>
@@ -2181,7 +2198,7 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
-        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} recovery={recovery} lastResult={lastResult} strategyMode={settings?.strategy_mode} holdReason={holdReason} forceSetup={best ? { direction: best.direction, barrier: best.barrier, confidence: best.estWin } : null} onForceDemoTrade={() => best ? onManualPlace(best.direction, best.barrier, best.market, true) : Promise.resolve(false)} />
+        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} recovery={recovery} lastResult={lastResult} strategyMode={settings?.strategy_mode} holdReason={holdReason} forceSetup={best ? { market: shortMarketName(markets.find((market) => market.symbol === best.market)?.display ?? best.market), direction: best.direction, barrier: best.barrier, confidence: best.estWin, eligible: best.edge > 0 && best.estWin >= best.breakeven } : null} onForceDemoTrade={() => best ? onManualPlace(best.direction, best.barrier, best.market, true) : Promise.resolve(false)} />
       </div>}
       {marketChooserOpen ? (
         <div class="manual-cockpit-takeover">

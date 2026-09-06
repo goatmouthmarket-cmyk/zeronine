@@ -508,6 +508,18 @@ button {
 @keyframes brain-node-pulse { 50% { opacity:.38; transform:scale(.72); transform-origin:center; } }
 @keyframes brain-nerve-grow { to { stroke-dashoffset:0; } }
 
+/* Companion choice context: the game is only a confirmation gesture. These
+   quiet labels keep the underlying market setup visible without card chrome. */
+.scanner-option-badge { display:block; margin-top:3px; color:rgba(183,163,255,.82); font-size:8px; font-weight:750; letter-spacing:.03em; }
+.scanner-option-contexts { display:flex; flex-wrap:wrap; gap:3px 8px; margin-top:4px; color:rgba(190,180,225,.63); font-size:7px; line-height:1.2; }
+.scanner-option-contexts small { white-space:nowrap; }
+.scanner-game.coin { position:relative; overflow:hidden; color:transparent; background:radial-gradient(circle at 35% 31%, #fff2b7 0 8%, #f3bc45 9% 45%, #a66014 46% 100%); box-shadow:inset 0 0 0 2px rgba(255,245,192,.26), 0 0 11px rgba(243,188,69,.22); animation:scanner-coin-flip .9s cubic-bezier(.35,.01,.64,1) infinite; }
+.scanner-game.coin::before { content:'Z9'; color:#3a1d04; font-size:7px; font-weight:900; letter-spacing:-.08em; }
+.scanner-game.rps { position:relative; width:26px; color:transparent; }
+.scanner-game.rps::before { content:'✊'; color:#b8a1ff; font-size:18px; line-height:1; animation:scanner-rps-hand 1.35s steps(1,end) infinite; }
+@keyframes scanner-coin-flip { 50% { transform:rotateY(180deg) scale(.88); } }
+@keyframes scanner-rps-hand { 0%,31% { content:'✊'; transform:rotate(-8deg); } 32%,64% { content:'✋'; transform:rotate(7deg); } 65%,100% { content:'✌'; transform:rotate(-5deg); } }
+
 .market-pulse {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
