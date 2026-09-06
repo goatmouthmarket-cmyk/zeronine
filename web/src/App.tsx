@@ -1466,9 +1466,6 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
         <path class="scanner-ground" d="M18 87H422" />
         <path class="scanner-link" d="M174 48C244 22 317 28 421 44" />
         <path class="scanner-packets" d="M191 42C247 27 319 31 406 43" />
-        <g class="scanner-screen">
-          <path class="scanner-beam" d="M177 40L422 31V57Z" />
-        </g>
         <g class="scanner-bot">
           <path class="scanner-antenna" d="M112 28V13M105 13H119" />
           <circle class="scanner-signal" cx="112" cy="9" r="4" />
