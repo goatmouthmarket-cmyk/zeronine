@@ -438,7 +438,20 @@ test('Momentum close sells the open multiplier contract even when the stored rea
     paperSimulator: new paperMod.PaperSimulator(),
   });
 
-  const response = await app.inject({ method: 'POST', url: '/api/momentum/close' });
+  const mismatch = await app.inject({
+    method: 'POST',
+    url: '/api/momentum/close',
+    payload: { tradeId: open.id, contractId: 'different-contract' },
+  });
+  assert.equal(mismatch.statusCode, 409);
+  assert.match(mismatch.json().error, /do not identify the same open contract/i);
+  assert.equal(soldContract, '');
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/momentum/close',
+    payload: { tradeId: open.id, contractId: '11041116359' },
+  });
   assert.equal(response.statusCode, 200);
   assert.equal(soldContract, '11041116359');
   assert.equal(soldPrice, 0);

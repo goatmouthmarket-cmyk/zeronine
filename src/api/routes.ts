@@ -3,6 +3,7 @@ import { config } from '../config.ts';
 import { GoldRuntime, GoldRuntimeUnavailableError } from '../gold/runtime.ts';
 import { GoldOAuthError } from '../gold/onboarding.ts';
 import { assessGoldProfitProtection } from '../gold/profitProtection.ts';
+import { AccountCoordinator } from '../execution/accountCoordinator.ts';
 import { grantOwner, isOwner, publicDashboardEnabled, requireOwner } from './access.ts';
 import type { DerivPublicFeed } from '../deriv/publicFeed.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
@@ -75,11 +76,17 @@ export interface ApiDeps {
   paperSimulator: PaperSimulator;
   momentum?: MomentumObserver;
   gold?: GoldRuntime;
+  /** Shared command lane for account-funded Deriv operations. */
+  accountCoordinator?: AccountCoordinator;
 }
 
 export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const { registry, feed, client, hub, automation, paperSimulator, momentum } = deps;
   const gold = deps.gold ?? new GoldRuntime();
+  // The coordinator is deliberately per API runtime unless main supplies a
+  // process-level instance. It serializes short provider commands only; quote
+  // streaming and settlement subscriptions stay independent and responsive.
+  const accountCoordinator = deps.accountCoordinator ?? new AccountCoordinator();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
   const multiplierProbeCache = new Map<string, { ts: number; result: MultiplierProbeResult }>();
   const multiplierCandidates = [10, 20, 30, 50, 75, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000];
@@ -147,6 +154,36 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN')
       && (/gold deriv manual/i.test(trade.reason ?? '') || trade.market === config.goldDerivSymbol),
     );
+  type CloseTarget = { tradeId?: unknown; contractId?: unknown };
+  const findOpenTradeForClose = (
+    body: CloseTarget | undefined,
+    label: string,
+    matchesProduct: (trade: TradeRow) => boolean,
+  ): { trade: TradeRow | null; error: string | null } => {
+    const rawTradeId = body?.tradeId;
+    const rawContractId = body?.contractId;
+    const hasTradeId = rawTradeId !== undefined && rawTradeId !== null && rawTradeId !== '';
+    const hasContractId = rawContractId !== undefined && rawContractId !== null && rawContractId !== '';
+    const tradeId = hasTradeId ? Number(rawTradeId) : null;
+    const contractId = hasContractId ? String(rawContractId) : null;
+    if (hasTradeId && (!Number.isSafeInteger(tradeId) || (tradeId ?? 0) <= 0)) {
+      return { trade: null, error: 'tradeId must be a positive integer' };
+    }
+    if (hasContractId && !contractId?.trim()) return { trade: null, error: 'contractId is required when supplied' };
+
+    const candidates = listOpenTrades().filter(matchesProduct);
+    let trade: TradeRow | undefined;
+    if (tradeId !== null) trade = candidates.find((item) => item.id === tradeId);
+    else if (contractId) trade = candidates.find((item) => item.contract_id === contractId);
+    else if (candidates.length === 1) trade = candidates[0];
+    else if (candidates.length > 1) return { trade: null, error: `multiple open ${label} trades found; specify tradeId or contractId` };
+
+    if (!trade) return { trade: null, error: `no open ${label} trade found` };
+    if (contractId && trade.contract_id !== contractId) {
+      return { trade: null, error: 'tradeId and contractId do not identify the same open contract' };
+    }
+    return { trade, error: null };
+  };
   const fmtSentimentPct = (score: number): string => `${score >= 0 ? '+' : ''}${Math.round(score * 100)}%`;
   const recordGoldTradeKnowledgeSafely = (
     trade: TradeRow,
@@ -589,7 +626,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       });
       stage = 'buy';
       buyAttempted = true;
-      bought = await client.placeBuy(quote.id, quote.askPrice);
+      bought = await accountCoordinator.runCommand('manual_open', session.loginid, () => client.placeBuy(quote.id, quote.askPrice));
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
       const entryPrice = Number.isFinite(quote.spot) && quote.spot > 0
@@ -672,11 +709,16 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(403);
       return { error: 'Gold trades are restricted to a Deriv demo account' };
     }
-    const openTrade = listOpenTrades().find(isGoldDerivTrade) ?? null;
-    if (!openTrade) {
+    const target = findOpenTradeForClose(
+      (req.body ?? {}) as CloseTarget,
+      'Gold',
+      (trade) => isGoldDerivTrade(trade),
+    );
+    if (!target.trade) {
       reply.code(409);
-      return { error: 'no open Gold trade found' };
+      return { error: target.error };
     }
+    const openTrade = target.trade;
     if ((openTrade.contract_type !== 'MULTUP' && openTrade.contract_type !== 'MULTDOWN') || !/gold deriv manual/i.test(openTrade.reason ?? '')) {
       reply.code(409);
       return { error: 'the open account contract is not a Gold Deriv multiplier trade' };
@@ -699,7 +741,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       }
     }
     try {
-      const sold = await client.sellContract(openTrade.contract_id, 0);
+      const sold = await accountCoordinator.runCommand('manual_close', session.loginid, () => client.sellContract(openTrade.contract_id, 0));
       const profit = Math.round((sold.soldFor - openTrade.stake) * 100) / 100;
       const status = profit > 0 ? 'won' : profit < 0 ? 'lost' : 'push';
       resolveTrade(openTrade.id, status, profit, sold.contractId, undefined, openTrade.account_id);
@@ -1010,7 +1052,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       });
       stage = 'buy';
       buyAttempted = true;
-      bought = await client.placeBuy(quote.id, quote.askPrice);
+      bought = await accountCoordinator.runCommand('manual_open', session.loginid, () => client.placeBuy(quote.id, quote.askPrice));
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
       const entrySnapshot = registry.snapshot(current.config.symbol);
@@ -1131,12 +1173,21 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(403);
       return { error: 'Momentum trades are restricted to a Deriv demo account' };
     }
-    const multiplierTrade = getOpenTradeByLane('multiplier');
-    const openTrade = listOpenTrades().find((trade) => (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN') && !isGoldDerivTrade(trade)) ?? null;
-    if (!openTrade) {
+    const target = findOpenTradeForClose(
+      (req.body ?? {}) as CloseTarget,
+      'Momentum',
+      (trade) => (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN') && !isGoldDerivTrade(trade),
+    );
+    if (!target.trade) {
       reply.code(409);
-      return { error: multiplierTrade ? 'the open contract is not a Momentum multiplier trade' : 'no open Momentum trade found' };
+      const multiplierTrade = getOpenTradeByLane('multiplier');
+      return {
+        error: target.error === 'no open Momentum trade found' && multiplierTrade
+          ? 'the open contract is not a Momentum multiplier trade'
+          : target.error,
+      };
     }
+    const openTrade = target.trade;
     if ((openTrade.contract_type !== 'MULTUP' && openTrade.contract_type !== 'MULTDOWN') || isGoldDerivTrade(openTrade)) {
       reply.code(409);
       return { error: 'the open contract is not a Momentum multiplier trade' };
@@ -1161,7 +1212,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
 
     try {
-      const sold = await client.sellContract(openTrade.contract_id, 0);
+      const sold = await accountCoordinator.runCommand('manual_close', session.loginid, () => client.sellContract(openTrade.contract_id, 0));
       const profit = Math.round((sold.soldFor - openTrade.stake) * 100) / 100;
       const status = profit > 0 ? 'won' : profit < 0 ? 'lost' : 'push';
       resolveTrade(openTrade.id, status, profit, sold.contractId, undefined, openTrade.account_id);
@@ -1691,7 +1742,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         reason: entryMode === 'digit-trigger-confirmed' ? 'manual two-pass digit-trigger hypothesis' : entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
         origin: 'manual',
       });
-      const bought = await client.placeBuy(quote.id, quote.askPrice);
+      const bought = await accountCoordinator.runCommand('manual_open', session.loginid, () => client.placeBuy(quote.id, quote.askPrice));
       const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
       const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
       markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
@@ -1794,6 +1845,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         reason: `manual basket ${batchId}`,
         origin: 'manual',
       }));
+      // A basket is intentionally a single concurrent operation. The private
+      // client correlates each request by req_id; do not turn this into five
+      // sequential entries and destroy its distinct-market timing semantics.
       const outcomes = await Promise.allSettled(quotes.map((quote) => client.placeBuy(quote.id, quote.askPrice)));
       let purchased = 0;
       const results = outcomes.map((outcome, index) => {

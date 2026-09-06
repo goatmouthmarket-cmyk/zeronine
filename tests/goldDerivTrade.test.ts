@@ -216,7 +216,20 @@ test('Gold Deriv close sells the open Gold multiplier contract', async () => {
     paperSimulator: new paperMod.PaperSimulator(), gold: { state: () => goldState('SELL') } as never,
   });
 
-  const response = await app.inject({ method: 'POST', url: '/api/gold/close' });
+  const mismatch = await app.inject({
+    method: 'POST',
+    url: '/api/gold/close',
+    payload: { tradeId: open.id, contractId: 'another-contract' },
+  });
+  assert.equal(mismatch.statusCode, 409);
+  assert.match(mismatch.json().error, /do not identify the same open contract/i);
+  assert.equal(soldContract, '');
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/gold/close',
+    payload: { tradeId: open.id, contractId: 'gold-open-contract' },
+  });
   assert.equal(response.statusCode, 200);
   assert.equal(soldContract, 'gold-open-contract');
   const closed = store.getTrade(open.id, 'deriv:VRTC_GOLD_CLOSE');
