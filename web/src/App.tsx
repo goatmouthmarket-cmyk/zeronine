@@ -1432,6 +1432,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [gameCountdown, setGameCountdown] = useState<number | null>(null);
   const [brainCheckIn, setBrainCheckIn] = useState<number | null>(null);
   const [miniGameShown, setMiniGameShown] = useState(false);
+  const [checkInCycle, setCheckInCycle] = useState(0);
   const automationRef = useRef(automation);
   useEffect(() => { automationRef.current = automation; }, [automation]);
   // This is deliberately independent of the entry-phase timer. The visual
@@ -1444,7 +1445,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
     update();
     const timer = window.setInterval(update, 1_000);
     return () => window.clearInterval(timer);
-  }, [automation]);
+  }, [automation, checkInCycle]);
   const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
   // A stopped bot has no current analysis. Make that the first branch so a
   // recent settlement, old recovery record, or stale phase cannot speak as
@@ -1545,7 +1546,12 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
 
   useEffect(() => {
     if (!promptVisible) return;
-    const hide = window.setTimeout(() => { setPromptVisible(false); setPromptIndex((index) => index + 1); }, 12_000);
+    const hide = window.setTimeout(() => {
+      setPromptVisible(false);
+      setPromptIndex((index) => index + 1);
+      setMiniGameShown(false);
+      setCheckInCycle((cycle) => cycle + 1);
+    }, 12_000);
     return () => window.clearTimeout(hide);
   }, [promptVisible]);
 
@@ -1558,11 +1564,23 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       if (!automationRef.current || !entryWaitRef.current) return;
       const gameLabel = prompt.kind === 'coin' || prompt.kind === 'rps' ? `${answer} selected - ${setupLabel}` : setupLabel;
       setPromptReply(placed ? `${gameLabel} sent on demo. I am watching it now.` : `That ${setupLabel} demo trade could not be placed. I will keep scanning.`);
-      window.setTimeout(() => { setPromptReply(null); setPromptVisible(false); setPromptIndex((index) => index + 1); }, 2_200);
+      window.setTimeout(() => {
+        setPromptReply(null);
+        setPromptVisible(false);
+        setPromptIndex((index) => index + 1);
+        setMiniGameShown(false);
+        setCheckInCycle((cycle) => cycle + 1);
+      }, 2_200);
       return;
     }
     setPromptReply(answer);
-    window.setTimeout(() => { setPromptReply(null); setPromptVisible(false); setPromptIndex((index) => index + 1); }, 1_600);
+    window.setTimeout(() => {
+      setPromptReply(null);
+      setPromptVisible(false);
+      setPromptIndex((index) => index + 1);
+      setMiniGameShown(false);
+      setCheckInCycle((cycle) => cycle + 1);
+    }, 1_600);
   };
 
   return (
