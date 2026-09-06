@@ -1481,7 +1481,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const promptContext = forceSetup && setupLabel ? `${forceSetup.market} · ${setupLabel} · ${confidenceLabel}` : null;
   const waitingForEntry = automation && state === 'waiting'
     && (phase === 'waiting-edge' || phase === 'waiting-entry-trigger')
-    && !protectionHold && recovery?.mode !== 'recovering' && Boolean(forceSetup?.eligible);
+    && !protectionHold && recovery?.mode !== 'recovering';
+  const canOfferGame = waitingForEntry && Boolean(forceSetup?.eligible);
   const entryWaitRef = useRef(waitingForEntry);
   useEffect(() => { entryWaitRef.current = waitingForEntry; }, [waitingForEntry]);
   const prompts = promptContext ? [
@@ -1509,7 +1510,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   }, [waitingForEntry]);
 
   useEffect(() => {
-    if (!waitPromptEligible || !waitingForEntry || !prompt) {
+    if (!waitPromptEligible || !canOfferGame || !prompt) {
       setPromptVisible(false);
       return;
     }
