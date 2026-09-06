@@ -1412,7 +1412,6 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [motionEnabled, setMotionEnabled] = useState(true);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [style, setStyle] = useState<'focus' | 'calm' | 'vivid'>('focus');
-  const [playMode, setPlayMode] = useState(0);
   const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
   const state = phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
     : protectionHold ? 'protecting'
@@ -1450,7 +1449,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           : 'I am ready when you are.';
 
   return (
-    <div class={`market-scanner-companion state-${state} style-${style} mood-${playMode}${motionEnabled ? '' : ' motion-off'}`} role="button" tabIndex={0} aria-label={`${label}. Click to change its animation.`} onClick={() => setPlayMode((mode) => (mode + 1) % 3)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setPlayMode((mode) => (mode + 1) % 3); } }}>
+    <div class={`market-scanner-companion state-${state} style-${style}${motionEnabled ? '' : ' motion-off'}`} role="group" aria-label={label}>
       <button class="scanner-gear" type="button" aria-label="Customize automation companion" aria-expanded={customizerOpen} onClick={(event) => { event.stopPropagation(); setCustomizerOpen((open) => !open); }}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.2 3.5 1.5-1.2-1.7-3-1.9.7a7.8 7.8 0 0 0-1.6-.9l-.3-2h-3.4l-.3 2a7.8 7.8 0 0 0-1.6.9L9 7.8l-1.7 3 1.5 1.2v.1l-1.5 1.2 1.7 3 1.9-.7c.5.4 1 .7 1.6.9l.3 2h3.4l.3-2c.6-.2 1.1-.5 1.6-.9l1.9.7 1.7-3-1.5-1.2V12Z" /></svg>
       </button>
@@ -2038,7 +2037,10 @@ function DecisionHero({
       ? shortMarketName(markets[0].display)
       : '—';
 
-  const lastResult = contract?.result ?? trades[0]?.status;
+  const mostRecentSettlement = trades.find((trade) => trade.status === 'won' || trade.status === 'lost');
+  const lastResult = mostRecentSettlement && Date.now() - mostRecentSettlement.resolved_at < 12_000
+    ? mostRecentSettlement.status
+    : null;
   const winFlash = lastResult === 'won';
   const outcomeTrade = trades.find((trade) => isOpenAccountTrade(trade) && isDigitTrade(trade)) ?? null;
   const note = (() => {
