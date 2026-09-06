@@ -1428,6 +1428,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [promptVisible, setPromptVisible] = useState(false);
   const [promptReply, setPromptReply] = useState<string | null>(null);
   const [waitPromptEligible, setWaitPromptEligible] = useState(false);
+  const [gameCountdown, setGameCountdown] = useState<number | null>(null);
   const automationRef = useRef(automation);
   useEffect(() => { automationRef.current = automation; }, [automation]);
   const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
@@ -1483,9 +1484,9 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const entryWaitRef = useRef(waitingForEntry);
   useEffect(() => { entryWaitRef.current = waitingForEntry; }, [waitingForEntry]);
   const prompts = promptContext ? [
-    { kind: 'trade', question: `Place ${setupLabel} on demo?`, choices: ['No, keep watching', `Place ${setupLabel}`] },
     { kind: 'coin', question: 'Heads or tails?', choices: ['Heads', 'Tails'] },
     { kind: 'rps', question: 'Rock, paper, or scissors?', choices: ['Rock', 'Paper', 'Scissors'] },
+    { kind: 'trade', question: `Place ${setupLabel} on demo?`, choices: ['No, keep watching', `Place ${setupLabel}`] },
   ] : [];
   const prompt = prompts[promptIndex % Math.max(prompts.length, 1)];
 
@@ -1495,11 +1496,15 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       setPromptReply(null);
       setPromptIndex(0);
       setWaitPromptEligible(false);
+      setGameCountdown(null);
       return;
     }
-    const show = window.setTimeout(() => setWaitPromptEligible(true), 30_000);
+    const gameAt = Date.now() + 30_000;
+    setGameCountdown(30);
+    const ticker = window.setInterval(() => setGameCountdown(Math.max(0, Math.ceil((gameAt - Date.now()) / 1_000))), 1_000);
+    const show = window.setTimeout(() => { setGameCountdown(null); setWaitPromptEligible(true); }, 30_000);
     const stop = window.setTimeout(() => setWaitPromptEligible(false), 120_000);
-    return () => { window.clearTimeout(show); window.clearTimeout(stop); };
+    return () => { window.clearInterval(ticker); window.clearTimeout(show); window.clearTimeout(stop); };
   }, [waitingForEntry]);
 
   useEffect(() => {
@@ -1568,7 +1573,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
       </svg>
-      {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{nextStep}</small></div></div>}
+      {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{gameCountdown != null && !promptVisible ? `Coin flip available in ${gameCountdown}s — still prioritizing a trade.` : nextStep}</small></div></div>}
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
         {!promptReply && promptContext && <small class="scanner-option-badge">{promptContext}</small>}
