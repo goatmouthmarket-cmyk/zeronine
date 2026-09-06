@@ -1427,13 +1427,18 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const [promptIndex, setPromptIndex] = useState(0);
   const [promptVisible, setPromptVisible] = useState(false);
   const [promptReply, setPromptReply] = useState<string | null>(null);
+  const automationRef = useRef(automation);
+  useEffect(() => { automationRef.current = automation; }, [automation]);
   const protectionHold = /profit lock|drawdown|balance-aware|risk budget/i.test(holdReason ?? '');
-  const state = phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
+  // A stopped bot has no current analysis. Make that the first branch so a
+  // recent settlement, old recovery record, or stale phase cannot speak as
+  // though this run is still active.
+  const state = !automation ? 'idle'
+    : phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
     : protectionHold ? 'protecting'
     : recovery?.mode === 'recovering' ? strategyMode === 'chase' ? 'chasing' : 'recovering'
     : lastResult === 'won' ? 'win'
     : lastResult === 'lost' ? 'loss'
-    : !automation ? 'idle'
       : observation?.phase === 'watching' || phase === 'watching-signal' ? 'confirming'
         : phase === 'waiting-edge' || phase === 'waiting-entry-trigger' ? 'waiting'
           : market?.lastEpoch ? 'scanning' : 'waiting';
@@ -1481,7 +1486,12 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const prompt = prompts[promptIndex % prompts.length];
 
   useEffect(() => {
-    if (!automation) { setPromptVisible(false); return; }
+    if (!automation) {
+      setPromptVisible(false);
+      setPromptReply(null);
+      setPromptIndex(0);
+      return;
+    }
     const show = window.setTimeout(() => setPromptVisible(true), 35_000);
     return () => window.clearTimeout(show);
   }, [automation, promptIndex]);
@@ -1496,6 +1506,9 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
     if ((prompt.kind === 'trade' || prompt.kind === 'coin' || prompt.kind === 'rps') && !answer.startsWith('No,')) {
       setPromptReply('Sending your demo trade…');
       const placed = await onForceDemoTrade();
+      // A stopped bot must not revive an old companion message after a
+      // submitted prompt action resolves.
+      if (!automationRef.current) return;
       const gameLabel = prompt.kind === 'coin' || prompt.kind === 'rps' ? `${answer} selected - ${setupLabel}` : setupLabel;
       setPromptReply(placed ? `${gameLabel} sent on demo. I am watching it now.` : `That ${setupLabel} demo trade could not be placed. I will keep scanning.`);
       window.setTimeout(() => { setPromptReply(null); setPromptVisible(false); setPromptIndex((index) => index + 1); }, 2_200);
@@ -1540,8 +1553,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
       </svg>
-      {voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{nextStep}</small></div></div>}
-      {promptVisible && <div class="scanner-prompt" role="status">
+      {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{nextStep}</small></div></div>}
+      {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
         {!promptReply && <div>{prompt.question.includes('heads or tails') && <i class="scanner-game coin">◒</i>}{prompt.question.includes('rock, paper') && <i class="scanner-game rps">✊</i>}{prompt.choices.map((choice) => <button type="button" onClick={(event) => { event.stopPropagation(); void answerPrompt(choice); }}>{choice}</button>)}</div>}
       </div>}
@@ -2097,7 +2110,7 @@ function DecisionHero({
       : '—';
 
   const mostRecentSettlement = trades.find((trade) => trade.status === 'won' || trade.status === 'lost');
-  const lastResult = mostRecentSettlement && Date.now() - mostRecentSettlement.resolved_at < 12_000
+  const lastResult = automation && mostRecentSettlement && Date.now() - mostRecentSettlement.resolved_at < 12_000
     ? mostRecentSettlement.status
     : null;
   const winFlash = lastResult === 'won';
