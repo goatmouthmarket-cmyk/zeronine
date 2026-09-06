@@ -1394,11 +1394,16 @@ function ObservationRail({
   );
 }
 
-function MarketScannerCompanion({ automation, phase, observation }: {
+function MarketScannerCompanion({ automation, phase, observation, market }: {
   automation: boolean;
   phase?: string;
   observation?: AutomationState['observation'];
+  market: Market | null;
 }): JSX.Element {
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [motionEnabled, setMotionEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [style, setStyle] = useState<'focus' | 'calm' | 'vivid'>('focus');
   const state = !automation ? 'idle'
     : phase === 'buying' || phase === 'settling' || phase === 'settled' ? 'trading'
       : observation?.phase === 'watching' || phase === 'watching-signal' ? 'confirming'
@@ -1409,9 +1414,33 @@ function MarketScannerCompanion({ automation, phase, observation }: {
       : state === 'waiting' ? 'Trading robot is waiting for a safe entry'
         : state === 'scanning' ? 'Trading robot is scanning the live market'
           : 'Trading robot is standing by';
+  const liveQuotes = (market?.recentQuotes ?? []).filter((quote) => Number.isFinite(quote) && quote > 0).slice(-16);
+  const min = liveQuotes.length ? Math.min(...liveQuotes) : 0;
+  const max = liveQuotes.length ? Math.max(...liveQuotes) : 1;
+  const range = Math.max(max - min, Number.EPSILON);
+  const liveChart = liveQuotes.length > 1
+    ? liveQuotes.map((quote, index) => `${index ? 'L' : 'M'}${146 + (index / (liveQuotes.length - 1)) * 76} ${50 - ((quote - min) / range) * 28}`).join(' ')
+    : 'M146 42H222';
+  const insight = state === 'trading' ? 'I’m guarding the open order and tracking every tick.'
+    : state === 'confirming' ? 'I found a lead. I’m checking the next live ticks.'
+      : state === 'waiting' ? 'No clean entry yet. I’m keeping risk contained.'
+        : state === 'scanning' ? 'I’m comparing the live rhythm with the model.'
+          : 'I’m ready when you are.';
 
   return (
-    <div class={`market-scanner-companion state-${state}`} role="img" aria-label={label}>
+    <div class={`market-scanner-companion state-${state} style-${style}${motionEnabled ? '' : ' motion-off'}`} role="group" aria-label={label}>
+      <button class="scanner-gear" type="button" aria-label="Customize automation companion" aria-expanded={customizerOpen} onClick={() => setCustomizerOpen((open) => !open)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.2 3.5 1.5-1.2-1.7-3-1.9.7a7.8 7.8 0 0 0-1.6-.9l-.3-2h-3.4l-.3 2a7.8 7.8 0 0 0-1.6.9L9 7.8l-1.7 3 1.5 1.2v.1l-1.5 1.2 1.7 3 1.9-.7c.5.4 1 .7 1.6.9l.3 2h3.4l.3-2c.6-.2 1.1-.5 1.6-.9l1.9.7 1.7-3-1.5-1.2V12Z" /></svg>
+      </button>
+      {customizerOpen && <div class="scanner-customizer" role="dialog" aria-label="Automation companion settings">
+        <strong>Automation companion</strong>
+        <p>Live quote link is on.</p>
+        <label><span>Motion</span><input type="checkbox" checked={motionEnabled} onInput={(event) => setMotionEnabled(event.currentTarget.checked)} /></label>
+        <label><span>Insights</span><input type="checkbox" checked={voiceEnabled} onInput={(event) => setVoiceEnabled(event.currentTarget.checked)} /></label>
+        <div class="scanner-style-picker" aria-label="Companion style">
+          {(['focus', 'calm', 'vivid'] as const).map((option) => <button type="button" class={style === option ? 'selected' : ''} onClick={() => setStyle(option)}>{option}</button>)}
+        </div>
+      </div>}
       <svg viewBox="0 0 250 72" aria-hidden="true">
         <defs>
           <linearGradient id="scanner-panel" x1="0" x2="1"><stop stop-color="currentColor" stop-opacity=".2" /><stop offset="1" stop-color="currentColor" stop-opacity="0" /></linearGradient>
@@ -1421,7 +1450,7 @@ function MarketScannerCompanion({ automation, phase, observation }: {
         <g class="scanner-screen">
           <rect x="139" y="12" width="91" height="45" rx="6" />
           <path class="scanner-grid" d="M151 19V50M172 19V50M193 19V50M214 19V50M146 28H223M146 39H223M146 50H223" />
-          <path class="scanner-chart" d="M146 46L156 39L165 43L176 26L187 35L198 22L208 30L222 18" />
+          <path class="scanner-chart" d={liveChart} />
           <rect class="scanner-beam" x="144" y="15" width="13" height="39" rx="2" />
         </g>
         <g class="scanner-bot">
@@ -1437,6 +1466,7 @@ function MarketScannerCompanion({ automation, phase, observation }: {
         </g>
         <circle class="scanner-orbit" cx="137" cy="35" r="10" />
       </svg>
+      {voiceEnabled && <div class="scanner-thought"><i></i><span>{insight}</span></div>}
     </div>
   );
 }
@@ -2055,7 +2085,7 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
-      <MarketScannerCompanion automation={automation} phase={phase} observation={observation} />
+      <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} />
       </div>}
       {marketChooserOpen ? (
         <div class="manual-cockpit-takeover">
