@@ -313,6 +313,39 @@ export interface TestLabActive {
   message: string;
 }
 
+/** Lightweight entry-method research payload. The server may omit any field while
+ * its continuous runner is warming up, so the dashboard can always remain live. */
+export interface EntryLabMethod {
+  id: string;
+  label: string;
+  status?: 'testing' | 'waiting' | 'promoted' | 'paused' | 'rejected';
+  samples?: number;
+  wins?: number;
+  netPnl?: number;
+  drawdownPct?: number;
+  confidence?: number;
+  equity?: number[];
+  reason?: string;
+}
+
+export interface EntryLabProduct {
+  product: 'digits' | 'multipliers' | 'gold';
+  enabled?: boolean;
+  state?: 'testing' | 'waiting' | 'paused' | 'unavailable';
+  updatedAt?: number;
+  provenMethodId?: string | null;
+  methods?: EntryLabMethod[];
+  liveValue?: number;
+  liveValues?: number[];
+  note?: string;
+}
+
+export interface EntryLabState {
+  enabled?: boolean;
+  products?: EntryLabProduct[];
+  updatedAt?: number;
+}
+
 export interface PaperSimulationContract {
   id: number;
   market: string;
@@ -906,6 +939,7 @@ export interface State {
   autoPaper: { enabled: boolean; intervalMs: number; lastRunAt: number; nextRunAt: number | null } | null;
   paperSimulation: PaperSimulationState | null;
   patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
+  entryLab: EntryLabState | null;
   momentum: MomentumState | null;
   gold: GoldModuleState | null;
 }
@@ -942,6 +976,7 @@ const initial: State = {
   autoPaper: null,
   paperSimulation: null,
   patterns: null,
+  entryLab: null,
   momentum: null,
   gold: null,
 };
@@ -1281,6 +1316,10 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       };
       break;
     }
+    case 'entry_lab':
+    case 'entrylab':
+      patch.entryLab = (evt.state as EntryLabState | null) ?? (evt as unknown as EntryLabState);
+      break;
     case 'paper_simulation':
       patch.paperSimulation = (evt.state as PaperSimulationState | null) ?? null;
       break;
@@ -2040,6 +2079,17 @@ export async function loadPatternsData(): Promise<void> {
     set({ patterns: { patterns: res.patterns ?? [], calibration: res.calibration ?? null } });
   } catch {
     // best-effort
+  }
+}
+
+/** Best-effort because older servers do not expose continuous Entry Lab state yet. */
+export async function loadEntryLabState(): Promise<void> {
+  try {
+    const res = await api<{ state?: EntryLabState } | EntryLabState>('/api/entry-lab');
+    const candidate = 'state' in res ? res.state : res;
+    if (candidate && Array.isArray(candidate.products)) set({ entryLab: candidate });
+  } catch {
+    // Keep the Lab useful while the entry-test service is unavailable or warming up.
   }
 }
 

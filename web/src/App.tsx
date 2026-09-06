@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { GoldTradeChart } from './GoldTradeChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
@@ -21,6 +21,7 @@ import {
   updateSettings,
   loadTestRuns,
   loadPatternsData,
+  loadEntryLabState,
   loadAutoBacktestStatus,
   runTestBacktest,
   runPatternScan,
@@ -3534,7 +3535,7 @@ const STRATEGY_KEYS = ['conservative', 'martingale', 'boosted_martingale', 'chas
 const MODE_KEYS = ['rapid', 'balanced', 'strict'] as const;
 const ALL_CONFIG_KEYS: string[] = STRATEGY_KEYS.flatMap((s) => MODE_KEYS.map((m) => `${s}-${m}`));
 
-type LabTab = 'backtest' | 'paper' | 'compare' | 'patterns';
+type LabTab = 'backtest' | 'paper' | 'compare' | 'patterns' | 'entry';
 
 function configKey(strategy: string, mode: string): string {
   return `${strategy}-${mode}`;
@@ -4385,6 +4386,75 @@ function PatternsTab({ busy }: { busy: boolean }): JSX.Element {
   );
 }
 
+type EntryProductTab = 'digits' | 'multipliers' | 'gold';
+
+const ENTRY_PRODUCT_COPY: Record<EntryProductTab, { label: string; kicker: string; empty: string }> = {
+  digits: { label: 'Over / Under', kicker: 'Digit entry race', empty: 'Waiting for tick-safe entry evidence.' },
+  multipliers: { label: 'Multipliers', kicker: 'Momentum entry race', empty: 'Waiting for multiplier entry evidence.' },
+  gold: { label: 'Gold', kicker: 'Candle entry race', empty: 'Waiting for closed-candle entry evidence.' },
+};
+
+function entryProduct(s: ReturnType<typeof useStore>, product: EntryProductTab): EntryLabProduct | null {
+  return s.entryLab?.products?.find((item) => item.product === product) ?? null;
+}
+
+function EntryTrace({ product, method }: { product: EntryProductTab; method: EntryLabMethod | null }): JSX.Element {
+  const points = method?.equity?.length ? method.equity : [];
+  const fallback = product === 'gold' ? [42, 38, 55, 48, 68, 61, 78, 70, 88] : product === 'multipliers' ? [38, 44, 41, 55, 52, 67, 61, 74, 82] : [48, 43, 51, 47, 56, 53, 63, 58, 67];
+  const values = points.length > 1 ? points : fallback;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = Math.max(1, max - min);
+  const coords = values.map((value, index) => `${(index / Math.max(1, values.length - 1)) * 100},${86 - ((value - min) / spread) * 68}`).join(' ');
+  return <svg class={`entry-trace ${product}`} viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points={coords} /></svg>;
+}
+
+function EntryLiveVisual({ product, candidate }: { product: EntryProductTab; candidate: EntryLabMethod | null }): JSX.Element {
+  const values = candidate?.equity?.length ? candidate.equity.slice(-12) : [];
+  return <div class={`entry-live-visual ${product}`} aria-hidden="true">
+    <div class="entry-live-grid"></div>
+    {product === 'gold' ? <div class="entry-candles">{(values.length ? values : [4, 7, 5, 8, 6, 9, 7, 10]).map((value, index) => <i key={index} style={{ '--candle-size': `${Math.max(24, Math.min(82, value * 7))}%`, '--candle-delay': `${index * 95}ms` } as JSX.CSSProperties} />)}</div> : <div class="entry-tick-ribbon">{(values.length ? values : [9, 5, 2, 8, 1, 6, 3, 7, 4, 0]).map((value, index) => <i key={index} style={{ '--tick-delay': `${index * 75}ms` } as JSX.CSSProperties}>{Math.abs(Math.round(value)) % 10}</i>)}</div>}
+    <span class="entry-live-scan"></span><span class="entry-live-marker">ENTRY</span>
+  </div>;
+}
+
+function EntryTab(): JSX.Element {
+  const s = useStore();
+  const [product, setProduct] = useState<EntryProductTab>('digits');
+  const data = entryProduct(s, product);
+  const methods = data?.methods ?? [];
+  const proven = methods.find((item) => item.id === data?.provenMethodId) ?? methods.find((item) => item.status === 'promoted') ?? null;
+  const liveMethod = methods.find((item) => item.status === 'testing') ?? proven ?? methods[0] ?? null;
+  const running = data?.state === 'testing';
+  const sampleCount = methods.reduce((total, item) => total + (item.samples ?? 0), 0);
+  const copy = ENTRY_PRODUCT_COPY[product];
+
+  useEffect(() => {
+    void loadEntryLabState();
+    const timer = window.setInterval(() => void loadEntryLabState(), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <section class="entry-lab" aria-label="Continuous entry research">
+    <div class="entry-lab-intro">
+      <div><span class="entry-kicker">Continuous entry intelligence</span><h2>Find the moment the prediction is worth taking.</h2><p>Free Agent compares entry timing in isolated research lanes. Promotion needs enough settled evidence, a positive risk-adjusted result, and a meaningful lead.</p></div>
+      <div class={`entry-engine-state ${running ? 'live' : ''}`}><i></i><span>{running ? 'Testing live' : data?.state === 'unavailable' ? 'Service unavailable' : 'Warming evidence'}</span><small>{sampleCount ? `${sampleCount} settled samples` : 'No live orders from this screen'}</small></div>
+    </div>
+    <div class="entry-product-tabs" role="tablist" aria-label="Entry research product">
+      {(Object.keys(ENTRY_PRODUCT_COPY) as EntryProductTab[]).map((key) => <button key={key} type="button" role="tab" aria-selected={product === key} class={product === key ? 'active' : ''} onClick={() => setProduct(key)}>{ENTRY_PRODUCT_COPY[key].label}<small>{entryProduct(s, key)?.state === 'testing' ? 'LIVE' : 'READY'}</small></button>)}
+    </div>
+    <div class="entry-lab-stage">
+      <div class="entry-stage-main"><div class="entry-stage-head"><div><span>{copy.kicker}</span><strong>{liveMethod?.label ?? 'Free Agent is waiting'}</strong></div><small>{liveMethod?.reason ?? data?.note ?? copy.empty}</small></div><EntryLiveVisual product={product} candidate={liveMethod} /><div class="entry-stage-foot"><span>{liveMethod?.status === 'testing' ? 'Watching for confirmation' : 'No entry forced'}</span><b>{liveMethod?.confidence != null ? `${Math.round(liveMethod.confidence)}% confidence` : 'Evidence first'}</b></div></div>
+      <aside class="entry-proven-card"><span>Current proven best</span><strong>{proven?.label ?? 'Not promoted yet'}</strong><div class="entry-proven-score"><b>{proven?.netPnl == null ? '--' : fmtSigned(proven.netPnl, '$')}</b><small>{proven?.samples ?? 0} settled · {proven?.confidence != null ? `${Math.round(proven.confidence)}% confidence` : 'calibrating'}</small></div><p>{proven?.reason ?? 'The Bot keeps its current protected method until a candidate earns promotion.'}</p></aside>
+    </div>
+    <div class="entry-method-list" aria-live="polite">
+      {methods.length === 0 && <div class="entry-empty"><EntryTrace product={product} method={null} /><div><strong>Building the first comparison set</strong><span>{copy.empty} The visualization is ready; it will replace placeholders with settled research as soon as the runner reports.</span></div></div>}
+      {methods.map((method) => { const resolved = (method.wins ?? 0) + Math.max(0, (method.samples ?? 0) - (method.wins ?? 0)); const winRate = method.samples ? Math.round(((method.wins ?? 0) / method.samples) * 100) : null; return <article class={`entry-method ${method.status ?? 'waiting'}`} key={method.id}><div class="entry-method-name"><span class="entry-method-dot"></span><strong>{method.label}</strong><small>{method.status === 'promoted' ? 'PROVEN' : method.status === 'testing' ? 'TESTING' : method.status ?? 'WAITING'}</small></div><EntryTrace product={product} method={method} /><div class="entry-method-metric"><span>Net P&L</span><b class={method.netPnl != null && method.netPnl < 0 ? 'down' : 'up'}>{method.netPnl == null ? '--' : fmtSigned(method.netPnl, '$')}</b></div><div class="entry-method-metric"><span>Win rate</span><b>{winRate == null ? '--' : `${winRate}%`}</b></div><div class="entry-method-metric"><span>Evidence</span><b>{method.samples ?? resolved} <small>settled</small></b></div></article>; })}
+    </div>
+    <div class="entry-lab-note"><strong>Research guardrails</strong><span>Entry tests are separated by product. They are rate-limited, stale/out-of-order frames are ignored, and a method cannot become the default from a short lucky run.</span></div>
+  </section>;
+}
+
 function TestLabPage(): JSX.Element {
   const s = useStore();
   const [tab, setTab] = useState<LabTab>('backtest');
@@ -4404,7 +4474,7 @@ function TestLabPage(): JSX.Element {
         <div class="subtitle">Backtest the replay · sweep the demo · retain research evidence</div>
       </header>
       <div class="seg tl-tabs">
-        {(['backtest', 'paper', 'compare', 'patterns'] as LabTab[]).map((t) => (
+        {(['backtest', 'paper', 'compare', 'patterns', 'entry'] as LabTab[]).map((t) => (
           <button
             class={`seg-btn${tab === t ? ' active' : ''}`}
             onClick={() => setTab(t)}
@@ -4418,6 +4488,7 @@ function TestLabPage(): JSX.Element {
       {tab === 'paper' && <PaperTab busy={busy} onBusy={setBusy} />}
       {tab === 'compare' && <CompareTab busy={busy} />}
       {tab === 'patterns' && <PatternsTab busy={busy} />}
+      {tab === 'entry' && <EntryTab />}
     </>
   );
 }
