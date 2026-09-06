@@ -1499,8 +1499,8 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   // A game is a user-confirmed manual choice using the current displayed
   // prediction. It needs a live setup to explain, not a positive-edge bot
   // decision (the bot itself still keeps its stricter execution gates).
-  const canOfferGame = automation && state === 'waiting' && !protectionHold
-    && recovery?.mode !== 'recovering' && Boolean(forceSetup);
+  const canOfferGame = automation && phase !== 'buying' && phase !== 'settling' && phase !== 'settled'
+    && !protectionHold && recovery?.mode !== 'recovering' && Boolean(forceSetup);
   const entryWaitRef = useRef(waitingForEntry);
   useEffect(() => { entryWaitRef.current = waitingForEntry; }, [waitingForEntry]);
   const prompts = promptContext ? [
@@ -1511,10 +1511,15 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   const prompt = prompts[promptIndex % Math.max(prompts.length, 1)];
 
   useEffect(() => {
-    if (!automation || !waitingForEntry) {
+    if (!automation) {
       setPromptVisible(false);
       setPromptReply(null);
       setPromptIndex(0);
+      setWaitPromptEligible(false);
+      setGameCountdown(null);
+      return;
+    }
+    if (!waitingForEntry) {
       setWaitPromptEligible(false);
       setGameCountdown(null);
       return;
@@ -1528,10 +1533,7 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
   }, [waitingForEntry]);
 
   useEffect(() => {
-    if (!waitPromptEligible || !canOfferGame || !prompt) {
-      setPromptVisible(false);
-      return;
-    }
+    if (!waitPromptEligible || !canOfferGame || !prompt) return;
     const show = window.setTimeout(() => setPromptVisible(true), 250);
     return () => window.clearTimeout(show);
   }, [waitPromptEligible, waitingForEntry, promptIndex, prompt]);
@@ -1608,6 +1610,9 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
         <path class="scanner-wire wire-a" d="M193 49C270 49 330 -88 380 -88S461 -94 520 -94" />
         <path class="scanner-wire wire-b" d="M190 57C272 78 340 -48 395 -48S466 -48 520 -48" />
         <path class="scanner-wire wire-c" d="M185 65C274 108 349 -8 404 -8S471 -8 520 -8" />
+        {automation && brainCheckIn != null && !promptVisible && <g class="scanner-svg-checkin" aria-label={`Check-in ${brainCheckIn > 0 ? `${brainCheckIn} seconds` : 'ready'}`}>
+          <circle cx="18" cy="16" r="3" /><text x="27" y="19">CHECK-IN</text><text class="scanner-svg-checkin-value" x="27" y="30">{brainCheckIn > 0 ? `${brainCheckIn}s` : 'READY'}</text>
+        </g>}
         <g class="scanner-brain">
           <path class="brain-shell" d="M78 64C62 62 56 48 63 36C66 24 78 19 90 23C101 12 122 15 130 27C149 23 164 37 160 52C170 66 160 82 145 82C135 92 116 91 106 84C92 89 77 80 78 64Z" />
           <path class="brain-folds" d="M74 43C87 35 91 50 103 42C113 31 123 46 131 38C141 30 151 43 146 55M78 59C91 49 97 66 108 57C118 47 126 66 138 57C147 50 155 60 151 70M92 25C88 36 102 32 100 48M119 22C112 34 126 37 121 52M145 32C135 42 149 47 142 59" />
@@ -1621,7 +1626,6 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
       </svg>
-      {automation && brainCheckIn != null && !promptVisible && <div class="scanner-countdown" aria-live="polite"><i></i><span>CHECK-IN</span><b>{brainCheckIn > 0 ? `${brainCheckIn}s` : 'READY'}</b></div>}
       {automation && voiceEnabled && <div class="scanner-thought"><i></i><div><span>{laymanInsight}</span><small>{gameCountdown != null && !promptVisible ? `Coin flip available in ${gameCountdown}s — still prioritizing a trade.` : nextStep}</small></div></div>}
       {automation && promptVisible && <div class="scanner-prompt" role="status">
         <span>{promptReply ?? prompt.question}</span>
