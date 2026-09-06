@@ -1458,9 +1458,7 @@ function MarketPulse({ market, onChoose, automation = false, phase, observation 
         </div>
         <div class={`market-pulse-chart${scanning ? ' scanning' : ''}`}>
           {quotes.length > 1 ? <MarketPulseChart quotes={quotes} lastEpoch={market?.lastEpoch ?? 0} up={up} label={label} /> : <span class="market-pulse-empty">Awaiting ticks</span>}
-          {scanning && <div class="market-pulse-scan" aria-hidden="true">
-            <i></i><span>{observation?.phase === 'watching' ? `Confirming ${progress}%` : 'Scanning live flow'}</span><em>{observation?.phase === 'watching' ? `${observation?.confirmations ?? 0}/${required} ticks` : 'next tick'}</em>
-          </div>}
+          {scanning && <div class="market-pulse-scan" aria-hidden="true"><i></i></div>}
         </div>
         <div class="market-pulse-foot">
           <span>{label}</span>
@@ -1932,8 +1930,8 @@ function DecisionHero({
     : decision
       ? { label: 'TRADE ACTIVE', tone: 'go' }
       : holdReason
-        ? { label: holdReason.toUpperCase().slice(0, 32), tone: 'warn' }
-        : { label: (phase ? scannerPhaseLabel(phase) : 'SCANNING'), tone: 'scan' };
+        ? { label: 'WAITING FOR EDGE', tone: 'warn' }
+        : { label: (phase === 'watching' ? 'CONFIRMING SETUP' : 'SCANNING LIVE'), tone: 'scan' };
 
   const bestLabel = best
     ? shortMarketName(markets.find((m) => m.symbol === best.market)?.display ?? best.market)
@@ -1991,10 +1989,6 @@ function DecisionHero({
         <span class="cockpit-status-dot"></span>
         <span>{winFlash ? 'WIN RECORDED' : status.label}</span>
       </div>
-
-      <div class="cockpit-note">{note}</div>
-
-      <ObservationRail automation={automation} phase={phase} observation={observation} reason={holdReason} />
 
       <div class="cockpit-metrics">
         <div class="ckm">

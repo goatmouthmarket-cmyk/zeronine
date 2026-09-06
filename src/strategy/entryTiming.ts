@@ -16,6 +16,17 @@ export interface EntryTimingAssessment {
 }
 
 /**
+ * A trigger technique cannot validate itself until both its trigger and
+ * control cohorts have settled. Callers may use this to run the normal risk
+ * model while collecting that missing live evidence, rather than deadlocking
+ * a new account behind an impossible proof requirement.
+ */
+export function entryTimingEvidenceComplete(profile: EntryTimingProfile): boolean {
+  return profile.triggerTrades >= ENTRY_TIMING_MIN_TRIGGER_TRADES
+    && profile.otherTrades >= ENTRY_TIMING_MIN_COMPARISON_TRADES;
+}
+
+/**
  * Tests the operator's explicit hypothesis: after 9, test Over 5 (6-9);
  * after 0, test Under 5 (0-4). It does not assume either transition exists.
  */

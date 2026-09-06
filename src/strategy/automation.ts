@@ -42,7 +42,7 @@ import {
 import { calibrateResearchProbability, observeResearchOutcome } from '../intelligence/researchCalibration.ts';
 import { SignalConfirmationGate, confirmationTicksForMode } from './signalConfirmation.ts';
 import { assessBalanceAwareness } from './balanceAwareness.ts';
-import { assessExtremeEntryTiming } from './entryTiming.ts';
+import { assessExtremeEntryTiming, entryTimingEvidenceComplete } from './entryTiming.ts';
 import { entryIntent, matchesConfirmedDigitTrigger, matchesDigitTrigger } from './entryMode.ts';
 
 const HOLD = 'hold';
@@ -661,13 +661,18 @@ export class Automation {
       });
       const triggerReady = triggered.filter((option) => {
         const digit = this.registry.snapshot(option.market).lastDigit;
+        const profile = getEntryTimingProfile(option.market, option.direction, option.barrier, digit ?? (option.direction === 'over' ? 9 : 0));
         const assessment = assessExtremeEntryTiming(
           option.direction,
           option.barrier,
-          getEntryTimingProfile(option.market, option.direction, option.barrier, digit ?? (option.direction === 'over' ? 9 : 0)),
+          profile,
           option.ask > 0 && option.payout > 0 ? option.ask / option.payout : 1,
         );
-        return assessment.validated;
+        // A fresh account has no settled trigger/control cohort yet. Let the
+        // normal quote, confirmation, allocation and risk gates collect
+        // evidence after a real extreme trigger; only enforce the timing
+        // proof once it has enough outcomes to be meaningful.
+        return assessment.validated || !entryTimingEvidenceComplete(profile);
       });
       if (settings.entry_mode !== 'model' && triggerReady.length === 0) {
         const desired = eligible[0];
@@ -818,10 +823,10 @@ export class Automation {
     }
 
     // Final quote at the planned stake so the proposal matches the buy. Only
-    // this short selected-market span is freshness-critical: if its next tick
-    // arrives before the quote returns, discard it and recalculate.
-    const entrySnapshot = this.registry.snapshot(decision.market);
-    const finalSignalEpoch = entrySnapshot.lastEpoch;
+    // this short selected-market span is freshness-critical. A new tick alone
+    // is expected on fast synthetic feeds, so do not turn it into a perpetual
+    // cancellation loop; reject only a genuinely slow quote.
+    const finalQuoteStartedAt = Date.now();
     const finalQuote = await this.client.getQuote({
       direction: decision.direction,
       barrier: decision.barrier,
@@ -832,10 +837,10 @@ export class Automation {
       symbol: decision.market,
     });
 
-    if (this.registry.snapshot(decision.market).lastEpoch !== finalSignalEpoch) {
+    if (Date.now() - finalQuoteStartedAt > 1_500) {
       this.confirmation.reset(requiredConfirmations);
       this.phase = 'observing';
-      this.emit({ type: HOLD, ts: Date.now(), reason: 'selected signal expired before purchase; recalculating' });
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'selected quote became stale before purchase; recalculating' });
       this.emit({ type: 'status', ts: Date.now(), state: this.state() });
       return 50;
     }

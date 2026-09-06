@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessExtremeEntryTiming } from '../src/strategy/entryTiming.ts';
+import { assessExtremeEntryTiming, entryTimingEvidenceComplete } from '../src/strategy/entryTiming.ts';
 
 test('extreme entry timing remains disabled until trigger and control samples validate it', () => {
   const sparse = assessExtremeEntryTiming('over', 5, { triggerTrades: 29, triggerWins: 25, otherTrades: 100, otherWins: 50 }, .55);
@@ -11,6 +11,12 @@ test('extreme entry timing remains disabled until trigger and control samples va
   const validated = assessExtremeEntryTiming('over', 5, { triggerTrades: 50, triggerWins: 35, otherTrades: 100, otherWins: 52 }, .55);
   assert.equal(validated.validated, true);
   assert.match(validated.reason, /validated 9 trigger/);
+});
+
+test('timing evidence is only complete once both live cohorts have settled', () => {
+  assert.equal(entryTimingEvidenceComplete({ triggerTrades: 29, triggerWins: 20, otherTrades: 100, otherWins: 50 }), false);
+  assert.equal(entryTimingEvidenceComplete({ triggerTrades: 30, triggerWins: 20, otherTrades: 29, otherWins: 15 }), false);
+  assert.equal(entryTimingEvidenceComplete({ triggerTrades: 30, triggerWins: 20, otherTrades: 30, otherWins: 15 }), true);
 });
 
 test('zero timing targets Under 5 and rejects a pattern that does not beat control or price', () => {
