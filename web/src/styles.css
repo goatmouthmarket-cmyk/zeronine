@@ -470,22 +470,14 @@ button {
     min-width: 0;
 }
 
-.cockpit-live-stage { display: none; }
-@media (min-width: 1000px) {
-  .app[data-page="home"] .cockpit.automation-active { grid-template-columns: minmax(0, 1fr); grid-template-areas: "primary" "stage"; min-height: 410px; padding-bottom: 22px; overflow: visible; }
-  .app[data-page="home"] .cockpit.automation-active .cockpit-primary { grid-area: primary; grid-template-rows: 16px 42px 20px 58px; }
-  .app[data-page="home"] .cockpit.automation-active .cockpit-live-stage { grid-area: stage; position: relative; display: grid; grid-template-columns: minmax(280px, .88fr) minmax(300px, 1.12fr); min-height: 205px; margin-top: 12px; isolation: isolate; }
-  .app[data-page="home"] .cockpit.automation-active .cockpit-live-chart { position: relative; z-index: 2; min-width: 0; min-height: 205px; padding-left: 18px; border-left: 1px solid rgba(179,157,255,.24); }
-  .app[data-page="home"] .cockpit.automation-active .cockpit-live-chart .market-pulse-shell { height: 100%; }
-  .app[data-page="home"] .cockpit.automation-active .market-scanner-companion { position: absolute; z-index: 3; inset: 0 auto 0 0; width: 53%; height: 100%; pointer-events: none; }
-  .app[data-page="home"] .cockpit.automation-active .market-scanner-companion svg { overflow: visible; }
-  .app[data-page="home"] .cockpit.automation-active .scanner-gear, .app[data-page="home"] .cockpit.automation-active .market-scanner-companion { pointer-events: auto; }
-  .app[data-page="home"] .cockpit.automation-active .scanner-thought { bottom: 12px; max-width: 255px; }
-}
+.cockpit.automation-active { overflow: visible; }
+.cockpit.automation-active .market-scanner-companion { z-index: 4; height: 188px; }
+.cockpit.automation-active .scanner-thought { bottom: 7px; }
+.cockpit.automation-active .market-scanner-companion::after { position: absolute; z-index: 2; top: 47%; right: clamp(-52px, -3.2vw, -32px); width: clamp(32px, 3.2vw, 52px); content: ""; border-top: 1px dashed currentColor; opacity: .42; pointer-events: none; }
 
 /* A compact, code-native market companion makes the live cockpit feel active
    without competing with its single authoritative status label. */
-.market-scanner-companion { position: relative; align-self: end; width: 100%; height: 100%; color: var(--purple-light); opacity: .84; contain: layout paint; }
+.market-scanner-companion { position: relative; align-self: end; width: 100%; height: 100%; color: var(--purple-light); opacity: .84; contain: layout; }
 .market-scanner-companion svg { display: block; width: 100%; height: 100%; overflow: visible; }
 .scanner-ground, .scanner-antenna, .scanner-face, .scanner-arm, .scanner-track, .scanner-grid { fill: none; stroke: rgba(179,157,255,.26); stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .scanner-link { fill: none; stroke: currentColor; stroke-width: 1.2; stroke-dasharray: 3 5; opacity: .4; vector-effect: non-scaling-stroke; }.scanner-packets { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 1 12; opacity: .7; vector-effect: non-scaling-stroke; animation: scanner-packets 1.4s linear infinite; }.scanner-beam { fill: currentColor; opacity: .08; animation: scanner-beam 2.8s ease-in-out infinite; }

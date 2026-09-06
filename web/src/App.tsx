@@ -1555,7 +1555,7 @@ function MarketPulse({ market, onChoose, automation = false, phase, observation 
         </div>
         <div class={`market-pulse-chart${scanning ? ' scanning' : ''}`}>
           {quotes.length > 1 ? <MarketPulseChart quotes={quotes} lastEpoch={market?.lastEpoch ?? 0} up={up} label={label} /> : <span class="market-pulse-empty">Awaiting ticks</span>}
-          {scanning && <div class="market-pulse-analysis" aria-hidden="true"><i class="analysis-reticle"></i><i class="analysis-sweep"></i><i class="analysis-lock a"></i><i class="analysis-lock b"></i></div>}
+          {scanning && <div class="market-pulse-analysis" aria-hidden="true"><i class="analysis-sweep"></i><i class="analysis-lock a"></i><i class="analysis-lock b"></i></div>}
         </div>
         <div class="market-pulse-foot">
           <span>{label}</span>
@@ -2107,6 +2107,7 @@ function DecisionHero({
           <b>{best ? `${best.edge >= 0 ? '+' : ''}${(best.edge * 100).toFixed(1)}%` : '—'}</b>
         </div>
       </div>
+      <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} recovery={recovery} lastResult={lastResult} strategyMode={settings?.strategy_mode} holdReason={holdReason} />
       </div>}
       {marketChooserOpen ? (
         <div class="manual-cockpit-takeover">
@@ -2134,10 +2135,7 @@ function DecisionHero({
             onClose={onCloseMarketChooser}
           />
         </div>
-      ) : automation ? <div class="cockpit-live-stage">
-        <MarketScannerCompanion automation={automation} phase={phase} observation={observation} market={(best ? markets.find((market) => market.symbol === best.market) : null) ?? selectedMarket} recovery={recovery} lastResult={lastResult} strategyMode={settings?.strategy_mode} holdReason={holdReason} />
-        <div class="cockpit-live-chart"><MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} /></div>
-      </div> : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} />}
+      ) : <MarketPulse market={selectedMarket} onChoose={onChooseMarket} automation={automation} phase={phase} observation={observation} />}
     </div>
   );
 }
