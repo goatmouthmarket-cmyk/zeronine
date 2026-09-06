@@ -1685,7 +1685,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(401);
       return { error: 'not connected' };
     }
-    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number; entryMode?: unknown };
+    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number; entryMode?: unknown; companionDemo?: boolean };
+    // The companion's "force" and game confirmations are strictly a demo
+    // feature. This guard belongs on the server so a stale browser state can
+    // never send one through a live account.
+    if (body.companionDemo === true && session.mode !== 'demo') {
+      reply.code(403);
+      return { error: 'companion-confirmed trades are available on demo accounts only' };
+    }
     const market = body.market;
     const direction = body.direction;
     const barrier = Number(body.barrier);
@@ -1770,7 +1777,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         status: 'purchasing',
         contract_id: '',
         purchase_id: `manual-${Date.now()}`,
-        reason: entryMode === 'digit-trigger-confirmed' ? 'manual two-pass digit-trigger hypothesis' : entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
+        reason: body.companionDemo ? 'companion-confirmed model entry' : entryMode === 'digit-trigger-confirmed' ? 'manual two-pass digit-trigger hypothesis' : entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
+        // Keep the persisted origin within the established audit enum; the
+        // explicit reason retains the companion attribution.
         origin: 'manual',
       });
       const bought = await accountCoordinator.runCommand('manual_open', session.loginid, () => client.placeBuy(quote.id, quote.askPrice));

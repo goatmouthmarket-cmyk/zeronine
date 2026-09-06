@@ -1853,6 +1853,8 @@ export interface ManualOrder {
   stake: number;
   estWin: number;
   entryMode?: 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
+  /** A companion-confirmed order. The API rejects this unless the active account is demo. */
+  companionDemo?: boolean;
 }
 
 export interface ManualBasketResult {
