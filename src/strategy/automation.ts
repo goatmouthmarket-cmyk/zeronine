@@ -39,7 +39,7 @@ import {
   saveRecovery,
   setAutomation,
 } from '../db/store.ts';
-import { calibrateResearchProbability, observeResearchOutcome } from '../intelligence/researchCalibration.ts';
+import { calibrateResearchProbability, isSetupCoolingDown, observeResearchOutcome } from '../intelligence/researchCalibration.ts';
 import { SignalConfirmationGate, confirmationTicksForMode } from './signalConfirmation.ts';
 import { assessBalanceAwareness } from './balanceAwareness.ts';
 import { assessExtremeEntryTiming, entryTimingEvidenceComplete } from './entryTiming.ts';
@@ -478,7 +478,7 @@ export class Automation {
     const quotes: QuotedOption[] = [];
     for (const c of signal.candidates) {
       try {
-        const calibration = calibrateResearchProbability(c.market, c.direction, c.barrier, c.estWin);
+        const calibration = calibrateResearchProbability(c.market, c.direction, c.barrier, c.estWin, accountIdForLogin(session?.loginid ?? ''));
         const estWin = calibration.probability;
         const q = await this.client.getQuote({
           direction: c.direction,
@@ -624,11 +624,12 @@ export class Automation {
       const now = Date.now();
       const eligible = conservative
         ? quotes
-            .filter((o) => o.estWin >= Math.max(minWin, config.minExtremeWin) && !this.cooled(o, now))
+            .filter((o) => o.estWin >= Math.max(minWin, config.minExtremeWin) && !this.cooled(o, now) && !isSetupCoolingDown(o.market, o.direction, o.barrier, accountIdForLogin(session?.loginid ?? ''), now))
             .sort((a, b) => b.estWin - a.estWin || b.realEV - a.realEV)
         : quotes
             .filter((o) => o.estWin >= minWin
               && o.realEdge >= minEdge
+              && !isSetupCoolingDown(o.market, o.direction, o.barrier, accountIdForLogin(session?.loginid ?? ''), now)
               && isSensibleDigitCandidate({
                 baseWin: o.baseWin || theoreticalDigitWinRate(o.direction, o.barrier),
                 estWin: o.estWin,
@@ -952,12 +953,16 @@ export class Automation {
         barrier: decision.barrier,
         predicted: decision.estWin,
         won,
+        accountId,
       });
       const settledTrade = getTrade(trade.id, accountId);
       if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(accountId), settled: true });
       this.runRealizedProfit += profit;
       this.runPeakProfit = Math.max(this.runPeakProfit, this.runRealizedProfit);
-      if (!won && conservative) this.markLoss(decision.market, decision.direction, decision.barrier);
+      // Every automated setup cools after a loss, not only conservative
+      // extremes. Persistent setup learning below provides the stronger
+      // multi-loss veto across restarts.
+      if (!won) this.markLoss(decision.market, decision.direction, decision.barrier);
       const next = applyOutcome(won, profit, settings, session.balance, accountId);
       saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery(accountId).last_win_epoch, updated_at: Date.now() }, accountId);
       this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won });
@@ -1023,13 +1028,14 @@ export class Automation {
               barrier: t.barrier,
               predicted: t.est_win,
               won,
+              accountId: t.account_id,
             });
           }
           const settledTrade = getTrade(t.id, t.account_id);
           if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(t.account_id), settled: true, reconciled: true });
           if (t.purchase_id.startsWith('auto-')) {
             const settings = getSettings();
-            if (!won && settings.strategy_mode === 'conservative') {
+            if (!won) {
               this.markLoss(t.market, t.contract_type === 'DIGITOVER' ? 'over' : 'under', t.barrier);
             }
             const accountId = t.account_id;

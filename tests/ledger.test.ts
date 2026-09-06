@@ -159,3 +159,16 @@ test('outcome calibration downgrades repeatedly losing setups during a run', asy
   assert.equal(calibrated.samples, 12);
   assert.ok(calibrated.probability <= 0.49, `expected a meaningful downgrade, got ${calibrated.probability}`);
 });
+
+test('three recent losses pause only the exact losing digit setup', async () => {
+  const calibration = await import('../src/intelligence/researchCalibration.ts');
+  calibration.resetResearchCalibrationForTests();
+  const now = Date.now();
+  for (let i = 0; i < 3; i += 1) {
+    calibration.observeResearchOutcome({ market: 'R_75', direction: 'under', barrier: 5, predicted: 0.56, won: false, accountId: 'CRTEST', ts: now - i * 1_000 });
+  }
+  assert.equal(calibration.isSetupCoolingDown('R_75', 'under', 5, 'CRTEST', now), true);
+  assert.equal(calibration.isSetupCoolingDown('R_75', 'over', 5, 'CRTEST', now), false);
+  assert.equal(calibration.isSetupCoolingDown('R_75', 'under', 5, 'OTHER', now), false);
+  assert.equal(calibration.isSetupCoolingDown('R_75', 'under', 5, 'CRTEST', now + 5 * 60_001), false);
+});
