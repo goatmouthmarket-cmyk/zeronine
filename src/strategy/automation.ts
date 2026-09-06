@@ -826,6 +826,7 @@ export class Automation {
     // this short selected-market span is freshness-critical. A new tick alone
     // is expected on fast synthetic feeds, so do not turn it into a perpetual
     // cancellation loop; reject only a genuinely slow quote.
+    const entrySnapshot = this.registry.snapshot(decision.market);
     const finalQuoteStartedAt = Date.now();
     const finalQuote = await this.client.getQuote({
       direction: decision.direction,
@@ -885,7 +886,9 @@ export class Automation {
       payout: finalQuote.payout,
       est_win: decision.estWin,
       profit: 0,
-      status: 'pending',
+      // No contract exists until Deriv confirms the buy. Keep that distinction
+      // so a restart cannot present an unsubmitted attempt as a broken trade.
+      status: 'purchasing',
       contract_id: '',
       purchase_id: `auto-${tradeSequence()}`,
       reason: decision.reason,

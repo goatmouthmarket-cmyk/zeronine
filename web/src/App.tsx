@@ -575,6 +575,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, []);
 
   const recentItems = useMemo(() => digitTrades
+    // Failed pre-purchase attempts remain in the audit trail, but they are
+    // not account trades and do not belong in the operator's trade feed.
+    .filter((trade) => trade.status !== 'error')
     .map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade }))
     .sort((a, b) => b.ts - a.ts)
     .slice(0, 5), [digitTrades]);
@@ -1155,7 +1158,7 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
           <span class="activity-outcome">{resultText}</span>
           <span class="activity-meta">· {time}</span>
         </div>
-        <div class="activity-track" aria-label={digitContract ? `Setup digit ${entryDigit}, ${currentLabel.toLowerCase()} digit ${currentDigit}` : `Entry spot ${entryMarker}, ${currentLabel.toLowerCase()} spot ${currentMarker}`}>
+        {err && !trade.contract_id ? <div class="activity-order-failed">Order was not opened, so there is no entry or result to show.</div> : <div class="activity-track" aria-label={digitContract ? `Setup digit ${entryDigit}, ${currentLabel.toLowerCase()} digit ${currentDigit}` : `Entry spot ${entryMarker}, ${currentLabel.toLowerCase()} spot ${currentMarker}`}>
           <div class="activity-point">
             <span class="activity-point-label">{entryLabel}</span>
             <strong class="activity-point-digit">{entryMarker}</strong>
@@ -1167,7 +1170,7 @@ function ActivityRow({ trade, market, onOpen }: { trade: TradeRow; market?: Mark
             <strong class="activity-point-digit">{currentMarker}</strong>
             <span class="activity-point-quote">{formatSpot(currentSpot)}</span>
           </div>
-        </div>
+        </div>}
       </div>
       <div class="activity-pnl">
         <div class={win ? 'pnl-win' : loss ? 'pnl-loss' : 'pnl-zero'}>
