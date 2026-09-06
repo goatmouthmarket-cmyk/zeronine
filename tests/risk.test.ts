@@ -26,6 +26,20 @@ test('risk check has no daily loss gate', async () => {
   assert.deepEqual(result, { ok: true, reason: 'ok' });
 });
 
+test('profit lock preserves 75% of a bot-run profit peak and leaves only the remainder riskable', async () => {
+  const [{ buildRecoveryContext, riskCheck }, { getSettings }] = await Promise.all([
+    import('../src/strategy/risk.ts'), import('../src/db/store.ts'),
+  ]);
+  const settings = getSettings();
+  const base = {
+    settings, balance: 1_000, context: buildRecoveryContext(settings), lastTradeAt: 0, tradeGapMs: 0, now: Date.now(),
+    profitLock: { runProfit: 92, peakRunProfit: 100, triggerProfit: 5, retainRatio: .75 },
+  };
+  assert.deepEqual(riskCheck({ ...base, stake: 17 }), { ok: true, reason: 'ok' });
+  assert.match(riskCheck({ ...base, stake: 17.01 }).reason, /profit lock risk budget/);
+  assert.match(riskCheck({ ...base, stake: 1, profitLock: { ...base.profitLock, runProfit: 75 } }).reason, /profit lock preserving 75%/);
+});
+
 test('risk lanes allow one digit and one multiplier contract concurrently', async () => {
   const [{ buildRecoveryContext, riskCheck }, store] = await Promise.all([
     import('../src/strategy/risk.ts'),

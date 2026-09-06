@@ -50,11 +50,22 @@ export function riskCheck(params: {
   accountId?: string;
   skipRecoveryDebtCap?: boolean;
   lane?: 'digit' | 'multiplier';
+  /** Run-level realized-profit trailing lock. It is optional so manual and
+   * multiplier routes retain their existing explicit risk policy. */
+  profitLock?: { runProfit: number; peakRunProfit: number; triggerProfit: number; retainRatio: number };
 }): RiskCheck {
   const { stake, settings, balance, context, lastTradeAt, tradeGapMs } = params;
 
   if (!Number.isFinite(stake) || stake <= 0) return { ok: false, reason: 'invalid stake' };
   if (balance > 0 && stake > balance * 0.9) return { ok: false, reason: 'insufficient balance' };
+
+  const lock = params.profitLock;
+  if (lock && lock.peakRunProfit >= lock.triggerProfit) {
+    const retained = Math.max(0, lock.peakRunProfit * Math.max(0.7, Math.min(0.8, lock.retainRatio)));
+    const riskBudget = lock.runProfit - retained;
+    if (!(riskBudget > 0)) return { ok: false, reason: `profit lock preserving ${Math.round(Math.max(0.7, Math.min(0.8, lock.retainRatio)) * 100)}% of peak run profit` };
+    if (stake > riskBudget + 1e-9) return { ok: false, reason: `profit lock risk budget is ${riskBudget.toFixed(2)}` };
+  }
 
   // Peak-drawdown rail: once the account drops maxDrawdownPct below its peak,
   // no further trades are permitted until a manual reset of the run.

@@ -183,6 +183,10 @@ export class Automation {
   private coolOffs = new Map<string, number>();
   private entryWaitStarted = new Map<string, number>();
   private runOrigin: 'bot' | 'paper' = 'bot';
+  /** Bot-run-only realized P&L. Manual, Gold, Momentum and historical account
+   * trades must never influence this trailing protection. */
+  private runRealizedProfit = 0;
+  private runPeakProfit = 0;
 
   constructor(registry: MarketRegistry, client: DerivPrivateClient, hub: Hub, memory = new DecisionMemory()) {
     this.registry = registry;
@@ -255,6 +259,8 @@ export class Automation {
     this.runTarget = Math.max(0, Math.floor(opts.maxTrades ?? 0) || 0);
     this.runTrades = 0;
     this.runOrigin = opts.origin ?? 'bot';
+    this.runRealizedProfit = 0;
+    this.runPeakProfit = 0;
     this.entryWaitStarted.clear();
     this.confirmation.reset();
     resetRecovery();
@@ -417,6 +423,12 @@ export class Automation {
       return 1500;
     }
     const accountId = accountIdForLogin(session.loginid);
+    const runProfit = this.runRealizedProfit;
+    // Once a run has built a meaningful cushion, protect 75% of its best
+    // realized profit. Recovery can only use the unprotected remainder.
+    const profitLock = this.runOrigin === 'bot'
+      ? { runProfit, peakRunProfit: this.runPeakProfit, triggerProfit: Math.max(1, settings.base_stake * 5), retainRatio: .75 }
+      : undefined;
 
     // Reconcile pending bets left by a restart or delayed settlement. A real
     // contract remains pending until Deriv gives a terminal result; recording a
@@ -445,8 +457,9 @@ export class Automation {
         tradeGapMs: 0,
         now: Date.now(),
         accountId,
+        profitLock,
       });
-      if (!guard.ok && guard.reason.includes('drawdown')) {
+      if (!guard.ok && (guard.reason.includes('drawdown') || guard.reason.includes('profit lock'))) {
         this.emit({ type: HOLD, ts: Date.now(), reason: guard.reason });
         this.stop(guard.reason);
         return 0;
@@ -748,7 +761,8 @@ export class Automation {
       lastTradeAt: this.lastCompletedAt(accountId),
       tradeGapMs: config.tradeGapMs,
       now: Date.now(),
-      accountId,
+        accountId,
+        profitLock,
     });
     if (!gate.ok) {
       const market = intelligence.markets.get(decision.market);
@@ -766,7 +780,7 @@ export class Automation {
         counterfactual: true,
       });
       this.emit({ type: HOLD, ts: Date.now(), reason: gate.reason });
-      if (gate.reason.includes('drawdown')) this.stop(gate.reason);
+      if (gate.reason.includes('drawdown') || gate.reason.includes('profit lock')) this.stop(gate.reason);
       return 900;
     }
 
@@ -906,6 +920,8 @@ export class Automation {
       });
       const settledTrade = getTrade(trade.id, accountId);
       if (settledTrade) this.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(accountId), settled: true });
+      this.runRealizedProfit += profit;
+      this.runPeakProfit = Math.max(this.runPeakProfit, this.runRealizedProfit);
       if (!won && conservative) this.markLoss(decision.market, decision.direction, decision.barrier);
       const next = applyOutcome(won, profit, settings, session.balance, accountId);
       saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery(accountId).last_win_epoch, updated_at: Date.now() }, accountId);
@@ -982,6 +998,8 @@ export class Automation {
               this.markLoss(t.market, t.contract_type === 'DIGITOVER' ? 'over' : 'under', t.barrier);
             }
             const accountId = t.account_id;
+            this.runRealizedProfit += profit;
+            this.runPeakProfit = Math.max(this.runPeakProfit, this.runRealizedProfit);
             const next = applyOutcome(won, profit, settings, getSession()?.balance, accountId);
             saveRecovery({ ...next, last_win_epoch: won ? Date.now() : getRecovery(accountId).last_win_epoch, updated_at: Date.now() }, accountId);
             this.emit({ type: 'recovery', ts: Date.now(), recovery: { ...next }, won, reconciled: true });
