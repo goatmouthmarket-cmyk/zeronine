@@ -1449,11 +1449,11 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
           : 'I am ready when you are.';
 
   return (
-    <div class={`market-scanner-companion state-${state} style-${style}${motionEnabled ? '' : ' motion-off'}`} role="group" aria-label={label}>
+    <div class={`market-scanner-companion state-${state} style-${style}${motionEnabled ? '' : ' motion-off'}`} role="group" aria-label={label} onClick={() => { if (customizerOpen) setCustomizerOpen(false); }}>
       <button class="scanner-gear" type="button" aria-label="Customize automation companion" aria-expanded={customizerOpen} onClick={(event) => { event.stopPropagation(); setCustomizerOpen((open) => !open); }}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.2 3.5 1.5-1.2-1.7-3-1.9.7a7.8 7.8 0 0 0-1.6-.9l-.3-2h-3.4l-.3 2a7.8 7.8 0 0 0-1.6.9L9 7.8l-1.7 3 1.5 1.2v.1l-1.5 1.2 1.7 3 1.9-.7c.5.4 1 .7 1.6.9l.3 2h3.4l.3-2c.6-.2 1.1-.5 1.6-.9l1.9.7 1.7-3-1.5-1.2V12Z" /></svg>
       </button>
-      {customizerOpen && <div class="scanner-customizer" role="dialog" aria-label="Automation companion settings">
+      {customizerOpen && <div class="scanner-customizer" role="dialog" aria-label="Automation companion settings" onClick={(event) => event.stopPropagation()}>
         <strong>Automation companion</strong>
         <p>Live quote link is on.</p>
         <label><span>Motion</span><input type="checkbox" checked={motionEnabled} onInput={(event) => setMotionEnabled(event.currentTarget.checked)} /></label>
