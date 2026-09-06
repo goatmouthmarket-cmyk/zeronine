@@ -1464,16 +1464,24 @@ function MarketScannerCompanion({ automation, phase, observation, market, recove
       </div>}
       <svg viewBox="0 0 520 110" aria-hidden="true">
         <path class="scanner-ground" d="M20 88H238" />
-        <path class="scanner-wire wire-a" d="M193 49C300 48 390 -92 520 -94" />
-        <path class="scanner-wire wire-b" d="M190 57C306 78 410 -49 520 -48" />
-        <path class="scanner-wire wire-c" d="M185 65C304 107 411 -8 520 -8" />
+        <path class="scanner-cable cable-a" d="M193 49C270 49 330 -88 380 -88S461 -94 520 -94" />
+        <path class="scanner-cable cable-b" d="M190 57C272 78 340 -48 395 -48S466 -48 520 -48" />
+        <path class="scanner-cable cable-c" d="M185 65C274 108 349 -8 404 -8S471 -8 520 -8" />
+        <path class="scanner-wire wire-a" d="M193 49C270 49 330 -88 380 -88S461 -94 520 -94" />
+        <path class="scanner-wire wire-b" d="M190 57C272 78 340 -48 395 -48S466 -48 520 -48" />
+        <path class="scanner-wire wire-c" d="M185 65C274 108 349 -8 404 -8S471 -8 520 -8" />
         <g class="scanner-brain">
           <path class="brain-shell" d="M78 64C62 62 56 48 63 36C66 24 78 19 90 23C101 12 122 15 130 27C149 23 164 37 160 52C170 66 160 82 145 82C135 92 116 91 106 84C92 89 77 80 78 64Z" />
           <path class="brain-folds" d="M74 43C87 35 91 50 103 42C113 31 123 46 131 38C141 30 151 43 146 55M78 59C91 49 97 66 108 57C118 47 126 66 138 57C147 50 155 60 151 70M92 25C88 36 102 32 100 48M119 22C112 34 126 37 121 52M145 32C135 42 149 47 142 59" />
           <path class="brain-circuit" d="M68 70H94L103 61H121L132 71H159M106 84V96M135 82V96" />
+          <g class="brain-nerves">
+            <path class="brain-nerve nerve-a" d="M121 52C110 43 106 31 91 27M110 45L98 37M106 40L105 25" />
+            <path class="brain-nerve nerve-b" d="M121 52C133 44 142 36 151 39M137 43L148 29M142 48L158 51" />
+            <path class="brain-nerve nerve-c" d="M121 52C111 61 103 71 89 70M105 64L91 79M113 67L112 84" />
+            <path class="brain-nerve nerve-d" d="M121 52C131 61 141 71 153 69M141 65L145 80M147 61L162 59" />
+          </g>
           <circle class="brain-node n1" cx="94" cy="70" r="4" /><circle class="brain-node n2" cx="121" cy="52" r="4" /><circle class="brain-node n3" cx="132" cy="71" r="4" /><circle class="brain-node n4" cx="160" cy="70" r="4" />
         </g>
-        <circle class="scanner-orbit" cx="176" cy="58" r="15" />
       </svg>
       {voiceEnabled && <div class="scanner-thought"><i></i><span>{laymanInsight}</span></div>}
     </div>
