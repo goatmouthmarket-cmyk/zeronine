@@ -18,6 +18,7 @@ export type HubEventType =
   | 'testlab'
   | 'tuning'
   | 'paper_simulation'
+  | 'entry_lab'
   | 'momentum'
   | 'error';
 

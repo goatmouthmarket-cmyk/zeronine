@@ -16,6 +16,8 @@ export interface EntryResearchMethodState extends EntryMethodEvidence {
   openSamples: number;
   lastDecision: EntryDecision['state'] | 'idle';
   lastReason: string;
+  /** Bounded virtual equity history for UI only. */
+  equity: number[];
 }
 
 export interface EntryResearchProductState {
@@ -50,11 +52,74 @@ export interface EntryResearchRuntimeOptions {
   onState?: (state: EntryResearchState) => void;
 }
 
+/** Compact browser-safe view model. It deliberately contains only virtual
+ * research metrics, never account balances, contracts, or provider tokens. */
+export interface EntryLabDashboardState {
+  enabled: true;
+  updatedAt: number;
+  products: Array<{
+    product: EntryProduct;
+    enabled: true;
+    state: 'testing' | 'waiting';
+    updatedAt: number;
+    provenMethodId: EntryMethodId | null;
+    note: string;
+    methods: Array<{
+      id: EntryMethodId;
+      label: string;
+      status: 'testing' | 'waiting' | 'promoted' | 'rejected';
+      samples: number;
+      wins: number;
+      netPnl: number;
+      drawdownPct: number;
+      confidence: number;
+      equity: number[];
+      reason: string;
+    }>;
+  }>;
+}
+
+export function entryLabDashboardState(state: EntryResearchState): EntryLabDashboardState {
+  return {
+    enabled: true,
+    updatedAt: state.updatedAt,
+    products: state.products.map((product) => ({
+      product: product.product,
+      enabled: true,
+      state: product.methods.some((method) => method.openSamples > 0 || method.lastDecision === 'ready') ? 'testing' : 'waiting',
+      updatedAt: product.updatedAt,
+      provenMethodId: product.champion.methodId,
+      note: product.champion.reason,
+      methods: product.methods.map((method) => {
+        const definition = entryMethodsFor(product.product).find((item) => item.id === method.methodId);
+        const status = product.champion.methodId === method.methodId
+          ? 'promoted'
+          : method.lastDecision === 'skip'
+            ? 'rejected'
+            : method.openSamples > 0 || method.lastDecision === 'ready'
+              ? 'testing'
+              : 'waiting';
+        return {
+          id: method.methodId,
+          label: definition?.label ?? method.methodId,
+          status,
+          samples: method.samples,
+          wins: method.wins,
+          netPnl: method.netPnl,
+          drawdownPct: method.samples > 0 ? method.maxDrawdown / Math.max(1, Math.abs(method.netPnl) + method.maxDrawdown) * 100 : 0,
+          confidence: product.champion.methodId === method.methodId ? product.champion.confidence * 100 : 0,
+          equity: [...method.equity],
+          reason: product.champion.methodId === method.methodId ? product.champion.reason : method.lastReason,
+        };
+      }),
+    })),
+  };
+}
+
 interface MutableMethodState extends EntryResearchMethodState {
   gate: EntryMethodGate;
   pending: Map<string, number>;
   peakEquity: number;
-  equity: number;
   totalDelay: number;
 }
 
@@ -105,8 +170,8 @@ export class EntryResearchRuntime {
           gate: new EntryMethodGate(product, definition.id),
           pending: new Map(),
           peakEquity: 0,
-          equity: 0,
           totalDelay: 0,
+          equity: [0],
         });
       }
       this.methods.set(product, rows);
@@ -151,9 +216,10 @@ export class EntryResearchRuntime {
     row.netPnl += outcome.pnl;
     row.totalDelay += delay;
     row.averageDelay = row.totalDelay / row.samples;
-    row.equity += outcome.pnl;
-    row.peakEquity = Math.max(row.peakEquity, row.equity);
-    row.maxDrawdown = Math.max(row.maxDrawdown, row.peakEquity - row.equity);
+    const currentEquity = (row.equity.at(-1) ?? 0) + outcome.pnl;
+    row.equity = [...row.equity, currentEquity].slice(-40);
+    row.peakEquity = Math.max(row.peakEquity, currentEquity);
+    row.maxDrawdown = Math.max(row.maxDrawdown, row.peakEquity - currentEquity);
     if (outcome.pnl > 0) row.wins += 1;
     else if (outcome.pnl < 0) row.losses += 1;
     row.updatedAt = resolvedAt;

@@ -45,6 +45,9 @@ import { GoldSentimentWorker, DEFAULT_GOLD_SENTIMENT_FEEDS, type GoldSentimentFe
 import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimulator.ts';
 import type { Direction } from './core/digitMath.ts';
 import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
+import { winDigits } from './core/digitMath.ts';
+import { EntryResearchRuntime } from './testlab/entryRuntime.ts';
+import type { EntryMethodId, EntryProduct } from './testlab/entry.ts';
 
 function paperSignalFromHubEvent(
   event: Record<string, unknown>,
@@ -115,6 +118,32 @@ async function main(): Promise<void> {
   await app.register(fastifyCookie, { secret: config.sessionSecret });
 
   const hub = new Hub();
+  let lastProvenDigitsMode = '';
+  const entryResearch = new EntryResearchRuntime({
+    onState: (state) => {
+      const champion = state.products.find((product) => product.product === 'digits')?.champion.methodId;
+      const resolved = champion === 'confirm_1' || champion === 'anti_chase' ? 'digit_trigger'
+        : champion === 'confirm_2' || champion === 'stability_3' ? 'digit_trigger_confirmed'
+          : 'model';
+      if (resolved !== lastProvenDigitsMode) {
+        lastProvenDigitsMode = resolved;
+        setMeta('entry_champion_digits', resolved);
+      }
+      hub.emit({ type: 'entry_lab', ts: Date.now(), state });
+    },
+  });
+  type PendingEntryOutcome = {
+    product: EntryProduct;
+    methodId: EntryMethodId;
+    signalId: string;
+    market: string;
+    afterEpoch: number;
+    direction: 'over' | 'under' | 'up' | 'down' | 'BUY' | 'SELL';
+    barrier?: number;
+    entryPrice?: number;
+  };
+  const pendingEntryOutcomes = new Map<string, PendingEntryOutcome>();
+  let latestEntrySignal: PaperSignal | null = null;
   const decisionMemory = new DecisionMemory();
   const paperSimulator = new PaperSimulator({ defaultStake: getSettings().base_stake });
   let latestPaperSignal: PaperSignal | null = null;
@@ -124,6 +153,7 @@ async function main(): Promise<void> {
     // the bot. It does not choose, blend, or invent a separate strategy.
     const settings = getSettings();
     latestPaperSignal = paperSignalFromHubEvent(event, settings.base_stake, settings.strategy_mode, settings.bot_mode);
+    latestEntrySignal = latestPaperSignal;
   });
   paperSimulator.on((event: PaperSimulationEvent) => {
     if (event.type === 'opened') {
@@ -182,6 +212,39 @@ async function main(): Promise<void> {
         digit: snap.lastDigit,
         epoch: snap.lastEpoch,
       }, paperSignal);
+      // Entry research shadows the same qualified digit candidate. It settles
+      // virtual method comparisons on a later tick and never enters the
+      // private client/account command lane.
+      for (const [key, pending] of pendingEntryOutcomes) {
+        if (pending.product !== 'digits' || pending.market !== snap.symbol || snap.lastEpoch <= pending.afterEpoch) continue;
+        const won = pending.direction === 'over' || pending.direction === 'under'
+          ? winDigits(pending.direction, pending.barrier ?? 0).includes(snap.lastDigit)
+          : false;
+        entryResearch.recordOutcome({ product: 'digits', methodId: pending.methodId, signalId: pending.signalId, pnl: won ? .9 : -1 });
+        pendingEntryOutcomes.delete(key);
+      }
+      const entrySignal = latestEntrySignal?.market === snap.symbol
+        && latestEntrySignal.issuedAt !== undefined
+        && Date.now() - latestEntrySignal.issuedAt <= 5_000
+        ? latestEntrySignal
+        : null;
+      if (entrySignal) {
+        const entrySignalId = entrySignal.id ?? `digits:${entrySignal.market}:${entrySignal.direction}:${entrySignal.barrier}:${entrySignal.issuedAt ?? snap.lastEpoch}`;
+        const decisions = entryResearch.observe({
+          product: 'digits', market: snap.symbol, signalId: entrySignalId,
+          epoch: snap.lastEpoch, direction: entrySignal.direction === 'over' ? 'up' : 'down',
+        });
+        for (const decision of decisions) {
+          if (decision.state !== 'ready') continue;
+          const key = `digits:${decision.methodId}:${entrySignalId}`;
+          if (!pendingEntryOutcomes.has(key)) {
+            pendingEntryOutcomes.set(key, {
+              product: 'digits', methodId: decision.methodId, signalId: entrySignalId, market: snap.symbol,
+              afterEpoch: snap.lastEpoch, direction: entrySignal.direction, barrier: entrySignal.barrier,
+            });
+          }
+        }
+      }
       hub.emit({
         type: 'tick',
         ts: Date.now(),
@@ -267,6 +330,77 @@ async function main(): Promise<void> {
   if (config.goldSentimentEnabled) goldSentiment.start();
   const goldFeed = new DerivGoldFeed(gold);
   goldFeed.start();
+  // Product-specific research adapters run on a bounded timer. They observe
+  // compact existing state; they never open sockets, block a feed, or submit
+  // an account order. The high-frequency digit adapter above remains tick-led.
+  let lastMomentumOutcomeKey = '';
+  const entryResearchTimer = setInterval(() => {
+    try {
+      const momentumState = momentum.state();
+      const window = momentumState.window;
+      const signal = window?.decisionSignal ?? window?.signal;
+      const latest = window?.samples.at(-1);
+      if (window && signal && signal.direction !== 'wait' && latest) {
+        const signalId = `momentum:${window.startedAt}:${signal.direction}`;
+        const decisions = entryResearch.observe({
+          product: 'multipliers', market: momentumState.config?.symbol ?? 'momentum', signalId,
+          epoch: latest.epoch, direction: signal.direction,
+          momentum: Math.abs(window.changePct) / .01,
+          extension: Math.abs(window.changePct) / .03,
+          rugRisk: 0,
+          pullback: Math.max(0, Math.min(1, 1 - Math.abs(window.changePct) / .02)),
+        });
+        for (const decision of decisions) {
+          const key = `multipliers:${decision.methodId}:${signalId}`;
+          if (decision.state === 'ready' && !pendingEntryOutcomes.has(key)) {
+            pendingEntryOutcomes.set(key, { product: 'multipliers', methodId: decision.methodId, signalId, market: momentumState.config?.symbol ?? 'momentum', afterEpoch: latest.epoch, direction: signal.direction });
+          }
+        }
+      }
+      const outcome = momentumState.lastOutcome;
+      if (outcome) {
+        const outcomeKey = `${outcome.openPrice}:${outcome.exitPrice}:${outcome.direction}`;
+        if (outcomeKey !== lastMomentumOutcomeKey) {
+          lastMomentumOutcomeKey = outcomeKey;
+          for (const [key, pending] of pendingEntryOutcomes) {
+            if (pending.product !== 'multipliers') continue;
+            entryResearch.recordOutcome({ product: 'multipliers', methodId: pending.methodId, signalId: pending.signalId, pnl: outcome.won ? .9 : -1 });
+            pendingEntryOutcomes.delete(key);
+          }
+        }
+      }
+
+      const goldState = gold.state().research.state;
+      const goldSignal = goldState.signal;
+      const quote = goldState.quote;
+      if (goldSignal?.actionable && quote && (goldSignal.direction === 'BUY' || goldSignal.direction === 'SELL')) {
+        const epoch = Math.max(1, Math.floor(quote.timestamp));
+        const signalId = `gold:${goldSignal.id}`;
+        for (const [key, pending] of pendingEntryOutcomes) {
+          if (pending.product !== 'gold' || pending.signalId !== signalId || epoch <= pending.afterEpoch) continue;
+          const won = pending.direction === 'BUY' ? quote.mid > (pending.entryPrice ?? quote.mid) : quote.mid < (pending.entryPrice ?? quote.mid);
+          entryResearch.recordOutcome({ product: 'gold', methodId: pending.methodId, signalId: pending.signalId, pnl: won ? .9 : -1 });
+          pendingEntryOutcomes.delete(key);
+        }
+        const decisions = entryResearch.observe({
+          product: 'gold', market: goldSignal.symbol, signalId, epoch,
+          direction: goldSignal.direction === 'BUY' ? 'up' : 'down', momentum: Math.abs(goldSignal.score),
+          pullback: Math.max(0, Math.min(1, 1 - Math.abs(quote.mid - goldSignal.entryReference) / Math.max(goldSignal.atr, Number.EPSILON))),
+          completedCandle: true, wickRejection: goldSignal.actionable ? .7 : 0,
+        });
+        for (const decision of decisions) {
+          const key = `gold:${decision.methodId}:${signalId}`;
+          if (decision.state === 'ready' && !pendingEntryOutcomes.has(key)) {
+            pendingEntryOutcomes.set(key, { product: 'gold', methodId: decision.methodId, signalId, market: goldSignal.symbol, afterEpoch: epoch, direction: goldSignal.direction, entryPrice: quote.mid });
+          }
+        }
+      }
+    } catch {
+      // Research visibility is best-effort and is never allowed to disturb
+      // account execution, scanner, or market data lifecycles.
+    }
+  }, 500);
+  entryResearchTimer.unref();
   const startMomentumResearch = (): void => {
     void momentum.startAutomatic().catch((error) => {
       console.warn(`[momentum] automatic research start failed; retrying in 30 seconds: ${String(error)}`);
@@ -276,7 +410,7 @@ async function main(): Promise<void> {
   };
   startMomentumResearch();
 
-  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, momentum, gold });
+  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, momentum, gold, entryResearch });
   await registerWs(app, hub, registry);
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');
@@ -418,6 +552,7 @@ async function main(): Promise<void> {
     console.info(`[server] ${signal} — shutting down`);
     clearInterval(pruneTimer);
     clearInterval(reconnectTimer);
+    clearInterval(entryResearchTimer);
     clearInterval(autoBacktestTimer);
     clearTimeout(bootAutoBacktest);
     automation.dispose();

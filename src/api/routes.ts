@@ -27,6 +27,7 @@ import type { Direction, MultiplierDirection } from '../core/digitMath.ts';
 import { contractProfit } from '../strategy/pnl.ts';
 import { buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { runBacktest, TEST_MODES, TEST_STRATEGIES } from '../testlab/backtest.ts';
+import { entryLabDashboardState, type EntryResearchRuntime } from '../testlab/entryRuntime.ts';
 import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
@@ -76,6 +77,8 @@ export interface ApiDeps {
   paperSimulator: PaperSimulator;
   momentum?: MomentumObserver;
   gold?: GoldRuntime;
+  /** Virtual-only continuous entry research. It never authorizes an order. */
+  entryResearch?: EntryResearchRuntime;
   /** Shared command lane for account-funded Deriv operations. */
   accountCoordinator?: AccountCoordinator;
 }
@@ -83,6 +86,7 @@ export interface ApiDeps {
 export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const { registry, feed, client, hub, automation, paperSimulator, momentum } = deps;
   const gold = deps.gold ?? new GoldRuntime();
+  const entryResearch = deps.entryResearch;
   // The coordinator is deliberately per API runtime unless main supplies a
   // process-level instance. It serializes short provider commands only; quote
   // streaming and settlement subscriptions stay independent and responsive.
@@ -1263,6 +1267,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   app.get('/api/settings', async () => getSettings());
 
+  app.get('/api/entry-lab', async () => ({
+    state: entryResearch ? entryLabDashboardState(entryResearch.state()) : null,
+  }));
+
   app.put('/api/settings', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     const body = req.body as Record<string, unknown>;
@@ -1295,7 +1303,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (k === 'barrier_preference' && typeof v === 'string') patch[k] = v;
       else if (k === 'strategy_mode' && typeof v === 'string') patch[k] = v;
       else if (k === 'bot_mode' && (v === 'rapid' || v === 'balanced' || v === 'strict')) patch[k] = v;
-      else if (k === 'entry_mode' && (v === 'model' || v === 'digit_trigger' || v === 'digit_trigger_confirmed')) patch[k] = v;
+      else if (k === 'entry_mode' && (v === 'model' || v === 'digit_trigger' || v === 'digit_trigger_confirmed' || v === 'proven_best')) patch[k] = v;
       else if (numeric.includes(k) && (typeof v === 'number') && Number.isFinite(v)) patch[k] = v;
       else if (k === 'pattern_weight_conservative' || k === 'pattern_weight_martingale' || k === 'pattern_weight_boosted_martingale' || k === 'pattern_weight_chase') {
         if (v === null) patch[k] = null;

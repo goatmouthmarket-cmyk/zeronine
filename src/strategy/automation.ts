@@ -19,6 +19,7 @@ import type { TradeRow, SettingsRow } from '../db/store.ts';
 import {
   accountIdForLogin,
   getAutomation,
+  getMeta,
   getEntryTimingProfile,
   getOpenTradeByLane,
   getPerformanceSummary,
@@ -352,7 +353,12 @@ export class Automation {
   private async cycle(cycleEpoch: number, startedRunning: boolean): Promise<number> {
     this.busiest = Date.now();
     const canBuy = (): boolean => startedRunning && this.running && cycleEpoch === this.runEpoch;
-    const settings = getSettings();
+    const storedSettings = getSettings();
+    const proven = getMeta('entry_champion_digits');
+    const resolvedEntryMode: SettingsRow['entry_mode'] = proven === 'digit_trigger' || proven === 'digit_trigger_confirmed' ? proven : 'model';
+    const settings = storedSettings.entry_mode === 'proven_best'
+      ? { ...storedSettings, entry_mode: resolvedEntryMode }
+      : storedSettings;
 
     const session = getSession();
 

@@ -2374,6 +2374,7 @@ function BotPage(): JSX.Element {
             <button class={`seg-btn${entryMode === 'model' ? ' active' : ''}`} onClick={() => pickEntryMode('model')}>Model</button>
             <button class={`seg-btn${entryMode === 'digit_trigger' ? ' active' : ''}`} onClick={() => pickEntryMode('digit_trigger')}>8/9 · 0/1 trigger</button>
             <button class={`seg-btn${entryMode === 'digit_trigger_confirmed' ? ' active' : ''}`} onClick={() => pickEntryMode('digit_trigger_confirmed')}>Two-pass trigger</button>
+            <button class={`seg-btn${entryMode === 'proven_best' ? ' active' : ''}`} onClick={() => pickEntryMode('proven_best')}>Proven best</button>
           </div>
           <div class="set-hint">Two-pass waits for extreme → same-side follow-through → a new extreme; every mode still needs validated transition, price, risk, and confirmation evidence.</div>
         </div>

@@ -235,7 +235,7 @@ export interface SettingsRow {
   barrier_number: number;
   strategy_mode: string;
   bot_mode: string;
-  entry_mode: 'model' | 'digit_trigger' | 'digit_trigger_confirmed';
+  entry_mode: 'model' | 'digit_trigger' | 'digit_trigger_confirmed' | 'proven_best';
   strategy_multiplier: number;
   recovery_buffer: number;
   chase_amortize: number;
@@ -880,7 +880,7 @@ export function getSettings(): SettingsRow {
     barrier_number,
     strategy_mode,
     bot_mode: ['rapid', 'balanced', 'strict'].includes(String(row.bot_mode)) ? String(row.bot_mode) : 'balanced',
-    entry_mode: row.entry_mode === 'digit_trigger_confirmed' ? 'digit_trigger_confirmed' : row.entry_mode === 'digit_trigger' ? 'digit_trigger' : 'model',
+    entry_mode: row.entry_mode === 'digit_trigger_confirmed' ? 'digit_trigger_confirmed' : row.entry_mode === 'digit_trigger' ? 'digit_trigger' : row.entry_mode === 'proven_best' ? 'proven_best' : 'model',
     strategy_multiplier: Number(row.strategy_multiplier ?? 3),
     recovery_buffer: Number(row.recovery_buffer ?? 0.5),
     chase_amortize: Number(row.chase_amortize ?? 0.35),

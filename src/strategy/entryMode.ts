@@ -1,10 +1,10 @@
 import type { Direction } from '../core/digitMath.ts';
 
 /** A narrow, testable hypothesis; it never bypasses normal quality or risk gates. */
-export type EntryMode = 'model' | 'digit_trigger' | 'digit_trigger_confirmed';
+export type EntryMode = 'model' | 'digit_trigger' | 'digit_trigger_confirmed' | 'proven_best';
 
 export function isEntryMode(value: unknown): value is EntryMode {
-  return value === 'model' || value === 'digit_trigger' || value === 'digit_trigger_confirmed';
+  return value === 'model' || value === 'digit_trigger' || value === 'digit_trigger_confirmed' || value === 'proven_best';
 }
 
 export function triggerDigitsFor(direction: Direction): readonly number[] {
@@ -40,6 +40,7 @@ export function matchesConfirmedDigitTrigger(direction: Direction, digits: reado
 }
 
 export function entryIntent(mode: EntryMode, direction: Direction, digit: number | null | undefined): string {
+  if (mode === 'proven_best') return 'proven entry method selected from fresh virtual research, with model and risk gates';
   if (mode === 'digit_trigger_confirmed') {
     return `two-pass ${direction === 'over' ? 'high' : 'low'} trigger ${digit ?? '—'} after prior follow-through, with model and price gates`;
   }

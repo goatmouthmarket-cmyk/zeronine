@@ -69,7 +69,7 @@ export interface Settings {
   barrier_number: number;
   strategy_mode: 'conservative' | 'martingale' | 'boosted_martingale' | 'chase';
   bot_mode: 'rapid' | 'balanced' | 'strict';
-  entry_mode: 'model' | 'digit_trigger' | 'digit_trigger_confirmed';
+  entry_mode: 'model' | 'digit_trigger' | 'digit_trigger_confirmed' | 'proven_best';
   strategy_multiplier: number;
   recovery_buffer: number;
   chase_amortize: number;
@@ -2086,7 +2086,7 @@ export async function loadPatternsData(): Promise<void> {
 export async function loadEntryLabState(): Promise<void> {
   try {
     const res = await api<{ state?: EntryLabState } | EntryLabState>('/api/entry-lab');
-    const candidate = 'state' in res ? res.state : res;
+    const candidate: EntryLabState | null = ('state' in res ? res.state : res) as EntryLabState | null;
     if (candidate && Array.isArray(candidate.products)) set({ entryLab: candidate });
   } catch {
     // Keep the Lab useful while the entry-test service is unavailable or warming up.
