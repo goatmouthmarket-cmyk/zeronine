@@ -64,7 +64,7 @@ test('a stale quote is a hard WAIT blocker regardless of candle score', () => {
   assert.equal(signal.confidence, 0);
 });
 
-test('wide spreads and missing candle intervals are hard research blockers', () => {
+test('wide spreads and a current-session candle gap rebuild the research window safely', () => {
   const candidate = input(.7);
   candidate.quote.ask = candidate.quote.bid + 10;
   candidate.quote.spread = 10;
@@ -75,7 +75,7 @@ test('wide spreads and missing candle intervals are hard research blockers', () 
   }
   const signal = evaluateGoldResearch(candidate);
   assert.equal(signal.direction, 'WAIT');
-  assert.match(signal.blockers.join(' '), /Missing 5m candle intervals/i);
+  assert.match(signal.blockers.join(' '), /Rebuilding uninterrupted 5m history/i);
 });
 
 test('an older Gold session closure does not block a continuous current analysis window', () => {
@@ -98,7 +98,7 @@ test('research requires both primary and confirmation history and stays determin
   candidate.candles['15m'] = candidate.candles['15m']!.slice(0, 10);
   const blocked = evaluateGoldResearch(candidate);
   assert.equal(blocked.direction, 'WAIT');
-  assert.match(blocked.blockers.join(' '), /Insufficient 15m candle history/);
+  assert.match(blocked.blockers.join(' '), /Rebuilding uninterrupted 15m history/);
 
   const first = evaluateGoldResearch(input(.7));
   const second = evaluateGoldResearch(input(.7));

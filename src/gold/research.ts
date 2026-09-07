@@ -202,10 +202,16 @@ function sortedValidCandles(candles: GoldCandle[], symbolId: string, timeframe: 
   return sorted.some((candle, index) => index > 0 && candle.openTime <= sorted[index - 1]!.openTime) ? null : sorted;
 }
 
-function hasMissingIntervals(candles: GoldCandle[], timeframe: GoldTimeframe): boolean {
+function latestContinuousCandleWindow(candles: GoldCandle[], timeframe: GoldTimeframe): GoldCandle[] {
   const expected = GOLD_TIMEFRAME_MS[timeframe];
-  // A gap beyond 1.5 expected intervals makes a price structure unsafe.
-  return candles.some((candle, index) => index > 0 && candle.openTime - candles[index - 1]!.openTime > expected * 1.5);
+  // Gold has legitimate market-session and weekend pauses. A bar before such
+  // a pause must never be joined to the new session as if it were continuous
+  // price action. Keep the newest uninterrupted window instead; indicators
+  // warm up again from verified post-pause candles.
+  for (let index = candles.length - 1; index > 0; index--) {
+    if (candles[index]!.openTime - candles[index - 1]!.openTime > expected * 1.5) return candles.slice(index);
+  }
+  return candles;
 }
 
 function ema(candles: GoldCandle[], period: number): number[] {
@@ -466,16 +472,18 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
   const confirmationRaw = input.candles[confirmationTimeframe] ?? [];
   // A still-forming candle is observation, not evidence about what happens
   // next. Excluding it prevents tick-by-tick direction flicker.
-  const primary = sortedValidCandles(
+  const primaryValidated = sortedValidCandles(
     primaryRaw.filter((candle) => candle.complete && candle.closeTime <= input.now),
     input.symbol.id,
     input.timeframe,
   );
-  const confirmation = sortedValidCandles(
+  const confirmationValidated = sortedValidCandles(
     confirmationRaw.filter((candle) => candle.complete && candle.closeTime <= input.now),
     input.symbol.id,
     confirmationTimeframe,
   );
+  const primary = primaryValidated ? latestContinuousCandleWindow(primaryValidated, input.timeframe) : null;
+  const confirmation = confirmationValidated ? latestContinuousCandleWindow(confirmationValidated, confirmationTimeframe) : null;
 
   const statusBlocker = marketBlocker(input.symbol.tradingStatus);
   if (statusBlocker) blockers.push(statusBlocker);
@@ -486,13 +494,8 @@ export function evaluateGoldResearch(input: GoldResearchInput): GoldSignal {
     if (quote.timestamp > input.now + config.maxQuoteAgeMs) blockers.push('Quote timestamp is in the future');
   }
   if (!primary || !confirmation) blockers.push('Candle data is invalid or out of order');
-  if (primary && primary.length < config.minCandles) blockers.push(`Insufficient ${input.timeframe} candle history`);
-  if (confirmation && confirmation.length < config.minCandles) blockers.push(`Insufficient ${confirmationTimeframe} candle history`);
-  // Broker history legitimately contains session/weekend closures. Only the
-  // latest analysis window must be continuous; an older closure should not
-  // pin live research to WAIT until all 500 downloaded rows roll forward.
-  if (primary && hasMissingIntervals(primary.slice(-config.minCandles), input.timeframe)) blockers.push(`Missing ${input.timeframe} candle intervals`);
-  if (confirmation && hasMissingIntervals(confirmation.slice(-config.minCandles), confirmationTimeframe)) blockers.push(`Missing ${confirmationTimeframe} candle intervals`);
+  if (primary && primary.length < config.minCandles) blockers.push(`Rebuilding uninterrupted ${input.timeframe} history after a session pause (${primary.length}/${config.minCandles} candles)`);
+  if (confirmation && confirmation.length < config.minCandles) blockers.push(`Rebuilding uninterrupted ${confirmationTimeframe} history after a session pause (${confirmation.length}/${config.minCandles} candles)`);
   if (blockers.length > 0) return waitSignal(input, config, blockers, primary ?? [], sentiment);
 
   const candles = primary!;
