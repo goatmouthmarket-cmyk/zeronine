@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   ColorType,
   CandlestickSeries,
@@ -65,6 +65,7 @@ export function GoldTradeChart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const linesRef = useRef<IPriceLine[]>([]);
+  const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const initialViewportSetRef = useRef(false);
   const followLiveRef = useRef(true);
   const dataLengthRef = useRef(0);
@@ -192,6 +193,31 @@ export function GoldTradeChart({
   }, [data]);
 
   useEffect(() => {
+    const chart = chartRef.current;
+    const container = containerRef.current;
+    if (!chart || !container || !positionTool || data.length < 2) {
+      setZoneGeometry(null);
+      return;
+    }
+    const updateZone = () => {
+      const last = data.at(-1)!;
+      const start = data[Math.max(0, data.length - 5)]!;
+      const previous = data.at(-2) ?? start;
+      const lastX = chart.timeScale().timeToCoordinate(last.time);
+      const startX = chart.timeScale().timeToCoordinate(start.time);
+      const previousX = chart.timeScale().timeToCoordinate(previous.time);
+      if (lastX == null || startX == null) return;
+      const halfBar = Math.max(5, Math.abs(lastX - (previousX ?? lastX - 10)) * .55);
+      const left = Math.max(0, startX - halfBar);
+      const width = Math.max(16, Math.min(container.clientWidth - left, lastX + halfBar - left));
+      setZoneGeometry((old) => old && Math.abs(old.left - left) < .5 && Math.abs(old.width - width) < .5 ? old : { left, width });
+    };
+    updateZone();
+    chart.timeScale().subscribeVisibleLogicalRangeChange(updateZone);
+    return () => chart.timeScale().unsubscribeVisibleLogicalRangeChange(updateZone);
+  }, [data, positionTool]);
+
+  useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
     series.priceScale().applyOptions({ scaleMargins: overlayRange ? { top: 0, bottom: 0 } : { top: .1, bottom: .14 } });
@@ -233,7 +259,7 @@ export function GoldTradeChart({
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
-    {positionTool && <TradePositionTool {...positionTool} values={data.flatMap((candle) => [candle.high, candle.low])} />}
+    {positionTool && <TradePositionTool {...positionTool} values={data.flatMap((candle) => [candle.high, candle.low])} zoneGeometry={zoneGeometry} />}
     {lockLabel && <div class="gold-chart-lock-badge" role="status">Locked · {lockLabel}</div>}
     <div class="gold-chart-readout" aria-hidden="true">
       <span>{lastPrice == null ? 'No live price' : displayPrice(lastPrice, digits)}</span>

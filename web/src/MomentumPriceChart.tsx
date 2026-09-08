@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   ColorType,
   CandlestickSeries,
@@ -72,6 +72,7 @@ export function MomentumPriceChart({
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const entryLineRef = useRef<IPriceLine | null>(null);
+  const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
   const overlayRange = useMemo(() => {
     if (!positionTool) return null;
@@ -107,6 +108,31 @@ export function MomentumPriceChart({
   useEffect(() => {
     pointsRef.current = points;
   }, [points]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const container = containerRef.current;
+    if (!chart || !container || !positionTool || points.length < 2) {
+      setZoneGeometry(null);
+      return;
+    }
+    const updateZone = () => {
+      const last = points.at(-1)!;
+      const start = points[Math.max(0, points.length - 5)]!;
+      const previous = points.at(-2) ?? start;
+      const lastX = chart.timeScale().timeToCoordinate(last.time);
+      const startX = chart.timeScale().timeToCoordinate(start.time);
+      const previousX = chart.timeScale().timeToCoordinate(previous.time);
+      if (lastX == null || startX == null) return;
+      const halfBar = Math.max(5, Math.abs(lastX - (previousX ?? lastX - 10)) * .55);
+      const left = Math.max(0, startX - halfBar);
+      const width = Math.max(16, Math.min(container.clientWidth - left, lastX + halfBar - left));
+      setZoneGeometry((old) => old && Math.abs(old.left - left) < .5 && Math.abs(old.width - width) < .5 ? old : { left, width });
+    };
+    updateZone();
+    chart.timeScale().subscribeVisibleLogicalRangeChange(updateZone);
+    return () => chart.timeScale().unsubscribeVisibleLogicalRangeChange(updateZone);
+  }, [points, positionTool]);
 
   useEffect(() => {
     entryRef.current = { showEntryLine, entryPrice, entryDirection, entryLabel };
@@ -289,7 +315,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {positionTool && !compact && <TradePositionTool {...positionTool} values={points.flatMap((point) => [point.high, point.low])} />}
+    {positionTool && !compact && <TradePositionTool {...positionTool} values={points.flatMap((point) => [point.high, point.low])} zoneGeometry={zoneGeometry} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
     {points.length < 2 && <span class="mom-chart-empty">Awaiting ticks</span>}

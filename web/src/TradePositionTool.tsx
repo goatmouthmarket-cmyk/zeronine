@@ -7,6 +7,8 @@ export interface TradePositionToolProps {
   takeProfit?: number | null;
   stopLoss?: number | null;
   values: number[];
+  /** Pixel geometry from the chart's live time scale: last five candles. */
+  zoneGeometry?: { left: number; width: number } | null;
   targetPnl?: string;
   riskPnl?: string;
   currentPrice?: number | null;
@@ -53,6 +55,7 @@ export function TradePositionTool({
   takeProfit,
   stopLoss,
   values,
+  zoneGeometry,
   targetPnl,
   riskPnl,
   currentPrice,
@@ -117,8 +120,8 @@ export function TradePositionTool({
     class={`position-tool ${side}${editable ? ' editable' : ''}${dragging ? ' dragging' : ''}`}
     aria-label={`${side === 'long' ? 'Long' : 'Short'} position tool`}
   >
-    {targetZone && <div class="position-zone profit" style={targetZone}><span>Target {targetPnl ?? ''}</span></div>}
-    {riskZone && <div class="position-zone risk" style={riskZone}><span>Risk {riskPnl ?? ''}</span></div>}
+    {targetZone && <div class="position-zone profit" style={{ ...targetZone, ...(zoneGeometry ?? {}) }}><span>Target {targetPnl ?? ''}</span></div>}
+    {riskZone && <div class="position-zone risk" style={{ ...riskZone, ...(zoneGeometry ?? {}) }}><span>Risk {riskPnl ?? ''}</span></div>}
     <div class={`position-level entry ${side}`} style={{ top: top(entry) }}><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div>
     {takeProfit != null && <div class="position-level target" style={{ top: top(takeProfit) }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>
       <span>Take profit</span><b title={`Target price ${priceText(takeProfit)}`}>{targetPnl ?? priceText(takeProfit)}</b>
