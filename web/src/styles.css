@@ -5695,4 +5695,9 @@ button.activity-row {
   .mom-trade-chart { height: clamp(410px, 64vh, 640px) !important; min-height: 410px !important; }
   .gold-trade-chart-canvas, .mom-price-chart-canvas { width: calc(100% - 174px); }
   .gold-trade-chart-canvas { margin-right: 174px; }
+  /* Trade needs immediate access to the chart. Keep the brand heading for
+     Research and Ledger, where it establishes page context. */
+  .mom-page-header.trade-mode, .gold-page-header.trade-mode { min-height: 36px; align-items: center; justify-content: flex-end; padding: 0 0 7px; }
+  .mom-page-header.trade-mode .mom-page-heading, .gold-page-header.trade-mode > div:first-child { display: none; }
+  .mom-page-header.trade-mode .mom-tabs, .gold-page-header.trade-mode .gold-tabs { margin-left: auto; }
 }

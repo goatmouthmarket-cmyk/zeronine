@@ -3763,7 +3763,7 @@ function MomentumPage(): JSX.Element {
   const showPaused = stateReady && !momentum?.running && !showLaunch;
 
   return <>
-    <header class="header mom-page-header">
+    <header class={`header mom-page-header${activeTab === 'trade' ? ' trade-mode' : ''}`}>
       <div class="mom-page-heading">
       <img class="mom-brand-logo" src="/multiplier-logo.png" alt="Multiplier" />
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
@@ -4943,7 +4943,7 @@ function GoldPage(): JSX.Element {
   }, [store.owner]);
 
   return <section class="gold-page" aria-label="Gold workspace">
-    <header class="header gold-page-header">
+    <header class={`header gold-page-header${tab === 'trade' ? ' trade-mode' : ''}`}>
       <div>
         <img class="gold-brand-logo" src="/gold-logo.png" alt="Gold" />
         <div class="subtitle">Active market watch · Deriv Gold contracts · guarded execution</div>
