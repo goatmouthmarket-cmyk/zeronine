@@ -3580,6 +3580,15 @@ function MomentumTradeDesk({
           stake: stakeText,
           onStakeChange: setStakeText,
           stakeDisabled: busy || openMomentumTrades.length >= 2,
+          multiplier: multiplierText,
+          multiplierOptions,
+          onMultiplierChange: (value) => { manualMultiplierRef.current = true; setMultiplierText(value); },
+          multiplierDisabled: busy || openMomentumTrades.length >= 2,
+          onPlaceLong: () => void place('up'),
+          onPlaceShort: () => void place('down'),
+          longActionDisabled: !canPlace || suggestedDirection !== 'up' || busy,
+          shortActionDisabled: !canPlace || suggestedDirection !== 'down' || busy,
+          placingSide: busy ? direction === 'up' ? 'long' : 'short' : null,
         } : null} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
@@ -6019,6 +6028,15 @@ const modelWeights = [
               stake: stakeText,
               onStakeChange: setStakeText,
               stakeDisabled: busy || Boolean(openAnyTrade),
+              multiplier: multiplierText,
+              multiplierOptions,
+              onMultiplierChange: (value) => { manualMultiplierRef.current = true; setMultiplierText(value); },
+              multiplierDisabled: busy || Boolean(openAnyTrade),
+              onPlaceLong: () => void place('BUY'),
+              onPlaceShort: () => void place('SELL'),
+              longActionDisabled: !canPlace,
+              shortActionDisabled: !canPlace,
+              placingSide: busy ? side === 'BUY' ? 'long' : 'short' : null,
             } : null}
           />
         </div>

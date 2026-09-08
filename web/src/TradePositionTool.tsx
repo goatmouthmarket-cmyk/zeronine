@@ -19,6 +19,15 @@ export interface TradePositionToolProps {
   stake?: string;
   onStakeChange?: (value: string) => void;
   stakeDisabled?: boolean;
+  multiplier?: string;
+  multiplierOptions?: number[];
+  onMultiplierChange?: (value: string) => void;
+  multiplierDisabled?: boolean;
+  onPlaceLong?: () => void;
+  onPlaceShort?: () => void;
+  longActionDisabled?: boolean;
+  shortActionDisabled?: boolean;
+  placingSide?: 'long' | 'short' | null;
 }
 
 function priceText(value: number): string {
@@ -48,6 +57,15 @@ export function TradePositionTool({
   stake,
   onStakeChange,
   stakeDisabled = false,
+  multiplier,
+  multiplierOptions,
+  onMultiplierChange,
+  multiplierDisabled = false,
+  onPlaceLong,
+  onPlaceShort,
+  longActionDisabled = false,
+  shortActionDisabled = false,
+  placingSide,
 }: TradePositionToolProps): JSX.Element | null {
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -110,6 +128,11 @@ export function TradePositionTool({
         <button type="button" class={side === 'short' ? 'active short' : ''} onClick={() => onSideChange('short')}>Short</button>
       </div>}
       {onStakeChange && <label class="position-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stake ?? ''} disabled={stakeDisabled} onInput={(event) => onStakeChange(event.currentTarget.value)} /></label>}
+      {onMultiplierChange && multiplierOptions && <label class="position-stake"><span>Multiplier</span><select value={multiplier ?? ''} disabled={multiplierDisabled} onChange={(event) => onMultiplierChange(event.currentTarget.value)}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}</option>)}</select></label>}
+      {(onPlaceLong || onPlaceShort) && <div class="position-place-actions">
+        {onPlaceLong && <button class="long" type="button" disabled={longActionDisabled} onClick={onPlaceLong}>{placingSide === 'long' ? 'Buying…' : 'Buy'}</button>}
+        {onPlaceShort && <button class="short" type="button" disabled={shortActionDisabled} onClick={onPlaceShort}>{placingSide === 'short' ? 'Selling…' : 'Sell'}</button>}
+      </div>}
       {onClose && <button class="position-close" type="button" disabled={closeDisabled} onClick={onClose}>× Close / cash out</button>}
     </div>
     <div class="position-tool-note">{editable ? 'Drag TP / SL lines to plan this order' : onClose ? 'Live contract levels' : 'Levels lock after order submission'}</div>

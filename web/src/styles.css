@@ -802,11 +802,11 @@ button {
 /* TradingView-style long/short planner. The zones are a tactile order setup
    overlay and the thin underlying series remains fully visible. */
 .position-tool { position: absolute; inset: 0; z-index: 3; pointer-events: none; font-variant-numeric: tabular-nums; }
-.position-zone { position: absolute; left: 0; right: 166px; min-height: 5px; border-left: 2px solid; border-right: 1px solid; opacity: .48; }
+.position-zone { position: absolute; left: 0; right: 174px; min-height: 5px; border-left: 2px solid; border-right: 1px solid; opacity: .48; }
 .position-zone.profit { border-color: rgba(34,197,94,.9); background: linear-gradient(90deg, rgba(34,197,94,.24), rgba(34,197,94,.055)); }
 .position-zone.risk { border-color: rgba(255,82,99,.92); background: linear-gradient(90deg, rgba(255,82,99,.25), rgba(255,82,99,.055)); }
 .position-zone span { position: absolute; left: 8px; top: 4px; color: rgba(236,250,242,.78); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
-.position-level { position: absolute; left: 0; right: 166px; display: flex; align-items: center; gap: 6px; height: 0; border-top: 1px dashed; transform: translateY(-1px); }
+.position-level { position: absolute; left: 0; right: 174px; display: flex; align-items: center; gap: 6px; height: 0; border-top: 1px dashed; transform: translateY(-1px); }
 .position-level > span, .position-level > b { position: relative; top: -10px; padding: 3px 5px; border-radius: 3px; background: rgba(8,10,15,.83); font-size: 8px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
 .position-level > b { margin-left: auto; letter-spacing: 0; }
 .position-level.entry { border-color: rgba(244,201,107,.92); }.position-level.entry.long { border-color: rgba(34,197,94,.95); }.position-level.entry > span { color: #f4c96b; }.position-level.entry.long > span { color: #75e8bd; }
@@ -814,13 +814,14 @@ button {
 .position-level.stop { border-color: rgba(255,82,99,.95); }.position-level.stop > span, .position-level.stop > b { color: #ff8290; }
 .position-level.current { border-color: rgba(147,105,255,.9); }.position-level.current > span, .position-level.current > b { color: #b79bff; }
 .position-level button { position: relative; z-index: 1; top: -12px; width: 22px; height: 22px; padding: 0; border: 1px solid currentColor; border-radius: 4px; color: inherit; background: rgba(10,12,18,.94); font: inherit; font-size: 13px; line-height: 1; cursor: ns-resize; pointer-events: auto; touch-action: none; }
-.position-tool-controls { position: absolute; z-index: 5; top: 8px; right: 7px; display: grid; width: 150px; gap: 5px; justify-items: stretch; padding: 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: rgba(8,10,15,.88); box-shadow: 0 8px 22px rgba(0,0,0,.22); pointer-events: auto; }
+.position-tool-controls { position: absolute; z-index: 5; top: 8px; right: 7px; display: grid; width: 158px; gap: 5px; justify-items: stretch; padding: 7px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: rgba(8,10,15,.92); box-shadow: 0 8px 22px rgba(0,0,0,.28); pointer-events: auto; }
 .position-side-switch { display: inline-grid; grid-template-columns: 1fr 1fr; overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 4px; background: rgba(8,10,15,.9); }
 .position-side-switch button, .position-close { height: 25px; border: 0; color: var(--muted); background: transparent; font: inherit; font-size: 8px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
 .position-side-switch button { min-width: 44px; }.position-side-switch button.active.long { color: #06140f; background: #75e8bd; }.position-side-switch button.active.short { color: #fff; background: var(--red); }
-.position-stake { display: grid; grid-template-columns: 1fr 72px; align-items: center; gap: 5px; color: var(--muted-2); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }.position-stake input { width: 100%; height: 25px; box-sizing: border-box; padding: 0 6px; border: 1px solid rgba(255,255,255,.16); border-radius: 3px; color: var(--text); background: rgba(255,255,255,.045); font: inherit; font-size: 10px; font-variant-numeric: tabular-nums; outline: none; }.position-stake input:focus { border-color: rgba(117,232,189,.7); }.position-stake input:disabled { opacity: .5; }
+.position-stake { display: grid; grid-template-columns: 1fr 78px; align-items: center; gap: 5px; color: var(--muted-2); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }.position-stake input, .position-stake select { width: 100%; height: 26px; box-sizing: border-box; padding: 0 6px; border: 1px solid rgba(255,255,255,.16); border-radius: 3px; color: var(--text); background: rgba(255,255,255,.045); font: inherit; font-size: 10px; font-variant-numeric: tabular-nums; outline: none; }.position-stake select { color-scheme: dark; cursor: pointer; }.position-stake input:focus, .position-stake select:focus { border-color: rgba(117,232,189,.7); }.position-stake input:disabled, .position-stake select:disabled { opacity: .5; }
+.position-place-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }.position-place-actions button { height: 30px; border: 0; border-radius: 3px; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }.position-place-actions .long { color: #06140f; background: #75e8bd; }.position-place-actions .short { color: #fff; background: var(--red); }.position-place-actions button:hover:not(:disabled) { filter: brightness(1.08); }.position-place-actions button:disabled { cursor: not-allowed; opacity: .48; }
 .position-close { padding: 0 8px; border: 1px solid rgba(255,82,99,.72); border-radius: 4px; color: #ff9ba5; background: rgba(31,11,15,.92); }.position-close:hover:not(:disabled) { color: #fff; background: rgba(255,82,99,.85); }.position-close:disabled { cursor: wait; opacity: .52; }
-.position-tool-note { position: absolute; right: 170px; bottom: 4px; padding: 3px 5px; border-radius: 3px; color: rgba(219,235,255,.52); background: rgba(8,10,15,.72); font-size: 8px; font-weight: 750; letter-spacing: .04em; pointer-events: none; }
+.position-tool-note { position: absolute; right: 174px; bottom: 4px; padding: 3px 5px; border-radius: 3px; color: rgba(219,235,255,.52); background: rgba(8,10,15,.72); font-size: 8px; font-weight: 750; letter-spacing: .04em; pointer-events: none; }
 .position-tool.editable .position-level.target, .position-tool.editable .position-level.stop { pointer-events: auto; }
 .position-tool.dragging { cursor: ns-resize; }
 .gold-chart-tools { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }.gold-chart-tools button { width: 34px; height: 22px; border: 1px solid rgba(244,201,107,.24); border-radius: 3px; color: #f4c96b; background: transparent; font: inherit; font-size: 8px; font-weight: 900; cursor: pointer; }.gold-chart-tools button.active { color: #191206; background: #f4c96b; border-color: #f4c96b; }.gold-chart-tools span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1169,14 +1170,12 @@ button {
 
 /* Desktop execution frame: one useful screen, not a stretched presentation. */
 @media (min-width: 701px) {
-  .gold-trade-head, .mom-trade-head { min-height: 84px; padding-top: 12px; padding-bottom: 12px; }
-  .gold-trade-live { min-height: clamp(230px, 36vh, 330px); }
-  .gold-trade-chart-wrap { min-height: clamp(230px, 36vh, 330px); padding-block: 10px; }
-  .mom-trade-live { min-height: clamp(230px, 36vh, 330px); }
-  .mom-trade-chart { height: clamp(230px, 36vh, 330px); min-height: 230px; padding-block: 10px; }
-  .gold-trade-order, .gold-trade-order.gold-deriv-order, .mom-trade-order { gap: 9px; padding-top: 10px; padding-bottom: 10px; }
-  .gold-trade-order.gold-deriv-order { grid-template-columns: max-content 112px 104px 104px minmax(128px, .8fr) minmax(185px, 1.1fr) minmax(105px, .65fr); }
-  .gold-trade-order.gold-deriv-order .gold-trade-direction button { min-width: 64px; }
+  .gold-trade-head, .mom-trade-head { display: none; }
+  .gold-trade-live { min-height: clamp(390px, 62vh, 610px); }
+  .gold-trade-chart-wrap { min-height: clamp(390px, 62vh, 610px); padding-block: 9px; }
+  .mom-trade-live { min-height: clamp(390px, 62vh, 610px); }
+  .mom-trade-chart { height: clamp(390px, 62vh, 610px); min-height: 390px; padding-block: 9px; }
+  .gold-trade-order.gold-deriv-order, .mom-trade-order { display: none; }
 }
 .mom-trade-readout { display: grid; align-content: center; min-width: 0; padding: 18px; border-right: 1px solid var(--border); }.mom-trade-readout:last-child { border-right: 0; }
 .mom-trade-panel { align-content: start; gap: 6px; border-right: 0; background: linear-gradient(180deg, rgba(117,232,189,.035), rgba(255,255,255,.012)); animation: mom-panel-in .24s ease-out both; }
