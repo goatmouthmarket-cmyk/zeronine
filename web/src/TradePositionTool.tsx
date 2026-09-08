@@ -82,7 +82,10 @@ export function TradePositionTool({
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const range = useMemo(() => {
-    const valid = [...values, entry, takeProfit, stopLoss, currentPrice].filter((value): value is number => Number.isFinite(value));
+    // Keep the price mapping tied to what the candles are actually doing.
+    // A monetary TP/SL can be far from the market; letting it define the
+    // viewport flattens the live candles into a misleading straight line.
+    const valid = [...values, entry, currentPrice].filter((value): value is number => Number.isFinite(value));
     if (!valid.length) return null;
     const min = Math.min(...valid);
     const max = Math.max(...valid);

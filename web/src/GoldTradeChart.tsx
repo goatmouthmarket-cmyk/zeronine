@@ -84,15 +84,6 @@ export function GoldTradeChart({
       close: Number(quote!.mid),
     }];
   }, [candles, quote?.mid]);
-  const overlayRange = useMemo(() => {
-    if (!positionTool) return null;
-    const values = [...data.flatMap((candle) => [candle.high, candle.low]), positionTool.entry, positionTool.takeProfit, positionTool.stopLoss, positionTool.currentPrice]
-      .filter((value): value is number => Number.isFinite(value));
-    if (!values.length) return null;
-    const low = Math.min(...values); const high = Math.max(...values);
-    const padding = Math.max((high - low) * .14, Math.abs(positionTool.entry) * .00012, .00001);
-    return { low: low - padding, high: high + padding };
-  }, [data, positionTool]);
   const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.close ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
   const lastPrice = quote?.mid ?? data.at(-1)?.close ?? null;
   const high = data.length ? Math.max(...data.map((point) => point.high)) : null;
@@ -220,9 +211,9 @@ export function GoldTradeChart({
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
-    series.priceScale().applyOptions({ scaleMargins: overlayRange ? { top: 0, bottom: 0 } : { top: .1, bottom: .14 } });
-    series.applyOptions({ autoscaleInfoProvider: overlayRange ? () => ({ priceRange: { minValue: overlayRange.low, maxValue: overlayRange.high } }) : undefined });
-  }, [overlayRange]);
+    series.priceScale().applyOptions({ scaleMargins: { top: .1, bottom: .14 } });
+    series.applyOptions({ autoscaleInfoProvider: undefined });
+  }, [data]);
 
   useEffect(() => {
     const series = seriesRef.current;
