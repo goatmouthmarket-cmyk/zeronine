@@ -22,7 +22,8 @@ const MAX_SCAN_SAMPLES = 16;
 // Preserve enough of the five-minute focus window for the chart to show
 // structure, not merely the last few ticks. Scan previews stay deliberately
 // small; only the chosen Momentum market carries this wider history.
-const MAX_FOCUS_SAMPLES = 600;
+// Retain enough real ticks for the expanded 15-minute Momentum context.
+const MAX_FOCUS_SAMPLES = 1_800;
 const UI_EMIT_INTERVAL_MS = 250;
 const MIN_FALLBACK_SCAN_SECONDS = 15;
 const RECONNECT_BASE_MS = 1_000;

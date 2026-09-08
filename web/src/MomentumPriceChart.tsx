@@ -30,7 +30,7 @@ function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Ti
   let previousTime = 0;
   const ticks = samples
     .filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote))
-    .slice(compact ? -72 : -600);
+    .slice(compact ? -72 : -1_800);
   const points: LineData<Time>[] = [];
   for (const tick of ticks) {
     // Momentum is a quote stream, not a candle feed. Preserve every live
@@ -166,7 +166,7 @@ export function MomentumPriceChart({
           visible: tradeView,
           borderVisible: false,
           fixLeftEdge: true,
-          fixRightEdge: true,
+          fixRightEdge: false,
           // Keep room ahead of the live quote for the next movement and the
           // position planning tool instead of pinning it to the price axis.
           rightOffset: tradeView ? 14 : 0,
@@ -251,12 +251,14 @@ export function MomentumPriceChart({
     if (points.length > 1) {
       if (!fittedRef.current) {
         const last = points.length - 1;
-        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - 120), to: last + 14 });
+        // Momentum is a tick stream. Start with a wide 15-minute-style
+        // context rather than magnifying a handful of recent updates.
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - 900), to: last + 14 });
         fittedRef.current = true;
       } else {
         const last = points.length - 1;
         const visible = chart.timeScale().getVisibleLogicalRange();
-        const span = Math.max(24, (visible?.to ?? last) - (visible?.from ?? Math.max(0, last - 120)));
+        const span = Math.max(96, (visible?.to ?? last) - (visible?.from ?? Math.max(0, last - 900)));
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - Math.max(10, span - 14)), to: last + 14 });
       }
     } else {

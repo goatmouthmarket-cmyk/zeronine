@@ -111,7 +111,9 @@ export function GoldTradeChart({
         visible: true,
         borderVisible: false,
         fixLeftEdge: true,
-        fixRightEdge: true,
+        // A locked right edge cancels rightOffset; leave it free so the
+        // planned future area is actually visible.
+        fixRightEdge: false,
         // Reserve future chart space so the active candle and planning tool
         // never sit against the price scale at the right edge.
         rightOffset: 14,
