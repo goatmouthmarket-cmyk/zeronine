@@ -3571,7 +3571,12 @@ function MomentumTradeDesk({
         <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} positionTool={plannerEntry != null ? {
           side: plannerSide === 'down' ? 'short' : 'long', entry: plannerEntry, takeProfit: plannerTargetPrice, stopLoss: plannerStopPrice,
           targetPnl: fmtSigned(plannerTargetAmount, session?.currency ?? 'USD'), riskPnl: fmtSigned(-plannerRiskAmount, session?.currency ?? 'USD'),
+          currentPrice: contractCurrentSpot ?? chartSamples.at(-1)?.quote,
+          currentPnl: displayContractPnl == null ? undefined : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD'),
           editable: !hasActiveTradeEntry && !busy, onLevelChange: updatePlannerLimit,
+          onSideChange: (nextSide) => setDirection(nextSide === 'long' ? 'up' : 'down'),
+          onClose: closableMomentumTrade ? () => void closeOpenTrade() : undefined,
+          closeDisabled: !canClose,
         } : null} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
@@ -5509,6 +5514,8 @@ function GoldResearchWorkspace({
       </div>
     </div>
 
+    <GoldSentimentPanel state={state} />
+
     <section class="mom-pnl gold-pnl" aria-label="Gold virtual paper profit and loss">
       <div><span>Virtual balance</span><strong>{fmtMoney(paper?.balance ?? 10_000, paper?.currency ?? 'USD')}</strong></div>
       <div><span>Open paper P&amp;L</span><strong class={(paper?.unrealizedPnl ?? 0) >= 0 ? 'up' : 'down'}>{fmtSigned(paper?.unrealizedPnl ?? 0, paper?.currency ?? 'USD')}</strong></div>
@@ -6001,7 +6008,12 @@ const modelWeights = [
             positionTool={goldPlannerEntry != null ? {
               side: goldPlannerSide === 'SELL' ? 'short' : 'long', entry: goldPlannerEntry, takeProfit: goldPlannerTargetPrice, stopLoss: goldPlannerStopPrice,
               targetPnl: fmtSigned(goldPlannerTargetAmount, currency), riskPnl: fmtSigned(-goldPlannerRiskAmount, currency),
+              currentPrice: quote?.mid,
+              currentPnl: contractPnl == null ? undefined : fmtSigned(contractPnl, currency),
               editable: !activeTrade && !busy && !marketClosed, onLevelChange: updateGoldPlannerLimit,
+              onSideChange: (nextSide) => setSide(nextSide === 'long' ? 'BUY' : 'SELL'),
+              onClose: activeTrade ? () => void close(activeTrade) : undefined,
+              closeDisabled: !activeTrade || !owner || !demoConnected || !trackedContractId || Boolean(closingContractId) || matchingContract?.isValidToSell === false,
             } : null}
           />
         </div>
@@ -6076,8 +6088,6 @@ const modelWeights = [
         </div>
         <span class="gold-trade-action-note">{actionNote}</span>
       </div>
-
-      <GoldSentimentPanel state={state} />
 
       {signal && <div class="gold-trade-note">{signal.reasons.length ? signal.reasons.join(' · ') : signal.blockers.join(' · ') || 'Gold research is waiting for stronger evidence.'}</div>}
       {(purchase || openGoldTrades.length > 0) && <div class="gold-trade-note">{openGoldTrades.length > 1 ? `${openGoldTrades.length} Deriv Gold contracts are tracked against this account balance.` : `Deriv contract ${trackedContractId || 'submitted'} is tracked against this account balance.`}</div>}

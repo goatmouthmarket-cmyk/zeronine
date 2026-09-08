@@ -9,8 +9,13 @@ export interface TradePositionToolProps {
   values: number[];
   targetPnl?: string;
   riskPnl?: string;
+  currentPrice?: number | null;
+  currentPnl?: string;
   editable?: boolean;
   onLevelChange?: (kind: 'takeProfit' | 'stopLoss', price: number) => void;
+  onSideChange?: (side: 'long' | 'short') => void;
+  onClose?: () => void;
+  closeDisabled?: boolean;
 }
 
 function priceText(value: number): string {
@@ -30,8 +35,13 @@ export function TradePositionTool({
   values,
   targetPnl,
   riskPnl,
+  currentPrice,
+  currentPnl,
   editable = false,
   onLevelChange,
+  onSideChange,
+  onClose,
+  closeDisabled = false,
 }: TradePositionToolProps): JSX.Element | null {
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -85,6 +95,16 @@ export function TradePositionTool({
       <span>Stop loss</span><b>{priceText(stopLoss)}</b>
       {editable && <button type="button" aria-label="Drag stop-loss level" onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
-    <div class="position-tool-note">{editable ? 'Drag TP / SL lines to plan this order' : 'Levels locked after order submission'}</div>
+    {currentPrice != null && Number.isFinite(currentPrice) && <div class="position-level current" style={{ top: top(currentPrice) }}>
+      <span>Live</span><b>{priceText(currentPrice)}{currentPnl ? ` · ${currentPnl}` : ''}</b>
+    </div>}
+    <div class="position-tool-controls">
+      {onSideChange && <div class="position-side-switch" aria-label="Position direction">
+        <button type="button" class={side === 'long' ? 'active long' : ''} onClick={() => onSideChange('long')}>Long</button>
+        <button type="button" class={side === 'short' ? 'active short' : ''} onClick={() => onSideChange('short')}>Short</button>
+      </div>}
+      {onClose && <button class="position-close" type="button" disabled={closeDisabled} onClick={onClose}>× Close / cash out</button>}
+    </div>
+    <div class="position-tool-note">{editable ? 'Drag TP / SL lines to plan this order' : onClose ? 'Live contract levels' : 'Levels lock after order submission'}</div>
   </div>;
 }
