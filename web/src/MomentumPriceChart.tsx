@@ -73,6 +73,15 @@ export function MomentumPriceChart({
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const entryLineRef = useRef<IPriceLine | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
+  const overlayRange = useMemo(() => {
+    if (!positionTool) return null;
+    const values = [...points.flatMap((point) => [point.high, point.low]), positionTool.entry, positionTool.takeProfit, positionTool.stopLoss, positionTool.currentPrice]
+      .filter((value): value is number => Number.isFinite(value));
+    if (!values.length) return null;
+    const low = Math.min(...values); const high = Math.max(...values);
+    const padding = Math.max((high - low) * .14, Math.abs(positionTool.entry) * .00012, .00001);
+    return { low: low - padding, high: high + padding };
+  }, [points, positionTool]);
   const pointsRef = useRef<CandlestickData<Time>[]>(points);
   const fittedRef = useRef(false);
   const hasEntry = !compact && !positionTool && Number.isFinite(entryPrice);
@@ -228,8 +237,11 @@ export function MomentumPriceChart({
     // themselves. Include the entry only while it is near the current move.
     // A far-away entry is shown as an out-of-view marker so live movement
     // stays readable instead of collapsing into a flat line.
+    series.priceScale().applyOptions({ scaleMargins: overlayRange ? { top: 0, bottom: 0 } : { top: compact ? .18 : .1, bottom: compact ? .18 : .14 } });
     series.applyOptions({
-      autoscaleInfoProvider: showEntryLine && entryPrice != null
+      autoscaleInfoProvider: overlayRange
+        ? () => ({ priceRange: { minValue: overlayRange.low, maxValue: overlayRange.high } })
+        : showEntryLine && entryPrice != null
         ? (baseImplementation: () => AutoscaleInfo | null) => {
           const base = baseImplementation();
           if (!base?.priceRange) return { priceRange: { minValue: entryPrice, maxValue: entryPrice } };
@@ -243,7 +255,7 @@ export function MomentumPriceChart({
         }
         : undefined,
     });
-  }, [entryPrice, showEntryLine]);
+  }, [compact, entryPrice, overlayRange, showEntryLine]);
 
   useEffect(() => {
     const series = seriesRef.current;
