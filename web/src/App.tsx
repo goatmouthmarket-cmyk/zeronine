@@ -3636,6 +3636,15 @@ function MomentumTradeDesk({
             side: plannerSide.toUpperCase(), stake: fmtMoney(tradeStake, purchase?.currency ?? session?.currency ?? 'USD'), multiplier: `x${tradeMultiplier || '--'}`,
             elapsed: elapsedText, cashout: liveSellPrice == null ? undefined : fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD'),
           } : null,
+          settledTrade: settledTrade ? {
+            outcome: settledTrade.status === 'won' ? 'win' : settledTrade.status === 'lost' ? 'loss' : 'flat',
+            pnl: fmtSigned(Number(settledTrade.profit ?? 0), purchase?.currency ?? session?.currency ?? 'USD'),
+            side: settledTrade.contract_type === 'MULTDOWN' ? 'SHORT' : 'LONG', stake: fmtMoney(settledTrade.stake, purchase?.currency ?? session?.currency ?? 'USD'),
+            multiplier: `x${tradeMultiplier || '--'}`,
+            entry: Number.isFinite(Number(settledTrade.entry_spot)) ? Number(settledTrade.entry_spot).toLocaleString(undefined, { maximumFractionDigits: 8 }) : undefined,
+            exit: Number.isFinite(Number(settledTrade.exit_spot)) ? Number(settledTrade.exit_spot).toLocaleString(undefined, { maximumFractionDigits: 8 }) : undefined,
+            reason: settledTrade.reason,
+          } : null,
         } : null} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
@@ -5756,7 +5765,11 @@ function GoldDerivTradeWorkspace({
     && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && multiplierWithinLiveMax && limitsValid && !busy;
   const closing = closingContractId !== null;
   const canClose = owner && demoConnected && Boolean(openGoldTrade?.contract_id) && !closing;
-  const activeTrade = openGoldTrade ?? (purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null);
+  const purchasedGoldTrade = purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null;
+  const settledGoldTrade = purchasedGoldTrade && ['won', 'lost', 'push'].includes(purchasedGoldTrade.status) ? purchasedGoldTrade : null;
+  // A settled row is a result, not an open workspace. Removing it from the
+  // active trade path immediately returns the chart tools to a fresh order.
+  const activeTrade = openGoldTrade ?? (purchasedGoldTrade && !settledGoldTrade ? purchasedGoldTrade : null);
   const trackedContractId = activeTrade?.contract_id || purchase?.contractId || purchase?.contract_id || closed?.contractId || '';
   const matchingContract = trackedContractId
     ? contracts[trackedContractId] ?? (contract?.contractId === trackedContractId ? contract : null)
@@ -6141,6 +6154,15 @@ const modelWeights = [
                 pnl: contractPnl == null ? 'Updating' : fmtSigned(contractPnl, currency), side: contractSide ?? side,
                 stake: fmtMoney(contractStake, currency), multiplier: `x${contractMultiplier}`, elapsed: contractElapsed,
                 cashout: liveSellPrice == null ? undefined : fmtMoney(liveSellPrice, currency),
+              } : null,
+              settledTrade: settledGoldTrade ? {
+                outcome: settledGoldTrade.status === 'won' ? 'win' : settledGoldTrade.status === 'lost' ? 'loss' : 'flat',
+                pnl: fmtSigned(Number(settledGoldTrade.profit ?? 0), currency),
+                side: settledGoldTrade.contract_type === 'MULTDOWN' ? 'SHORT' : 'LONG', stake: fmtMoney(settledGoldTrade.stake, currency),
+                multiplier: `x${contractMultiplier}`,
+                entry: Number.isFinite(Number(settledGoldTrade.entry_spot)) ? goldPrice(Number(settledGoldTrade.entry_spot), digits) : undefined,
+                exit: Number.isFinite(Number(settledGoldTrade.exit_spot)) ? goldPrice(Number(settledGoldTrade.exit_spot), digits) : undefined,
+                reason: settledGoldTrade.reason,
               } : null,
             } : null}
           />

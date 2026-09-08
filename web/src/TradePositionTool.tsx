@@ -40,6 +40,16 @@ export interface TradePositionToolProps {
     elapsed: string;
     cashout?: string;
   } | null;
+  settledTrade?: {
+    outcome: 'win' | 'loss' | 'flat';
+    pnl: string;
+    side: string;
+    stake: string;
+    multiplier: string;
+    entry?: string;
+    exit?: string;
+    reason?: string;
+  } | null;
 }
 
 function priceText(value: number): string {
@@ -81,6 +91,7 @@ export function TradePositionTool({
   shortActionDisabled = false,
   placingSide,
   liveTrade,
+  settledTrade,
 }: TradePositionToolProps): JSX.Element | null {
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
   const [resizingZone, setResizingZone] = useState(false);
@@ -213,6 +224,11 @@ export function TradePositionTool({
         <div><span>Side <b>{liveTrade.side}</b></span><span>Elapsed <b>{liveTrade.elapsed}</b></span></div>
         <div><span>Stake <b>{liveTrade.stake}</b></span><span>Multiplier <b>{liveTrade.multiplier}</b></span></div>
         {liveTrade.cashout && <small>Cash-out {liveTrade.cashout}</small>}
+      </section>}
+      {settledTrade && <section class={`position-result-card ${settledTrade.outcome}`} aria-live="polite" aria-label={`Closed contract: ${settledTrade.outcome}`}>
+        <div><span>{settledTrade.outcome === 'win' ? 'Trade won' : settledTrade.outcome === 'loss' ? 'Trade closed at loss' : 'Trade closed'}</span><strong>{settledTrade.pnl}</strong></div>
+        <small>Hover for contract details</small>
+        <div class="position-result-details"><span>Side <b>{settledTrade.side}</b></span><span>Stake <b>{settledTrade.stake}</b></span><span>Multiplier <b>{settledTrade.multiplier}</b></span>{settledTrade.entry && <span>Entry <b>{settledTrade.entry}</b></span>}{settledTrade.exit && <span>Exit <b>{settledTrade.exit}</b></span>}{settledTrade.reason && <span class="reason"><b>{settledTrade.reason}</b></span>}</div>
       </section>}
       {onClose && <button class="position-close" type="button" disabled={closeDisabled} onClick={onClose}>× Close / cash out</button>}
     </div>
