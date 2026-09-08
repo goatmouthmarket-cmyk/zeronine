@@ -13,6 +13,7 @@ import {
 } from 'lightweight-charts';
 import type { MomentumScanSample } from './store';
 import { TradePositionTool, type TradePositionToolProps } from './TradePositionTool';
+import { calculateChartIndicators } from './chartIndicators';
 
 export interface MomentumPriceChartProps {
   samples?: MomentumScanSample[];
@@ -64,10 +65,12 @@ export function MomentumPriceChart({
   const containerRef = useRef<HTMLSpanElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const indicatorRefs = useRef<ISeriesApi<'Line'>[]>([]);
   const entryLineRef = useRef<IPriceLine | null>(null);
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
+  const indicators = useMemo(() => calculateChartIndicators(points, 21, 55, 34), [points]);
   const pointsRef = useRef<LineData<Time>[]>(points);
   const fittedRef = useRef(false);
   const hasEntry = !compact && !positionTool && Number.isFinite(entryPrice);
@@ -188,6 +191,12 @@ export function MomentumPriceChart({
         priceLineVisible: false,
         lastValueVisible: false,
       });
+      indicatorRefs.current = [
+        chart.addSeries(LineSeries, { color: 'rgba(244,201,107,.92)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+        chart.addSeries(LineSeries, { color: 'rgba(167,139,250,.88)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+        chart.addSeries(LineSeries, { color: 'rgba(117,232,189,.45)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+        chart.addSeries(LineSeries, { color: 'rgba(255,130,144,.44)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+      ];
       series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .1, bottom: compact ? .18 : .14 } });
       chartRef.current = chart;
       seriesRef.current = series;
@@ -237,6 +246,7 @@ export function MomentumPriceChart({
       chartRef.current?.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      indicatorRefs.current = [];
       entryLineRef.current = null;
       fittedRef.current = false;
     };
@@ -265,6 +275,15 @@ export function MomentumPriceChart({
       fittedRef.current = false;
     }
   }, [points]);
+
+  useEffect(() => {
+    const [fast, slow, upper, lower] = indicatorRefs.current;
+    if (!fast || !slow || !upper || !lower) return;
+    fast.setData(indicators.emaFast);
+    slow.setData(indicators.emaSlow);
+    upper.setData(indicators.bandUpper);
+    lower.setData(indicators.bandLower);
+  }, [indicators]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -324,6 +343,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
+    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="ema-fast">EMA 21</span><span class="ema-slow">EMA 55</span><span class="bands">BB 34 · 2σ</span></span>}
     {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}

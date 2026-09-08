@@ -2,16 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   ColorType,
   CandlestickSeries,
+  LineSeries,
   LineStyle,
   createChart,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
   type CandlestickData,
+  type LineData,
   type Time,
 } from 'lightweight-charts';
 import type { GoldCandleState, GoldQuoteState, GoldSide } from './store';
 import { TradePositionTool, type TradePositionToolProps } from './TradePositionTool';
+import { calculateChartIndicators } from './chartIndicators';
 
 export interface GoldTradeChartProps {
   candles?: GoldCandleState[];
@@ -64,6 +67,7 @@ export function GoldTradeChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const indicatorRefs = useRef<ISeriesApi<'Line'>[]>([]);
   const linesRef = useRef<IPriceLine[]>([]);
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
@@ -87,6 +91,8 @@ export function GoldTradeChart({
   }, [candles, quote?.mid]);
   const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.close ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
   const lastPrice = quote?.mid ?? data.at(-1)?.close ?? null;
+  const indicatorPoints = useMemo<LineData<Time>[]>(() => data.map((candle) => ({ time: candle.time, value: candle.close })), [data]);
+  const indicators = useMemo(() => calculateChartIndicators(indicatorPoints), [indicatorPoints]);
   const high = data.length ? Math.max(...data.map((point) => point.high)) : null;
   const low = data.length ? Math.min(...data.map((point) => point.low)) : null;
 
@@ -138,6 +144,12 @@ export function GoldTradeChart({
       priceLineVisible: false,
       lastValueVisible: false,
     });
+    indicatorRefs.current = [
+      chart.addSeries(LineSeries, { color: 'rgba(244,201,107,.92)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+      chart.addSeries(LineSeries, { color: 'rgba(167,139,250,.88)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+      chart.addSeries(LineSeries, { color: 'rgba(117,232,189,.45)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+      chart.addSeries(LineSeries, { color: 'rgba(255,130,144,.44)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
+    ];
     series.priceScale().applyOptions({ scaleMargins: { top: .1, bottom: .14 } });
     const trackViewport = (range: { to: number } | null) => {
       if (range) followLiveRef.current = range.to >= dataLengthRef.current - 1.5;
@@ -155,6 +167,7 @@ export function GoldTradeChart({
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      indicatorRefs.current = [];
       linesRef.current = [];
       initialViewportSetRef.current = false;
       followLiveRef.current = true;
@@ -193,6 +206,15 @@ export function GoldTradeChart({
     }
     latestCandleTimeRef.current = data.at(-1)?.time ?? null;
   }, [data]);
+
+  useEffect(() => {
+    const [fast, slow, upper, lower] = indicatorRefs.current;
+    if (!fast || !slow || !upper || !lower) return;
+    fast.setData(indicators.emaFast);
+    slow.setData(indicators.emaSlow);
+    upper.setData(indicators.bandUpper);
+    lower.setData(indicators.bandLower);
+  }, [indicators]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -277,6 +299,7 @@ export function GoldTradeChart({
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
+    <div class="chart-indicator-legend" aria-label="Chart indicators"><span class="ema-fast">EMA 13</span><span class="ema-slow">EMA 34</span><span class="bands">BB 20 · 2σ</span></div>
     {positionTool && <TradePositionTool {...positionTool} values={data.flatMap((candle) => [candle.high, candle.low])} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {lockLabel && <div class="gold-chart-lock-badge" role="status">Locked · {lockLabel}</div>}
     <div class="gold-chart-readout" aria-hidden="true">
