@@ -826,6 +826,7 @@ button {
 .position-stake { display: grid; grid-template-columns: 1fr 78px; align-items: center; gap: 5px; color: var(--muted-2); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }.position-stake input, .position-stake select { width: 100%; height: 26px; box-sizing: border-box; padding: 0 6px; border: 1px solid rgba(255,255,255,.16); border-radius: 3px; color: var(--text); background: rgba(255,255,255,.045); font: inherit; font-size: 10px; font-variant-numeric: tabular-nums; outline: none; }.position-stake select { color-scheme: dark; cursor: pointer; }.position-stake input:focus, .position-stake select:focus { border-color: rgba(117,232,189,.7); }.position-stake input:disabled, .position-stake select:disabled { opacity: .5; }
 .position-place-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }.position-place-actions button { height: 30px; border: 0; border-radius: 3px; font: inherit; font-size: 10px; font-weight: 900; cursor: pointer; }.position-place-actions .long { color: #06140f; background: #75e8bd; }.position-place-actions .short { color: #fff; background: var(--red); }.position-place-actions button:hover:not(:disabled) { filter: brightness(1.08); }.position-place-actions button:disabled { cursor: not-allowed; opacity: .48; }
 .position-live-card { display: grid; gap: 5px; padding: 8px 7px; border: 1px solid rgba(117,232,189,.24); border-radius: 4px; background: linear-gradient(145deg, rgba(117,232,189,.1), rgba(8,10,15,.78)); }.position-live-card > span, .position-live-card div span { color: var(--muted-2); font-size: 7px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }.position-live-card > strong { color: #75e8bd; font-size: 18px; font-variant-numeric: tabular-nums; line-height: 1; }.position-live-card > div { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }.position-live-card div span { display: grid; gap: 2px; }.position-live-card b { color: var(--text); font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: 0; }.position-live-card small { overflow: hidden; color: var(--muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.position-live-card.down { border-color: rgba(255,82,99,.42); background: linear-gradient(145deg, rgba(255,82,99,.14), rgba(8,10,15,.82)); }.position-live-card.down > strong { color: #ff8290; }
 .position-result-card { position: relative; display: grid; gap: 3px; padding: 8px 7px; border: 1px solid rgba(255,255,255,.16); border-radius: 4px; color: var(--muted); background: rgba(255,255,255,.035); cursor: help; }.position-result-card > div:first-child { display: flex; align-items: baseline; justify-content: space-between; gap: 7px; }.position-result-card > div:first-child span { color: var(--muted-2); font-size: 8px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }.position-result-card > div:first-child strong { font-size: 14px; font-variant-numeric: tabular-nums; }.position-result-card > small { color: var(--muted); font-size: 7px; }.position-result-card.win { border-color: rgba(117,232,189,.36); background: linear-gradient(145deg, rgba(117,232,189,.13), rgba(8,10,15,.84)); }.position-result-card.win strong { color: #75e8bd; }.position-result-card.loss { border-color: rgba(255,82,99,.4); background: linear-gradient(145deg, rgba(255,82,99,.14), rgba(8,10,15,.84)); }.position-result-card.loss strong { color: #ff7b8a; }.position-result-details { position: absolute; z-index: 8; top: calc(100% + 6px); right: 0; display: none; width: 196px; gap: 5px; padding: 9px; border: 1px solid rgba(255,255,255,.16); border-radius: 5px; background: rgba(8,10,15,.98); box-shadow: 0 12px 28px rgba(0,0,0,.42); }.position-result-card:hover .position-result-details { display: grid; }.position-result-details span { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--muted-2); font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }.position-result-details b { overflow: hidden; color: var(--text); font-size: 9px; font-variant-numeric: tabular-nums; letter-spacing: 0; text-align: right; text-overflow: ellipsis; white-space: nowrap; }.position-result-details .reason { display: block; padding-top: 4px; border-top: 1px solid rgba(255,255,255,.08); }.position-result-details .reason b { display: block; color: var(--muted); font-size: 8px; line-height: 1.35; text-align: left; white-space: normal; text-transform: none; }
 .position-close { padding: 0 8px; border: 1px solid rgba(255,82,99,.72); border-radius: 4px; color: #ff9ba5; background: rgba(31,11,15,.92); }.position-close:hover:not(:disabled) { color: #fff; background: rgba(255,82,99,.85); }.position-close:disabled { cursor: wait; opacity: .52; }
 .position-tool-note { position: absolute; right: 174px; bottom: 4px; padding: 3px 5px; border-radius: 3px; color: rgba(219,235,255,.52); background: rgba(8,10,15,.72); font-size: 8px; font-weight: 750; letter-spacing: .04em; pointer-events: none; }
@@ -5805,4 +5806,32 @@ button.activity-row {
   .position-stake { grid-template-columns: 1fr 48px; }
   .position-level { right: 108px; }
   .chart-indicator-legend { right: 113px; }
+}
+
+/* Desktop trade desks retain one concise read on the early forecast above the
+   chart. The chart remains dominant; this is context, not a second panel. */
+@media (min-width: 701px) {
+  .gold-trade-desk > .gold-trade-head,
+  .mom-trade-desk > .mom-trade-head {
+    display: flex !important;
+    min-height: 42px;
+    padding: 5px 8px 5px 2px;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+  }
+  .gold-trade-desk > .gold-trade-head > div:first-child,
+  .mom-trade-desk > .mom-trade-head > div:first-child { display: none; }
+  .gold-trade-desk > .gold-trade-head,
+  .mom-trade-desk > .mom-trade-head { justify-content: flex-end; }
+  .gold-trade-badges,
+  .mom-trade-badges { gap: 0; }
+  .gold-trade-suggestion {
+    min-width: 220px;
+    min-height: 32px;
+    padding: 3px 0 3px 10px;
+  }
+  .gold-trade-suggestion > svg { width: 15px; height: 15px; }
+  .gold-trade-suggestion strong { font-size: 13px; }
+  .gold-trade-suggestion em { margin-top: 2px; font-size: 7px; }
+  .mom-trade-suggestion { min-height: 32px; }
+  .mom-trade-suggestion strong { font-size: 11px; }
 }

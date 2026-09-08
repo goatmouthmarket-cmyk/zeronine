@@ -36,6 +36,7 @@ export interface TradePositionToolProps {
   placingSide?: 'long' | 'short' | null;
   liveTrade?: {
     pnl: string;
+    pnlTone?: 'up' | 'down';
     side: string;
     stake: string;
     multiplier: string;
@@ -276,7 +277,7 @@ export function TradePositionTool({
         {onPlaceLong && <button class="long" type="button" disabled={longActionDisabled} onClick={onPlaceLong}>{placingSide === 'long' ? 'Buying…' : 'Buy'}</button>}
         {onPlaceShort && <button class="short" type="button" disabled={shortActionDisabled} onClick={onPlaceShort}>{placingSide === 'short' ? 'Selling…' : 'Sell'}</button>}
       </div>}
-      {liveTrade && <section class="position-live-card" aria-live="polite" aria-label="Live contract details">
+      {liveTrade && <section class={`position-live-card${liveTrade.pnlTone === 'down' ? ' down' : ''}`} aria-live="polite" aria-label="Live contract details">
         <span>Live contract P&amp;L</span>
         <strong>{liveTrade.pnl}</strong>
         <div><span>Side <b>{liveTrade.side}</b></span><span>Elapsed <b>{liveTrade.elapsed}</b></span></div>

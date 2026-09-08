@@ -3602,7 +3602,7 @@ function MomentumTradeDesk({
       <div class="mom-trade-badges">
         <span class={`mom-trade-suggestion ${suggestionTone}`} title={suggestedReason ?? undefined}>
           <Icon name={suggestedDirection === 'down' ? 'arrowDown' : suggestedDirection === 'up' ? 'arrowUp' : 'history'} size={13} />
-          <span>Suggested side</span>
+          <span>Early forecast</span>
           <strong>{suggestionText}</strong>
         </span>
       </div>
@@ -3634,6 +3634,7 @@ function MomentumTradeDesk({
           placingSide: busy ? direction === 'up' ? 'long' : 'short' : null,
           liveTrade: closableMomentumTrade ? {
             pnl: displayContractPnl == null ? 'Updating' : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD'),
+            pnlTone: displayContractPnl != null && displayContractPnl < 0 ? 'down' : 'up',
             side: plannerSide.toUpperCase(), stake: fmtMoney(tradeStake, purchase?.currency ?? session?.currency ?? 'USD'), multiplier: `x${tradeMultiplier || '--'}`,
             elapsed: elapsedText, cashout: liveSellPrice == null ? undefined : fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD'),
           } : null,
@@ -6154,6 +6155,7 @@ const modelWeights = [
               placingSide: busy ? side === 'BUY' ? 'long' : 'short' : null,
               liveTrade: activeTrade ? {
                 pnl: contractPnl == null ? 'Updating' : fmtSigned(contractPnl, currency), side: contractSide ?? side,
+                pnlTone: contractPnl != null && contractPnl < 0 ? 'down' : 'up',
                 stake: fmtMoney(contractStake, currency), multiplier: `x${contractMultiplier}`, elapsed: contractElapsed,
                 cashout: liveSellPrice == null ? undefined : fmtMoney(liveSellPrice, currency),
               } : null,
