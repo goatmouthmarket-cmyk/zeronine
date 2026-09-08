@@ -144,7 +144,9 @@ export function TradePositionTool({
     // Fine relative drag: a pointer grab never jumps the level to the cursor,
     // and one full chart-height sweep changes only a modest part of its range.
     const delta = event.clientY - origin.y;
-    const sensitivity = .16;
+    // Deliberately responsive, while still avoiding the old jump-to-cursor
+    // behavior. A short drag now makes a meaningful risk adjustment.
+    const sensitivity = .55;
     const next = origin.price - delta * (span / Math.max(1, rect.height)) * sensitivity;
     onLevelChange(kind, Math.max(range.low, Math.min(range.high, next)));
   };
