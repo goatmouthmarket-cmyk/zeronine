@@ -7,7 +7,7 @@ export interface TradePositionToolProps {
   takeProfit?: number | null;
   stopLoss?: number | null;
   values: number[];
-  /** Pixel geometry from the chart's live time scale: last five candles. */
+  /** Pixel geometry from the chart's live time scale, right-anchored to the latest bar. */
   zoneGeometry?: { left: number; width: number } | null;
   /** Stable per-market key used to remember a manually resized trade zone. */
   layoutStorageKey?: string;
@@ -146,8 +146,8 @@ export function TradePositionTool({
     const first = Math.min(a, b); const last = Math.max(a, b);
     return { top: top(last), height: `${Math.max(1.5, ((last - first) / span) * 100)}%` };
   };
-  // Store geometry as ratios rather than pixels. That preserves the trader's
-  // chosen width and anchor when the page, chart scale, or display changes.
+  // Store geometry as a ratio rather than pixels. The width is remembered,
+  // but the zone's right edge always belongs to the newest live candle/tick.
   useEffect(() => {
     if (!layoutStorageKey || restoredLayoutKeyRef.current === layoutStorageKey) return;
     const surfaceWidth = surfaceRef.current?.clientWidth ?? 0;
@@ -156,11 +156,11 @@ export function TradePositionTool({
     zoneManuallySizedRef.current = false;
     try {
       const saved = JSON.parse(localStorage.getItem(`zeronine:position-zone:${layoutStorageKey}`) ?? 'null') as { leftRatio?: unknown; widthRatio?: unknown } | null;
-      const leftRatio = Number(saved?.leftRatio);
       const widthRatio = Number(saved?.widthRatio);
-      if (Number.isFinite(leftRatio) && Number.isFinite(widthRatio) && widthRatio > 0) {
+      if (Number.isFinite(widthRatio) && widthRatio > 0) {
         const width = Math.max(42, Math.min(surfaceWidth, widthRatio * surfaceWidth));
-        const left = Math.max(0, Math.min(surfaceWidth - width, leftRatio * surfaceWidth));
+        const liveRight = Math.min(surfaceWidth, (zoneGeometry?.left ?? surfaceWidth - width) + (zoneGeometry?.width ?? width));
+        const left = Math.max(0, Math.min(surfaceWidth - width, liveRight - width));
         zoneManuallySizedRef.current = true;
         setHorizontalZone({ left, width });
         return;
@@ -171,7 +171,22 @@ export function TradePositionTool({
     setHorizontalZone(zoneGeometry ?? null);
   }, [layoutStorageKey, zoneGeometry?.left, zoneGeometry?.width]);
   useEffect(() => {
-    if (!zoneManuallySizedRef.current) setHorizontalZone(zoneGeometry ?? null);
+    if (!zoneManuallySizedRef.current) {
+      setHorizontalZone(zoneGeometry ?? null);
+      return;
+    }
+    // The user owns the zone width; the chart owns its anchor. This makes the
+    // long/short planner travel with the latest candle without losing a saved
+    // resize preference.
+    if (!zoneGeometry) return;
+    const surfaceWidth = surfaceRef.current?.clientWidth ?? 0;
+    const liveRight = Math.min(surfaceWidth || Number.POSITIVE_INFINITY, zoneGeometry.left + zoneGeometry.width);
+    setHorizontalZone((current) => {
+      if (!current) return current;
+      const width = Math.min(current.width, Math.max(42, liveRight));
+      const left = Math.max(0, liveRight - width);
+      return Math.abs(current.left - left) < .5 && Math.abs(current.width - width) < .5 ? current : { left, width };
+    });
   }, [zoneGeometry?.left, zoneGeometry?.width]);
   const targetZone = zone(entry, takeProfit, 'entry', 'takeProfit');
   const riskZone = zone(entry, stopLoss, 'entry', 'stopLoss');
@@ -207,7 +222,9 @@ export function TradePositionTool({
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     zoneManuallySizedRef.current = true;
-    zoneDragOriginRef.current = { x: event.clientX, right: current.left + current.width };
+    // Resize the history-facing edge only. The recent candle remains the
+    // fixed live anchor for both long and short tools.
+    zoneDragOriginRef.current = { x: event.clientX, right: zoneGeometry ? zoneGeometry.left + zoneGeometry.width : current.left + current.width };
     setResizingZone(true);
   };
   const resizeZone = (event: JSX.TargetedPointerEvent<HTMLElement>) => {
@@ -220,7 +237,6 @@ export function TradePositionTool({
     if (layoutStorageKey && rect.width > 0) {
       try {
         localStorage.setItem(`zeronine:position-zone:${layoutStorageKey}`, JSON.stringify({
-          leftRatio: next.left / rect.width,
           widthRatio: next.width / rect.width,
         }));
       } catch {
