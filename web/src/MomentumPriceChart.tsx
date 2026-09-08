@@ -167,7 +167,9 @@ export function MomentumPriceChart({
           borderVisible: false,
           fixLeftEdge: true,
           fixRightEdge: true,
-          rightOffset: tradeView ? 4 : 0,
+          // Keep room ahead of the live quote for the next movement and the
+          // position planning tool instead of pinning it to the price axis.
+          rightOffset: tradeView ? 14 : 0,
           timeVisible: tradeView,
           secondsVisible: tradeView,
         },

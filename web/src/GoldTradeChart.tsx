@@ -112,7 +112,9 @@ export function GoldTradeChart({
         borderVisible: false,
         fixLeftEdge: true,
         fixRightEdge: true,
-        rightOffset: 6,
+        // Reserve future chart space so the active candle and planning tool
+        // never sit against the price scale at the right edge.
+        rightOffset: 14,
         barSpacing: 13,
         minBarSpacing: 4,
         timeVisible: true,
