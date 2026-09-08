@@ -5684,3 +5684,15 @@ button.activity-row {
 @media (max-width: 760px) { .entry-lab-intro { display: block; }.entry-engine-state { margin-top: 14px; width: max-content; }.entry-lab-stage { grid-template-columns: minmax(0, 1fr); }.entry-stage-main { border-right: 0; border-bottom: 1px solid var(--border); }.entry-proven-card > strong { min-height: 0; }.entry-method { grid-template-columns: minmax(120px, 1fr) minmax(90px, .85fr) repeat(2, minmax(65px, .45fr)); gap: 9px; }.entry-method-metric:last-child { display: none; } }
 @media (max-width: 520px) { .entry-lab-intro { padding-top: 19px; }.entry-lab h2 { font-size: 18px; }.entry-product-tabs button { padding: 9px 7px; font-size: 9px; }.entry-product-tabs small { display: none; }.entry-stage-head { display: block; }.entry-stage-head small { display: block; max-width: none; margin-top: 7px; text-align: left; }.entry-live-visual { height: 118px; }.entry-method { grid-template-columns: minmax(105px, 1fr) minmax(76px, .75fr) minmax(58px, .42fr); padding-inline: 10px; }.entry-method-metric:nth-last-child(2) { display: none; }.entry-empty { grid-template-columns: 1fr; gap: 6px; }.entry-lab-note { display: block; }.entry-lab-note span { display: block; margin-top: 4px; } }
 @media (prefers-reduced-motion: reduce) { .entry-engine-state.live i, .entry-live-scan, .entry-live-marker, .entry-tick-ribbon i, .entry-candles i { animation: none; } }
+
+/* Final workstation rules live at the end so generic responsive rules cannot
+   put the old headers or lower order forms back above the chart. */
+@media (min-width: 701px) {
+  .gold-trade-desk > .gold-trade-head, .mom-trade-desk > .mom-trade-head { display: none !important; }
+  .gold-trade-desk > .gold-trade-order, .mom-trade-desk > .mom-trade-order { display: none !important; }
+  .gold-trade-live, .mom-trade-live { min-height: clamp(410px, 64vh, 640px) !important; }
+  .gold-trade-chart-wrap { min-height: clamp(410px, 64vh, 640px) !important; }
+  .mom-trade-chart { height: clamp(410px, 64vh, 640px) !important; min-height: 410px !important; }
+  .gold-trade-chart-canvas, .mom-price-chart-canvas { width: calc(100% - 174px); }
+  .gold-trade-chart-canvas { margin-right: 174px; }
+}

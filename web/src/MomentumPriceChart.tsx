@@ -39,7 +39,10 @@ function chartData(samples: MomentumScanSample[], compact: boolean): Candlestick
     const quotes = group.map((sample) => sample.quote);
     // Momentum receives live ticks, so aggregate adjacent ticks into a small
     // OHLC candle rather than pretending every quote is a candle close.
-    const time = Math.max(Math.trunc(group[group.length - 1]!.epoch), previousTime + 1);
+    // A four-tick candle represents a small slice of the five-minute
+    // momentum watch. Give adjacent candles enough elapsed space for a
+    // readable multi-minute view instead of a row of one-second bars.
+    const time = Math.max(Math.trunc(group[group.length - 1]!.epoch), previousTime + (compact ? 3 : 5));
     previousTime = time;
     candles.push({ time: time as Time, open: quotes[0]!, high: Math.max(...quotes), low: Math.min(...quotes), close: quotes[quotes.length - 1]! });
   }
