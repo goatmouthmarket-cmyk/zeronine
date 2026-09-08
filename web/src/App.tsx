@@ -3112,6 +3112,19 @@ function mergeMomentumSamples(samples: MomentumScanSample[], next: MomentumScanS
   return [...deduped.values()].sort((a, b) => a.epoch - b.epoch).slice(-limit);
 }
 
+const MOMENTUM_CHART_CACHE_PREFIX = 'zeronine:momentum-chart:';
+const MOMENTUM_CHART_CACHE_MAX_AGE_MS = 30 * 60_000;
+
+function cachedMomentumSamples(symbol: string): MomentumScanSample[] {
+  try {
+    const cached = JSON.parse(localStorage.getItem(`${MOMENTUM_CHART_CACHE_PREFIX}${symbol}`) ?? '{}') as { savedAt?: unknown; samples?: unknown };
+    if (!Number.isFinite(Number(cached.savedAt)) || Date.now() - Number(cached.savedAt) > MOMENTUM_CHART_CACHE_MAX_AGE_MS || !Array.isArray(cached.samples)) return [];
+    return mergeMomentumSamples(cached.samples as MomentumScanSample[], null, 900);
+  } catch {
+    return [];
+  }
+}
+
 function MomentumWatchboard({
   markets,
   selected,
@@ -3351,6 +3364,13 @@ function MomentumTradeDesk({
   const plannerMultiplier = hasActiveTradeEntry ? tradeMultiplier : selectedMultiplier;
   const plannerTargetAmount = detailTakeProfit ?? Math.max(.01, (Number.isFinite(plannerStake) ? plannerStake : 1) * .5);
   const plannerRiskAmount = detailStopLoss ?? Math.max(.01, (Number.isFinite(plannerStake) ? plannerStake : 1) * .25);
+
+  useEffect(() => {
+    if (!chartSnapshot?.symbol || chartSnapshot.samples.length < 80) return;
+    try {
+      localStorage.setItem(`${MOMENTUM_CHART_CACHE_PREFIX}${chartSnapshot.symbol}`, JSON.stringify({ savedAt: Date.now(), samples: chartSnapshot.samples.slice(-900) }));
+    } catch { /* Chart history is an optional visual cache. */ }
+  }, [chartSnapshot]);
   const plannerTargetPrice = multiplierLimitPrice(plannerEntry, plannerTargetAmount, plannerStake, plannerMultiplier, plannerSide, 'takeProfit');
   const plannerStopPrice = multiplierLimitPrice(plannerEntry, plannerRiskAmount, plannerStake, plannerMultiplier, plannerSide, 'stopLoss');
   const updatePlannerLimit = (kind: 'takeProfit' | 'stopLoss', price: number) => {
@@ -3489,9 +3509,10 @@ function MomentumTradeDesk({
       const activeFeedSamples = hasActiveTradeEntry && incomingMatchesChart
         ? incomingSamples.filter((sample) => !openedEpoch || sample.epoch >= openedEpoch - 5)
         : hasActiveTradeEntry ? [] : incomingSamples;
+      const rememberedSamples = sameTrade ? current?.samples ?? [] : cachedMomentumSamples(nextSymbol);
       const seededSamples = hasActiveTradeEntry
-        ? mergeMomentumSamples(sameTrade ? [...current.samples, ...activeFeedSamples] : activeFeedSamples, null)
-        : mergeMomentumSamples(sameTrade ? [...current.samples, ...incomingSamples] : incomingSamples, null);
+        ? mergeMomentumSamples([...rememberedSamples, ...activeFeedSamples], null)
+        : mergeMomentumSamples([...rememberedSamples, ...incomingSamples], null);
       const nextSamples = mergeMomentumSamples(
         seededSamples,
         currentSpotSample,
