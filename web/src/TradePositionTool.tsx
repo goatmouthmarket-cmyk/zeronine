@@ -84,6 +84,7 @@ export function TradePositionTool({
 }: TradePositionToolProps): JSX.Element | null {
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const dragOriginRef = useRef<{ kind: 'takeProfit' | 'stopLoss'; y: number; price: number } | null>(null);
   const range = useMemo(() => {
     // Keep the price mapping tied to what the candles are actually doing.
     // A monetary TP/SL can be far from the market; letting it define the
@@ -100,7 +101,7 @@ export function TradePositionTool({
   const span = Math.max(range.high - range.low, Number.EPSILON);
   const top = (price: number, key?: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
     const chartTop = key ? levelTops?.[key] : null;
-    return Number.isFinite(chartTop) ? `${chartTop}px` : `${Math.max(1, Math.min(99, ((range.high - price) / span) * 100))}%`;
+    return Number.isFinite(chartTop) ? `clamp(12px, ${chartTop}px, calc(100% - 12px))` : `${Math.max(1, Math.min(99, ((range.high - price) / span) * 100))}%`;
   };
   const zone = (from: number | null | undefined, to: number | null | undefined, fromKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', toKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
     if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
@@ -117,16 +118,23 @@ export function TradePositionTool({
   const zoneStyle = zoneGeometry ?? {};
   const move = (kind: 'takeProfit' | 'stopLoss', event: { clientY: number }) => {
     const rect = surfaceRef.current?.getBoundingClientRect();
-    if (!rect || !onLevelChange) return;
-    const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    onLevelChange(kind, range.high - ratio * span);
+    const origin = dragOriginRef.current;
+    if (!rect || !onLevelChange || !origin || origin.kind !== kind) return;
+    // Fine relative drag: a pointer grab never jumps the level to the cursor,
+    // and one full chart-height sweep changes only a modest part of its range.
+    const delta = event.clientY - origin.y;
+    const sensitivity = .16;
+    const next = origin.price - delta * (span / Math.max(1, rect.height)) * sensitivity;
+    onLevelChange(kind, Math.max(range.low, Math.min(range.high, next)));
   };
   const start = (kind: 'takeProfit' | 'stopLoss', event: JSX.TargetedPointerEvent<HTMLElement>) => {
     if (!editable || !onLevelChange) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    const price = kind === 'takeProfit' ? takeProfit : stopLoss;
+    if (!Number.isFinite(price)) return;
+    dragOriginRef.current = { kind, y: event.clientY, price: Number(price) };
     setDragging(kind);
-    move(kind, event);
   };
 
   return <div
@@ -137,11 +145,11 @@ export function TradePositionTool({
     {targetZone && <div class="position-zone profit" style={{ ...targetZone, ...zoneStyle }}><span>Target {targetPnl ?? ''}</span></div>}
     {riskZone && <div class="position-zone risk" style={{ ...riskZone, ...zoneStyle }}><span>Risk {riskPnl ?? ''}</span></div>}
     <div class={`position-level entry ${side}`} style={{ top: top(entry, 'entry'), ...zoneStyle }}><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div>
-    {takeProfit != null && <div class="position-level target" style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>
+    {takeProfit != null && <div class="position-level target" style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
       <span>Take profit</span><b title={`Target price ${priceText(takeProfit)}`}>{targetPnl ?? priceText(takeProfit)}</b>
       {editable && <button type="button" aria-label="Drag take-profit level" onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
-    {stopLoss != null && <div class="position-level stop" style={{ top: top(stopLoss, 'stopLoss'), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>
+    {stopLoss != null && <div class="position-level stop" style={{ top: top(stopLoss, 'stopLoss'), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
       <span>Stop loss</span><b title={`Stop price ${priceText(stopLoss)}`}>{riskPnl ?? priceText(stopLoss)}</b>
       {editable && <button type="button" aria-label="Drag stop-loss level" onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
