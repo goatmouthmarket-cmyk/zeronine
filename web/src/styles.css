@@ -1165,6 +1165,18 @@ button {
 .gold-trade-desk ~ .gold-scoreboard.gold-scoreboard,
 .gold-trade-desk ~ .gold-intel-grid:not(.gold-research-intel),
 .gold-trade-desk ~ .gold-facts { display: none; }
+
+/* Desktop execution frame: one useful screen, not a stretched presentation. */
+@media (min-width: 701px) {
+  .gold-trade-head, .mom-trade-head { min-height: 84px; padding-top: 12px; padding-bottom: 12px; }
+  .gold-trade-live { min-height: clamp(230px, 36vh, 330px); }
+  .gold-trade-chart-wrap { min-height: clamp(230px, 36vh, 330px); padding-block: 10px; }
+  .mom-trade-live { min-height: clamp(230px, 36vh, 330px); }
+  .mom-trade-chart { height: clamp(230px, 36vh, 330px); min-height: 230px; padding-block: 10px; }
+  .gold-trade-order, .gold-trade-order.gold-deriv-order, .mom-trade-order { gap: 9px; padding-top: 10px; padding-bottom: 10px; }
+  .gold-trade-order.gold-deriv-order { grid-template-columns: max-content 88px 112px 104px 104px minmax(128px, .8fr) minmax(185px, 1.1fr) minmax(105px, .65fr); }
+  .gold-trade-order.gold-deriv-order .gold-trade-direction button { min-width: 64px; }
+}
 .mom-trade-readout { display: grid; align-content: center; min-width: 0; padding: 18px; border-right: 1px solid var(--border); }.mom-trade-readout:last-child { border-right: 0; }
 .mom-trade-panel { align-content: start; gap: 6px; border-right: 0; background: linear-gradient(180deg, rgba(117,232,189,.035), rgba(255,255,255,.012)); animation: mom-panel-in .24s ease-out both; }
 .mom-contract-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
