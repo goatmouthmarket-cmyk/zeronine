@@ -5722,6 +5722,7 @@ function GoldDerivTradeWorkspace({
   const [contractClock, setContractClock] = useState(Date.now());
   const manualMultiplierRef = useRef(false);
   const profitGuardRef = useRef({ contractId: '', peak: 0, triggered: false });
+  const managedExitRef = useRef({ contractId: '', requested: false });
   const [profitGuard, setProfitGuard] = useState({ armed: false, peak: 0, floor: 0, activation: 0, triggered: false });
   const stake = Number(stakeText);
   const selectedMultiplier = Number(multiplierText);
@@ -6012,6 +6013,28 @@ const modelWeights = [
     }
   };
 
+  // Deriv does not provide an amend endpoint for an already-bought multiplier
+  // contract. Treat lines adjusted during the trade as managed cash-out rules:
+  // on the next live contract update, sell this exact demo lot at the chosen
+  // profit or loss threshold.
+  useEffect(() => {
+    if (!activeTrade || !trackedContractId || contractPnl == null || !Number.isFinite(contractPnl) || !owner || !demoConnected) {
+      if (!activeTrade) managedExitRef.current = { contractId: '', requested: false };
+      return;
+    }
+    if (managedExitRef.current.contractId !== trackedContractId) managedExitRef.current = { contractId: trackedContractId, requested: false };
+    if (managedExitRef.current.requested || closingContractId) return;
+    const activeTakeProfit = takeProfitText.trim() && Number.isFinite(takeProfit) && takeProfit! > 0 ? takeProfit : undefined;
+    const activeStopLoss = stopLossText.trim() && Number.isFinite(stopLoss) && stopLoss! > 0 ? stopLoss : undefined;
+    const reachedTakeProfit = activeTakeProfit != null && contractPnl >= activeTakeProfit;
+    const reachedStopLoss = activeStopLoss != null && contractPnl <= -activeStopLoss;
+    if (!reachedTakeProfit && !reachedStopLoss) return;
+    managedExitRef.current.requested = true;
+    void close(activeTrade).then((closedNow) => {
+      if (!closedNow) managedExitRef.current.requested = false;
+    });
+  }, [activeTrade, closingContractId, contractPnl, demoConnected, owner, stopLoss, stopLossText, takeProfit, takeProfitText, trackedContractId]);
+
   useEffect(() => {
     if (!openGoldTrade || !trackedContractId || contractPnl == null || !Number.isFinite(contractPnl)) {
       if (profitGuardRef.current.contractId) {
@@ -6104,8 +6127,8 @@ const modelWeights = [
               targetPnl: fmtSigned(goldPlannerTargetAmount, currency), riskPnl: fmtSigned(-goldPlannerRiskAmount, currency),
               currentPrice: quote?.mid,
               currentPnl: contractPnl == null ? undefined : fmtSigned(contractPnl, currency),
-              editable: !activeTrade && !busy && !marketClosed, onLevelChange: updateGoldPlannerLimit,
-              onSideChange: (nextSide) => setSide(nextSide === 'long' ? 'BUY' : 'SELL'),
+              editable: !busy && !marketClosed && (!activeTrade || Boolean(owner && demoConnected && trackedContractId)), onLevelChange: updateGoldPlannerLimit,
+              onSideChange: !activeTrade ? (nextSide) => setSide(nextSide === 'long' ? 'BUY' : 'SELL') : undefined,
               onClose: activeTrade ? () => void close(activeTrade) : undefined,
               closeDisabled: !activeTrade || !owner || !demoConnected || !trackedContractId || Boolean(closingContractId) || matchingContract?.isValidToSell === false,
               stake: stakeText,
@@ -6188,8 +6211,8 @@ const modelWeights = [
           <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
         </div>
         <label class="gold-trade-field"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAnyTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
-        <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
-        <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>{activeTrade ? 'Managed TP profit' : 'TP profit'}</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAnyTrade && !unusedGoldDerivIsGoldTrade(openAnyTrade))} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
+        <label class="gold-trade-field"><span>{activeTrade ? 'Managed stop loss' : 'Stop loss'}</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAnyTrade && !unusedGoldDerivIsGoldTrade(openAnyTrade))} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
         <div class="gold-trade-quote">
           <span>Live price</span>
           <strong>{quote ? goldPrice(quote.mid, digits) : '—'}</strong>
