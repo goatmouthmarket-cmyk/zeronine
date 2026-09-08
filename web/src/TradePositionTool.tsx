@@ -148,6 +148,9 @@ export function TradePositionTool({
   const targetZone = zone(entry, takeProfit, 'entry', 'takeProfit');
   const riskZone = zone(entry, stopLoss, 'entry', 'stopLoss');
   const zoneStyle = horizontalZone ?? zoneGeometry ?? {};
+  // Put labels in the unused history side of a zone whenever there is enough
+  // room. This keeps the most recent candles visible inside the trade area.
+  const labelsOutsideZone = Number((horizontalZone ?? zoneGeometry)?.left ?? 0) >= 112;
   const move = (kind: 'takeProfit' | 'stopLoss', event: { clientY: number }) => {
     const rect = surfaceRef.current?.getBoundingClientRect();
     const origin = dragOriginRef.current;
@@ -195,17 +198,17 @@ export function TradePositionTool({
     {targetZone && <div class="position-zone profit" style={{ ...targetZone, ...zoneStyle }}><span>Target {targetPnl ?? ''}</span></div>}
     {riskZone && <div class="position-zone risk" style={{ ...riskZone, ...zoneStyle }}><span>Risk {riskPnl ?? ''}</span></div>}
     {horizontalZone && <div class="position-zone-resizer" style={{ left: `${horizontalZone.left}px` }} role="slider" aria-label="Resize profit and risk zones" aria-orientation="horizontal" tabIndex={0} onPointerDown={startZoneResize} onPointerMove={resizingZone ? resizeZone : undefined} onPointerUp={() => { zoneDragOriginRef.current = null; setResizingZone(false); }} />}
-    <div class={`position-level entry ${side}`} style={{ top: top(entry, 'entry'), ...zoneStyle }}><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div>
-    {takeProfit != null && <div class="position-level target" style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
-      <span>Take profit</span><b title={`Target price ${priceText(takeProfit)}`}>{targetPnl ?? priceText(takeProfit)}</b>
+    <div class={`position-level entry ${side}${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(entry, 'entry'), ...zoneStyle }}><div class="position-level-label"><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div></div>
+    {takeProfit != null && <div class={`position-level target${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
+      <div class="position-level-label"><span>Take profit</span><b title={`Target price ${priceText(takeProfit)}`}>{targetPnl ?? priceText(takeProfit)}</b></div>
       {editable && <button type="button" aria-label="Drag take-profit level" onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
-    {stopLoss != null && <div class="position-level stop" style={{ top: top(stopLoss, 'stopLoss'), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
-      <span>Stop loss</span><b title={`Stop price ${priceText(stopLoss)}`}>{riskPnl ?? priceText(stopLoss)}</b>
+    {stopLoss != null && <div class={`position-level stop${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(stopLoss, 'stopLoss'), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
+      <div class="position-level-label"><span>Stop loss</span><b title={`Stop price ${priceText(stopLoss)}`}>{riskPnl ?? priceText(stopLoss)}</b></div>
       {editable && <button type="button" aria-label="Drag stop-loss level" onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
     {currentPrice != null && Number.isFinite(currentPrice) && <div class="position-level current" style={{ top: top(currentPrice, 'currentPrice'), ...zoneStyle }}>
-      <span>Live</span><b>{priceText(currentPrice)}{currentPnl ? ` · ${currentPnl}` : ''}</b>
+      <div class="position-level-label"><span>Live</span><b>{priceText(currentPrice)}{currentPnl ? ` · ${currentPnl}` : ''}</b></div>
     </div>}
     <div class="position-tool-controls">
       {onSideChange && <div class="position-side-switch" aria-label="Position direction">
