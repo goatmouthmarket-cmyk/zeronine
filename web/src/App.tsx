@@ -3589,6 +3589,11 @@ function MomentumTradeDesk({
           longActionDisabled: !canPlace || suggestedDirection !== 'up' || busy,
           shortActionDisabled: !canPlace || suggestedDirection !== 'down' || busy,
           placingSide: busy ? direction === 'up' ? 'long' : 'short' : null,
+          liveTrade: closableMomentumTrade ? {
+            pnl: displayContractPnl == null ? 'Updating' : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD'),
+            side: plannerSide.toUpperCase(), stake: fmtMoney(tradeStake, purchase?.currency ?? session?.currency ?? 'USD'), multiplier: `x${tradeMultiplier || '--'}`,
+            elapsed: elapsedText, cashout: liveSellPrice == null ? undefined : fmtMoney(liveSellPrice, purchase?.currency ?? session?.currency ?? 'USD'),
+          } : null,
         } : null} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
@@ -6037,6 +6042,11 @@ const modelWeights = [
               longActionDisabled: !canPlace,
               shortActionDisabled: !canPlace,
               placingSide: busy ? side === 'BUY' ? 'long' : 'short' : null,
+              liveTrade: activeTrade ? {
+                pnl: contractPnl == null ? 'Updating' : fmtSigned(contractPnl, currency), side: contractSide ?? side,
+                stake: fmtMoney(contractStake, currency), multiplier: `x${contractMultiplier}`, elapsed: contractElapsed,
+                cashout: liveSellPrice == null ? undefined : fmtMoney(liveSellPrice, currency),
+              } : null,
             } : null}
           />
         </div>

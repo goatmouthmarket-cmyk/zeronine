@@ -28,6 +28,14 @@ export interface TradePositionToolProps {
   longActionDisabled?: boolean;
   shortActionDisabled?: boolean;
   placingSide?: 'long' | 'short' | null;
+  liveTrade?: {
+    pnl: string;
+    side: string;
+    stake: string;
+    multiplier: string;
+    elapsed: string;
+    cashout?: string;
+  } | null;
 }
 
 function priceText(value: number): string {
@@ -66,6 +74,7 @@ export function TradePositionTool({
   longActionDisabled = false,
   shortActionDisabled = false,
   placingSide,
+  liveTrade,
 }: TradePositionToolProps): JSX.Element | null {
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -133,6 +142,13 @@ export function TradePositionTool({
         {onPlaceLong && <button class="long" type="button" disabled={longActionDisabled} onClick={onPlaceLong}>{placingSide === 'long' ? 'Buying…' : 'Buy'}</button>}
         {onPlaceShort && <button class="short" type="button" disabled={shortActionDisabled} onClick={onPlaceShort}>{placingSide === 'short' ? 'Selling…' : 'Sell'}</button>}
       </div>}
+      {liveTrade && <section class="position-live-card" aria-live="polite" aria-label="Live contract details">
+        <span>Live contract P&amp;L</span>
+        <strong>{liveTrade.pnl}</strong>
+        <div><span>Side <b>{liveTrade.side}</b></span><span>Elapsed <b>{liveTrade.elapsed}</b></span></div>
+        <div><span>Stake <b>{liveTrade.stake}</b></span><span>Multiplier <b>{liveTrade.multiplier}</b></span></div>
+        {liveTrade.cashout && <small>Cash-out {liveTrade.cashout}</small>}
+      </section>}
       {onClose && <button class="position-close" type="button" disabled={closeDisabled} onClick={onClose}>× Close / cash out</button>}
     </div>
     <div class="position-tool-note">{editable ? 'Drag any TP / SL line to set risk' : onClose ? 'Live contract levels' : 'Levels lock after order submission'}</div>
