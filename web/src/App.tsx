@@ -3347,7 +3347,12 @@ function MomentumTradeDesk({
   const chartEntryPrice = hasActiveTradeEntry ? actualEntryPrice ?? entryPrice : undefined;
   const chartEntryLabel = 'Trade entry';
   const chartSymbol = hasActiveTradeEntry ? trade?.market ?? purchase?.market ?? symbol ?? '' : symbol ?? '';
-  const chartSamples = chartSnapshot?.symbol === chartSymbol && (hasActiveTradeEntry || !incomingSamples.length) ? chartSnapshot.samples : incomingSamples;
+  // Keep the full local five-minute trace when the server sends a short
+  // incremental tick batch. Replacing it with that batch caused the trade
+  // chart to zoom into only a few seconds of movement.
+  const chartSamples = chartSnapshot?.symbol === chartSymbol && (hasActiveTradeEntry || chartSnapshot.samples.length >= incomingSamples.length)
+    ? chartSnapshot.samples
+    : incomingSamples;
   const chartDisplay = chartSnapshot?.symbol === chartSymbol && (hasActiveTradeEntry || !display) ? chartSnapshot.display : display ?? trade?.market ?? 'Momentum market';
   const chartFrozenEntry = chartSnapshot?.symbol === chartSymbol && chartSnapshot.entryPrice != null ? chartSnapshot.entryPrice : chartEntryPrice;
   const chartDirection = (chartSnapshot?.symbol === chartSymbol && chartSnapshot.direction ? chartSnapshot.direction : suggestedDirection) ?? undefined;
@@ -3497,7 +3502,7 @@ function MomentumTradeDesk({
         : hasActiveTradeEntry ? [] : incomingSamples;
       const seededSamples = hasActiveTradeEntry
         ? mergeMomentumSamples(sameTrade ? [...current.samples, ...activeFeedSamples] : activeFeedSamples, null)
-        : incomingSamples;
+        : mergeMomentumSamples(sameTrade ? [...current.samples, ...incomingSamples] : incomingSamples, null);
       const nextSamples = mergeMomentumSamples(
         seededSamples,
         currentSpotSample,
@@ -3514,7 +3519,7 @@ function MomentumTradeDesk({
       return {
         symbol: nextSymbol,
         display: display ?? nextSymbol,
-        samples: incomingSamples,
+        samples: nextSamples,
         entryPrice: chartEntryPrice,
         direction: suggestedDirection,
       };
