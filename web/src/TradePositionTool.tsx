@@ -1,5 +1,5 @@
 import type { JSX } from 'preact';
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 export interface TradePositionToolProps {
   side: 'long' | 'short';
@@ -83,8 +83,12 @@ export function TradePositionTool({
   liveTrade,
 }: TradePositionToolProps): JSX.Element | null {
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
+  const [resizingZone, setResizingZone] = useState(false);
+  const [horizontalZone, setHorizontalZone] = useState<{ left: number; width: number } | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragOriginRef = useRef<{ kind: 'takeProfit' | 'stopLoss'; y: number; price: number } | null>(null);
+  const zoneDragOriginRef = useRef<{ x: number; right: number } | null>(null);
+  const zoneManuallySizedRef = useRef(false);
   const range = useMemo(() => {
     // Keep the price mapping tied to what the candles are actually doing.
     // A monetary TP/SL can be far from the market; letting it define the
@@ -125,9 +129,12 @@ export function TradePositionTool({
     const first = Math.min(a, b); const last = Math.max(a, b);
     return { top: top(last), height: `${Math.max(1.5, ((last - first) / span) * 100)}%` };
   };
+  useEffect(() => {
+    if (!zoneManuallySizedRef.current) setHorizontalZone(zoneGeometry ?? null);
+  }, [zoneGeometry?.left, zoneGeometry?.width]);
   const targetZone = zone(entry, takeProfit, 'entry', 'takeProfit');
   const riskZone = zone(entry, stopLoss, 'entry', 'stopLoss');
-  const zoneStyle = zoneGeometry ?? {};
+  const zoneStyle = horizontalZone ?? zoneGeometry ?? {};
   const move = (kind: 'takeProfit' | 'stopLoss', event: { clientY: number }) => {
     const rect = surfaceRef.current?.getBoundingClientRect();
     const origin = dragOriginRef.current;
@@ -148,6 +155,22 @@ export function TradePositionTool({
     dragOriginRef.current = { kind, y: event.clientY, price: Number(price) };
     setDragging(kind);
   };
+  const startZoneResize = (event: JSX.TargetedPointerEvent<HTMLElement>) => {
+    const current = horizontalZone ?? zoneGeometry;
+    if (!current) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    zoneManuallySizedRef.current = true;
+    zoneDragOriginRef.current = { x: event.clientX, right: current.left + current.width };
+    setResizingZone(true);
+  };
+  const resizeZone = (event: JSX.TargetedPointerEvent<HTMLElement>) => {
+    const origin = zoneDragOriginRef.current;
+    const rect = surfaceRef.current?.getBoundingClientRect();
+    if (!origin || !rect) return;
+    const left = Math.max(0, Math.min(origin.right - 42, event.clientX - rect.left));
+    setHorizontalZone({ left, width: origin.right - left });
+  };
 
   return <div
     ref={surfaceRef}
@@ -156,6 +179,7 @@ export function TradePositionTool({
   >
     {targetZone && <div class="position-zone profit" style={{ ...targetZone, ...zoneStyle }}><span>Target {targetPnl ?? ''}</span></div>}
     {riskZone && <div class="position-zone risk" style={{ ...riskZone, ...zoneStyle }}><span>Risk {riskPnl ?? ''}</span></div>}
+    {horizontalZone && <div class="position-zone-resizer" style={{ left: `${horizontalZone.left}px` }} role="slider" aria-label="Resize profit and risk zones" aria-orientation="horizontal" tabIndex={0} onPointerDown={startZoneResize} onPointerMove={resizingZone ? resizeZone : undefined} onPointerUp={() => { zoneDragOriginRef.current = null; setResizingZone(false); }} />}
     <div class={`position-level entry ${side}`} style={{ top: top(entry, 'entry'), ...zoneStyle }}><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div>
     {takeProfit != null && <div class="position-level target" style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
       <span>Take profit</span><b title={`Target price ${priceText(takeProfit)}`}>{targetPnl ?? priceText(takeProfit)}</b>
