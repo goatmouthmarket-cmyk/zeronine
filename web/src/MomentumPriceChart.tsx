@@ -30,7 +30,7 @@ function chartData(samples: MomentumScanSample[], compact: boolean): Candlestick
   let previousTime = 0;
   const ticks = samples
     .filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote))
-    .slice(compact ? -72 : -180);
+    .slice(compact ? -72 : -600);
   const ticksPerCandle = compact ? 3 : 10;
   const candles: CandlestickData<Time>[] = [];
   for (let start = 0; start < ticks.length; start += ticksPerCandle) {

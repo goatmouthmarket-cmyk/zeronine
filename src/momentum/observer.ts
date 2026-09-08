@@ -19,7 +19,10 @@ const CONTRACT_CHECK_INTERVAL_MS = 350;
 const CONTRACT_CHECK_RETRY_MS = 1_500;
 const MULTIPLIER_SUPPORT_CACHE_MS = 10 * 60 * 1_000;
 const MAX_SCAN_SAMPLES = 16;
-const MAX_FOCUS_SAMPLES = 90;
+// Preserve enough of the five-minute focus window for the chart to show
+// structure, not merely the last few ticks. Scan previews stay deliberately
+// small; only the chosen Momentum market carries this wider history.
+const MAX_FOCUS_SAMPLES = 600;
 const UI_EMIT_INTERVAL_MS = 250;
 const MIN_FALLBACK_SCAN_SECONDS = 15;
 const RECONNECT_BASE_MS = 1_000;

@@ -3104,7 +3104,7 @@ function providerEpochMs(value: unknown): number {
   return Number.isFinite(n) && n > 0 ? n * 1000 : 0;
 }
 
-function mergeMomentumSamples(samples: MomentumScanSample[], next: MomentumScanSample | null, limit = 180): MomentumScanSample[] {
+function mergeMomentumSamples(samples: MomentumScanSample[], next: MomentumScanSample | null, limit = 600): MomentumScanSample[] {
   const valid = samples.filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote));
   if (next && Number.isFinite(next.epoch) && Number.isFinite(next.quote)) valid.push(next);
   const deduped = new Map<string, MomentumScanSample>();
