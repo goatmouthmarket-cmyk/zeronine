@@ -5712,9 +5712,11 @@ button.activity-row {
   .trade-mode .trade-market-strip small { grid-column: 3; align-self: center; margin-top: 0; overflow: hidden; text-overflow: ellipsis; }
   /* Let the chart own the remaining desktop workspace; execution context is
      already contained in the rail, so the old explanatory footer is noise. */
-  .gold-trade-live, .mom-trade-live { height: clamp(430px, calc(100vh - 92px), 720px); min-height: 0 !important; }
-  .gold-trade-chart-wrap { height: clamp(430px, calc(100vh - 92px), 720px); min-height: 0 !important; padding-block: 0; }
-  .mom-trade-chart { height: clamp(430px, calc(100vh - 92px), 720px) !important; min-height: 0 !important; padding-block: 0; }
+  /* Leave a deliberate visual margin below the trade canvas: browser chrome
+     and the OS taskbar must not force a page scroll to reveal TP/SL. */
+  .gold-trade-live, .mom-trade-live { height: clamp(390px, calc(100dvh - 235px), 600px); min-height: 0 !important; }
+  .gold-trade-chart-wrap { height: clamp(390px, calc(100dvh - 235px), 600px); min-height: 0 !important; padding-block: 0; }
+  .mom-trade-chart { height: clamp(390px, calc(100dvh - 235px), 600px) !important; min-height: 0 !important; padding-block: 0; }
   .gold-trade-desk > .gold-trade-note, .mom-trade-desk > .mom-trade-note { display: none; }
 }
 .trade-market-strip { display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 8px; min-width: 260px; color: var(--muted); }.trade-market-strip > span { color: #75e8bd; font-size: 8px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }.trade-market-strip strong { color: var(--text); font-size: 13px; line-height: 1; }.trade-market-strip small { grid-column: 1 / -1; margin-top: 4px; color: var(--muted); font-size: 9px; white-space: nowrap; }.trade-market-strip.gold > span { color: #f4c96b; }

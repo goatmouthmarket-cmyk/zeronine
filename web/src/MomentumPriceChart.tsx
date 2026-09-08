@@ -74,7 +74,10 @@ export function MomentumPriceChart({
     if (points.length < 2) return '#75e8bd';
     return (points.at(-1)?.value ?? 0) >= (points[0]?.value ?? 0) ? '#75e8bd' : '#ff5263';
   }, [points]);
-  const indicators = useMemo(() => calculateChartIndicators(points, 21, 55, 34), [points]);
+  // Momentum is a dense tick stream. A longer band window keeps the visual
+  // representative of the five-minute watch instead of reacting wildly to a
+  // single synthetic-index jump.
+  const indicators = useMemo(() => calculateChartIndicators(points, 21, 55, 80), [points]);
   const pointsRef = useRef<LineData<Time>[]>(points);
   const fittedRef = useRef(false);
   const hasEntry = !compact && !positionTool && Number.isFinite(entryPrice);
@@ -188,8 +191,8 @@ export function MomentumPriceChart({
         handleScale: tradeView,
       });
       const series = chart.addSeries(LineSeries, {
-        color: compact ? compactTrendColor : '#f8fafc',
-        lineWidth: 3,
+        color: compact ? compactTrendColor : '#7dd3fc',
+        lineWidth: 1,
         crosshairMarkerVisible: true,
         crosshairMarkerRadius: 3,
         priceLineVisible: true,
@@ -349,7 +352,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 34 · 2σ</span></span>}
+    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 80 · 2σ</span></span>}
     {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
