@@ -3577,6 +3577,9 @@ function MomentumTradeDesk({
           onSideChange: (nextSide) => setDirection(nextSide === 'long' ? 'up' : 'down'),
           onClose: closableMomentumTrade ? () => void closeOpenTrade() : undefined,
           closeDisabled: !canClose,
+          stake: stakeText,
+          onStakeChange: setStakeText,
+          stakeDisabled: busy || openMomentumTrades.length >= 2,
         } : null} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
@@ -3630,7 +3633,6 @@ function MomentumTradeDesk({
         <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up trade' : 'Place up trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
         <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down trade' : 'Place down trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
-      <label class="mom-trade-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
       <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || openMomentumTrades.length >= 2} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
       <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
       <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
@@ -6014,6 +6016,9 @@ const modelWeights = [
               onSideChange: (nextSide) => setSide(nextSide === 'long' ? 'BUY' : 'SELL'),
               onClose: activeTrade ? () => void close(activeTrade) : undefined,
               closeDisabled: !activeTrade || !owner || !demoConnected || !trackedContractId || Boolean(closingContractId) || matchingContract?.isValidToSell === false,
+              stake: stakeText,
+              onStakeChange: setStakeText,
+              stakeDisabled: busy || Boolean(openAnyTrade),
             } : null}
           />
         </div>
@@ -6076,7 +6081,6 @@ const modelWeights = [
           <button class={`buy ${side === 'BUY' ? 'active' : ''}${sideFromSignal === 'BUY' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('BUY')}><Icon name="arrowUp" size={15} />{busy && side === 'BUY' ? 'Placing' : 'Buy'}</button>
           <button class={`sell ${side === 'SELL' ? 'active' : ''}${sideFromSignal === 'SELL' ? ' suggested' : ''}`} type="button" disabled={!canPlace} onClick={() => void place('SELL')}><Icon name="arrowDown" size={15} />{busy && side === 'SELL' ? 'Placing' : 'Sell'}</button>
         </div>
-        <label class="gold-trade-field"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stakeText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStakeText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || Boolean(openAnyTrade)} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
         <label class="gold-trade-field"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
         <label class="gold-trade-field"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || Boolean(openAnyTrade)} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>

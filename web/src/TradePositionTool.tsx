@@ -16,6 +16,9 @@ export interface TradePositionToolProps {
   onSideChange?: (side: 'long' | 'short') => void;
   onClose?: () => void;
   closeDisabled?: boolean;
+  stake?: string;
+  onStakeChange?: (value: string) => void;
+  stakeDisabled?: boolean;
 }
 
 function priceText(value: number): string {
@@ -42,6 +45,9 @@ export function TradePositionTool({
   onSideChange,
   onClose,
   closeDisabled = false,
+  stake,
+  onStakeChange,
+  stakeDisabled = false,
 }: TradePositionToolProps): JSX.Element | null {
   const [dragging, setDragging] = useState<'takeProfit' | 'stopLoss' | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -103,6 +109,7 @@ export function TradePositionTool({
         <button type="button" class={side === 'long' ? 'active long' : ''} onClick={() => onSideChange('long')}>Long</button>
         <button type="button" class={side === 'short' ? 'active short' : ''} onClick={() => onSideChange('short')}>Short</button>
       </div>}
+      {onStakeChange && <label class="position-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stake ?? ''} disabled={stakeDisabled} onInput={(event) => onStakeChange(event.currentTarget.value)} /></label>}
       {onClose && <button class="position-close" type="button" disabled={closeDisabled} onClick={onClose}>× Close / cash out</button>}
     </div>
     <div class="position-tool-note">{editable ? 'Drag TP / SL lines to plan this order' : onClose ? 'Live contract levels' : 'Levels lock after order submission'}</div>
