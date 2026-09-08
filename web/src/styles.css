@@ -5952,3 +5952,26 @@ button.activity-row {
   .position-tool-controls { grid-template-columns: 1fr 1fr; }
   .position-side-switch { grid-column: 1 / -1; }
 }
+
+/* Forecast context belongs with the order decision. Keeping it in the trade
+   rail protects the full chart height and avoids a second header above price. */
+.mom-trade-desk > .mom-trade-head,
+.gold-trade-desk > .gold-trade-head { display: none !important; }
+.position-forecast {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 6px 7px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.position-forecast-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 4px 7px; color: var(--muted); text-transform: uppercase; }
+.position-forecast-card > span { overflow: hidden; color: var(--muted-2); font-size: 7px; font-weight: 850; letter-spacing: .08em; text-overflow: ellipsis; white-space: nowrap; }
+.position-forecast-card strong { color: currentColor; font-size: 10px; letter-spacing: .02em; white-space: nowrap; }
+.position-forecast-card em { grid-column: 1 / -1; overflow: hidden; color: var(--muted); font-size: 7px; font-style: normal; font-weight: 700; letter-spacing: .02em; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
+.position-forecast-card.up, .position-forecast-card.buy { color: #75e8bd; }
+.position-forecast-card.down, .position-forecast-card.sell { color: var(--red); }
+.position-forecast-card.wait { color: #f4c96b; }
+.position-forecast-card.reversal { color: var(--red); }
+
+@media (max-width: 700px) {
+  .position-forecast { display: none; }
+}

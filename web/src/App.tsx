@@ -3632,6 +3632,9 @@ function MomentumTradeDesk({
           longActionDisabled: !canPlace || suggestedDirection !== 'up' || busy,
           shortActionDisabled: !canPlace || suggestedDirection !== 'down' || busy,
           placingSide: busy ? direction === 'up' ? 'long' : 'short' : null,
+          forecast: <span class={`position-forecast-card ${suggestionTone}`} title={suggestedReason ?? undefined}>
+            <span>Early forecast</span><strong>{suggestionText}</strong>
+          </span>,
           liveTrade: closableMomentumTrade ? {
             pnl: displayContractPnl == null ? 'Updating' : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD'),
             pnlTone: displayContractPnl != null && displayContractPnl < 0 ? 'down' : 'up',
@@ -6153,6 +6156,10 @@ const modelWeights = [
               longActionDisabled: !canPlace,
               shortActionDisabled: !canPlace,
               placingSide: busy ? side === 'BUY' ? 'long' : 'short' : null,
+              forecast: <span class={`position-forecast-card ${(forecastLean ?? 'WAIT').toLowerCase()}${reversalForecast ? ' reversal' : ''}`}>
+                <span>{reversalForecast ? `Reversal vs open ${contractSide}` : signal?.actionable ? 'Confirmed forecast' : forecastLean ? 'Early forecast' : 'Scanning setup'}</span>
+                <strong>{suggestionText}</strong><em>{forecastTimingText}</em>
+              </span>,
               liveTrade: activeTrade ? {
                 pnl: contractPnl == null ? 'Updating' : fmtSigned(contractPnl, currency), side: contractSide ?? side,
                 pnlTone: contractPnl != null && contractPnl < 0 ? 'down' : 'up',

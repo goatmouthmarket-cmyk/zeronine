@@ -34,6 +34,8 @@ export interface TradePositionToolProps {
   longActionDisabled?: boolean;
   shortActionDisabled?: boolean;
   placingSide?: 'long' | 'short' | null;
+  /** Compact forecast context displayed with the order controls, not over price action. */
+  forecast?: JSX.Element | null;
   liveTrade?: {
     pnl: string;
     pnlTone?: 'up' | 'down';
@@ -94,6 +96,7 @@ export function TradePositionTool({
   longActionDisabled = false,
   shortActionDisabled = false,
   placingSide,
+  forecast,
   liveTrade,
   settledTrade,
 }: TradePositionToolProps): JSX.Element | null {
@@ -277,6 +280,7 @@ export function TradePositionTool({
         {onPlaceLong && <button class="long" type="button" disabled={longActionDisabled} onClick={onPlaceLong}>{placingSide === 'long' ? 'Buying…' : 'Buy'}</button>}
         {onPlaceShort && <button class="short" type="button" disabled={shortActionDisabled} onClick={onPlaceShort}>{placingSide === 'short' ? 'Selling…' : 'Sell'}</button>}
       </div>}
+      {forecast && <div class="position-forecast">{forecast}</div>}
       {liveTrade && <section class={`position-live-card${liveTrade.pnlTone === 'down' ? ' down' : ''}`} aria-live="polite" aria-label="Live contract details">
         <span>Live contract P&amp;L</span>
         <strong>{liveTrade.pnl}</strong>
