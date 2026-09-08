@@ -178,6 +178,47 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (balance > 0 && reservedStake + nextStake > balance * .9) return 'open-lot stake reserve would exceed 90% of account balance';
     return null;
   };
+  /**
+   * A multiplier can settle while the browser is disconnected, leaving a
+   * durable `pending` reservation behind until the next subscription update.
+   * Check known contract ids once before applying the lot cap, so a settled
+   * contract never blocks a fresh order.  A purchase with no contract id is
+   * deliberately not cleared: that remains an explicit reconciliation case.
+   */
+  const reconcileSettledMultiplierLots = async (accountId: string, product: 'momentum' | 'gold'): Promise<void> => {
+    if (!client.isConnected) return;
+    const candidates = openMultiplierLots(accountId, product).filter((trade) => Boolean(trade.contract_id));
+    await Promise.all(candidates.map(async (trade) => {
+      const timeout = new Promise<null>((resolve) => {
+        const timer = setTimeout(() => resolve(null), 2_500);
+        timer.unref();
+      });
+      try {
+        const outcome = await Promise.race([
+          client.settleContract(trade.contract_id, () => undefined),
+          timeout,
+        ]);
+        if (!outcome?.settled) return;
+        const won = outcome.status === 'won';
+        const status = won ? ('won' as const) : ('lost' as const);
+        const profit = contractProfit(won, trade.stake, trade.payout, outcome);
+        resolveTrade(
+          trade.id,
+          status,
+          profit,
+          trade.contract_id,
+          { entrySpot: outcome.entrySpot, entryDigit: outcome.entryDigit, exitSpot: outcome.exitSpot, exitDigit: outcome.exitDigit },
+          accountId,
+        );
+        const settledTrade = getTrade(trade.id, accountId);
+        if (settledTrade) hub.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(accountId), manual: true, settled: true });
+      } catch {
+        // The normal background settlement subscriber remains responsible for
+        // retries. Admission must never fail merely because reconciliation is
+        // temporarily unavailable.
+      }
+    }));
+  };
   type CloseTarget = { tradeId?: unknown; contractId?: unknown };
   const findOpenTradeForClose = (
     body: CloseTarget | undefined,
@@ -547,6 +588,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
+    await reconcileSettledMultiplierLots(`deriv:${session.loginid}`, 'gold');
     const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'gold', stake, session.balance);
     if (admission) {
       reply.code(409);
@@ -942,6 +984,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
+    await reconcileSettledMultiplierLots(`deriv:${session.loginid}`, 'momentum');
     const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'momentum', stake, session.balance);
     if (admission) {
       reply.code(409);
