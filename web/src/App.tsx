@@ -3112,6 +3112,33 @@ function mergeMomentumSamples(samples: MomentumScanSample[], next: MomentumScanS
   return [...deduped.values()].sort((a, b) => a.epoch - b.epoch).slice(-limit);
 }
 
+/** A deliberately light-weight quote trace for the multi-market scanner.
+ * The detailed workspace keeps its OHLC candles; using a line here makes it
+ * possible to compare twelve live moves without implying a candle interval. */
+function MomentumWatchLine({ samples, label }: { samples?: MomentumScanSample[]; label: string }): JSX.Element {
+  const quotes = (samples ?? [])
+    .filter((sample) => Number.isFinite(sample.quote))
+    .slice(-64)
+    .map((sample) => sample.quote);
+  if (quotes.length < 2) return <span class="mom-watch-line empty">Collecting quotes</span>;
+  const low = Math.min(...quotes);
+  const high = Math.max(...quotes);
+  const span = Math.max(high - low, Math.abs(high) * 0.000001, 0.000001);
+  const points = quotes.map((quote, index) => {
+    const x = (index / Math.max(1, quotes.length - 1)) * 100;
+    const y = 92 - ((quote - low) / span) * 84;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(' ');
+  const rising = quotes.at(-1)! >= quotes[0]!;
+  const id = `watch-${label.replace(/[^a-z0-9]/gi, '').toLowerCase()}`;
+  return <svg class={`mom-watch-line ${rising ? 'up' : 'down'}`} viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label={label}>
+    <defs><linearGradient id={id} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".26" /><stop offset="1" stop-color="currentColor" stop-opacity="0" /></linearGradient></defs>
+    <path class="mom-watch-line-fill" d={`M 0,100 L ${points.replace(/ /g, ' L ')} L 100,100 Z`} fill={`url(#${id})`} />
+    <polyline points={points} fill="none" />
+    <circle cx="100" cy={points.split(' ').at(-1)?.split(',')[1] ?? '50'} r="2.5" />
+  </svg>;
+}
+
 function MomentumWatchboard({
   markets,
   selected,
@@ -3134,7 +3161,7 @@ function MomentumWatchboard({
         return <button class={`mom-watch-row${active ? ' active' : ''}`} type="button" key={item.symbol} onClick={() => onFocus(item.symbol)} disabled={Boolean(focusing)}>
           <span class={`mom-watch-signal ${direction}`}>{direction === 'up' ? 'UP' : direction === 'down' ? 'DOWN' : 'WAIT'}</span>
           <span class="mom-watch-market"><b>{item.display}</b><small>{item.market.replace('_', ' ')} · {item.sampleCount} ticks</small></span>
-          <span class="mom-watch-chart"><MomentumPriceChart compact samples={item.samples} label={`${item.display} recent quotes`} /></span>
+          <span class="mom-watch-chart"><MomentumWatchLine samples={item.samples} label={`${item.display} recent quotes`} /></span>
           <span class="mom-watch-progress"><i><em style={{ width: `${progress}%` }}></em></i><small>{Math.round(progress)}%</small></span>
           <span class={`mom-watch-read ${direction}`}><b>{item.signal?.confidence != null ? `${item.signal.confidence}%` : '--'}</b><small>{focusing === item.symbol ? 'Focusing' : active ? 'Focused' : direction}</small></span>
         </button>;
