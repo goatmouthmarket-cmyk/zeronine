@@ -984,6 +984,22 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
+    // Reconnect before checking durable reservations. Otherwise a stale local
+    // pending row is counted while its settled Deriv contract cannot be
+    // verified, producing a false "two open lots" block.
+    if (!client.isConnected) {
+      try {
+        const token = await resolveStoredToken();
+        const connected = await client.reconnect(token, session.loginid);
+        if (connected.mode !== 'demo') {
+          reply.code(403);
+          return { error: 'Momentum trades are restricted to a Deriv demo account' };
+        }
+      } catch (error) {
+        reply.code(409);
+        return { error: `socket reconnect failed: ${String(error)}` };
+      }
+    }
     await reconcileSettledMultiplierLots(`deriv:${session.loginid}`, 'momentum');
     const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'momentum', stake, session.balance);
     if (admission) {
@@ -1009,20 +1025,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!gate.ok) {
       reply.code(409);
       return { error: `Momentum trade blocked: ${gate.reason}` };
-    }
-
-    if (!client.isConnected) {
-      try {
-        const token = await resolveStoredToken();
-        const connected = await client.reconnect(token, session.loginid);
-        if (connected.mode !== 'demo') {
-          reply.code(403);
-          return { error: 'Momentum trades are restricted to a Deriv demo account' };
-        }
-      } catch (error) {
-        reply.code(409);
-        return { error: `socket reconnect failed: ${String(error)}` };
-      }
     }
 
     // A scan can complete while a user is deciding. Re-read the focus state so
