@@ -69,7 +69,20 @@ export function GoldTradeChart({
   const followLiveRef = useRef(true);
   const dataLengthRef = useRef(0);
   const latestCandleTimeRef = useRef<Time | null>(null);
-  const data = useMemo(() => candleData(candles ?? []), [candles]);
+  const data = useMemo(() => {
+    const historical = candleData(candles ?? []);
+    if (!historical.length || !Number.isFinite(quote?.mid)) return historical;
+    // Candles arrive on their timeframe cadence while Deriv quotes arrive on
+    // every tick. Keep the active candle's close/high/low synchronized to the
+    // quote so the chart marker and the live position line never disagree.
+    const last = historical[historical.length - 1]!;
+    return [...historical.slice(0, -1), {
+      ...last,
+      high: Math.max(last.high, Number(quote!.mid)),
+      low: Math.min(last.low, Number(quote!.mid)),
+      close: Number(quote!.mid),
+    }];
+  }, [candles, quote?.mid]);
   const digits = Math.max(2, Math.min(5, String((quote?.mid ?? data.at(-1)?.close ?? 0).toFixed(5)).split('.')[1]?.length ?? 2));
   const lastPrice = quote?.mid ?? data.at(-1)?.close ?? null;
   const high = data.length ? Math.max(...data.map((point) => point.high)) : null;
