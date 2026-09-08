@@ -117,7 +117,9 @@ export function TradePositionTool({
   };
   const top = (price: number, key?: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
     const y = chartY(price, key);
-    return y != null ? `clamp(12px, ${y}px, calc(100% - 12px))` : `${Math.max(1, Math.min(99, ((range.high - price) / span) * 100))}%`;
+    // Levels carry labels above the line, so leave enough headroom for the
+    // label itself rather than merely keeping the 1px line on-screen.
+    return y != null ? `clamp(24px, ${y}px, calc(100% - 18px))` : `${Math.max(3, Math.min(97, ((range.high - price) / span) * 100))}%`;
   };
   const zone = (from: number | null | undefined, to: number | null | undefined, fromKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', toKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
     if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
