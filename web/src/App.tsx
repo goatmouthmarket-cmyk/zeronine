@@ -167,6 +167,19 @@ function sideLabel(direction: string, barrier: number): string {
   return direction === 'under' ? `Under ${barrier}` : `Over ${barrier}`;
 }
 
+function multiplierLimitPrice(entry: number | undefined, amount: number | undefined, stake: number, multiplier: number, side: 'up' | 'down' | 'BUY' | 'SELL', kind: 'takeProfit' | 'stopLoss'): number | undefined {
+  if (!Number.isFinite(entry) || !Number.isFinite(amount) || !Number.isFinite(stake) || !Number.isFinite(multiplier) || entry! <= 0 || amount! <= 0 || stake <= 0 || multiplier <= 0) return undefined;
+  const long = side === 'up' || side === 'BUY';
+  const favourable = kind === 'takeProfit';
+  const sign = (long === favourable) ? 1 : -1;
+  return Math.max(Number.EPSILON, entry! * (1 + sign * (amount! / (stake * multiplier))));
+}
+
+function multiplierLimitAmount(entry: number | undefined, price: number, stake: number, multiplier: number): number | undefined {
+  if (!Number.isFinite(entry) || !Number.isFinite(price) || !Number.isFinite(stake) || !Number.isFinite(multiplier) || entry! <= 0 || stake <= 0 || multiplier <= 0) return undefined;
+  return Math.max(.01, Math.abs((price - entry!) / entry!) * stake * multiplier);
+}
+
 const STRATEGY_META: Record<Settings['strategy_mode'], { label: string; hint: string }> = {
   conservative: {
     label: 'Conservative',
@@ -3311,6 +3324,20 @@ function MomentumTradeDesk({
   const chartDisplay = chartSnapshot?.symbol === chartSymbol && (hasActiveTradeEntry || !display) ? chartSnapshot.display : display ?? trade?.market ?? 'Momentum market';
   const chartFrozenEntry = chartSnapshot?.symbol === chartSymbol && chartSnapshot.entryPrice != null ? chartSnapshot.entryPrice : chartEntryPrice;
   const chartDirection = (chartSnapshot?.symbol === chartSymbol && chartSnapshot.direction ? chartSnapshot.direction : suggestedDirection) ?? undefined;
+  const plannerSide = (hasActiveTradeEntry ? chartDirection : direction) ?? 'up';
+  const plannerEntry = chartFrozenEntry ?? chartSamples.at(-1)?.quote;
+  const plannerStake = hasActiveTradeEntry ? tradeStake : stake;
+  const plannerMultiplier = hasActiveTradeEntry ? tradeMultiplier : selectedMultiplier;
+  const plannerTargetAmount = detailTakeProfit ?? Math.max(.01, (Number.isFinite(plannerStake) ? plannerStake : 1) * .5);
+  const plannerRiskAmount = detailStopLoss ?? Math.max(.01, (Number.isFinite(plannerStake) ? plannerStake : 1) * .25);
+  const plannerTargetPrice = multiplierLimitPrice(plannerEntry, plannerTargetAmount, plannerStake, plannerMultiplier, plannerSide, 'takeProfit');
+  const plannerStopPrice = multiplierLimitPrice(plannerEntry, plannerRiskAmount, plannerStake, plannerMultiplier, plannerSide, 'stopLoss');
+  const updatePlannerLimit = (kind: 'takeProfit' | 'stopLoss', price: number) => {
+    const amount = multiplierLimitAmount(plannerEntry, price, plannerStake, plannerMultiplier);
+    if (amount == null) return;
+    if (kind === 'takeProfit') setTakeProfitText(amount.toFixed(2));
+    else setStopLossText(amount.toFixed(2));
+  };
   const contractCurrentSpot = Number.isFinite(Number(matchingContract?.currentSpot ?? matchingContract?.update?.currentSpot))
     ? Number(matchingContract?.currentSpot ?? matchingContract?.update?.currentSpot)
     : undefined;
@@ -3541,7 +3568,11 @@ function MomentumTradeDesk({
 
     <div class="mom-trade-live">
       <div class="mom-trade-chart">
-        <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} />
+        <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} positionTool={plannerEntry != null ? {
+          side: plannerSide === 'down' ? 'short' : 'long', entry: plannerEntry, takeProfit: plannerTargetPrice, stopLoss: plannerStopPrice,
+          targetPnl: fmtSigned(plannerTargetAmount, session?.currency ?? 'USD'), riskPnl: fmtSigned(-plannerRiskAmount, session?.currency ?? 'USD'),
+          editable: !hasActiveTradeEntry && !busy, onLevelChange: updatePlannerLimit,
+        } : null} />
       </div>
       <div class="mom-trade-readout" aria-live="polite">
         <span>Account balance</span>
@@ -3615,7 +3646,7 @@ function MomentumTradeDesk({
 function MomentumPage(): JSX.Element {
   const s = useStore();
   const momentum = s.momentum;
-  const [activeTab, setActiveTab] = useState<'research' | 'trade' | 'ledger'>('research');
+  const [activeTab, setActiveTab] = useState<'research' | 'trade' | 'ledger'>('trade');
   const [busy, setBusy] = useState(false);
   const [focusing, setFocusing] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -3722,8 +3753,8 @@ function MomentumPage(): JSX.Element {
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
       </div>
       <div class="mom-tabs" role="tablist" aria-label="Momentum workspace">
-        <button class={activeTab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'research'} onClick={() => setActiveTab('research')}>Research</button>
         <button class={activeTab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'trade'} onClick={() => setActiveTab('trade')}>Trade</button>
+        <button class={activeTab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'research'} onClick={() => setActiveTab('research')}>Research</button>
         <button class={activeTab === 'ledger' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'ledger'} onClick={() => setActiveTab('ledger')}>Ledger</button>
       </div>
     </header>
@@ -4902,8 +4933,8 @@ function GoldPage(): JSX.Element {
         <div class="subtitle">Active market watch · Deriv Gold contracts · guarded execution</div>
       </div>
       <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
-        <button class={tab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'research'} onClick={() => setTab('research')}>Research</button>
         <button class={tab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'trade'} onClick={() => setTab('trade')}>Trade</button>
+        <button class={tab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'research'} onClick={() => setTab('research')}>Research</button>
         <button class={tab === 'ledger' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'ledger'} onClick={() => setTab('ledger')}>Ledger</button>
       </div>
     </header>
@@ -5681,6 +5712,20 @@ function GoldDerivTradeWorkspace({
   const currency = purchase?.currency ?? session?.currency ?? 'USD';
   const exposure = Number.isFinite(stake) && stake > 0 && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 ? stake * selectedMultiplier : 0;
   const exposureText = exposure > 0 ? `${fmtMoney(stake, currency)} controls about ${fmtMoney(exposure, currency)}` : 'Enter stake and multiplier';
+  const goldPlannerSide: GoldSide = activeTrade ? contractSide ?? side : side;
+  const goldPlannerEntry = entryPrice ?? quote?.mid;
+  const goldPlannerStake = activeTrade ? contractStake : stake;
+  const goldPlannerMultiplier = activeTrade ? contractMultiplier : selectedMultiplier;
+  const goldPlannerTargetAmount = takeProfit ?? Math.max(.01, (Number.isFinite(goldPlannerStake) ? goldPlannerStake : 1) * .5);
+  const goldPlannerRiskAmount = stopLoss ?? Math.max(.01, (Number.isFinite(goldPlannerStake) ? goldPlannerStake : 1) * .25);
+  const goldPlannerTargetPrice = multiplierLimitPrice(goldPlannerEntry, goldPlannerTargetAmount, goldPlannerStake, goldPlannerMultiplier, goldPlannerSide, 'takeProfit');
+  const goldPlannerStopPrice = multiplierLimitPrice(goldPlannerEntry, goldPlannerRiskAmount, goldPlannerStake, goldPlannerMultiplier, goldPlannerSide, 'stopLoss');
+  const updateGoldPlannerLimit = (kind: 'takeProfit' | 'stopLoss', price: number) => {
+    const amount = multiplierLimitAmount(goldPlannerEntry, price, goldPlannerStake, goldPlannerMultiplier);
+    if (amount == null) return;
+    if (kind === 'takeProfit') setTakeProfitText(amount.toFixed(2));
+    else setStopLossText(amount.toFixed(2));
+  };
   const tpPreview = takeProfit === undefined ? 'No TP' : fmtMoney(takeProfit, currency);
   const slPreview = stopLoss === undefined ? 'No SL' : fmtMoney(stopLoss, currency);
   const goldTrades = trades.filter(unusedGoldDerivIsGoldTrade);
@@ -5949,10 +5994,15 @@ const modelWeights = [
             candles={candles}
             quote={quote}
             label={`${symbol?.displayName || 'Gold'} Deriv live trade chart`}
-            entryPrice={entryPrice}
+            entryPrice={entryPrice ?? quote?.mid}
             side={activeTrade?.contract_type === 'MULTDOWN' ? 'SELL' : activeTrade ? 'BUY' : sideFromSignal ?? side}
             muted={marketClosed}
             lockLabel={marketClosed ? symbol?.tradingStatus ?? 'market closed' : null}
+            positionTool={goldPlannerEntry != null ? {
+              side: goldPlannerSide === 'SELL' ? 'short' : 'long', entry: goldPlannerEntry, takeProfit: goldPlannerTargetPrice, stopLoss: goldPlannerStopPrice,
+              targetPnl: fmtSigned(goldPlannerTargetAmount, currency), riskPnl: fmtSigned(-goldPlannerRiskAmount, currency),
+              editable: !activeTrade && !busy && !marketClosed, onLevelChange: updateGoldPlannerLimit,
+            } : null}
           />
         </div>
         <div class={`gold-trade-readout ${contractPnl == null ? '' : contractPnl >= 0 ? 'up' : 'down'}`}>

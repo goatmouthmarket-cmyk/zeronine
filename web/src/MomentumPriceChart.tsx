@@ -12,6 +12,7 @@ import {
   type Time,
 } from 'lightweight-charts';
 import type { MomentumScanSample } from './store';
+import { TradePositionTool, type TradePositionToolProps } from './TradePositionTool';
 
 export interface MomentumPriceChartProps {
   samples?: MomentumScanSample[];
@@ -22,6 +23,7 @@ export interface MomentumPriceChartProps {
   /** Visible context for the research-window entry reference. */
   entryLabel?: string;
   entryDirection?: 'up' | 'down';
+  positionTool?: Omit<TradePositionToolProps, 'values'> | null;
 }
 
 function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Time>[] {
@@ -54,6 +56,7 @@ export function MomentumPriceChart({
   entryPrice,
   entryLabel = 'Watch entry',
   entryDirection,
+  positionTool,
 }: MomentumPriceChartProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -268,6 +271,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
+    {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
     {points.length < 2 && <span class="mom-chart-empty">Awaiting ticks</span>}

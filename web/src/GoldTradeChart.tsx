@@ -11,6 +11,7 @@ import {
   type Time,
 } from 'lightweight-charts';
 import type { GoldCandleState, GoldQuoteState, GoldSide } from './store';
+import { TradePositionTool, type TradePositionToolProps } from './TradePositionTool';
 
 export interface GoldTradeChartProps {
   candles?: GoldCandleState[];
@@ -22,6 +23,7 @@ export interface GoldTradeChartProps {
   side?: GoldSide | null;
   muted?: boolean;
   lockLabel?: string | null;
+  positionTool?: Omit<TradePositionToolProps, 'values'> | null;
 }
 
 function toChartTime(ms: number): Time {
@@ -57,6 +59,7 @@ export function GoldTradeChart({
   side,
   muted = false,
   lockLabel,
+  positionTool,
 }: GoldTradeChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -199,6 +202,7 @@ export function GoldTradeChart({
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
+    {positionTool && <TradePositionTool {...positionTool} values={data.flatMap((candle) => [candle.high, candle.low])} />}
     {lockLabel && <div class="gold-chart-lock-badge" role="status">Locked · {lockLabel}</div>}
     <div class="gold-chart-readout" aria-hidden="true">
       <span>{lastPrice == null ? 'No live price' : displayPrice(lastPrice, digits)}</span>
