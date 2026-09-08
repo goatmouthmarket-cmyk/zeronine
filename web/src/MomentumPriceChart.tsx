@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   ColorType,
-  CandlestickSeries,
+  LineSeries,
   LineStyle,
   createChart,
   type AutoscaleInfo,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
-  type CandlestickData,
+  type LineData,
   type Time,
 } from 'lightweight-charts';
 import type { MomentumScanSample } from './store';
@@ -26,27 +26,20 @@ export interface MomentumPriceChartProps {
   positionTool?: Omit<TradePositionToolProps, 'values'> | null;
 }
 
-function chartData(samples: MomentumScanSample[], compact: boolean): CandlestickData<Time>[] {
+function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Time>[] {
   let previousTime = 0;
   const ticks = samples
     .filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote))
     .slice(compact ? -72 : -600);
-  const ticksPerCandle = compact ? 3 : 10;
-  const candles: CandlestickData<Time>[] = [];
-  for (let start = 0; start < ticks.length; start += ticksPerCandle) {
-    const group = ticks.slice(start, start + ticksPerCandle);
-    if (!group.length) continue;
-    const quotes = group.map((sample) => sample.quote);
-    // Momentum receives live ticks, so aggregate adjacent ticks into a small
-    // OHLC candle rather than pretending every quote is a candle close.
-    // A grouped tick candle represents a small slice of the five-minute
-    // momentum watch. Give adjacent candles enough elapsed space for a
-    // readable multi-minute view instead of a row of one-second bars.
-    const time = Math.max(Math.trunc(group[group.length - 1]!.epoch), previousTime + (compact ? 3 : 20));
+  const points: LineData<Time>[] = [];
+  for (const tick of ticks) {
+    // Momentum is a quote stream, not a candle feed. Preserve every live
+    // movement and only make duplicate provider timestamps monotonic.
+    const time = Math.max(Math.trunc(tick.epoch), previousTime + 1);
     previousTime = time;
-    candles.push({ time: time as Time, open: quotes[0]!, high: Math.max(...quotes), low: Math.min(...quotes), close: quotes[quotes.length - 1]! });
+    points.push({ time: time as Time, value: tick.quote });
   }
-  return candles;
+  return points;
 }
 
 function displayPrice(value: number) {
@@ -70,18 +63,18 @@ export function MomentumPriceChart({
 }: MomentumPriceChartProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const entryLineRef = useRef<IPriceLine | null>(null);
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
-  const pointsRef = useRef<CandlestickData<Time>[]>(points);
+  const pointsRef = useRef<LineData<Time>[]>(points);
   const fittedRef = useRef(false);
   const hasEntry = !compact && !positionTool && Number.isFinite(entryPrice);
   const entryViewport = useMemo(() => {
     if (!hasEntry || entryPrice == null || points.length < 2) {
       return { showLine: hasEntry, offscreen: false, side: 'onscreen' as const };
     }
-    const values = points.flatMap((point) => [point.high, point.low]).filter(Number.isFinite);
+    const values = points.map((point) => point.value).filter(Number.isFinite);
     if (values.length < 2) return { showLine: hasEntry, offscreen: false, side: 'onscreen' as const };
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -169,8 +162,11 @@ export function MomentumPriceChart({
         handleScroll: tradeView,
         handleScale: tradeView,
       });
-      const series = chart.addSeries(CandlestickSeries, {
-        upColor: '#22c55e', downColor: '#ff5263', borderUpColor: '#75e8bd', borderDownColor: '#ff5263', wickUpColor: '#75e8bd', wickDownColor: '#ff8290',
+      const series = chart.addSeries(LineSeries, {
+        color: '#75e8bd',
+        lineWidth: 2,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 3,
         priceLineVisible: false,
         lastValueVisible: false,
       });
@@ -304,7 +300,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {positionTool && !compact && <TradePositionTool {...positionTool} values={points.flatMap((point) => [point.high, point.low])} zoneGeometry={zoneGeometry} />}
+    {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
     {points.length < 2 && <span class="mom-chart-empty">Awaiting ticks</span>}
