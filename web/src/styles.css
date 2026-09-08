@@ -5702,4 +5702,10 @@ button.activity-row {
   .mom-page-header.trade-mode, .gold-page-header.trade-mode { min-height: 36px; align-items: center; justify-content: flex-end; padding: 0 0 7px; }
   .mom-page-header.trade-mode .mom-page-heading, .gold-page-header.trade-mode > div:first-child { display: none; }
   .mom-page-header.trade-mode .mom-tabs, .gold-page-header.trade-mode .gold-tabs { margin-left: auto; }
+  /* Let the chart own the remaining desktop workspace; execution context is
+     already contained in the rail, so the old explanatory footer is noise. */
+  .gold-trade-live, .mom-trade-live { height: clamp(500px, calc(100vh - 155px), 720px); min-height: 0 !important; }
+  .gold-trade-chart-wrap { height: clamp(500px, calc(100vh - 155px), 720px); min-height: 0 !important; }
+  .mom-trade-chart { height: clamp(500px, calc(100vh - 155px), 720px) !important; min-height: 0 !important; }
+  .gold-trade-desk > .gold-trade-note, .mom-trade-desk > .mom-trade-note { display: none; }
 }
