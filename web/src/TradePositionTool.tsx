@@ -99,13 +99,25 @@ export function TradePositionTool({
   if (!range || !Number.isFinite(entry)) return null;
 
   const span = Math.max(range.high - range.low, Number.EPSILON);
+  const chartY = (price: number, key?: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
+    const raw = key ? levelTops?.[key] : undefined;
+    if (!Number.isFinite(raw)) return undefined;
+    const entryY = levelTops?.entry;
+    // With a larger stake, the same cash target is legitimately closer to
+    // entry. Keep a small visual gap so both planning controls remain usable.
+    if ((key === 'takeProfit' || key === 'stopLoss') && Number.isFinite(entryY) && Math.abs(Number(raw) - Number(entryY)) < 26) {
+      const aboveEntry = price >= entry;
+      return Number(entryY) + (aboveEntry ? -26 : 26);
+    }
+    return Number(raw);
+  };
   const top = (price: number, key?: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
-    const chartTop = key ? levelTops?.[key] : null;
-    return Number.isFinite(chartTop) ? `clamp(12px, ${chartTop}px, calc(100% - 12px))` : `${Math.max(1, Math.min(99, ((range.high - price) / span) * 100))}%`;
+    const y = chartY(price, key);
+    return y != null ? `clamp(12px, ${y}px, calc(100% - 12px))` : `${Math.max(1, Math.min(99, ((range.high - price) / span) * 100))}%`;
   };
   const zone = (from: number | null | undefined, to: number | null | undefined, fromKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', toKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
     if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
-    const fromTop = levelTops?.[fromKey]; const toTop = levelTops?.[toKey];
+    const fromTop = chartY(Number(from), fromKey); const toTop = chartY(Number(to), toKey);
     if (Number.isFinite(fromTop) && Number.isFinite(toTop)) {
       return { top: `${Math.min(Number(fromTop), Number(toTop))}px`, height: `${Math.max(1.5, Math.abs(Number(fromTop) - Number(toTop)))}px` };
     }
