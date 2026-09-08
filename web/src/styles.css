@@ -5705,14 +5705,16 @@ button.activity-row {
   .gold-trade-chart-canvas { margin-right: 174px; }
   /* Trade needs immediate access to the chart. Keep the brand heading for
      Research and Ledger, where it establishes page context. */
-  .mom-page-header.trade-mode, .gold-page-header.trade-mode { min-height: 36px; align-items: center; justify-content: flex-end; padding: 0 0 7px; }
+  .mom-page-header.trade-mode, .gold-page-header.trade-mode { min-height: 30px; align-items: center; justify-content: flex-end; padding: 0 0 4px; }
   .mom-page-header.trade-mode .mom-page-heading, .gold-page-header.trade-mode .gold-page-heading { display: block; }
   .mom-page-header.trade-mode .mom-tabs, .gold-page-header.trade-mode .gold-tabs { margin-left: auto; }
+  .trade-mode .trade-market-strip { grid-template-columns: auto auto minmax(0, 1fr); column-gap: 7px; min-width: 0; }
+  .trade-mode .trade-market-strip small { grid-column: 3; align-self: center; margin-top: 0; overflow: hidden; text-overflow: ellipsis; }
   /* Let the chart own the remaining desktop workspace; execution context is
      already contained in the rail, so the old explanatory footer is noise. */
-  .gold-trade-live, .mom-trade-live { height: clamp(500px, calc(100vh - 155px), 720px); min-height: 0 !important; }
-  .gold-trade-chart-wrap { height: clamp(500px, calc(100vh - 155px), 720px); min-height: 0 !important; }
-  .mom-trade-chart { height: clamp(500px, calc(100vh - 155px), 720px) !important; min-height: 0 !important; }
+  .gold-trade-live, .mom-trade-live { height: clamp(430px, calc(100vh - 92px), 720px); min-height: 0 !important; }
+  .gold-trade-chart-wrap { height: clamp(430px, calc(100vh - 92px), 720px); min-height: 0 !important; padding-block: 0; }
+  .mom-trade-chart { height: clamp(430px, calc(100vh - 92px), 720px) !important; min-height: 0 !important; padding-block: 0; }
   .gold-trade-desk > .gold-trade-note, .mom-trade-desk > .mom-trade-note { display: none; }
 }
 .trade-market-strip { display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 8px; min-width: 260px; color: var(--muted); }.trade-market-strip > span { color: #75e8bd; font-size: 8px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }.trade-market-strip strong { color: var(--text); font-size: 13px; line-height: 1; }.trade-market-strip small { grid-column: 1 / -1; margin-top: 4px; color: var(--muted); font-size: 9px; white-space: nowrap; }.trade-market-strip.gold > span { color: #f4c96b; }
