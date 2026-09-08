@@ -194,11 +194,13 @@ export function GoldTradeChart({
         lineVisible: true,
       }));
     };
-    addLine(entryPrice, side ? `${side} entry` : 'Entry', muted ? 'rgba(170,176,190,.7)' : side === 'SELL' ? 'rgba(255,82,99,.9)' : 'rgba(244,201,107,.95)', LineStyle.Dashed);
-    addLine(takeProfit, 'TP', muted ? 'rgba(170,176,190,.55)' : 'rgba(117,232,189,.9)', LineStyle.Dotted);
-    addLine(stopLoss, 'SL', muted ? 'rgba(170,176,190,.55)' : 'rgba(255,82,99,.9)', LineStyle.Dotted);
+    if (!positionTool) {
+      addLine(entryPrice, side ? `${side} entry` : 'Entry', muted ? 'rgba(170,176,190,.7)' : side === 'SELL' ? 'rgba(255,82,99,.9)' : 'rgba(244,201,107,.95)', LineStyle.Dashed);
+      addLine(takeProfit, 'TP', muted ? 'rgba(170,176,190,.55)' : 'rgba(117,232,189,.9)', LineStyle.Dotted);
+      addLine(stopLoss, 'SL', muted ? 'rgba(170,176,190,.55)' : 'rgba(255,82,99,.9)', LineStyle.Dotted);
+    }
     linesRef.current = nextLines;
-  }, [entryPrice, muted, side, stopLoss, takeProfit]);
+  }, [entryPrice, muted, positionTool, side, stopLoss, takeProfit]);
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />

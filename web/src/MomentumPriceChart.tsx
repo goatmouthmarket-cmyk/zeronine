@@ -75,7 +75,7 @@ export function MomentumPriceChart({
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
   const pointsRef = useRef<CandlestickData<Time>[]>(points);
   const fittedRef = useRef(false);
-  const hasEntry = !compact && Number.isFinite(entryPrice);
+  const hasEntry = !compact && !positionTool && Number.isFinite(entryPrice);
   const entryViewport = useMemo(() => {
     if (!hasEntry || entryPrice == null || points.length < 2) {
       return { showLine: hasEntry, offscreen: false, side: 'onscreen' as const };
