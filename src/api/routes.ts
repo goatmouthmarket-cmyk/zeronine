@@ -41,6 +41,7 @@ import {
   getOpenTrade,
   getOpenTradeByLane,
   isGoldMultiplierTrade,
+  isMomentumMultiplierTrade,
   getTrade,
   getPerformanceSummary,
   getPaperTrade,
@@ -164,7 +165,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     listOpenTrades(accountId).filter((trade) => {
       if (trade.contract_type !== 'MULTUP' && trade.contract_type !== 'MULTDOWN') return false;
       if (!product) return true;
-      return product === 'gold' ? isGoldDerivTrade(trade) : !isGoldDerivTrade(trade);
+      return product === 'gold' ? isGoldDerivTrade(trade) : isMomentumMultiplierTrade(trade);
     });
   const multiplierLotAdmission = (accountId: string, product: 'momentum' | 'gold', nextStake: number, balance: number): string | null => {
     const all = openMultiplierLots(accountId);
@@ -185,7 +186,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
    * contract never blocks a fresh order.  A purchase with no contract id is
    * deliberately not cleared: that remains an explicit reconciliation case.
    */
-  const reconcileSettledMultiplierLots = async (accountId: string, product: 'momentum' | 'gold'): Promise<void> => {
+  const reconcileSettledMultiplierLots = async (accountId: string, product?: 'momentum' | 'gold'): Promise<void> => {
     if (!client.isConnected) return;
     const candidates = openMultiplierLots(accountId, product).filter((trade) => Boolean(trade.contract_id));
     await Promise.all(candidates.map(async (trade) => {
@@ -591,7 +592,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
     }
-    await reconcileSettledMultiplierLots(`deriv:${session.loginid}`, 'gold');
+    await reconcileSettledMultiplierLots(`deriv:${session.loginid}`);
     const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'gold', stake, session.balance);
     if (admission) {
       reply.code(409);
@@ -1003,7 +1004,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         return { error: `socket reconnect failed: ${String(error)}` };
       }
     }
-    await reconcileSettledMultiplierLots(`deriv:${session.loginid}`, 'momentum');
+    await reconcileSettledMultiplierLots(`deriv:${session.loginid}`);
     const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'momentum', stake, session.balance);
     if (admission) {
       reply.code(409);

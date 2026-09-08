@@ -18,6 +18,13 @@ test('Momentum multiplier proposal uses a multiplier contract without a digit ba
   });
 });
 
+test('only explicitly marked Momentum multipliers consume a Momentum lot', async () => {
+  const { isMomentumMultiplierTrade } = await import('../src/db/store.ts');
+  assert.equal(isMomentumMultiplierTrade({ contract_type: 'MULTUP', reason: 'momentum manual UP' }), true);
+  assert.equal(isMomentumMultiplierTrade({ contract_type: 'MULTDOWN', reason: 'manual multiplier order' }), false);
+  assert.equal(isMomentumMultiplierTrade({ contract_type: 'MULTUP', reason: 'gold deriv manual BUY' }), false);
+});
+
 test('explicit Momentum trade is demo-only and records the selected research contract', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg] = await Promise.all([
     import('fastify'),

@@ -1318,6 +1318,18 @@ export function isGoldMultiplierTrade(trade: { contract_type?: string; reason?: 
   );
 }
 
+/**
+ * Momentum orders carry their own durable origin marker.  Do not infer
+ * Momentum from "not Gold": older/general multiplier rows must never consume
+ * a Momentum desk slot that the user cannot see or manage there.
+ */
+export function isMomentumMultiplierTrade(trade: { contract_type?: string; reason?: string | null } | null | undefined): boolean {
+  return Boolean(
+    trade && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN')
+    && /momentum manual/i.test(trade.reason ?? ''),
+  );
+}
+
 export function listOpenTrades(accountId = currentAccountId()): TradeRow[] {
   return getDb()
     .prepare("SELECT * FROM trades WHERE account_id = ? AND status IN ('purchasing', 'pending') ORDER BY id DESC")
@@ -1326,7 +1338,7 @@ export function listOpenTrades(accountId = currentAccountId()): TradeRow[] {
 
 export function getOpenTradeByLane(lane: TradeLane, accountId = currentAccountId()): TradeRow | null {
   return listOpenTrades(accountId).find((trade) => {
-    if (lane === 'momentum') return tradeLane(trade) === 'multiplier' && !isGoldMultiplierTrade(trade);
+    if (lane === 'momentum') return isMomentumMultiplierTrade(trade);
     if (lane === 'gold') return isGoldMultiplierTrade(trade);
     return tradeLane(trade) === lane;
   }) ?? null;
