@@ -3298,7 +3298,7 @@ function MomentumTradeDesk({
   const closedMomentumTrade = closed?.contractId
     ? trades.find((item) => item.contract_id === closed.contractId) ?? null
     : null;
-  const canPlace = canQuote && multiplierWithinLiveMax && Boolean(suggestedDirection) && openMomentumTrades.length < 2;
+  const canPlace = canQuote && multiplierWithinLiveMax && Boolean(suggestedDirection) && openMomentumTrades.length < 4;
   const trade = purchase?.id == null
     ? closableMomentumTrade ?? closedMomentumTrade
     : trades.find((item) => item.id === purchase.id) ?? closableMomentumTrade ?? closedMomentumTrade;
@@ -3414,10 +3414,10 @@ function MomentumTradeDesk({
       ? 'Closing contract'
     : settlementOverdue
       ? `Provider still reports contract ${trackedContractId || ''} open after scheduled expiry; waiting for settlement recovery`
-    : openMomentumTrades.length >= 2
-      ? 'Momentum lot limit reached (2 open)'
+    : openMomentumTrades.length >= 4
+      ? 'Momentum lot limit reached (4 open)'
       : openMomentumTrades.length
-        ? `${openMomentumTrades.length}/2 Momentum lots open`
+        ? `${openMomentumTrades.length}/4 Momentum lots open`
       : !(Number.isFinite(stake) && stake > 0)
         ? 'Enter a positive stake'
       : !(Number.isFinite(selectedMultiplier) && selectedMultiplier > 0)
@@ -3449,7 +3449,7 @@ function MomentumTradeDesk({
   }, [symbol]);
 
   useEffect(() => {
-    if (!symbol || !owner || !isDemo || !suggestedDirection || !(Number.isFinite(stake) && stake > 0) || openMomentumTrades.length >= 2) {
+    if (!symbol || !owner || !isDemo || !suggestedDirection || !(Number.isFinite(stake) && stake > 0) || openMomentumTrades.length >= 4) {
       setMultiplierProbe(null);
       setMultiplierProbeStatus('idle');
       return;
@@ -3588,8 +3588,8 @@ function MomentumTradeDesk({
         ? 'Momentum execution is unavailable for the selected account.'
       : !owner
         ? 'Unlock the dashboard owner controls to place a trade.'
-        : openMomentumTrades.length >= 2
-          ? 'Two Momentum lots are open. Close one before placing another.'
+        : openMomentumTrades.length >= 4
+          ? 'Four Momentum lots are open. Close one before placing another.'
           : null;
 
   return <section class="mom-trade-desk" aria-label="Momentum trade">
@@ -3622,11 +3622,11 @@ function MomentumTradeDesk({
           closeDisabled: !canClose,
           stake: stakeText,
           onStakeChange: setStakeText,
-          stakeDisabled: busy || openMomentumTrades.length >= 2,
+          stakeDisabled: busy || openMomentumTrades.length >= 4,
           multiplier: multiplierText,
           multiplierOptions,
           onMultiplierChange: (value) => { manualMultiplierRef.current = true; setMultiplierText(value); },
-          multiplierDisabled: busy || openMomentumTrades.length >= 2,
+          multiplierDisabled: busy || openMomentumTrades.length >= 4,
           onPlaceLong: () => void place('up'),
           onPlaceShort: () => void place('down'),
           longActionDisabled: !canPlace || suggestedDirection !== 'up' || busy,
@@ -3678,7 +3678,7 @@ function MomentumTradeDesk({
     </div>
 
     {openMomentumTrades.length > 1 && <section class="mom-open-lots" aria-label="Open Momentum lots">
-      <div class="mom-open-lots-head"><span>Open Momentum lots</span><strong>{openMomentumTrades.length}/2</strong></div>
+      <div class="mom-open-lots-head"><span>Open Momentum lots</span><strong>{openMomentumTrades.length}/4</strong></div>
       {openMomentumTrades.map((lot) => {
         const lotContract = lot.contract_id ? contracts[lot.contract_id] ?? (contract?.contractId === lot.contract_id ? contract : null) : null;
         const lotPnl = Number.isFinite(Number(lotContract?.profit)) ? Number(lotContract?.profit) : null;
@@ -3699,9 +3699,9 @@ function MomentumTradeDesk({
         <button class={`up ${direction === 'up' ? 'active' : ''}${suggestedDirection === 'up' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'up' || busy} onClick={() => void place('up')} aria-label={suggestedDirection === 'up' ? 'Place suggested up trade' : 'Place up trade'}><Icon name="arrowUp" size={15} />{busy && direction === 'up' ? 'Placing' : 'Up'}</button>
         <button class={`down ${direction === 'down' ? 'active' : ''}${suggestedDirection === 'down' ? ' suggested' : ''}`} type="button" disabled={!canPlace || suggestedDirection !== 'down' || busy} onClick={() => void place('down')} aria-label={suggestedDirection === 'down' ? 'Place suggested down trade' : 'Place down trade'}><Icon name="arrowDown" size={15} />{busy && direction === 'down' ? 'Placing' : 'Down'}</button>
       </div>
-      <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || openMomentumTrades.length >= 2} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
-      <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
-      <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || openMomentumTrades.length >= 2} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-multiplier"><span>{maxMultiplier ? `Multiplier max x${maxMultiplier}` : multiplierProbeStatus === 'checking' ? 'Multiplier checking max' : 'Multiplier'}</span><select value={multiplierText} disabled={busy || openMomentumTrades.length >= 4} onChange={(event) => { manualMultiplierRef.current = true; setMultiplierText((event.currentTarget as HTMLSelectElement).value); }}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}{maxMultiplier === value ? ' max' : ''}</option>)}</select></label>
+      <label class="mom-trade-limit"><span>TP profit</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={takeProfitText} disabled={busy || openMomentumTrades.length >= 4} onInput={(event) => setTakeProfitText((event.currentTarget as HTMLInputElement).value)} /></label>
+      <label class="mom-trade-limit"><span>Stop loss</span><input type="number" inputMode="decimal" min="0.01" step="0.01" placeholder="optional" value={stopLossText} disabled={busy || openMomentumTrades.length >= 4} onInput={(event) => setStopLossText((event.currentTarget as HTMLInputElement).value)} /></label>
       <div class="mom-trade-quote">
         <span>{purchase ? 'Last order potential' : 'Live proposal at order time'}</span>
         <strong>{potentialProfit == null ? '—' : fmtSigned(potentialProfit, session?.currency ?? 'USD')}</strong>

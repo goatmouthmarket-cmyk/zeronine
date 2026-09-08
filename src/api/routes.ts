@@ -160,7 +160,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       && (trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN')
       && (isGoldMultiplierTrade(trade) || trade.market === config.goldDerivSymbol),
     );
-  const MULTIPLIER_LOT_LIMITS = { total: 4, momentum: 2, gold: 2 } as const;
+  const MULTIPLIER_LOT_LIMITS = { total: 6, momentum: 4, gold: 2 } as const;
   const openMultiplierLots = (accountId: string, product?: 'momentum' | 'gold'): TradeRow[] =>
     listOpenTrades(accountId).filter((trade) => {
       if (trade.contract_type !== 'MULTUP' && trade.contract_type !== 'MULTDOWN') return false;

@@ -72,7 +72,9 @@ test('explicit Momentum trade is demo-only and records the selected research con
         buyPrice: 3,
         settled: false,
       });
-      return new Promise(() => undefined);
+      // Keep admission reconciliation deterministic: the contract is open,
+      // not settled, so the lot remains reserved without a 12-second probe.
+      return { contractId, status: 'open', profit: 0.42, sellPrice: 3.42, buyPrice: 3, settled: false };
     },
   };
   const automation = new autoMod.Automation(registry, client as never, hub);
@@ -122,9 +124,13 @@ test('explicit Momentum trade is demo-only and records the selected research con
 
   const secondLot = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 50 } });
   assert.equal(secondLot.statusCode, 200, 'a second independent Momentum lot is allowed');
+  const thirdLot = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 50 } });
+  assert.equal(thirdLot.statusCode, 200, 'a third independent Momentum lot is allowed');
+  const fourthLot = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 50 } });
+  assert.equal(fourthLot.statusCode, 200, 'a fourth independent Momentum lot is allowed');
   const cappedLot = await app.inject({ method: 'POST', url: '/api/momentum/trade', payload: { direction: 'up', stake: 3, multiplier: 50 } });
   assert.equal(cappedLot.statusCode, 409);
-  assert.match(cappedLot.json().error, /momentum limit of 2 open lots/i);
+  assert.match(cappedLot.json().error, /momentum limit of 4 open lots/i);
 
   automation.dispose();
   await app.close();

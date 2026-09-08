@@ -5721,3 +5721,88 @@ button.activity-row {
   .gold-trade-desk > .gold-trade-note, .mom-trade-desk > .mom-trade-note { display: none; }
 }
 .trade-market-strip { display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 8px; min-width: 260px; color: var(--muted); }.trade-market-strip > span { color: #75e8bd; font-size: 8px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }.trade-market-strip strong { color: var(--text); font-size: 13px; line-height: 1; }.trade-market-strip small { grid-column: 1 / -1; margin-top: 4px; color: var(--muted); font-size: 9px; white-space: nowrap; }.trade-market-strip.gold > span { color: #f4c96b; }
+
+/* Momentum phone desk: the live chart is the screen, while execution stays
+   inside a compact edge rail instead of turning into a form below it. */
+@media (max-width: 700px) {
+  .mom-page-header.trade-mode {
+    min-height: 44px;
+    padding: 4px 10px 7px;
+  }
+  .mom-page-header.trade-mode .mom-page-heading { display: none; }
+  .mom-page-header.trade-mode .mom-tabs { width: 100%; }
+  .mom-page-header.trade-mode .mom-tabs button { min-height: 34px; }
+  .trade-mode .trade-market-strip {
+    grid-template-columns: auto minmax(0, 1fr);
+    min-width: 0;
+    padding: 7px 10px 5px;
+  }
+  .trade-mode .trade-market-strip small {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mom-trade-desk > .mom-trade-head,
+  .mom-trade-desk > .mom-trade-order,
+  .mom-trade-desk > .mom-trade-note { display: none; }
+  .mom-trade-live {
+    height: clamp(430px, calc(100dvh - 154px), 720px);
+    min-height: 430px !important;
+  }
+  .mom-trade-chart {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 0;
+    border: 0;
+  }
+  .mom-price-chart.trade,
+  .mom-price-chart-canvas {
+    height: 100%;
+    min-height: 0;
+  }
+  /* Keep chart data clear of the control rail and preserve room for the
+     time/price scales. */
+  .mom-price-chart-canvas {
+    width: calc(100% - 122px);
+    margin-right: 122px;
+  }
+  .chart-indicator-legend {
+    top: 7px;
+    right: 128px;
+    gap: 5px;
+    max-width: calc(100% - 138px);
+  }
+  .chart-indicator-legend .price { display: none; }
+  .position-tool-controls {
+    top: 7px;
+    right: 5px;
+    width: 112px;
+    gap: 4px;
+    padding: 5px;
+    border-radius: 5px;
+    box-shadow: 0 5px 14px rgba(0,0,0,.3);
+  }
+  .position-side-switch button { min-width: 0; height: 25px; font-size: 7px; }
+  .position-stake { grid-template-columns: 1fr 54px; gap: 3px; font-size: 7px; }
+  .position-stake input,
+  .position-stake select { height: 25px; padding-inline: 4px; font-size: 9px; }
+  .position-place-actions { gap: 4px; }
+  .position-place-actions button { height: 29px; font-size: 9px; }
+  .position-live-card,
+  .position-result-card { padding: 6px; }
+  .position-live-card > strong { font-size: 14px; }
+  .position-level { right: 122px; }
+  .position-level-label { gap: 3px; }
+  .position-level-label > span,
+  .position-level-label > b { padding: 2px 3px; font-size: 7px; }
+  .position-tool-note { display: none; }
+}
+
+@media (max-width: 380px) {
+  .mom-trade-live { height: clamp(405px, calc(100dvh - 146px), 640px); min-height: 405px !important; }
+  .mom-price-chart-canvas { width: calc(100% - 108px); margin-right: 108px; }
+  .position-tool-controls { width: 98px; right: 3px; padding: 4px; }
+  .position-stake { grid-template-columns: 1fr 48px; }
+  .position-level { right: 108px; }
+  .chart-indicator-legend { right: 113px; }
+}
