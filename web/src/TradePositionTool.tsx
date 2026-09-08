@@ -205,9 +205,11 @@ export function TradePositionTool({
     // Fine relative drag: a pointer grab never jumps the level to the cursor,
     // and one full chart-height sweep changes only a modest part of its range.
     const delta = event.clientY - origin.y;
-    // Deliberately responsive, while still avoiding the old jump-to-cursor
-    // behavior. A short drag now makes a meaningful risk adjustment.
-    const sensitivity = .55;
+    // Touch needs a shorter travel than a mouse. Keep the grab relative (no
+    // jump to the finger), but let a small phone drag make a useful TP/SL
+    // adjustment for either Gold or Momentum.
+    const coarsePointer = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+    const sensitivity = coarsePointer ? 1.35 : .55;
     const next = origin.price - delta * (span / Math.max(1, rect.height)) * sensitivity;
     onLevelChange(kind, Math.max(range.low, Math.min(range.high, next)));
   };
@@ -258,11 +260,11 @@ export function TradePositionTool({
     {riskZone && <div class="position-zone risk" style={{ ...riskZone, ...zoneStyle }}><span>Risk {riskPnl ?? ''}</span></div>}
     {horizontalZone && <div class="position-zone-resizer" style={{ left: `${horizontalZone.left}px` }} role="slider" aria-label="Resize profit and risk zones" aria-orientation="horizontal" tabIndex={0} onPointerDown={startZoneResize} onPointerMove={resizingZone ? resizeZone : undefined} onPointerUp={() => { zoneDragOriginRef.current = null; setResizingZone(false); }} />}
     <div class={`position-level entry ${side}${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(entry, 'entry'), ...zoneStyle }}><div class="position-level-label"><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div></div>
-    {takeProfit != null && <div class={`position-level target${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
+    {takeProfit != null && <div class={`position-level target${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }} onPointerCancel={() => { dragOriginRef.current = null; setDragging(null); }}>
       <div class="position-level-label"><span>Take profit</span><b title={`Target price ${priceText(takeProfit)}`}>{targetPnl ?? priceText(takeProfit)}</b></div>
       {editable && <button type="button" aria-label="Drag take-profit level" onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
-    {stopLoss != null && <div class={`position-level stop${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(stopLoss, 'stopLoss'), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }}>
+    {stopLoss != null && <div class={`position-level stop${labelsOutsideZone ? ' outside-labels' : ''}`} style={{ top: top(stopLoss, 'stopLoss'), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => { dragOriginRef.current = null; setDragging(null); }} onPointerCancel={() => { dragOriginRef.current = null; setDragging(null); }}>
       <div class="position-level-label"><span>Stop loss</span><b title={`Stop price ${priceText(stopLoss)}`}>{riskPnl ?? priceText(stopLoss)}</b></div>
       {editable && <button type="button" aria-label="Drag stop-loss level" onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
