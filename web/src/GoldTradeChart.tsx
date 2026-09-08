@@ -175,13 +175,19 @@ export function GoldTradeChart({
       const last = data.length - 1;
       chart.timeScale().setVisibleLogicalRange({
         from: Math.max(0, last - 31),
-        to: last + 4,
+        to: last + 14,
       });
       initialViewportSetRef.current = true;
     } else if (data.length > 1 && followLiveRef.current && previousLatestTime !== data.at(-1)?.time) {
       // Keep following newly-opened candles only while the operator is still
-      // at the live edge. scrollToRealTime retains their chosen bar spacing.
-      chart.timeScale().scrollToRealTime();
+      // at the live edge, while preserving a meaningful blank future area.
+      const last = data.length - 1;
+      const visible = chart.timeScale().getVisibleLogicalRange();
+      const span = Math.max(24, (visible?.to ?? last) - (visible?.from ?? Math.max(0, last - 31)));
+      chart.timeScale().setVisibleLogicalRange({
+        from: Math.max(0, last - Math.max(10, span - 14)),
+        to: last + 14,
+      });
     }
     latestCandleTimeRef.current = data.at(-1)?.time ?? null;
   }, [data]);

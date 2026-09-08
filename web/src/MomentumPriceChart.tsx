@@ -250,10 +250,14 @@ export function MomentumPriceChart({
     series.setData(points);
     if (points.length > 1) {
       if (!fittedRef.current) {
-        chart.timeScale().fitContent();
+        const last = points.length - 1;
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - 120), to: last + 14 });
         fittedRef.current = true;
       } else {
-        chart.timeScale().scrollToRealTime();
+        const last = points.length - 1;
+        const visible = chart.timeScale().getVisibleLogicalRange();
+        const span = Math.max(24, (visible?.to ?? last) - (visible?.from ?? Math.max(0, last - 120)));
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - Math.max(10, span - 14)), to: last + 14 });
       }
     } else {
       fittedRef.current = false;
