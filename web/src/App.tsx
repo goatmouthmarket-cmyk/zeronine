@@ -3271,6 +3271,7 @@ function MomentumTradeDesk({
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState('');
+  const [plannerRestored, setPlannerRestored] = useState(false);
   const manualMultiplierRef = useRef(false);
   const localPurchaseTimeRef = useRef<number | null>(null);
   const incomingSamples = useMemo(() => samples ?? [], [samples]);
@@ -3278,6 +3279,21 @@ function MomentumTradeDesk({
   const selectedMultiplier = Number(multiplierText);
   const takeProfit = takeProfitText.trim() ? Number(takeProfitText) : undefined;
   const stopLoss = stopLossText.trim() ? Number(stopLossText) : undefined;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('zeronine:momentum-planner') ?? '{}') as Record<string, string>;
+      if (saved.direction === 'up' || saved.direction === 'down') setDirection(saved.direction);
+      if (saved.stake) setStakeText(saved.stake);
+      if (saved.multiplier) setMultiplierText(saved.multiplier);
+      if (saved.takeProfit != null) setTakeProfitText(saved.takeProfit);
+      if (saved.stopLoss != null) setStopLossText(saved.stopLoss);
+    } catch { /* Local preferences are optional. */ }
+    setPlannerRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!plannerRestored) return;
+    try { localStorage.setItem('zeronine:momentum-planner', JSON.stringify({ direction, stake: stakeText, multiplier: multiplierText, takeProfit: takeProfitText, stopLoss: stopLossText })); } catch { /* Optional storage. */ }
+  }, [direction, multiplierText, plannerRestored, stakeText, stopLossText, takeProfitText]);
   const isDemo = session?.mode === 'demo';
   const hasValidLimits = (takeProfit === undefined || (Number.isFinite(takeProfit) && takeProfit > 0))
     && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
@@ -3804,7 +3820,7 @@ function MomentumPage(): JSX.Element {
       <div class="mom-page-heading">
       {activeTab === 'trade' ? <div class="trade-market-strip" aria-label="Momentum market context">
         <span>Market</span><strong>{focusedMarket?.display ?? market?.display ?? scanPreview?.display ?? 'Awaiting selected market'}</strong>
-        <small>{currentPrice > 0 ? currentPrice.toLocaleString(undefined, { maximumFractionDigits: 8 }) : 'Waiting for live price'} · 5 minute watch · {tradeSignal?.direction === 'wait' || !tradeSignal?.direction ? 'Scanning' : `${tradeSignal.direction.toUpperCase()} ${tradeSignal.confidence}%`}</small>
+        <small>{currentPrice > 0 ? currentPrice.toLocaleString(undefined, { maximumFractionDigits: 8 }) : 'Waiting for live price'} · 5 minute watch · <b class={`trade-prediction ${tradeSignal?.direction === 'up' ? 'up' : tradeSignal?.direction === 'down' ? 'down' : 'wait'}`}>{tradeSignal?.direction === 'wait' || !tradeSignal?.direction ? 'Scanning' : `${tradeSignal.direction.toUpperCase()} ${tradeSignal.confidence}%`}</b></small>
       </div> : <>
       <img class="mom-brand-logo" src="/multiplier-logo.png" alt="Multiplier" />
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
@@ -5702,6 +5718,7 @@ function GoldDerivTradeWorkspace({
   const [closingContractId, setClosingContractId] = useState<string | null>(null);
   const [backtestBusy, setBacktestBusy] = useState(false);
   const [error, setError] = useState('');
+  const [plannerRestored, setPlannerRestored] = useState(false);
   const [contractClock, setContractClock] = useState(Date.now());
   const manualMultiplierRef = useRef(false);
   const profitGuardRef = useRef({ contractId: '', peak: 0, triggered: false });
@@ -5710,6 +5727,22 @@ function GoldDerivTradeWorkspace({
   const selectedMultiplier = Number(multiplierText);
   const takeProfit = takeProfitText.trim() ? Number(takeProfitText) : undefined;
   const stopLoss = stopLossText.trim() ? Number(stopLossText) : undefined;
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('zeronine:gold-planner') ?? '{}') as Record<string, string>;
+      if (saved.side === 'BUY' || saved.side === 'SELL') setSide(saved.side);
+      if (saved.stake) setStakeText(saved.stake);
+      if (saved.multiplier) setMultiplierText(saved.multiplier);
+      if (saved.takeProfit != null) setTakeProfitText(saved.takeProfit);
+      if (saved.stopLoss != null) setStopLossText(saved.stopLoss);
+      if (saved.timeframe === '1m' || saved.timeframe === '5m') setChartTimeframe(saved.timeframe);
+    } catch { /* Local preferences are optional. */ }
+    setPlannerRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!plannerRestored) return;
+    try { localStorage.setItem('zeronine:gold-planner', JSON.stringify({ side, stake: stakeText, multiplier: multiplierText, takeProfit: takeProfitText, stopLoss: stopLossText, timeframe: chartTimeframe })); } catch { /* Optional storage. */ }
+  }, [chartTimeframe, multiplierText, plannerRestored, side, stakeText, stopLossText, takeProfitText]);
   const limitsValid = (takeProfit === undefined || (Number.isFinite(takeProfit) && takeProfit > 0))
     && (stopLoss === undefined || (Number.isFinite(stopLoss) && stopLoss > 0));
   const marketReady = state?.research.ready === true && Boolean(quote);

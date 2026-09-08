@@ -172,7 +172,7 @@ export function MomentumPriceChart({
           fixRightEdge: false,
           // Keep room ahead of the live quote for the next movement and the
           // position planning tool instead of pinning it to the price axis.
-          rightOffset: tradeView ? 14 : 0,
+          rightOffset: tradeView ? 72 : 0,
           timeVisible: tradeView,
           secondsVisible: tradeView,
         },
@@ -184,16 +184,15 @@ export function MomentumPriceChart({
         handleScale: tradeView,
       });
       const series = chart.addSeries(LineSeries, {
-        color: '#75e8bd',
-        lineWidth: 2,
+        color: '#f8fafc',
+        lineWidth: 3,
         crosshairMarkerVisible: true,
         crosshairMarkerRadius: 3,
-        priceLineVisible: false,
-        lastValueVisible: false,
+        priceLineVisible: true,
+        priceLineColor: 'rgba(117,232,189,.86)',
+        lastValueVisible: true,
       });
       indicatorRefs.current = [
-        chart.addSeries(LineSeries, { color: 'rgba(244,201,107,.92)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
-        chart.addSeries(LineSeries, { color: 'rgba(167,139,250,.88)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
         chart.addSeries(LineSeries, { color: 'rgba(117,232,189,.45)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
         chart.addSeries(LineSeries, { color: 'rgba(255,130,144,.44)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
       ];
@@ -277,10 +276,8 @@ export function MomentumPriceChart({
   }, [points]);
 
   useEffect(() => {
-    const [fast, slow, upper, lower] = indicatorRefs.current;
-    if (!fast || !slow || !upper || !lower) return;
-    fast.setData(indicators.emaFast);
-    slow.setData(indicators.emaSlow);
+    const [upper, lower] = indicatorRefs.current;
+    if (!upper || !lower) return;
     upper.setData(indicators.bandUpper);
     lower.setData(indicators.bandLower);
   }, [indicators]);
@@ -343,7 +340,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="ema-fast">EMA 21</span><span class="ema-slow">EMA 55</span><span class="bands">BB 34 · 2σ</span></span>}
+    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 34 · 2σ</span></span>}
     {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
