@@ -190,7 +190,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const candidates = openMultiplierLots(accountId, product).filter((trade) => Boolean(trade.contract_id));
     await Promise.all(candidates.map(async (trade) => {
       const timeout = new Promise<null>((resolve) => {
-        const timer = setTimeout(() => resolve(null), 2_500);
+        // The initial broker snapshot can arrive a few seconds after a socket
+        // reconnect. Do not count a persisted lot before that authoritative
+        // check has had a realistic chance to finish.
+        const timer = setTimeout(() => resolve(null), 12_000);
         timer.unref();
       });
       try {
