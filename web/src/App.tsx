@@ -3612,6 +3612,7 @@ function MomentumTradeDesk({
       <div class="mom-trade-chart">
         <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} positionTool={plannerEntry != null ? {
           side: plannerSide === 'down' ? 'short' : 'long', entry: plannerEntry, takeProfit: plannerTargetPrice, stopLoss: plannerStopPrice,
+          layoutStorageKey: `momentum:${chartSymbol || 'market'}`,
           targetPnl: fmtSigned(plannerTargetAmount, session?.currency ?? 'USD'), riskPnl: fmtSigned(-plannerRiskAmount, session?.currency ?? 'USD'),
           currentPrice: contractCurrentSpot ?? chartSamples.at(-1)?.quote,
           currentPnl: displayContractPnl == null ? undefined : fmtSigned(displayContractPnl, purchase?.currency ?? session?.currency ?? 'USD'),
@@ -6131,6 +6132,7 @@ const modelWeights = [
             lockLabel={marketClosed ? symbol?.tradingStatus ?? 'market closed' : null}
             positionTool={goldPlannerEntry != null ? {
               side: goldPlannerSide === 'SELL' ? 'short' : 'long', entry: goldPlannerEntry, takeProfit: goldPlannerTargetPrice, stopLoss: goldPlannerStopPrice,
+              layoutStorageKey: `gold:${deriv?.symbol ?? symbol?.id ?? 'market'}`,
               targetPnl: fmtSigned(goldPlannerTargetAmount, currency), riskPnl: fmtSigned(-goldPlannerRiskAmount, currency),
               currentPrice: quote?.mid,
               currentPnl: contractPnl == null ? undefined : fmtSigned(contractPnl, currency),

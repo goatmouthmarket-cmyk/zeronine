@@ -9,6 +9,8 @@ export interface TradePositionToolProps {
   values: number[];
   /** Pixel geometry from the chart's live time scale: last five candles. */
   zoneGeometry?: { left: number; width: number } | null;
+  /** Stable per-market key used to remember a manually resized trade zone. */
+  layoutStorageKey?: string;
   /** Pixel y-coordinates supplied by the underlying chart price scale. */
   levelTops?: Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null;
   targetPnl?: string;
@@ -68,6 +70,7 @@ export function TradePositionTool({
   stopLoss,
   values,
   zoneGeometry,
+  layoutStorageKey,
   levelTops,
   targetPnl,
   riskPnl,
@@ -100,6 +103,7 @@ export function TradePositionTool({
   const dragOriginRef = useRef<{ kind: 'takeProfit' | 'stopLoss'; y: number; price: number } | null>(null);
   const zoneDragOriginRef = useRef<{ x: number; right: number } | null>(null);
   const zoneManuallySizedRef = useRef(false);
+  const restoredLayoutKeyRef = useRef<string | null>(null);
   const range = useMemo(() => {
     // Keep the price mapping tied to what the candles are actually doing.
     // A monetary TP/SL can be far from the market; letting it define the
@@ -142,6 +146,30 @@ export function TradePositionTool({
     const first = Math.min(a, b); const last = Math.max(a, b);
     return { top: top(last), height: `${Math.max(1.5, ((last - first) / span) * 100)}%` };
   };
+  // Store geometry as ratios rather than pixels. That preserves the trader's
+  // chosen width and anchor when the page, chart scale, or display changes.
+  useEffect(() => {
+    if (!layoutStorageKey || restoredLayoutKeyRef.current === layoutStorageKey) return;
+    const surfaceWidth = surfaceRef.current?.clientWidth ?? 0;
+    if (!surfaceWidth) return;
+    restoredLayoutKeyRef.current = layoutStorageKey;
+    zoneManuallySizedRef.current = false;
+    try {
+      const saved = JSON.parse(localStorage.getItem(`zeronine:position-zone:${layoutStorageKey}`) ?? 'null') as { leftRatio?: unknown; widthRatio?: unknown } | null;
+      const leftRatio = Number(saved?.leftRatio);
+      const widthRatio = Number(saved?.widthRatio);
+      if (Number.isFinite(leftRatio) && Number.isFinite(widthRatio) && widthRatio > 0) {
+        const width = Math.max(42, Math.min(surfaceWidth, widthRatio * surfaceWidth));
+        const left = Math.max(0, Math.min(surfaceWidth - width, leftRatio * surfaceWidth));
+        zoneManuallySizedRef.current = true;
+        setHorizontalZone({ left, width });
+        return;
+      }
+    } catch {
+      // A corrupt local preference must never interfere with placing a trade.
+    }
+    setHorizontalZone(zoneGeometry ?? null);
+  }, [layoutStorageKey, zoneGeometry?.left, zoneGeometry?.width]);
   useEffect(() => {
     if (!zoneManuallySizedRef.current) setHorizontalZone(zoneGeometry ?? null);
   }, [zoneGeometry?.left, zoneGeometry?.width]);
@@ -187,7 +215,18 @@ export function TradePositionTool({
     const rect = surfaceRef.current?.getBoundingClientRect();
     if (!origin || !rect) return;
     const left = Math.max(0, Math.min(origin.right - 42, event.clientX - rect.left));
-    setHorizontalZone({ left, width: origin.right - left });
+    const next = { left, width: origin.right - left };
+    setHorizontalZone(next);
+    if (layoutStorageKey && rect.width > 0) {
+      try {
+        localStorage.setItem(`zeronine:position-zone:${layoutStorageKey}`, JSON.stringify({
+          leftRatio: next.left / rect.width,
+          widthRatio: next.width / rect.width,
+        }));
+      } catch {
+        // Storage can be unavailable in private or restricted browser contexts.
+      }
+    }
   };
 
   return <div
