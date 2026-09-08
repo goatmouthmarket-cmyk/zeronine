@@ -802,7 +802,7 @@ button {
 /* TradingView-style long/short planner. The zones are a tactile order setup
    overlay and the thin underlying series remains fully visible. */
 .position-tool { position: absolute; inset: 0; z-index: 3; pointer-events: none; font-variant-numeric: tabular-nums; }
-.position-zone { position: absolute; left: 0; right: 174px; min-height: 5px; border-left: 2px solid; border-right: 1px solid; opacity: .48; }
+.position-zone { position: absolute; left: clamp(18px, 4%, 72px); width: clamp(260px, 58%, 920px); min-height: 5px; border-left: 2px solid; border-right: 1px solid; opacity: .48; transition: width .16s ease; }
 .position-zone.profit { border-color: rgba(34,197,94,.9); background: linear-gradient(90deg, rgba(34,197,94,.24), rgba(34,197,94,.055)); }
 .position-zone.risk { border-color: rgba(255,82,99,.92); background: linear-gradient(90deg, rgba(255,82,99,.25), rgba(255,82,99,.055)); }
 .position-zone span { display: none; }
@@ -5701,7 +5701,7 @@ button.activity-row {
   /* Trade needs immediate access to the chart. Keep the brand heading for
      Research and Ledger, where it establishes page context. */
   .mom-page-header.trade-mode, .gold-page-header.trade-mode { min-height: 36px; align-items: center; justify-content: flex-end; padding: 0 0 7px; }
-  .mom-page-header.trade-mode .mom-page-heading, .gold-page-header.trade-mode > div:first-child { display: none; }
+  .mom-page-header.trade-mode .mom-page-heading, .gold-page-header.trade-mode .gold-page-heading { display: block; }
   .mom-page-header.trade-mode .mom-tabs, .gold-page-header.trade-mode .gold-tabs { margin-left: auto; }
   /* Let the chart own the remaining desktop workspace; execution context is
      already contained in the rail, so the old explanatory footer is noise. */
@@ -5710,3 +5710,4 @@ button.activity-row {
   .mom-trade-chart { height: clamp(500px, calc(100vh - 155px), 720px) !important; min-height: 0 !important; }
   .gold-trade-desk > .gold-trade-note, .mom-trade-desk > .mom-trade-note { display: none; }
 }
+.trade-market-strip { display: grid; grid-template-columns: auto auto; align-items: baseline; column-gap: 8px; min-width: 260px; color: var(--muted); }.trade-market-strip > span { color: #75e8bd; font-size: 8px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }.trade-market-strip strong { color: var(--text); font-size: 13px; line-height: 1; }.trade-market-strip small { grid-column: 1 / -1; margin-top: 4px; color: var(--muted); font-size: 9px; white-space: nowrap; }.trade-market-strip.gold > span { color: #f4c96b; }

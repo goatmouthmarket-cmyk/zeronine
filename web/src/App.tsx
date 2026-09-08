@@ -3770,8 +3770,13 @@ function MomentumPage(): JSX.Element {
   return <>
     <header class={`header mom-page-header${activeTab === 'trade' ? ' trade-mode' : ''}`}>
       <div class="mom-page-heading">
+      {activeTab === 'trade' ? <div class="trade-market-strip" aria-label="Momentum market context">
+        <span>Market</span><strong>{focusedMarket?.display ?? market?.display ?? scanPreview?.display ?? 'Awaiting selected market'}</strong>
+        <small>{currentPrice > 0 ? currentPrice.toLocaleString(undefined, { maximumFractionDigits: 8 }) : 'Waiting for live price'} · 5 minute watch · {tradeSignal?.direction === 'wait' || !tradeSignal?.direction ? 'Scanning' : `${tradeSignal.direction.toUpperCase()} ${tradeSignal.confidence}%`}</small>
+      </div> : <>
       <img class="mom-brand-logo" src="/multiplier-logo.png" alt="Multiplier" />
       <div class="subtitle">Automatic real-market scanning · five-minute research · no purchases</div>
+      </>}
       </div>
       <div class="mom-tabs" role="tablist" aria-label="Momentum workspace">
         <button class={activeTab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'trade'} onClick={() => setActiveTab('trade')}>Trade</button>
@@ -4938,6 +4943,9 @@ type GoldTab = 'research' | 'trade' | 'ledger';
 function GoldPage(): JSX.Element {
   const store = useStore();
   const [tab, setTab] = useState<GoldTab>('trade');
+  const goldResearch = store.gold?.research.state;
+  const goldSymbol = goldResearch?.symbol?.displayName ?? store.gold?.deriv?.display ?? 'Gold / US Dollar';
+  const goldQuote = goldResearch?.quote?.mid;
 
   useEffect(() => {
     void loadGoldState();
@@ -4949,9 +4957,14 @@ function GoldPage(): JSX.Element {
 
   return <section class="gold-page" aria-label="Gold workspace">
     <header class={`header gold-page-header${tab === 'trade' ? ' trade-mode' : ''}`}>
-      <div>
+      <div class="gold-page-heading">
+        {tab === 'trade' ? <div class="trade-market-strip gold" aria-label="Gold market context">
+          <span>Market</span><strong>{goldSymbol}</strong>
+          <small>{Number.isFinite(goldQuote) ? Number(goldQuote).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 'Waiting for live price'} · Deriv multiplier · guarded execution</small>
+        </div> : <>
         <img class="gold-brand-logo" src="/gold-logo.png" alt="Gold" />
         <div class="subtitle">Active market watch · Deriv Gold contracts · guarded execution</div>
+        </>}
       </div>
       <div class="gold-tabs" role="tablist" aria-label="Gold workspace modes">
         <button class={tab === 'trade' ? 'active' : ''} type="button" role="tab" aria-selected={tab === 'trade'} onClick={() => setTab('trade')}>Trade</button>
