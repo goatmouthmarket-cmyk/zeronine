@@ -70,6 +70,10 @@ export function MomentumPriceChart({
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
+  const compactTrendColor = useMemo(() => {
+    if (points.length < 2) return '#75e8bd';
+    return (points.at(-1)?.value ?? 0) >= (points[0]?.value ?? 0) ? '#75e8bd' : '#ff5263';
+  }, [points]);
   const indicators = useMemo(() => calculateChartIndicators(points, 21, 55, 34), [points]);
   const pointsRef = useRef<LineData<Time>[]>(points);
   const fittedRef = useRef(false);
@@ -184,7 +188,7 @@ export function MomentumPriceChart({
         handleScale: tradeView,
       });
       const series = chart.addSeries(LineSeries, {
-        color: '#f8fafc',
+        color: compact ? compactTrendColor : '#f8fafc',
         lineWidth: 3,
         crosshairMarkerVisible: true,
         crosshairMarkerRadius: 3,
@@ -307,6 +311,11 @@ export function MomentumPriceChart({
         : undefined,
     });
   }, [compact, entryPrice, showEntryLine]);
+
+  useEffect(() => {
+    if (!compact) return;
+    seriesRef.current?.applyOptions({ color: compactTrendColor });
+  }, [compact, compactTrendColor]);
 
   useEffect(() => {
     const series = seriesRef.current;
