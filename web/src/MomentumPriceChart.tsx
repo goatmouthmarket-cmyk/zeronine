@@ -66,6 +66,7 @@ export function MomentumPriceChart({
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const entryLineRef = useRef<IPriceLine | null>(null);
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
+  const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
   const pointsRef = useRef<LineData<Time>[]>(points);
   const fittedRef = useRef(false);
@@ -116,6 +117,21 @@ export function MomentumPriceChart({
     updateZone();
     chart.timeScale().subscribeVisibleLogicalRangeChange(updateZone);
     return () => chart.timeScale().unsubscribeVisibleLogicalRangeChange(updateZone);
+  }, [points, positionTool]);
+
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || !positionTool) { setLevelTops(null); return; }
+    const coordinate = (price: number | null | undefined) => {
+      const value = Number.isFinite(price) ? series.priceToCoordinate(Number(price)) : null;
+      return value == null ? undefined : value;
+    };
+    setLevelTops({
+      entry: coordinate(positionTool.entry),
+      takeProfit: coordinate(positionTool.takeProfit),
+      stopLoss: coordinate(positionTool.stopLoss),
+      currentPrice: coordinate(positionTool.currentPrice),
+    });
   }, [points, positionTool]);
 
   useEffect(() => {
@@ -300,7 +316,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} />}
+    {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
     {points.length < 2 && <span class="mom-chart-empty">Awaiting ticks</span>}

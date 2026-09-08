@@ -66,6 +66,7 @@ export function GoldTradeChart({
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const linesRef = useRef<IPriceLine[]>([]);
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
+  const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
   const initialViewportSetRef = useRef(false);
   const followLiveRef = useRef(true);
   const dataLengthRef = useRef(0);
@@ -184,6 +185,22 @@ export function GoldTradeChart({
   }, [data]);
 
   useEffect(() => {
+    const series = seriesRef.current;
+    if (!series || !positionTool) { setLevelTops(null); return; }
+    const coordinate = (price: number | null | undefined) => {
+      const value = Number.isFinite(price) ? series.priceToCoordinate(Number(price)) : null;
+      return value == null ? undefined : value;
+    };
+    const next = {
+      entry: coordinate(positionTool.entry),
+      takeProfit: coordinate(positionTool.takeProfit),
+      stopLoss: coordinate(positionTool.stopLoss),
+      currentPrice: coordinate(positionTool.currentPrice),
+    };
+    setLevelTops(next);
+  }, [data, positionTool]);
+
+  useEffect(() => {
     const chart = chartRef.current;
     const container = containerRef.current;
     if (!chart || !container || !positionTool || data.length < 2) {
@@ -250,7 +267,7 @@ export function GoldTradeChart({
 
   return <div class="gold-trade-chart" role="img" aria-label={label}>
     <div class="gold-trade-chart-canvas" ref={containerRef} />
-    {positionTool && <TradePositionTool {...positionTool} values={data.flatMap((candle) => [candle.high, candle.low])} zoneGeometry={zoneGeometry} />}
+    {positionTool && <TradePositionTool {...positionTool} values={data.flatMap((candle) => [candle.high, candle.low])} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {lockLabel && <div class="gold-chart-lock-badge" role="status">Locked · {lockLabel}</div>}
     <div class="gold-chart-readout" aria-hidden="true">
       <span>{lastPrice == null ? 'No live price' : displayPrice(lastPrice, digits)}</span>

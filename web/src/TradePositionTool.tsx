@@ -9,6 +9,8 @@ export interface TradePositionToolProps {
   values: number[];
   /** Pixel geometry from the chart's live time scale: last five candles. */
   zoneGeometry?: { left: number; width: number } | null;
+  /** Pixel y-coordinates supplied by the underlying chart price scale. */
+  levelTops?: Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null;
   targetPnl?: string;
   riskPnl?: string;
   currentPrice?: number | null;
@@ -56,6 +58,7 @@ export function TradePositionTool({
   stopLoss,
   values,
   zoneGeometry,
+  levelTops,
   targetPnl,
   riskPnl,
   currentPrice,
@@ -95,15 +98,22 @@ export function TradePositionTool({
   if (!range || !Number.isFinite(entry)) return null;
 
   const span = Math.max(range.high - range.low, Number.EPSILON);
-  const top = (price: number) => `${Math.max(1, Math.min(99, ((range.high - price) / span) * 100))}%`;
-  const zone = (from: number | null | undefined, to: number | null | undefined) => {
+  const top = (price: number, key?: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
+    const chartTop = key ? levelTops?.[key] : null;
+    return Number.isFinite(chartTop) ? `${chartTop}px` : `${Math.max(1, Math.min(99, ((range.high - price) / span) * 100))}%`;
+  };
+  const zone = (from: number | null | undefined, to: number | null | undefined, fromKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', toKey: 'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice') => {
     if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+    const fromTop = levelTops?.[fromKey]; const toTop = levelTops?.[toKey];
+    if (Number.isFinite(fromTop) && Number.isFinite(toTop)) {
+      return { top: `${Math.min(Number(fromTop), Number(toTop))}px`, height: `${Math.max(1.5, Math.abs(Number(fromTop) - Number(toTop)))}px` };
+    }
     const a = Number(from); const b = Number(to);
     const first = Math.min(a, b); const last = Math.max(a, b);
     return { top: top(last), height: `${Math.max(1.5, ((last - first) / span) * 100)}%` };
   };
-  const targetZone = zone(entry, takeProfit);
-  const riskZone = zone(entry, stopLoss);
+  const targetZone = zone(entry, takeProfit, 'entry', 'takeProfit');
+  const riskZone = zone(entry, stopLoss, 'entry', 'stopLoss');
   const zoneStyle = zoneGeometry ?? {};
   const move = (kind: 'takeProfit' | 'stopLoss', event: { clientY: number }) => {
     const rect = surfaceRef.current?.getBoundingClientRect();
@@ -126,16 +136,16 @@ export function TradePositionTool({
   >
     {targetZone && <div class="position-zone profit" style={{ ...targetZone, ...zoneStyle }}><span>Target {targetPnl ?? ''}</span></div>}
     {riskZone && <div class="position-zone risk" style={{ ...riskZone, ...zoneStyle }}><span>Risk {riskPnl ?? ''}</span></div>}
-    <div class={`position-level entry ${side}`} style={{ top: top(entry), ...zoneStyle }}><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div>
-    {takeProfit != null && <div class="position-level target" style={{ top: top(takeProfit), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>
+    <div class={`position-level entry ${side}`} style={{ top: top(entry, 'entry'), ...zoneStyle }}><span>{side === 'long' ? 'Long entry' : 'Short entry'}</span><b title={`Entry price ${priceText(entry)}`}>{priceText(entry)}</b></div>
+    {takeProfit != null && <div class="position-level target" style={{ top: top(takeProfit, 'takeProfit'), ...zoneStyle }} onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>
       <span>Take profit</span><b title={`Target price ${priceText(takeProfit)}`}>{targetPnl ?? priceText(takeProfit)}</b>
       {editable && <button type="button" aria-label="Drag take-profit level" onPointerDown={(event) => start('takeProfit', event)} onPointerMove={(event) => dragging === 'takeProfit' && move('takeProfit', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
-    {stopLoss != null && <div class="position-level stop" style={{ top: top(stopLoss), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>
+    {stopLoss != null && <div class="position-level stop" style={{ top: top(stopLoss, 'stopLoss'), ...zoneStyle }} onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>
       <span>Stop loss</span><b title={`Stop price ${priceText(stopLoss)}`}>{riskPnl ?? priceText(stopLoss)}</b>
       {editable && <button type="button" aria-label="Drag stop-loss level" onPointerDown={(event) => start('stopLoss', event)} onPointerMove={(event) => dragging === 'stopLoss' && move('stopLoss', event)} onPointerUp={() => setDragging(null)}>↕</button>}
     </div>}
-    {currentPrice != null && Number.isFinite(currentPrice) && <div class="position-level current" style={{ top: top(currentPrice), ...zoneStyle }}>
+    {currentPrice != null && Number.isFinite(currentPrice) && <div class="position-level current" style={{ top: top(currentPrice, 'currentPrice'), ...zoneStyle }}>
       <span>Live</span><b>{priceText(currentPrice)}{currentPnl ? ` · ${currentPnl}` : ''}</b>
     </div>}
     <div class="position-tool-controls">
