@@ -1799,6 +1799,31 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
+  /** Explicit owner action for the one contract currently preventing an account switch. */
+  app.post('/api/auth/close-open-contract', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    const openTrade = getOpenTrade();
+    if (!session || !openTrade?.contract_id) {
+      reply.code(409);
+      return { error: 'no cash-out eligible open contract is tracked for this account' };
+    }
+    try {
+      if (!client.isConnected) await client.reconnect(await resolveStoredToken(), session.loginid);
+      const sold = await accountCoordinator.runCommand('manual_close', session.loginid, () => client.sellContract(openTrade.contract_id, 0));
+      const profit = Math.round((sold.soldFor - openTrade.stake) * 100) / 100;
+      const status = profit >= 0 ? ('won' as const) : ('lost' as const);
+      resolveTrade(openTrade.id, status, profit, sold.contractId, undefined, openTrade.account_id);
+      activeSettlements.delete(settlementKeyFor(openTrade.account_id, openTrade.id, openTrade.contract_id));
+      const trade = getTrade(openTrade.id, openTrade.account_id) ?? openTrade;
+      hub.emit({ type: 'trade', ts: Date.now(), trade, performance: getPerformanceSummary(openTrade.account_id), manual: true, settled: true });
+      return { ok: true, contractId: sold.contractId, soldFor: sold.soldFor };
+    } catch (err) {
+      reply.code(502);
+      return { error: `cash-out for contract ${openTrade.contract_id} failed: ${String(err)}` };
+    }
+  });
+
   app.post('/api/auth/logout', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     automation.stop('logged out');

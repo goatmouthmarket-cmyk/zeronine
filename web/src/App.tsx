@@ -36,6 +36,7 @@ import {
   resetPaperSimulation,
   loadDerivAccounts,
   switchDerivAccount,
+  cashOutAccountOpenContract,
   loadMomentumState,
   startMomentumResearch,
   stopMomentumResearch,
@@ -4901,6 +4902,7 @@ function AccountPage(): JSX.Element {
   const [accounts, setAccounts] = useState<DerivAccountInfo[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [switchingAccount, setSwitchingAccount] = useState('');
+  const [cashingOut, setCashingOut] = useState(false);
   const [accountError, setAccountError] = useState('');
   useEffect(() => {
     if (!session) return;
@@ -4921,6 +4923,19 @@ function AccountPage(): JSX.Element {
       setAccountError(error instanceof Error ? error.message : String(error));
     } finally {
       setSwitchingAccount('');
+    }
+  };
+  const cashOutOpenContract = async (): Promise<void> => {
+    setCashingOut(true);
+    setAccountError('');
+    try {
+      await cashOutAccountOpenContract();
+      await refreshTrades();
+      setAccountError('Contract was cashed out. You can now switch accounts.');
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCashingOut(false);
     }
   };
   return (
@@ -4985,6 +5000,9 @@ function AccountPage(): JSX.Element {
         </div>
         {!loadingAccounts && accounts.length === 0 && !accountError && <div class="account-empty">No additional Deriv accounts are available for this login.</div>}
         {accountError && <div class="connect-err">{accountError}</div>}
+        {accountError.includes('Deriv confirms contract') && <button class="logout-btn account-cashout" type="button" disabled={cashingOut} onClick={() => void cashOutOpenContract()}>
+          {cashingOut ? 'Cashing out contract…' : 'Cash out open contract'}
+        </button>}
       </div>
       <button class="logout-btn" onClick={() => void logout()}>
         <Icon name="logout" size={15} strokeWidth={1.8} />

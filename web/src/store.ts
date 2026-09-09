@@ -1846,6 +1846,11 @@ export async function switchDerivAccount(accountId: string): Promise<SessionInfo
   return res.session;
 }
 
+/** Explicit owner action used by Account when Deriv confirms a live contract. */
+export async function cashOutAccountOpenContract(): Promise<{ ok: boolean; contractId: string; soldFor: number }> {
+  return api('/api/auth/close-open-contract', { method: 'POST' });
+}
+
 export interface ManualOrder {
   market: string;
   direction: 'over' | 'under';
