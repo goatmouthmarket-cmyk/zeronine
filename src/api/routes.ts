@@ -1824,6 +1824,69 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
+  /**
+   * Explicit, confirmed Account-page escape hatch. Portfolio is queried first
+   * so this also closes a broker position that survived a lost browser/socket
+   * session and is not represented by a local pending row.
+   */
+  app.post('/api/auth/close-all-open-contracts', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'not connected' };
+    }
+    try {
+      // A fresh authorization makes the portfolio the source of truth for the
+      // selected account before sending any sell commands.
+      await client.reconnect(await resolveStoredToken(), session.loginid);
+      const localTrades = listOpenTrades(session.loginid).filter((trade) => Boolean(trade.contract_id));
+      const localByContractId = new Map(localTrades.map((trade) => [trade.contract_id, trade]));
+      // Do not attempt to sell stale local rows: portfolio is the broker's
+      // authoritative list of contracts that are truly open right now.
+      const contractIds = await client.getOpenContractIds();
+      const closed: Array<{ tradeId: number | null; contractId: string; soldFor: number }> = [];
+      const failed: Array<{ tradeId: number | null; contractId: string; error: string }> = [];
+
+      // Keep sell commands in the account command lane and run them one at a
+      // time. This avoids overlapping provider requests and leaves a precise
+      // result for any contract that cannot be cashed out.
+      for (const contractId of contractIds) {
+        const trade = localByContractId.get(contractId);
+        try {
+          const sold = await accountCoordinator.runCommand('manual_close', session.loginid, () => client.sellContract(contractId, 0));
+          if (trade) {
+            const profit = Math.round((sold.soldFor - trade.stake) * 100) / 100;
+            const status = profit >= 0 ? ('won' as const) : ('lost' as const);
+            resolveTrade(trade.id, status, profit, sold.contractId, undefined, trade.account_id);
+            if (isGoldDerivTrade(trade)) {
+              try { resolveGoldTradeKnowledge(trade.id, status, profit, null, Date.now()); } catch { /* non-critical research telemetry */ }
+            }
+            activeSettlements.delete(settlementKeyFor(trade.account_id, trade.id, trade.contract_id));
+            const settledTrade = getTrade(trade.id, trade.account_id) ?? trade;
+            hub.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(trade.account_id), manual: true, settled: true });
+          }
+          closed.push({ tradeId: trade?.id ?? null, contractId: sold.contractId, soldFor: sold.soldFor });
+        } catch (error) {
+          failed.push({
+            tradeId: trade?.id ?? null,
+            contractId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      return {
+        ok: failed.length === 0,
+        closed,
+        failed,
+        message: contractIds.size === 0 ? 'No open contracts were found for this account.' : undefined,
+      };
+    } catch (error) {
+      reply.code(502);
+      return { error: `could not load open contracts from Deriv: ${error instanceof Error ? error.message : String(error)}` };
+    }
+  });
+
   app.post('/api/auth/logout', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     automation.stop('logged out');

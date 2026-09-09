@@ -1851,6 +1851,18 @@ export async function cashOutAccountOpenContract(): Promise<{ ok: boolean; contr
   return api('/api/auth/close-open-contract', { method: 'POST' });
 }
 
+export interface AccountCashOutAllResult {
+  ok: boolean;
+  closed: Array<{ tradeId: number | null; contractId: string; soldFor: number }>;
+  failed: Array<{ tradeId: number | null; contractId: string; error: string }>;
+  message?: string;
+}
+
+/** Explicitly cash out every cash-out eligible Deriv contract on this account. */
+export async function cashOutAllAccountOpenContracts(): Promise<AccountCashOutAllResult> {
+  return api('/api/auth/close-all-open-contracts', { method: 'POST' });
+}
+
 export interface ManualOrder {
   market: string;
   direction: 'over' | 'under';

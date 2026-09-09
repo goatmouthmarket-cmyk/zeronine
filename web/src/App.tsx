@@ -37,6 +37,7 @@ import {
   loadDerivAccounts,
   switchDerivAccount,
   cashOutAccountOpenContract,
+  cashOutAllAccountOpenContracts,
   loadMomentumState,
   startMomentumResearch,
   stopMomentumResearch,
@@ -4903,6 +4904,7 @@ function AccountPage(): JSX.Element {
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [switchingAccount, setSwitchingAccount] = useState('');
   const [cashingOut, setCashingOut] = useState(false);
+  const [cashingOutAll, setCashingOutAll] = useState(false);
   const [accountError, setAccountError] = useState('');
   useEffect(() => {
     if (!session) return;
@@ -4936,6 +4938,25 @@ function AccountPage(): JSX.Element {
       setAccountError(error instanceof Error ? error.message : String(error));
     } finally {
       setCashingOut(false);
+    }
+  };
+  const cashOutAllOpenContracts = async (): Promise<void> => {
+    const confirmed = window.confirm('Cash out every open contract on this account? This sends a sell request for each cash-out eligible Deriv contract and cannot be undone.');
+    if (!confirmed) return;
+    setCashingOutAll(true);
+    setAccountError('');
+    try {
+      const result = await cashOutAllAccountOpenContracts();
+      await refreshTrades();
+      if (result.failed.length) {
+        setAccountError(`${result.closed.length} contract${result.closed.length === 1 ? '' : 's'} cashed out. ${result.failed.length} could not be closed: ${result.failed.map((item) => item.contractId).join(', ')}.`);
+      } else {
+        setAccountError(result.message ?? `${result.closed.length} open contract${result.closed.length === 1 ? '' : 's'} cashed out. You can now switch accounts.`);
+      }
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCashingOutAll(false);
     }
   };
   return (
@@ -5000,6 +5021,10 @@ function AccountPage(): JSX.Element {
         </div>
         {!loadingAccounts && accounts.length === 0 && !accountError && <div class="account-empty">No additional Deriv accounts are available for this login.</div>}
         {accountError && <div class="connect-err">{accountError}</div>}
+        <button class="logout-btn account-cashout account-cashout-all" type="button" disabled={cashingOutAll || cashingOut || !!switchingAccount} onClick={() => void cashOutAllOpenContracts()}>
+          {cashingOutAll ? 'Cashing out open contractsâ€¦' : 'Cash out all open contracts'}
+        </button>
+        <small class="account-cashout-note">Closes every cash-out eligible contract on this account before you switch. You will be asked to confirm.</small>
         {accountError.includes('Deriv confirms contract') && <button class="logout-btn account-cashout" type="button" disabled={cashingOut} onClick={() => void cashOutOpenContract()}>
           {cashingOut ? 'Cashing out contract…' : 'Cash out open contract'}
         </button>}
