@@ -483,6 +483,22 @@ export class DerivPrivateClient {
     });
   }
 
+  /**
+   * Read the broker's current contract state once, without creating a long
+   * lived subscription. Account switching uses this authoritative snapshot to
+   * distinguish a genuinely open position from an old local pending row.
+   */
+  async getContractSnapshot(contractId: string): Promise<ContractUpdate> {
+    const msg = (await this.request(
+      proposalOpenContract(contractId, 0, false),
+      'proposal_open_contract',
+      DEFAULT_TIMEOUT,
+    )) as any;
+    const contract = msg?.proposal_open_contract;
+    if (!contract?.contract_id) throw new Error('contract snapshot unavailable');
+    return this.normalizeContract(contract);
+  }
+
   disconnect(): void {
     this.stopPing();
     this.connected = false;

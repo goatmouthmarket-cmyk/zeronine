@@ -239,6 +239,30 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       resolveTrade(trade.id, 'timeout', 0, '', undefined, accountId);
     }
   };
+  const reconcileAccountSwitchContracts = async (accountId: string): Promise<void> => {
+    const candidates = listOpenTrades(accountId).filter((trade) => Boolean(trade.contract_id));
+    await Promise.all(candidates.map(async (trade) => {
+      try {
+        const outcome = await client.getContractSnapshot(trade.contract_id);
+        if (!outcome.settled) return;
+        const won = outcome.status === 'won';
+        const status = won ? ('won' as const) : ('lost' as const);
+        resolveTrade(
+          trade.id,
+          status,
+          contractProfit(won, trade.stake, trade.payout, outcome),
+          trade.contract_id,
+          { entrySpot: outcome.entrySpot, entryDigit: outcome.entryDigit, exitSpot: outcome.exitSpot, exitDigit: outcome.exitDigit },
+          accountId,
+        );
+        const settledTrade = getTrade(trade.id, accountId);
+        if (settledTrade) hub.emit({ type: 'trade', ts: Date.now(), trade: settledTrade, performance: getPerformanceSummary(accountId), manual: true, settled: true });
+      } catch {
+        // An unavailable broker snapshot must not be reclassified locally.
+        // The explicit block below remains the safe outcome in this case.
+      }
+    }));
+  };
   type CloseTarget = { tradeId?: unknown; contractId?: unknown };
   const findOpenTradeForClose = (
     body: CloseTarget | undefined,
@@ -1721,8 +1745,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     // ask Deriv for the authoritative state before refusing the switch.
     if (getOpenTrade(currentAccountId)?.contract_id) {
       try {
-        if (!client.isConnected) await client.reconnect(token, session.loginid);
-        await reconcileSettledTrades(currentAccountId, listOpenTrades(currentAccountId));
+        // `isConnected` can be true for a socket whose account authorization
+        // is already stale. Switching is infrequent, so use a clean current
+        // account connection rather than trusting that flag.
+        await client.reconnect(token, session.loginid);
+        await reconcileAccountSwitchContracts(currentAccountId);
       } catch {
         // Keep the protective block below if broker state cannot be verified.
       }
