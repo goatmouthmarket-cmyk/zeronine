@@ -186,10 +186,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
    * contract never blocks a fresh order.  A purchase with no contract id is
    * deliberately not cleared: that remains an explicit reconciliation case.
    */
-  const reconcileSettledMultiplierLots = async (accountId: string, product?: 'momentum' | 'gold'): Promise<void> => {
+  const reconcileSettledTrades = async (accountId: string, candidates: TradeRow[]): Promise<void> => {
     if (!client.isConnected) return;
-    const candidates = openMultiplierLots(accountId, product).filter((trade) => Boolean(trade.contract_id));
-    await Promise.all(candidates.map(async (trade) => {
+    await Promise.all(candidates.filter((trade) => Boolean(trade.contract_id)).map(async (trade) => {
       const timeout = new Promise<null>((resolve) => {
         // The initial broker snapshot can arrive a few seconds after a socket
         // reconnect. Do not count a persisted lot before that authoritative
@@ -222,6 +221,23 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         // temporarily unavailable.
       }
     }));
+  };
+  const reconcileSettledMultiplierLots = async (accountId: string, product?: 'momentum' | 'gold'): Promise<void> =>
+    reconcileSettledTrades(accountId, openMultiplierLots(accountId, product));
+  /**
+   * A purchase that never received a Deriv contract id is only a local
+   * reservation. Keep a fresh reservation safe, but release an old one on
+   * account switch so an abandoned browser request cannot lock the account
+   * forever. Unknown broker purchase outcomes remain explicitly protected.
+   */
+  const clearAbandonedLocalReservations = (accountId: string): void => {
+    const staleBefore = Date.now() - 60_000;
+    for (const trade of listOpenTrades(accountId)) {
+      const unknownBrokerOutcome = trade.status === 'purchasing'
+        && /purchase outcome unknown; reconciliation required/i.test(trade.reason ?? '');
+      if (trade.contract_id || unknownBrokerOutcome || trade.ts > staleBefore) continue;
+      resolveTrade(trade.id, 'timeout', 0, '', undefined, accountId);
+    }
   };
   type CloseTarget = { tradeId?: unknown; contractId?: unknown };
   const findOpenTradeForClose = (
@@ -1697,13 +1713,27 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: 'connected session and accountId required' };
     }
-    if (getOpenTrade()) {
+    const token = await resolveStoredToken();
+    const currentAccountId = `deriv:${session.loginid}`;
+    clearAbandonedLocalReservations(currentAccountId);
+    // A browser reload or dropped WebSocket can leave a settled provider
+    // contract marked pending locally. Reconnect to the *current* account and
+    // ask Deriv for the authoritative state before refusing the switch.
+    if (getOpenTrade(currentAccountId)?.contract_id) {
+      try {
+        if (!client.isConnected) await client.reconnect(token, session.loginid);
+        await reconcileSettledTrades(currentAccountId, listOpenTrades(currentAccountId));
+      } catch {
+        // Keep the protective block below if broker state cannot be verified.
+      }
+    }
+    const openTrade = getOpenTrade(currentAccountId);
+    if (openTrade) {
       reply.code(409);
-      return { error: 'wait for the open contract to settle before switching accounts' };
+      return { error: `wait for open contract ${openTrade.contract_id || openTrade.id} to settle before switching accounts` };
     }
     automation.stop('account switch');
     storeSetAutomation({ armed_until: 0 });
-    const token = await resolveStoredToken();
     const tokenSession = getSession() ?? session;
     try {
       const info = await client.reconnect(token, accountId);
