@@ -239,7 +239,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       resolveTrade(trade.id, 'timeout', 0, '', undefined, accountId);
     }
   };
-  const reconcileAccountSwitchContracts = async (accountId: string): Promise<void> => {
+  const reconcileAccountSwitchContracts = async (accountId: string): Promise<{ portfolioChecked: boolean; listedContractIds: Set<string> }> => {
     const candidates = listOpenTrades(accountId).filter((trade) => Boolean(trade.contract_id));
     // Portfolio is the broker's list of *currently* open positions. It is
     // more useful than a historical contract subscription when a prior socket
@@ -276,6 +276,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         // The explicit block below remains the safe outcome in this case.
       }
     }));
+    return { portfolioChecked: openContractIds !== null, listedContractIds: openContractIds ?? new Set<string>() };
   };
   type CloseTarget = { tradeId?: unknown; contractId?: unknown };
   const findOpenTradeForClose = (
@@ -1757,13 +1758,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     // A browser reload or dropped WebSocket can leave a settled provider
     // contract marked pending locally. Reconnect to the *current* account and
     // ask Deriv for the authoritative state before refusing the switch.
+    let contractCheck: { portfolioChecked: boolean; listedContractIds: Set<string> } | null = null;
     if (getOpenTrade(currentAccountId)?.contract_id) {
       try {
         // `isConnected` can be true for a socket whose account authorization
         // is already stale. Switching is infrequent, so use a clean current
         // account connection rather than trusting that flag.
         await client.reconnect(token, session.loginid);
-        await reconcileAccountSwitchContracts(currentAccountId);
+        contractCheck = await reconcileAccountSwitchContracts(currentAccountId);
       } catch {
         // Keep the protective block below if broker state cannot be verified.
       }
@@ -1771,7 +1773,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const openTrade = getOpenTrade(currentAccountId);
     if (openTrade) {
       reply.code(409);
-      return { error: `wait for open contract ${openTrade.contract_id || openTrade.id} to settle before switching accounts` };
+      const contractId = openTrade.contract_id || String(openTrade.id);
+      if (openTrade.contract_id && contractCheck?.portfolioChecked && contractCheck.listedContractIds.has(openTrade.contract_id)) {
+        return { error: `Deriv confirms contract ${contractId} is still open in this account. Close or cash out that contract before switching accounts.` };
+      }
+      if (openTrade.contract_id) {
+        return { error: `Could not verify contract ${contractId} with Deriv. The account switch was kept locked to protect the position; reconnect and try again.` };
+      }
+      return { error: `Local order ${contractId} is still being submitted. Wait briefly and try switching again.` };
     }
     automation.stop('account switch');
     storeSetAutomation({ armed_until: 0 });
