@@ -241,8 +241,22 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   };
   const reconcileAccountSwitchContracts = async (accountId: string): Promise<void> => {
     const candidates = listOpenTrades(accountId).filter((trade) => Boolean(trade.contract_id));
+    // Portfolio is the broker's list of *currently* open positions. It is
+    // more useful than a historical contract subscription when a prior socket
+    // was lost: absence here means the stored reservation cannot still be an
+    // active account contract.
+    let openContractIds: Set<string> | null = null;
+    try {
+      openContractIds = await client.getOpenContractIds();
+    } catch {
+      // Fall back to individual snapshots below when portfolio is unavailable.
+    }
     await Promise.all(candidates.map(async (trade) => {
       try {
+        if (openContractIds && !openContractIds.has(trade.contract_id)) {
+          resolveTrade(trade.id, 'timeout', 0, trade.contract_id, undefined, accountId);
+          return;
+        }
         const outcome = await client.getContractSnapshot(trade.contract_id);
         if (!outcome.settled) return;
         const won = outcome.status === 'won';

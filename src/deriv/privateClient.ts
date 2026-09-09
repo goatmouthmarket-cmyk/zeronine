@@ -499,6 +499,16 @@ export class DerivPrivateClient {
     return this.normalizeContract(contract);
   }
 
+  /** IDs of contracts that Deriv currently considers open for this account. */
+  async getOpenContractIds(): Promise<Set<string>> {
+    const msg = (await this.request({ portfolio: 1 }, 'portfolio', DEFAULT_TIMEOUT)) as any;
+    const contracts = Array.isArray(msg?.portfolio?.contracts) ? msg.portfolio.contracts : [];
+    return new Set(contracts
+      .map((contract: { contract_id?: unknown; contractId?: unknown }) => contract.contract_id ?? contract.contractId)
+      .filter((contractId: unknown): contractId is string | number => contractId !== undefined && contractId !== null)
+      .map((contractId: string | number) => String(contractId)));
+  }
+
   disconnect(): void {
     this.stopPing();
     this.connected = false;
