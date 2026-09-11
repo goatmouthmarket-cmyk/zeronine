@@ -48,7 +48,16 @@ function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Ti
 }
 
 function candleData(samples: MomentumScanSample[], compact: boolean, periodSeconds: 60 | 300): CandlestickData<Time>[] {
-  const ticks = samples.filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote)).slice(compact ? -72 : -1_800);
+  // The live subscription and initial history can arrive in separate batches.
+  // Sort them before forming OHLC bars; otherwise an older batch arriving
+  // late can make a candle appear to jump backwards. Keep same-second ticks:
+  // they are valid movements and must contribute to the candle's wick.
+  const ticks = samples
+    .filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote))
+    .map((sample, index) => ({ epoch: Math.trunc(sample.epoch), quote: sample.quote, index }))
+    .sort((left, right) => left.epoch - right.epoch || left.index - right.index)
+    .slice(compact ? -72 : -1_800)
+    .map(({ epoch, quote }) => ({ epoch, quote }));
   const candles: CandlestickData<Time>[] = [];
   for (const tick of ticks) {
     const time = (Math.floor(tick.epoch / periodSeconds) * periodSeconds) as Time;
@@ -222,8 +231,16 @@ export function MomentumPriceChart({
         handleScroll: tradeView,
         handleScale: tradeView,
       });
+      // Keep this precisely aligned with the Gold chart: full OHLC bodies,
+      // coloured borders, and contrasting wicks. This is a native
+      // Lightweight Charts candlestick series, never a hand-drawn canvas.
       const series = useCandles
-        ? chart.addSeries(CandlestickSeries, { upColor: '#26c66b', downColor: '#ff5263', borderVisible: false, wickUpColor: '#a7f3d0', wickDownColor: '#fda4af', priceLineVisible: true, priceLineColor: 'rgba(117,232,189,.86)', lastValueVisible: true })
+        ? chart.addSeries(CandlestickSeries, {
+          upColor: '#22c55e', downColor: '#ff5263',
+          borderUpColor: '#75e8bd', borderDownColor: '#ff5263',
+          wickUpColor: '#75e8bd', wickDownColor: '#ff8290',
+          priceLineVisible: true, priceLineColor: 'rgba(117,232,189,.86)', lastValueVisible: true,
+        })
         : chart.addSeries(LineSeries, { color: compact ? compactTrendColor : '#f8fafc', lineWidth: 1, crosshairMarkerVisible: true, crosshairMarkerRadius: 3, priceLineVisible: true, priceLineColor: 'rgba(117,232,189,.86)', lastValueVisible: true });
       indicatorRefs.current = [
         chart.addSeries(LineSeries, { color: 'rgba(117,232,189,.45)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),

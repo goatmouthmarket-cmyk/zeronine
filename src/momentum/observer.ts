@@ -532,7 +532,12 @@ export class MomentumObserver {
     const response = await this.request({
       ticks_history: symbol,
       style: 'ticks',
-      count: 120,
+      // Momentum candles are made from the provider's real tick history.
+      // A 120-tick seed can be only a handful of seconds for synthetic
+      // markets, which left a 1m/5m chart with sparse pseudo-candles. Keep a
+      // full bounded history so the OHLC display has enough completed bars to
+      // show an actual pattern before the live subscription takes over.
+      count: MAX_TICKS,
       end: 'latest',
     });
     if (generation !== this.generation || !this.running || this.phase !== 'scanning') return;
