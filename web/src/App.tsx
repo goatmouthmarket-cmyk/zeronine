@@ -351,9 +351,7 @@ function Icon({
 
 export function App(): JSX.Element {
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
-  const [legalStripDismissed, setLegalStripDismissed] = useState(() => {
-    try { return localStorage.getItem('zeronine:legal-strip-dismissed') === '1'; } catch { return false; }
-  });
+  const [legalStripDismissed, setLegalStripDismissed] = useState(false);
 
   useEffect(() => {
     const handlePopState = () => setPage(pageFromPath(window.location.pathname));
@@ -367,7 +365,6 @@ export function App(): JSX.Element {
     setPage(nextPage);
   }, []);
   const dismissLegalStrip = useCallback(() => {
-    try { localStorage.setItem('zeronine:legal-strip-dismissed', '1'); } catch { /* Optional browser preference. */ }
     setLegalStripDismissed(true);
   }, []);
 
@@ -399,9 +396,8 @@ export function App(): JSX.Element {
           {page === 'account' && <div class="view view-account"><AccountPage /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
         </div>
-        {!(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as LegalPageId) && !legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
+        {!legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       </main>
-      {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as LegalPageId) && <SiteFooter onNavigate={navigate} />}
       <BottomNav page={page} setPage={navigate} />
     </>
   );
