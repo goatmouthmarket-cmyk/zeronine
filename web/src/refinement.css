@@ -1,0 +1,115 @@
+/* Shared refinement layer. Preserve the existing trading layouts and palette. */
+:root {
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --control-height: 40px;
+    --control-compact: 32px;
+    --control-radius: 8px;
+    --type-caption: 11px;
+    --type-body: 13px;
+    --type-heading: 20px;
+    --page-gutter: clamp(16px, 2vw, 32px);
+    --motion-fast: 140ms;
+    --focus-ring: #c4b5fd;
+}
+
+/* Shared controls retain semantic colors from their existing variants. */
+:is(.connect-btn, .bot-restore, .bot-inline-action, .tl-btn, .seg-btn) {
+    min-height: var(--control-height);
+    border-radius: var(--control-radius);
+    font-weight: 600;
+    transition: background-color var(--motion-fast), border-color var(--motion-fast), opacity var(--motion-fast);
+}
+button:disabled { opacity: .5; }
+button:not(:disabled):active { filter: brightness(.92); }
+:is(button, a, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+}
+:is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+    min-width: 0;
+    max-width: 100%;
+    font-variant-numeric: tabular-nums;
+}
+:is(.connect-input, .set-input, .tl-input, .tl-select) {
+    min-height: var(--control-height);
+    border-radius: var(--control-radius);
+    padding: var(--space-2) var(--space-3);
+    border-color: var(--border-strong);
+}
+.form-label {
+    display: block;
+    margin: var(--space-3) 0 var(--space-2);
+    color: var(--muted);
+    font-size: var(--type-caption);
+    font-weight: 600;
+}
+.connect-input:focus-visible { outline: 2px solid var(--focus-ring); }
+.connect-card { padding: var(--space-6); border-radius: var(--radius-md); }
+.connect-hero p, .connect-copy { font-size: var(--type-body); line-height: 1.6; }
+.connect-hero h1 { text-wrap: balance; }
+.connect-brand .logo { animation: none; }
+.connect-title { font-size: 16px; font-weight: 650; }
+.connect-hint { line-height: 1.6; overflow-wrap: anywhere; }
+
+/* Navigation stays in its current desktop header / mobile bottom bar. */
+.nav-link { min-height: var(--control-height); padding: var(--space-2) var(--space-3); font-weight: 600; }
+.nav-link.active { box-shadow: inset 0 -2px var(--purple-light); }
+.nav-link.gold.active { box-shadow: inset 0 -2px #f3cc69; }
+:is(.gold-tabs, .mom-tabs, .tl-tabs) { gap: var(--space-1); }
+:is(.gold-tabs, .mom-tabs, .tl-tabs) button { min-height: var(--control-compact); }
+
+/* Consistent text rhythm and numeric alignment across operational panels. */
+.page-title { font-size: var(--type-heading); line-height: 1.3; font-weight: 650; }
+:is(.activity-main, .activity-betline, .set-row, .gold-page-header, .mom-page-header) { min-width: 0; }
+:is(.activity-pnl, .set-value, .metric, .gold-facts, .section-ledger-summary, .balance) { font-variant-numeric: tabular-nums; }
+:is(.set-hint, .connect-hint, .bot-advanced-toggle small) { font-size: var(--type-caption); line-height: 1.5; }
+.empty-hint { padding: var(--space-6) var(--space-4); font-size: var(--type-body); line-height: 1.6; color: var(--muted); }
+:is(.connect-err, .tl-err, .bot-error) { line-height: 1.5; overflow-wrap: anywhere; }
+.activity-open:hover { background: var(--surface); }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: left; color: var(--muted); font-weight: 600; }
+td, th { padding: var(--space-3); }
+tbody tr:hover { background: var(--surface); }
+
+/* Prevent flex children and long messages from widening narrow screens. */
+.desk-side, .view, .connect-embedded { min-width: 0; }
+.tl-picker-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.tl-pick { min-width: 0; min-height: var(--control-height); border-radius: var(--control-radius); }
+.tl-pick-s { min-width: 0; }
+.legal-quick-links.global { flex-shrink: 0; }
+@media (min-width: 1000px) {
+    .app { padding-inline: var(--page-gutter); }
+    .desktop-nav { gap: var(--space-1); }
+    .app[data-page="home"] { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+}
+@media (min-width: 1000px) and (max-width: 1200px) {
+    .nav-link { padding-inline: var(--space-2); font-size: 13px; }
+    .brand-title { font-size: 26px; }
+}
+@media (max-width: 999.98px) {
+    :root { --control-height: 44px; }
+    .nav-item { min-height: 44px; min-width: 0; }
+    .connect-card { padding: var(--space-4); }
+    :is(.connect-input, .set-input, .tl-input, .tl-select) { font-size: 16px; }
+    :is(.gold-tabs, .mom-tabs, .tl-tabs) { overflow-x: auto; max-width: 100%; }
+    :is(.gold-tabs, .mom-tabs, .tl-tabs) button { min-height: 40px; flex-shrink: 0; }
+    .legal-quick-links.global { flex-wrap: wrap; gap: var(--space-1); }
+    .legal-quick-links a, .legal-quick-links button { min-height: 28px; }
+}
+@media (max-width: 390px) {
+    .bottom-nav { gap: 0; padding-inline: var(--space-1); }
+    .nav-item { font-size: 9px; padding-inline: 0; }
+    .connect-hero h1 { font-size: 28px; }
+}
+@media (max-width: 640px) {
+    .tl-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tl-pick { flex-wrap: wrap; justify-content: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+    :root { --motion-fast: 0ms; }
+}

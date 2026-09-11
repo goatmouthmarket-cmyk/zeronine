@@ -1,4 +1,5 @@
 import { memo } from 'preact/compat';
+import { useDialogFocus } from './useDialogFocus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct } from './store';
@@ -171,6 +172,21 @@ function shortMarketName(display: string): string {
 
 function sideLabel(direction: string, barrier: number): string {
   return direction === 'under' ? `Under ${barrier}` : `Over ${barrier}`;
+}
+
+/** Optional UI preferences never block rendering when storage is unavailable. */
+function useViewPreference<T extends string>(key: string, fallback: T, allowed: readonly T[]): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const saved = localStorage.getItem(`zeronine:ui:${key}`) as T | null;
+      return saved !== null && allowed.includes(saved) ? saved : fallback;
+    } catch { return fallback; }
+  });
+  const update = (next: T) => {
+    setValue(next);
+    try { localStorage.setItem(`zeronine:ui:${key}`, next); } catch { /* Browser preference only. */ }
+  };
+  return [value, update];
 }
 
 function multiplierLimitPrice(entry: number | undefined, amount: number | undefined, stake: number, multiplier: number, side: 'up' | 'down' | 'BUY' | 'SELL', kind: 'takeProfit' | 'stopLoss'): number | undefined {
@@ -423,7 +439,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         {s.publicDashboard && !s.owner && (
           <>
           <div class="connect-title">Owner access</div>
-            <label class="sr-only" for="owner-access-token">Dashboard owner token</label>
+            <label class="form-label" for="owner-access-token">Dashboard owner token</label>
             <input
               id="owner-access-token"
               class="connect-input"
@@ -455,7 +471,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         )}
         <div class="connect-title">Connect Deriv</div>
         <div class="connect-copy">Use a trading-enabled token to activate manual trading and the bot.</div>
-        <label class="sr-only" for="deriv-api-token">Deriv API token</label>
+        <label class="form-label" for="deriv-api-token">Deriv API token</label>
         <input
           id="deriv-api-token"
           class="connect-input"
@@ -915,14 +931,14 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               <span class="zero">Zero</span><span class="nine">Nine</span>
             </div>
           </div>
-          <nav class="desktop-nav">
-            <button class={`nav-link${page === 'home' ? ' active' : ''}`} onClick={() => onNavigate('home')}>Home</button>
-            <button class={`nav-link${page === 'history' ? ' active' : ''}`} onClick={() => onNavigate('history')}>History</button>
-            <button class={`nav-link${page === 'backtest' ? ' active' : ''}`} onClick={() => onNavigate('backtest')}>Lab</button>
-            <button class={`nav-link${page === 'bot' ? ' active' : ''}`} onClick={() => onNavigate('bot')}>Bot</button>
-            <button class={`nav-link${page === 'momentum' ? ' active' : ''}`} onClick={() => onNavigate('momentum')}>Momentum</button>
-            <button class={`nav-link gold${page === 'gold' ? ' active' : ''}`} onClick={() => onNavigate('gold')}>Gold</button>
-            <button class={`nav-link${page === 'account' ? ' active' : ''}`} onClick={() => onNavigate('account')}>Account</button>
+          <nav class="desktop-nav" aria-label="Main navigation">
+            {(['home', 'history', 'backtest', 'bot', 'momentum', 'gold', 'account'] as const).map((destination) => (
+              <button key={destination} type="button" aria-current={page === destination ? 'page' : undefined}
+                class={`nav-link${destination === 'gold' ? ' gold' : ''}${page === destination ? ' active' : ''}`}
+                onClick={() => onNavigate(destination)}>
+                {{ home: 'Home', history: 'History', backtest: 'Lab', bot: 'Bot', momentum: 'Momentum', gold: 'Gold', account: 'Account' }[destination]}
+              </button>
+            ))}
           </nav>
           <div class="balance">
             <div class="balance-amount">{fmtMoney(s.session?.balance ?? 0, s.session?.currency)}</div>
@@ -1279,6 +1295,7 @@ function DetailSparkline({ values }: { values: number[] }): JSX.Element {
 }
 
 function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: ActivityDetail; markets: Market[]; equity: Record<string, number[]>; onClose: () => void }): JSX.Element {
+  const dialogRef = useDialogFocus();
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', close);
@@ -1307,7 +1324,7 @@ function ActivityDetailModal({ detail, markets, equity, onClose }: { detail: Act
 
   return (
     <div class="detail-backdrop" role="presentation" onClick={onClose}>
-      <section class="activity-detail" role="dialog" aria-modal="true" aria-label={`${title} details`} onClick={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} tabIndex={-1} class="activity-detail" role="dialog" aria-modal="true" aria-label={`${title} details`} onClick={(event) => event.stopPropagation()}>
         <div class="detail-head">
           <div><span class={`activity-source ${source}`}>{sourceLabel(source)}</span><h2>{title}</h2></div>
           <button class="detail-close" type="button" onClick={onClose} aria-label="Close trade details"><Icon name="x" size={18} /></button>
@@ -4594,6 +4611,7 @@ function PaperTradeLedger({ trades, onOpen }: { trades: PaperTrade[]; onOpen: (t
 }
 
 function PaperTradeDetailModal({ trade, loading, onClose }: { trade: PaperTrade; loading: boolean; onClose: () => void }): JSX.Element {
+  const dialogRef = useDialogFocus();
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', close);
@@ -4617,7 +4635,7 @@ function PaperTradeDetailModal({ trade, loading, onClose }: { trade: PaperTrade;
 
   return (
     <div class="detail-backdrop" role="presentation" onClick={onClose}>
-      <section class="activity-detail paper-trade-detail" role="dialog" aria-modal="true" aria-label="Virtual contract details" onClick={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} tabIndex={-1} class="activity-detail paper-trade-detail" role="dialog" aria-modal="true" aria-label="Virtual contract details" onClick={(event) => event.stopPropagation()}>
         <div class="detail-head">
           <div><span class="activity-source paper">Virtual paper</span><h2>{shortMarketName(trade.market)} - {paperContractLabel(trade)}</h2></div>
           <button class="detail-close" type="button" onClick={onClose} aria-label="Close virtual contract details"><Icon name="x" size={18} /></button>
@@ -4888,7 +4906,7 @@ function EntryTab(): JSX.Element {
 
 function TestLabPage(): JSX.Element {
   const s = useStore();
-  const [tab, setTab] = useState<LabTab>('backtest');
+  const [tab, setTab] = useViewPreference<LabTab>('lab-tab', 'backtest', ['backtest', 'paper', 'compare', 'patterns', 'entry']);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -4908,6 +4926,7 @@ function TestLabPage(): JSX.Element {
         {(['backtest', 'paper', 'compare', 'patterns', 'entry'] as LabTab[]).map((t) => (
           <button
             class={`seg-btn${tab === t ? ' active' : ''}`}
+            aria-pressed={tab === t}
             onClick={() => setTab(t)}
             key={t}
           >
@@ -7073,7 +7092,7 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
 
   return (
     <div class="bottom-nav-wrap">
-      <nav class="bottom-nav">
+      <nav class="bottom-nav" aria-label="Main navigation">
         <button class={`nav-item${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>
           <Icon name="home" size={20} />
           Home
