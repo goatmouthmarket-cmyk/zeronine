@@ -335,6 +335,9 @@ function Icon({
 
 export function App(): JSX.Element {
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
+  const [legalStripDismissed, setLegalStripDismissed] = useState(() => {
+    try { return localStorage.getItem('zeronine:legal-strip-dismissed') === '1'; } catch { return false; }
+  });
 
   useEffect(() => {
     const handlePopState = () => setPage(pageFromPath(window.location.pathname));
@@ -346,6 +349,10 @@ export function App(): JSX.Element {
     const nextPath = PAGE_PATHS[nextPage];
     if (window.location.pathname !== nextPath) window.history.pushState(null, '', nextPath);
     setPage(nextPage);
+  }, []);
+  const dismissLegalStrip = useCallback(() => {
+    try { localStorage.setItem('zeronine:legal-strip-dismissed', '1'); } catch { /* Optional browser preference. */ }
+    setLegalStripDismissed(true);
   }, []);
 
   useEffect(() => {
@@ -377,6 +384,7 @@ export function App(): JSX.Element {
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
         </div>
       </main>
+      {!(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as LegalPageId) && !legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       <SiteFooter onNavigate={navigate} />
       <BottomNav page={page} setPage={navigate} />
     </>
@@ -496,7 +504,6 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         <div class="connect-hint">Demo or real account • trading-enabled API token</div>
         {s.ws === 'closed' && <div class="connect-err">Feed disconnected – reconnecting…</div>}
       </div>
-      <LegalQuickLinks placement="connect" />
     </>
   );
   return embedded ? <div class="connect-embedded">{content}</div> : <main class="app app--page">{content}</main>;
@@ -1127,7 +1134,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           </section>
         </div>
       </div>}
-      {active && <LegalQuickLinks placement="home" />}
       {active && activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
     </>
   );
@@ -7048,15 +7054,15 @@ function SiteFooter({ onNavigate }: { onNavigate: (page: Page) => void }): JSX.E
 
 /* ---------------- bottom nav ---------------- */
 
-function LegalQuickLinks({ placement }: { placement: 'connect' | 'home' }): JSX.Element {
-  return <aside class={`legal-quick-links ${placement}`} aria-label="Legal and privacy information">
-    <span>{placement === 'connect' ? 'Before connecting' : 'Using ZeroNine'}</span>
-    <p>Trading carries risk. Review how this dashboard handles data and account access.</p>
+function LegalQuickLinks({ onDismiss }: { onDismiss: () => void }): JSX.Element {
+  return <aside class="legal-quick-links global" aria-label="Legal and privacy information">
+    <span>Legal</span>
     <div>
       <a href="/privacy">Privacy</a>
       <a href="/terms">Terms</a>
       <a href="/refunds">Refunds</a>
       <a href="/cookies">Cookies</a>
+      <button type="button" onClick={onDismiss} aria-label="Hide legal links"><Icon name="x" size={12} /></button>
     </div>
   </aside>;
 }
