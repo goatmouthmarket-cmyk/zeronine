@@ -104,7 +104,9 @@ tbody tr:hover { background: var(--surface); }
 html:has(.view-legal), body:has(.view-legal) {
     height: auto;
     overflow-y: auto;
+    overscroll-behavior: auto;
 }
+body:has(.view-legal) { overflow: visible; }
 .app:has(.view-legal) {
     height: auto;
     min-height: 100dvh;
@@ -115,12 +117,14 @@ html:has(.view-legal), body:has(.view-legal) {
     height: auto;
     max-height: none;
     overflow: visible;
+    overscroll-behavior: auto;
 }
 .app .desk-side .view-legal {
     height: auto;
     min-height: 0;
     max-height: none;
     overflow: visible;
+    overscroll-behavior: auto;
     padding-bottom: var(--space-8);
 }
 .desk-side, .view, .connect-embedded { min-width: 0; }
