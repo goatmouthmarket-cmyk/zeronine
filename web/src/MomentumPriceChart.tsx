@@ -50,7 +50,10 @@ function candleData(samples: MomentumScanSample[], compact: boolean): Candlestic
   const ticks = samples.filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote)).slice(compact ? -72 : -1_800);
   const candles: CandlestickData<Time>[] = [];
   for (const tick of ticks) {
-    const time = (Math.floor(tick.epoch / 5) * 5) as Time;
+    // The Momentum stream commonly delivers one update about every five
+    // seconds. Ten-second bars therefore retain enough ticks to form bodies
+    // and wicks instead of rendering as a series of single-price dashes.
+    const time = (Math.floor(tick.epoch / 10) * 10) as Time;
     const previous = candles.at(-1);
     if (previous && previous.time === time) {
       previous.high = Math.max(previous.high, tick.quote);
@@ -374,7 +377,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}${useCandles ? ' candles' : ''}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 80 · 2σ</span></span>}
+    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 80 · 2σ</span>{useCandles && <span class="candles">10s candles</span>}</span>}
     {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
