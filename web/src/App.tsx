@@ -383,8 +383,8 @@ export function App(): JSX.Element {
           {page === 'account' && <div class="view view-account"><AccountPage /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
         </div>
+        {!(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as LegalPageId) && !legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       </main>
-      {!(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as LegalPageId) && !legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       <SiteFooter onNavigate={navigate} />
       <BottomNav page={page} setPage={navigate} />
     </>
