@@ -100,6 +100,7 @@ export function MomentumPriceChart({
   // single synthetic-index jump.
   const indicators = useMemo(() => calculateChartIndicators(points, 21, 55, 80), [points]);
   const pointsRef = useRef<LineData<Time>[]>(points);
+  const candlesRef = useRef<CandlestickData<Time>[]>(candles);
   const fittedRef = useRef(false);
   const hasEntry = !compact && !positionTool && Number.isFinite(entryPrice);
   const entryViewport = useMemo(() => {
@@ -124,6 +125,9 @@ export function MomentumPriceChart({
   useEffect(() => {
     pointsRef.current = points;
   }, [points]);
+  useEffect(() => {
+    candlesRef.current = candles;
+  }, [candles]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -221,7 +225,7 @@ export function MomentumPriceChart({
       series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .1, bottom: compact ? .18 : .14 } });
       chartRef.current = chart;
       seriesRef.current = series;
-      if (useCandles) series.setData(candleData(samples ?? [], compact));
+      if (useCandles) series.setData(candlesRef.current);
       else series.setData(pointsRef.current);
       if (pointsRef.current.length > 1) {
         chart.timeScale().fitContent();
@@ -272,7 +276,7 @@ export function MomentumPriceChart({
       entryLineRef.current = null;
       fittedRef.current = false;
     };
-  }, [compact, samples, tradeView, useCandles]);
+  }, [compact, tradeView, useCandles]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -281,15 +285,16 @@ export function MomentumPriceChart({
 
     if (useCandles) series.setData(candles);
     else series.setData(points);
-    if (points.length > 1) {
+    const dataLength = useCandles ? candles.length : points.length;
+    if (dataLength > 1) {
       if (!fittedRef.current) {
-        const last = points.length - 1;
+        const last = dataLength - 1;
         // Momentum is a tick stream. Start with a wide 15-minute-style
         // context rather than magnifying a handful of recent updates.
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - 900), to: last + 14 });
         fittedRef.current = true;
       } else {
-        const last = points.length - 1;
+        const last = dataLength - 1;
         const visible = chart.timeScale().getVisibleLogicalRange();
         const span = Math.max(96, (visible?.to ?? last) - (visible?.from ?? Math.max(0, last - 900)));
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - Math.max(10, span - 14)), to: last + 14 });
