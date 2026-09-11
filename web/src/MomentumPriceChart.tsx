@@ -28,6 +28,7 @@ export interface MomentumPriceChartProps {
   entryDirection?: 'up' | 'down';
   positionTool?: Omit<TradePositionToolProps, 'values'> | null;
   chartView?: 'line' | 'candles';
+  candlePeriod?: 60 | 300;
 }
 
 function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Time>[] {
@@ -46,14 +47,11 @@ function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Ti
   return points;
 }
 
-function candleData(samples: MomentumScanSample[], compact: boolean): CandlestickData<Time>[] {
+function candleData(samples: MomentumScanSample[], compact: boolean, periodSeconds: 60 | 300): CandlestickData<Time>[] {
   const ticks = samples.filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote)).slice(compact ? -72 : -1_800);
   const candles: CandlestickData<Time>[] = [];
   for (const tick of ticks) {
-    // The Momentum stream commonly delivers one update about every five
-    // seconds. Ten-second bars therefore retain enough ticks to form bodies
-    // and wicks instead of rendering as a series of single-price dashes.
-    const time = (Math.floor(tick.epoch / 10) * 10) as Time;
+    const time = (Math.floor(tick.epoch / periodSeconds) * periodSeconds) as Time;
     const previous = candles.at(-1);
     if (previous && previous.time === time) {
       previous.high = Math.max(previous.high, tick.quote);
@@ -83,6 +81,7 @@ export function MomentumPriceChart({
   entryDirection,
   positionTool,
   chartView = 'line',
+  candlePeriod = 60,
 }: MomentumPriceChartProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -92,7 +91,7 @@ export function MomentumPriceChart({
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
-  const candles = useMemo(() => candleData(samples ?? [], compact), [samples, compact]);
+  const candles = useMemo(() => candleData(samples ?? [], compact, candlePeriod), [samples, compact, candlePeriod]);
   const useCandles = !compact && chartView === 'candles';
   const compactTrendColor = useMemo(() => {
     if (points.length < 2) return '#75e8bd';
@@ -105,6 +104,9 @@ export function MomentumPriceChart({
   const pointsRef = useRef<LineData<Time>[]>(points);
   const candlesRef = useRef<CandlestickData<Time>[]>(candles);
   const fittedRef = useRef(false);
+  const followLiveRef = useRef(true);
+  const latestRenderedTimeRef = useRef<Time | null>(null);
+  const viewportTrackerRef = useRef<((range: { to: number } | null) => void) | null>(null);
   const hasEntry = !compact && !positionTool && Number.isFinite(entryPrice);
   const entryViewport = useMemo(() => {
     if (!hasEntry || entryPrice == null || points.length < 2) {
@@ -207,7 +209,9 @@ export function MomentumPriceChart({
           fixRightEdge: false,
           // Keep room ahead of the live quote for the next movement and the
           // position planning tool instead of pinning it to the price axis.
-          rightOffset: tradeView ? 72 : 0,
+          rightOffset: tradeView ? (useCandles ? 14 : 72) : 0,
+          barSpacing: useCandles ? 13 : undefined,
+          minBarSpacing: useCandles ? 4 : undefined,
           timeVisible: tradeView,
           secondsVisible: tradeView,
         },
@@ -246,6 +250,12 @@ export function MomentumPriceChart({
           title: entry.entryLabel,
         });
       }
+      const trackViewport = (range: { to: number } | null) => {
+        const dataLength = useCandles ? candlesRef.current.length : pointsRef.current.length;
+        if (range) followLiveRef.current = range.to >= dataLength - 1.5;
+      };
+      chart.timeScale().subscribeVisibleLogicalRangeChange(trackViewport);
+      viewportTrackerRef.current = trackViewport;
     };
 
     let animationFrame = 0;
@@ -272,12 +282,16 @@ export function MomentumPriceChart({
     return () => {
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
       observer.disconnect();
+      if (viewportTrackerRef.current) chartRef.current?.timeScale().unsubscribeVisibleLogicalRangeChange(viewportTrackerRef.current);
       chartRef.current?.remove();
       chartRef.current = null;
       seriesRef.current = null;
       indicatorRefs.current = [];
       entryLineRef.current = null;
       fittedRef.current = false;
+      followLiveRef.current = true;
+      latestRenderedTimeRef.current = null;
+      viewportTrackerRef.current = null;
     };
   }, [compact, tradeView, useCandles]);
 
@@ -288,23 +302,26 @@ export function MomentumPriceChart({
 
     if (useCandles) series.setData(candles);
     else series.setData(points);
+    const chartData = useCandles ? candles : points;
     const dataLength = useCandles ? candles.length : points.length;
+    const latestTime = chartData.at(-1)?.time ?? null;
+    const context = useCandles ? 31 : 900;
+    const minSpan = useCandles ? 24 : 96;
     if (dataLength > 1) {
       if (!fittedRef.current) {
         const last = dataLength - 1;
-        // Momentum is a tick stream. Start with a wide 15-minute-style
-        // context rather than magnifying a handful of recent updates.
-        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - 900), to: last + 14 });
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - context), to: last + 14 });
         fittedRef.current = true;
-      } else {
+      } else if (followLiveRef.current && latestRenderedTimeRef.current !== latestTime) {
         const last = dataLength - 1;
         const visible = chart.timeScale().getVisibleLogicalRange();
-        const span = Math.max(96, (visible?.to ?? last) - (visible?.from ?? Math.max(0, last - 900)));
+        const span = Math.max(minSpan, (visible?.to ?? last) - (visible?.from ?? Math.max(0, last - context)));
         chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, last - Math.max(10, span - 14)), to: last + 14 });
       }
     } else {
       fittedRef.current = false;
     }
+    latestRenderedTimeRef.current = latestTime;
   }, [candles, points, useCandles]);
 
   useEffect(() => {
@@ -377,7 +394,7 @@ export function MomentumPriceChart({
 
   return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}${useCandles ? ' candles' : ''}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
-    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 80 · 2σ</span>{useCandles && <span class="candles">10s candles</span>}</span>}
+    {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 80 · 2σ</span>{useCandles && <span class="candles">{candlePeriod === 300 ? '5m' : '1m'} candles</span>}</span>}
     {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
     {hasEntry && entryPrice != null && showEntryLine && <span class={`mom-chart-entry ${entryDirection ?? 'neutral'}`} aria-hidden="true"><i></i><b>{entryLabel}</b><small>{displayPrice(entryPrice)}</small></span>}
     {hasEntry && entryPrice != null && entryViewport.offscreen && <span class={`mom-chart-entry offscreen ${entryViewport.side} ${entryDirection ?? 'neutral'}`} aria-hidden="true"><em>{entryViewport.side === 'above' ? '↑' : '↓'}</em><b>{entryLabel} out of view</b><small>{displayPrice(entryPrice)}</small></span>}
