@@ -496,6 +496,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         <div class="connect-hint">Demo or real account • trading-enabled API token</div>
         {s.ws === 'closed' && <div class="connect-err">Feed disconnected – reconnecting…</div>}
       </div>
+      <LegalQuickLinks placement="connect" />
     </>
   );
   return embedded ? <div class="connect-embedded">{content}</div> : <main class="app app--page">{content}</main>;
@@ -1126,6 +1127,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           </section>
         </div>
       </div>}
+      {active && <LegalQuickLinks placement="home" />}
       {active && activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
     </>
   );
@@ -7045,6 +7047,19 @@ function SiteFooter({ onNavigate }: { onNavigate: (page: Page) => void }): JSX.E
 }
 
 /* ---------------- bottom nav ---------------- */
+
+function LegalQuickLinks({ placement }: { placement: 'connect' | 'home' }): JSX.Element {
+  return <aside class={`legal-quick-links ${placement}`} aria-label="Legal and privacy information">
+    <span>{placement === 'connect' ? 'Before connecting' : 'Using ZeroNine'}</span>
+    <p>Trading carries risk. Review how this dashboard handles data and account access.</p>
+    <div>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/refunds">Refunds</a>
+      <a href="/cookies">Cookies</a>
+    </div>
+  </aside>;
+}
 
 function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }): JSX.Element {
   const s = useStore();
