@@ -163,3 +163,11 @@ body:has(.view-legal) { overflow: visible; }
 @media (prefers-reduced-motion: reduce) {
     :root { --motion-fast: 0ms; }
 }
+
+/* Momentum chart view is a compact data display choice, not a workspace tab. */
+.mom-chart-view { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); background: rgba(255,255,255,.018); }
+.mom-chart-view button { min-height: 28px; padding: 0 9px; border: 0; border-radius: 2px; color: var(--muted); background: transparent; font: inherit; font-size: 9px; font-weight: 800; cursor: pointer; }
+.mom-chart-view button:hover { color: var(--text); }
+.mom-chart-view button.active { color: #08110e; background: #75e8bd; }
+.mom-price-chart.candles .chart-indicator-legend { border-color: rgba(117,232,189,.22); }
+@media (max-width: 700px) { .mom-chart-view { justify-self: start; } }

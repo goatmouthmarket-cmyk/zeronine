@@ -3267,6 +3267,7 @@ function MomentumTradeDesk({
   suggestedDirection,
   suggestedConfidence,
   suggestedReason,
+  chartView = 'line',
   trades,
   contract,
   contracts,
@@ -3282,6 +3283,7 @@ function MomentumTradeDesk({
   suggestedDirection?: 'up' | 'down' | null;
   suggestedConfidence?: number | null;
   suggestedReason?: string | null;
+  chartView?: 'line' | 'candles';
   trades: TradeRow[];
   contract: ContractEvt | null;
   contracts: Record<string, ContractEvt>;
@@ -3654,7 +3656,7 @@ function MomentumTradeDesk({
 
     <div class="mom-trade-live">
       <div class="mom-trade-chart">
-        <MomentumPriceChart samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} positionTool={plannerEntry != null ? {
+        <MomentumPriceChart chartView={chartView} samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} positionTool={plannerEntry != null ? {
           side: plannerSide === 'down' ? 'short' : 'long', entry: plannerEntry, takeProfit: plannerTargetPrice, stopLoss: plannerStopPrice,
           layoutStorageKey: `momentum:${chartSymbol || 'market'}`,
           targetPnl: fmtSigned(plannerTargetAmount, session?.currency ?? 'USD'), riskPnl: fmtSigned(-plannerRiskAmount, session?.currency ?? 'USD'),
@@ -3768,6 +3770,9 @@ function MomentumPage(): JSX.Element {
   const s = useStore();
   const momentum = s.momentum;
   const [activeTab, setActiveTab] = useState<'research' | 'trade' | 'ledger'>('trade');
+  const [chartView, setChartView] = useState<'line' | 'candles'>(() => {
+    try { return localStorage.getItem('zeronine:momentum-chart-view') === 'candles' ? 'candles' : 'line'; } catch { return 'line'; }
+  });
   const [busy, setBusy] = useState(false);
   const [focusing, setFocusing] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -3805,6 +3810,10 @@ function MomentumPage(): JSX.Element {
     try { await startMomentumResearch(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
+  };
+  const selectChartView = (view: 'line' | 'candles') => {
+    setChartView(view);
+    try { localStorage.setItem('zeronine:momentum-chart-view', view); } catch { /* Optional display preference. */ }
   };
 
   const w = momentum?.window;
@@ -3883,6 +3892,10 @@ function MomentumPage(): JSX.Element {
         <button class={activeTab === 'research' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'research'} onClick={() => setActiveTab('research')}>Research</button>
         <button class={activeTab === 'ledger' ? 'active' : ''} type="button" role="tab" aria-selected={activeTab === 'ledger'} onClick={() => setActiveTab('ledger')}>Ledger</button>
       </div>
+      {activeTab !== 'ledger' && <div class="mom-chart-view" role="group" aria-label="Momentum chart view">
+        <button type="button" class={chartView === 'line' ? 'active' : ''} aria-pressed={chartView === 'line'} onClick={() => selectChartView('line')}>Line</button>
+        <button type="button" class={chartView === 'candles' ? 'active' : ''} aria-pressed={chartView === 'candles'} onClick={() => selectChartView('candles')}>Candles</button>
+      </div>}
     </header>
     {activeTab === 'ledger' ? <MomentumLedgerWorkspace rows={research?.recent} trades={s.trades} currency={s.session?.currency ?? 'USD'} /> : activeTab === 'trade' ? <MomentumTradeDesk
       symbol={momentum?.config?.symbol ?? scanPreview?.symbol}
@@ -3899,6 +3912,7 @@ function MomentumPage(): JSX.Element {
       trades={s.trades}
       contract={s.contract}
       contracts={s.contracts}
+      chartView={chartView}
     /> : showRestoring ? <section class="mom-restoring" aria-live="polite" aria-busy="true">
       <span class="mom-restoring-mark" aria-hidden="true"><i></i><i></i><i></i></span>
       <div><span class="mom-kicker">Momentum workspace</span><strong>Restoring live research state</strong><small>Checking the latest scanner status.</small></div>
@@ -3947,7 +3961,7 @@ function MomentumPage(): JSX.Element {
       {(focusedMarket || w?.samples?.length) && <section class="mom-focus-stage" aria-label="Focused momentum market">
         <div><span class="mom-kicker">Focused research</span><strong>{focusedMarket?.display ?? market?.display ?? 'Current market'}</strong><small>{focusedMarket ? `${focusedMarket.sampleCount} ticks observed · ${Math.round(momentumProgress(focusedMarket.progress))}% scan complete` : 'Live window samples'}</small></div>
         {canReturnToWatchboard && <button class="mom-return-watch" type="button" disabled={busy || !s.owner} onClick={() => void returnToWatchboard()} aria-label="Return to full market watchboard and begin a new scan" title="Return to market watchboard"><Icon name="arrowLeft" size={13} />Back to watchboard</button>}
-        <div class="mom-focus-chart"><MomentumPriceChart samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} entryPrice={w?.openPrice} entryDirection={w?.direction ?? undefined} entryLabel={w?.direction ? `Watch entry \u00b7 ${w.direction.toUpperCase()}` : 'Watch entry'} /></div>
+        <div class="mom-focus-chart"><MomentumPriceChart chartView={chartView} samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} entryPrice={w?.openPrice} entryDirection={w?.direction ?? undefined} entryLabel={w?.direction ? `Watch entry \u00b7 ${w.direction.toUpperCase()}` : 'Watch entry'} /></div>
       </section>}
 
       <section class="mom-window" aria-live="polite">

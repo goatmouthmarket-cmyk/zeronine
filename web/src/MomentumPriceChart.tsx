@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import {
   ColorType,
   LineSeries,
+  CandlestickSeries,
   LineStyle,
   createChart,
   type AutoscaleInfo,
@@ -9,6 +10,7 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type LineData,
+  type CandlestickData,
   type Time,
 } from 'lightweight-charts';
 import type { MomentumScanSample } from './store';
@@ -25,6 +27,7 @@ export interface MomentumPriceChartProps {
   entryLabel?: string;
   entryDirection?: 'up' | 'down';
   positionTool?: Omit<TradePositionToolProps, 'values'> | null;
+  chartView?: 'line' | 'candles';
 }
 
 function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Time>[] {
@@ -41,6 +44,21 @@ function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Ti
     points.push({ time: time as Time, value: tick.quote });
   }
   return points;
+}
+
+function candleData(samples: MomentumScanSample[], compact: boolean): CandlestickData<Time>[] {
+  const ticks = samples.filter((sample) => Number.isFinite(sample.epoch) && Number.isFinite(sample.quote)).slice(compact ? -72 : -1_800);
+  const candles: CandlestickData<Time>[] = [];
+  for (const tick of ticks) {
+    const time = (Math.floor(tick.epoch / 5) * 5) as Time;
+    const previous = candles.at(-1);
+    if (previous && previous.time === time) {
+      previous.high = Math.max(previous.high, tick.quote);
+      previous.low = Math.min(previous.low, tick.quote);
+      previous.close = tick.quote;
+    } else candles.push({ time, open: tick.quote, high: tick.quote, low: tick.quote, close: tick.quote });
+  }
+  return candles;
 }
 
 function displayPrice(value: number) {
@@ -61,15 +79,18 @@ export function MomentumPriceChart({
   entryLabel = 'Watch entry',
   entryDirection,
   positionTool,
+  chartView = 'line',
 }: MomentumPriceChartProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Line'> | ISeriesApi<'Candlestick'> | null>(null);
   const indicatorRefs = useRef<ISeriesApi<'Line'>[]>([]);
   const entryLineRef = useRef<IPriceLine | null>(null);
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
+  const candles = useMemo(() => candleData(samples ?? [], compact), [samples, compact]);
+  const useCandles = !compact && chartView === 'candles';
   const compactTrendColor = useMemo(() => {
     if (points.length < 2) return '#75e8bd';
     return (points.at(-1)?.value ?? 0) >= (points[0]?.value ?? 0) ? '#75e8bd' : '#ff5263';
@@ -190,15 +211,9 @@ export function MomentumPriceChart({
         handleScroll: tradeView,
         handleScale: tradeView,
       });
-      const series = chart.addSeries(LineSeries, {
-        color: compact ? compactTrendColor : '#7dd3fc',
-        lineWidth: 1,
-        crosshairMarkerVisible: true,
-        crosshairMarkerRadius: 3,
-        priceLineVisible: true,
-        priceLineColor: 'rgba(117,232,189,.86)',
-        lastValueVisible: true,
-      });
+      const series = useCandles
+        ? chart.addSeries(CandlestickSeries, { upColor: '#26c66b', downColor: '#ff5263', borderVisible: false, wickUpColor: '#a7f3d0', wickDownColor: '#fda4af', priceLineVisible: true, priceLineColor: 'rgba(117,232,189,.86)', lastValueVisible: true })
+        : chart.addSeries(LineSeries, { color: compact ? compactTrendColor : '#f8fafc', lineWidth: 1, crosshairMarkerVisible: true, crosshairMarkerRadius: 3, priceLineVisible: true, priceLineColor: 'rgba(117,232,189,.86)', lastValueVisible: true });
       indicatorRefs.current = [
         chart.addSeries(LineSeries, { color: 'rgba(117,232,189,.45)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
         chart.addSeries(LineSeries, { color: 'rgba(255,130,144,.44)', lineWidth: 1, lineStyle: LineStyle.Dashed, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }),
@@ -206,7 +221,8 @@ export function MomentumPriceChart({
       series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .1, bottom: compact ? .18 : .14 } });
       chartRef.current = chart;
       seriesRef.current = series;
-      series.setData(pointsRef.current);
+      if (useCandles) series.setData(candleData(samples ?? [], compact));
+      else series.setData(pointsRef.current);
       if (pointsRef.current.length > 1) {
         chart.timeScale().fitContent();
         fittedRef.current = true;
@@ -256,14 +272,15 @@ export function MomentumPriceChart({
       entryLineRef.current = null;
       fittedRef.current = false;
     };
-  }, [compact, tradeView]);
+  }, [compact, samples, tradeView, useCandles]);
 
   useEffect(() => {
     const chart = chartRef.current;
     const series = seriesRef.current;
     if (!chart || !series) return;
 
-    series.setData(points);
+    if (useCandles) series.setData(candles);
+    else series.setData(points);
     if (points.length > 1) {
       if (!fittedRef.current) {
         const last = points.length - 1;
@@ -280,7 +297,7 @@ export function MomentumPriceChart({
     } else {
       fittedRef.current = false;
     }
-  }, [points]);
+  }, [candles, points, useCandles]);
 
   useEffect(() => {
     const [upper, lower] = indicatorRefs.current;
@@ -298,7 +315,7 @@ export function MomentumPriceChart({
     // A far-away entry is shown as an out-of-view marker so live movement
     // stays readable instead of collapsing into a flat line.
     series.priceScale().applyOptions({ scaleMargins: { top: compact ? .18 : .1, bottom: compact ? .18 : .14 } });
-    series.applyOptions({
+    (series as ISeriesApi<'Line'>).applyOptions({
       autoscaleInfoProvider: showEntryLine && entryPrice != null
         ? (baseImplementation: () => AutoscaleInfo | null) => {
           const base = baseImplementation();
@@ -317,7 +334,7 @@ export function MomentumPriceChart({
 
   useEffect(() => {
     if (!compact) return;
-    seriesRef.current?.applyOptions({ color: compactTrendColor });
+    (seriesRef.current as ISeriesApi<'Line'> | null)?.applyOptions({ color: compactTrendColor });
   }, [compact, compactTrendColor]);
 
   useEffect(() => {
@@ -350,7 +367,7 @@ export function MomentumPriceChart({
     };
   }, [entryDirection, entryLabel, entryPrice, showEntryLine]);
 
-  return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
+  return <span class={`mom-price-chart${compact ? ' compact' : ' trade'}${useCandles ? ' candles' : ''}`} role="img" aria-label={hasEntry && entryPrice != null ? `${label}. ${entryLabel} ${displayPrice(entryPrice)}.` : label}>
     <span class="mom-price-chart-canvas" ref={containerRef} />
     {!compact && <span class="chart-indicator-legend" aria-label="Chart indicators"><span class="price">Live price</span><span class="bands">BB 80 · 2σ</span></span>}
     {positionTool && !compact && <TradePositionTool {...positionTool} values={points.map((point) => point.value)} zoneGeometry={zoneGeometry} levelTops={levelTops} />}
