@@ -35,6 +35,8 @@ const RUG_PULL_BLOCK_RISK = .82;
 
 export interface MomentumMarket { symbol: string; display: string; market: string }
 export interface MomentumSample { epoch: number; quote: number }
+/** Provider OHLC history used solely to render the Momentum candle view. */
+export interface MomentumCandle { epoch: number; open: number; high: number; low: number; close: number }
 export interface MomentumScanMarket extends MomentumMarket {
   sampleCount: number;
   progress: number;
@@ -86,6 +88,7 @@ export interface MomentumWindow {
   signal: MomentumSignal;
   decisionSignal: MomentumSignal | null;
   samples: MomentumSample[];
+  candles: MomentumCandle[];
   estimatedGross: number;
   estimatedCommission: number;
   estimatedNet: number;
@@ -387,7 +390,11 @@ export class MomentumObserver {
         };
       }).sort((a, b) => b.opportunityScore - a.opportunityScore),
     } : null;
-    const window = this.window ? { ...this.window, samples: sampleTicks(this.window.samples, MAX_FOCUS_SAMPLES) } : null;
+    const window = this.window ? {
+      ...this.window,
+      samples: sampleTicks(this.window.samples, MAX_FOCUS_SAMPLES),
+      candles: this.window.candles.slice(-240),
+    } : null;
     return { phase: this.phase, running: this.running, markets: this.markets, config: this.config, window,
       completedWindows: this.completedWindows, signalledWindows: this.signalledWindows, wins: this.wins, losses: this.losses,
       estimatedNet: this.estimatedNet, lastOutcome: this.lastOutcome, reason: this.reason,
@@ -498,7 +505,38 @@ export class MomentumObserver {
     }
     this.tickReq = this.req++;
     this.ws!.send(JSON.stringify({ ticks: input.symbol, subscribe: 1, req_id: this.tickReq }));
+    // Tick history is excellent for signals but can be sparse on some
+    // synthetic markets. Fetch provider OHLC bars separately for the candle
+    // chart so every displayed 1m/5m bar has a real body and wick.
+    void this.seedCandleHistory(input.symbol);
     this.emit(); return this.state();
+  }
+
+  private async seedCandleHistory(symbol: string): Promise<void> {
+    try {
+      const response = await this.request({
+        ticks_history: symbol,
+        style: 'candles',
+        granularity: 60,
+        count: 240,
+        end: 'latest',
+        adjust_start_time: 1,
+      });
+      if (!this.running || this.config?.symbol !== symbol || !this.window) return;
+      const candles = (Array.isArray(response.candles) ? response.candles : []).flatMap((row: Record<string, unknown>) => {
+        const epoch = Number(row.epoch);
+        const open = Number(row.open); const high = Number(row.high); const low = Number(row.low); const close = Number(row.close);
+        return [epoch, open, high, low, close].every(Number.isFinite)
+          ? [{ epoch, open, high, low, close } satisfies MomentumCandle]
+          : [];
+      }).sort((left, right) => left.epoch - right.epoch).slice(-240);
+      if (candles.length === 0) return;
+      this.window.candles = candles;
+      this.emit();
+    } catch {
+      // The line view and tick-built candle fallback remain available if a
+      // provider does not expose candle history for a particular market.
+    }
   }
 
   async startAutomatic(): Promise<MomentumState> {
@@ -791,7 +829,7 @@ export class MomentumObserver {
     const signal = this.config ? this.scanOpportunity(this.marketFor(this.config.symbol), this.ticks, epoch).signal : momentumSignal(this.ticks, epoch);
     return { startedAt: epoch, endsAt: epoch + WINDOW_SECONDS, openPrice: quote, currentPrice: quote, changePct: 0,
       decisionAt: null, decisionPrice: null, direction: null, signal, decisionSignal: null,
-      samples: [{ quote, epoch }], estimatedGross: 0, estimatedCommission: 0, estimatedNet: 0 };
+      samples: [{ quote, epoch }], candles: [], estimatedGross: 0, estimatedCommission: 0, estimatedNet: 0 };
   }
 
   private completeWindow(exitPrice: number): void {

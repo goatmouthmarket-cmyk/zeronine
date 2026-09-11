@@ -13,7 +13,7 @@ import {
   type CandlestickData,
   type Time,
 } from 'lightweight-charts';
-import type { MomentumScanSample } from './store';
+import type { MomentumCandle, MomentumScanSample } from './store';
 import { TradePositionTool, type TradePositionToolProps } from './TradePositionTool';
 import { calculateChartIndicators } from './chartIndicators';
 
@@ -29,6 +29,7 @@ export interface MomentumPriceChartProps {
   positionTool?: Omit<TradePositionToolProps, 'values'> | null;
   chartView?: 'line' | 'candles';
   candlePeriod?: 60 | 300;
+  candleHistory?: MomentumCandle[];
 }
 
 function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Time>[] {
@@ -47,7 +48,37 @@ function chartData(samples: MomentumScanSample[], compact: boolean): LineData<Ti
   return points;
 }
 
-function candleData(samples: MomentumScanSample[], compact: boolean, periodSeconds: 60 | 300): CandlestickData<Time>[] {
+function candleData(samples: MomentumScanSample[], compact: boolean, periodSeconds: 60 | 300, history: MomentumCandle[] = []): CandlestickData<Time>[] {
+  const providerCandles = history
+    .filter((candle) => [candle.epoch, candle.open, candle.high, candle.low, candle.close].every(Number.isFinite))
+    .sort((left, right) => left.epoch - right.epoch);
+  if (providerCandles.length > 0) {
+    const buckets = new Map<number, CandlestickData<Time>>();
+    for (const candle of providerCandles) {
+      const bucket = Math.floor(candle.epoch / periodSeconds) * periodSeconds;
+      const previous = buckets.get(bucket);
+      if (previous) {
+        previous.high = Math.max(previous.high, candle.high);
+        previous.low = Math.min(previous.low, candle.low);
+        previous.close = candle.close;
+      } else buckets.set(bucket, { time: bucket as Time, open: candle.open, high: candle.high, low: candle.low, close: candle.close });
+    }
+    // Only the active provider candle is amended with a live tick. Historical
+    // bars stay provider-authored rather than being reconstructed from sparse
+    // websocket messages.
+    const activeFrom = providerCandles.at(-1)!.epoch;
+    for (const tick of samples) {
+      if (!Number.isFinite(tick.epoch) || !Number.isFinite(tick.quote) || tick.epoch < activeFrom) continue;
+      const bucket = Math.floor(tick.epoch / periodSeconds) * periodSeconds;
+      const candle = buckets.get(bucket);
+      if (candle) {
+        candle.high = Math.max(candle.high, tick.quote);
+        candle.low = Math.min(candle.low, tick.quote);
+        candle.close = tick.quote;
+      }
+    }
+    return [...buckets.values()].sort((left, right) => Number(left.time) - Number(right.time)).slice(compact ? -72 : -240);
+  }
   // The live subscription and initial history can arrive in separate batches.
   // Sort them before forming OHLC bars; otherwise an older batch arriving
   // late can make a candle appear to jump backwards. Keep same-second ticks:
@@ -91,6 +122,7 @@ export function MomentumPriceChart({
   positionTool,
   chartView = 'line',
   candlePeriod = 60,
+  candleHistory,
 }: MomentumPriceChartProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -100,7 +132,7 @@ export function MomentumPriceChart({
   const [zoneGeometry, setZoneGeometry] = useState<{ left: number; width: number } | null>(null);
   const [levelTops, setLevelTops] = useState<Partial<Record<'entry' | 'takeProfit' | 'stopLoss' | 'currentPrice', number>> | null>(null);
   const points = useMemo(() => chartData(samples ?? [], compact), [samples, compact]);
-  const candles = useMemo(() => candleData(samples ?? [], compact, candlePeriod), [samples, compact, candlePeriod]);
+  const candles = useMemo(() => candleData(samples ?? [], compact, candlePeriod, candleHistory), [samples, compact, candlePeriod, candleHistory]);
   const useCandles = !compact && chartView === 'candles';
   const compactTrendColor = useMemo(() => {
     if (points.length < 2) return '#75e8bd';

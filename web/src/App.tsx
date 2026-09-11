@@ -2,7 +2,7 @@ import { memo } from 'preact/compat';
 import { useDialogFocus } from './useDialogFocus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { GoldTradeChart } from './GoldTradeChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
@@ -3259,6 +3259,7 @@ function MomentumTradeDesk({
   symbol,
   display,
   samples,
+  candles,
   previewing = false,
   entryPrice,
   configuredMultiplier,
@@ -3276,6 +3277,7 @@ function MomentumTradeDesk({
   symbol?: string;
   display?: string;
   samples?: MomentumScanSample[];
+  candles?: MomentumCandle[];
   previewing?: boolean;
   entryPrice?: number;
   configuredMultiplier?: number | null;
@@ -3658,7 +3660,7 @@ function MomentumTradeDesk({
 
     <div class="mom-trade-live">
       <div class="mom-trade-chart">
-        <MomentumPriceChart chartView={chartView} candlePeriod={candlePeriod} samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} positionTool={plannerEntry != null ? {
+        <MomentumPriceChart chartView={chartView} candlePeriod={candlePeriod} candleHistory={candles} samples={chartSamples} label={`${chartDisplay ?? 'Momentum market'} live trade chart`} entryPrice={chartFrozenEntry} entryDirection={chartDirection} entryLabel={chartEntryLabel} positionTool={plannerEntry != null ? {
           side: plannerSide === 'down' ? 'short' : 'long', entry: plannerEntry, takeProfit: plannerTargetPrice, stopLoss: plannerStopPrice,
           layoutStorageKey: `momentum:${chartSymbol || 'market'}`,
           targetPnl: fmtSigned(plannerTargetAmount, session?.currency ?? 'USD'), riskPnl: fmtSigned(-plannerRiskAmount, session?.currency ?? 'USD'),
@@ -3911,6 +3913,7 @@ function MomentumPage(): JSX.Element {
       symbol={momentum?.config?.symbol ?? scanPreview?.symbol}
       display={focusedMarket?.display ?? market?.display ?? scanPreview?.display}
       samples={w?.samples ?? focusedMarket?.samples ?? scanPreview?.samples}
+      candles={w?.candles}
       previewing={Boolean(scanPreview && !momentum?.config?.symbol)}
       entryPrice={w?.openPrice}
       configuredMultiplier={momentum?.config?.multiplier}
@@ -3972,7 +3975,7 @@ function MomentumPage(): JSX.Element {
       {(focusedMarket || w?.samples?.length) && <section class="mom-focus-stage" aria-label="Focused momentum market">
         <div><span class="mom-kicker">Focused research</span><strong>{focusedMarket?.display ?? market?.display ?? 'Current market'}</strong><small>{focusedMarket ? `${focusedMarket.sampleCount} ticks observed · ${Math.round(momentumProgress(focusedMarket.progress))}% scan complete` : 'Live window samples'}</small></div>
         {canReturnToWatchboard && <button class="mom-return-watch" type="button" disabled={busy || !s.owner} onClick={() => void returnToWatchboard()} aria-label="Return to full market watchboard and begin a new scan" title="Return to market watchboard"><Icon name="arrowLeft" size={13} />Back to watchboard</button>}
-        <div class="mom-focus-chart"><MomentumPriceChart chartView={chartView} candlePeriod={candlePeriod} samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} entryPrice={w?.openPrice} entryDirection={w?.direction ?? undefined} entryLabel={w?.direction ? `Watch entry \u00b7 ${w.direction.toUpperCase()}` : 'Watch entry'} /></div>
+        <div class="mom-focus-chart"><MomentumPriceChart chartView={chartView} candlePeriod={candlePeriod} candleHistory={w?.candles} samples={w?.samples ?? focusedMarket?.samples} label={`${focusedMarket?.display ?? market?.display ?? 'Focused market'} full research chart`} entryPrice={w?.openPrice} entryDirection={w?.direction ?? undefined} entryLabel={w?.direction ? `Watch entry \u00b7 ${w.direction.toUpperCase()}` : 'Watch entry'} /></div>
       </section>}
 
       <section class="mom-window" aria-live="polite">

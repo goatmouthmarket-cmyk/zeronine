@@ -431,6 +431,7 @@ export interface MomentumState {
     decisionSignal: { direction: 'up' | 'down' | 'wait'; confidence: number; score: number; reason: string; return15s: number | null; return30s: number | null; return60s: number | null } | null;
     estimatedGross: number; estimatedCommission: number; estimatedNet: number;
     samples?: MomentumScanSample[];
+    candles?: MomentumCandle[];
   } | null;
   completedWindows: number; signalledWindows: number; wins: number; losses: number; estimatedNet: number;
   lastOutcome: { direction: 'up' | 'down'; openPrice: number; decisionPrice: number; exitPrice: number; won: boolean; estimatedNet: number } | null;
@@ -457,6 +458,14 @@ export interface MomentumState {
 export interface MomentumScanSample {
   epoch: number;
   quote: number;
+}
+
+export interface MomentumCandle {
+  epoch: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
 }
 
 export interface MomentumScanMarket {
