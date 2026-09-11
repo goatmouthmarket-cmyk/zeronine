@@ -20,8 +20,9 @@
     --border-strong: rgba(255,255,255,.12);
 
     --text: #F5F5F7;
-    --muted: #8A8F9D;
-    --muted-2: #5C616E;
+    /* Both muted text tiers retain AA-readable contrast on the dark surface. */
+    --muted: #B1B8C7;
+    --muted-2: #919AAA;
 
     --purple: #8B5CF6;
     --purple-light: #A78BFA;
@@ -93,6 +94,17 @@ button {
     font: inherit;
     touch-action: manipulation;
 }
+
+button, input, select, textarea, a, [role="slider"] { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, [role="slider"]:focus-visible {
+    outline: 3px solid #c4b5fd;
+    outline-offset: 3px;
+}
+button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; }
+input::placeholder, textarea::placeholder { color: #aeb5c4; opacity: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.skip-link { position: fixed; z-index: 1000; top: 10px; left: 10px; padding: 10px 14px; color: #08090d; background: #f5f5f7; border-radius: 8px; font-weight: 800; transform: translateY(-160%); transition: transform .16s ease; }
+.skip-link:focus { transform: translateY(0); }
 
 /* =========================================================
    APP SHELL
@@ -1190,6 +1202,24 @@ button {
   .mom-trade-chart { height: clamp(390px, 62vh, 610px); min-height: 390px; padding-block: 9px; }
   .gold-trade-order.gold-deriv-order, .mom-trade-order { display: none; }
 }
+
+.site-footer { width: min(100% - 40px, 960px); margin: 0 auto 106px; color: #b7bfce; font-size: 11px; line-height: 1.5; text-align: center; }
+.site-footer nav { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; }
+.site-footer button { min-height: 32px; padding: 4px 0; border: 0; color: #d6dbea; background: transparent; font: inherit; font-size: 11px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.site-footer button:hover { color: #fff; }
+.legal-page { max-width: 780px; margin: 0 auto; padding: 18px 0 28px; }
+.legal-header { padding: 20px 0 22px; border-bottom: 1px solid var(--border-strong); }
+.legal-header > span { color: #c4b5fd; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+.legal-header h1 { margin-top: 8px; color: var(--text); font-size: clamp(28px, 6vw, 42px); letter-spacing: -.04em; }
+.legal-header p { max-width: 680px; margin-top: 12px; color: #c7cedb; font-size: 14px; line-height: 1.6; }
+.legal-header small { display: block; margin-top: 12px; color: #b7bfce; font-size: 11px; }
+.legal-sections { display: grid; gap: 0; margin-top: 10px; }
+.legal-sections section, .legal-contact, .legal-storage-control { padding: 20px 0; border-bottom: 1px solid var(--border); }
+.legal-page h2 { color: var(--text); font-size: 16px; letter-spacing: -.01em; }
+.legal-page p { margin-top: 8px; color: #c7cedb; font-size: 13px; line-height: 1.65; }
+.legal-storage-control button { min-height: 42px; margin-top: 14px; padding: 0 13px; border: 1px solid #a78bfa; border-radius: 8px; color: #f5f3ff; background: #5b35b9; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.legal-storage-control button:hover { background: #7048d1; }
+.legal-status { min-height: 22px; color: #c4b5fd !important; }
 .mom-trade-readout { display: grid; align-content: center; min-width: 0; padding: 18px; border-right: 1px solid var(--border); }.mom-trade-readout:last-child { border-right: 0; }
 .mom-trade-panel { align-content: start; gap: 6px; border-right: 0; background: linear-gradient(180deg, rgba(117,232,189,.035), rgba(255,255,255,.012)); animation: mom-panel-in .24s ease-out both; }
 .mom-contract-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
@@ -4157,7 +4187,11 @@ button.activity-row {
     .app[data-page="backtest"] .view-backtest,
     .app[data-page="momentum"] .view-momentum,
     .app[data-page="gold"] .view-gold,
-    .app[data-page="account"] .view-account {
+    .app[data-page="account"] .view-account,
+    .app[data-page="privacy"] .view-legal,
+    .app[data-page="terms"] .view-legal,
+    .app[data-page="refunds"] .view-legal,
+    .app[data-page="cookies"] .view-legal {
         display: block;
     }
 
@@ -4167,6 +4201,18 @@ button.activity-row {
 }
 
 /* Desktop (≥1000px): single screen, no page scroll, header nav links switch views */
+@media (max-width: 560px) {
+    .app[data-page="privacy"], .app[data-page="terms"], .app[data-page="refunds"], .app[data-page="cookies"] { padding-inline: 18px; }
+    .legal-page { padding-top: 6px; }
+    .legal-header h1 { font-size: 30px; }
+    .legal-header p, .legal-page p { font-size: 13px; }
+    .site-footer { width: min(100% - 28px, 960px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
 @media (min-width: 1000px) {
     html,
     body {
@@ -4202,9 +4248,18 @@ button.activity-row {
     .app[data-page="backtest"] .view-backtest,
     .app[data-page="momentum"] .view-momentum,
     .app[data-page="gold"] .view-gold,
-    .app[data-page="account"] .view-account {
+    .app[data-page="account"] .view-account,
+    .app[data-page="privacy"] .view-legal,
+    .app[data-page="terms"] .view-legal,
+    .app[data-page="refunds"] .view-legal,
+    .app[data-page="cookies"] .view-legal {
         display: block;
     }
+
+    body:has(.app[data-page="privacy"]), body:has(.app[data-page="terms"]), body:has(.app[data-page="refunds"]), body:has(.app[data-page="cookies"]) { height: auto; overflow: auto; }
+    .app[data-page="privacy"], .app[data-page="terms"], .app[data-page="refunds"], .app[data-page="cookies"] { height: auto; min-height: 100vh; padding-bottom: 42px; }
+    .app[data-page="privacy"] .desk-side, .app[data-page="terms"] .desk-side, .app[data-page="refunds"] .desk-side, .app[data-page="cookies"] .desk-side { max-width: 860px; margin: 0 auto; }
+    .app[data-page="privacy"] + .site-footer, .app[data-page="terms"] + .site-footer, .app[data-page="refunds"] + .site-footer, .app[data-page="cookies"] + .site-footer { margin-bottom: 40px; }
 
     .app {
         width: 100%;

@@ -62,7 +62,7 @@ import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgre
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
-type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'gold' | 'account';
+type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'gold' | 'account' | 'privacy' | 'terms' | 'refunds' | 'cookies';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
 type ActivityDetail = { type: 'trade'; trade: TradeRow } | { type: 'run'; run: TestRunRow };
 
@@ -74,6 +74,10 @@ const PAGE_PATHS: Record<Page, string> = {
   momentum: '/momentum',
   gold: '/gold',
   account: '/account',
+  privacy: '/privacy',
+  terms: '/terms',
+  refunds: '/refunds',
+  cookies: '/cookies',
 };
 
 function pageFromPath(pathname: string): Page {
@@ -348,9 +352,18 @@ export function App(): JSX.Element {
     if (page === 'history') void refreshTrades(200);
   }, [page]);
 
+  useEffect(() => {
+    const labels: Record<Page, string> = {
+      home: 'ZeroNine', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', momentum: 'Momentum', gold: 'Gold', account: 'Account',
+      privacy: 'Privacy policy', terms: 'Terms of use', refunds: 'Refund policy', cookies: 'Cookie and storage policy',
+    };
+    document.title = `${labels[page]} | ZeroNine`;
+  }, [page]);
+
   return (
     <>
-      <main class="app" data-page={page}>
+      <a class="skip-link" href="#main-content">Skip to main content</a>
+      <main class="app" id="main-content" data-page={page} tabIndex={-1}>
         <div class="view view-home">
           <HomePage page={page} active={page === 'home'} onNavigate={navigate} />
         </div>
@@ -361,8 +374,10 @@ export function App(): JSX.Element {
           {page === 'momentum' && <div class="view view-momentum"><MomentumPage /></div>}
           {page === 'gold' && <div class="view view-gold"><GoldPage /></div>}
           {page === 'account' && <div class="view view-account"><AccountPage /></div>}
+          {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
         </div>
       </main>
+      <SiteFooter onNavigate={navigate} />
       <BottomNav page={page} setPage={navigate} />
     </>
   );
@@ -400,9 +415,12 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         {s.publicDashboard && !s.owner && (
           <>
           <div class="connect-title">Owner access</div>
+            <label class="sr-only" for="owner-access-token">Dashboard owner token</label>
             <input
+              id="owner-access-token"
               class="connect-input"
               type="password"
+              autoComplete="off"
               placeholder="Dashboard owner token"
               value={ownerToken}
               onInput={(e: any) => setOwnerToken(e.currentTarget.value)}
@@ -429,9 +447,12 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         )}
         <div class="connect-title">Connect Deriv</div>
         <div class="connect-copy">Use a trading-enabled token to activate manual trading and the bot.</div>
+        <label class="sr-only" for="deriv-api-token">Deriv API token</label>
         <input
+          id="deriv-api-token"
           class="connect-input"
           type="password"
+          autoComplete="off"
           placeholder="Paste your Deriv API token"
           value={token}
           onInput={(e: any) => setToken(e.currentTarget.value)}
@@ -453,7 +474,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         >
           {busy ? 'Connecting…' : 'Connect'}
         </button>
-        {error && <div class="connect-err">{error}</div>}
+        {error && <div class="connect-err" role="alert">{error}</div>}
         <div class="connect-divider">or</div>
         <button
           class="connect-btn connect-btn--oauth"
@@ -1721,7 +1742,7 @@ function MarketPulse({ market, onChoose, automation = false, phase, observation 
           <b>{last > 0 ? last.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'}</b>
         </div>
       </button>
-      <a class="market-pulse-attribution" href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView</a>
+      <a class="market-pulse-attribution" href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">Charts by TradingView</a>
     </div>
   );
 }
@@ -6930,6 +6951,97 @@ function Detail({ label, value, color }: { label: string; value: string; color?:
       <span class={`detail-value${color ? ` ${color}` : ''}`}>{value}</span>
     </div>
   );
+}
+
+/* ---------------- legal & privacy ---------------- */
+
+type LegalPageId = 'privacy' | 'terms' | 'refunds' | 'cookies';
+
+const LEGAL_UPDATED = '11 September 2026';
+const LEGAL_CONTACT = 'The dashboard operator who provided your ZeroNine access';
+
+const LEGAL_COPY: Record<LegalPageId, { eyebrow: string; title: string; intro: string; sections: Array<{ heading: string; body: string }> }> = {
+  privacy: {
+    eyebrow: 'Privacy', title: 'Privacy policy',
+    intro: 'This policy describes the data handled by this self-hosted trading dashboard based on the features in this codebase.',
+    sections: [
+      { heading: 'Information handled', body: 'The dashboard handles a Deriv API token or OAuth authorization needed to connect an account, the selected Deriv account identifier and balance, market quotes, trade and contract records, trading settings, and research or backtest results. The optional Gold connector can also handle its separate OAuth authorization.' },
+      { heading: 'Why it is used', body: 'This information is used to authenticate the selected account, request quotes and proposals, place or close owner-authorized trades, display trading history, and retain research and calibration evidence. It is not used for advertising or behavioural profiling by this application.' },
+      { heading: 'Storage and retention', body: 'Server-side application data is stored in the configured SQLite data directory. Sensitive authorization material follows the application’s existing encrypted session and crypto flow. Browser storage is limited to optional chart and planner preferences and a short-lived public-market cache; see the Cookie and storage policy.' },
+      { heading: 'Service providers', body: 'Deriv provides account, contract, and market services. Optional cTrader OAuth support and Gold research sources may be enabled by the operator. Google Fonts is requested by the web interface. The application contains no Google Analytics, advertising pixel, or session-replay integration.' },
+      { heading: 'Your choices and requests', body: 'You may disconnect the dashboard, clear browser preferences, and ask the operator for access, correction, or deletion of locally stored dashboard data. Account and transaction records held by Deriv are subject to Deriv’s own policies and controls.' },
+      { heading: 'Children and updates', body: 'This dashboard is not designed for children. The operator may update this policy when the product or its data practices change; the date above identifies the current version.' },
+    ],
+  },
+  terms: {
+    eyebrow: 'Terms', title: 'Terms of use',
+    intro: 'These terms describe the use of the ZeroNine trading dashboard and do not replace the terms of any broker or market-data provider.',
+    sections: [
+      { heading: 'Acceptance and eligibility', body: 'By using the dashboard, you agree to use it lawfully and only with accounts and credentials you are authorized to use. You remain responsible for determining whether trading is permitted where you live and for complying with your agreement with Deriv.' },
+      { heading: 'Trading risk and research', body: 'Market research, forecasts, backtests, paper results, and interface signals are informational tools. They are not investment advice and do not guarantee an outcome. Trading can result in losses, including loss of the amount committed to a contract.' },
+      { heading: 'Accounts and credentials', body: 'Keep account credentials private. Do not attempt to bypass owner access, risk gates, account limits, or broker safeguards. Do not use the dashboard to interfere with its services, other users, or third-party systems.' },
+      { heading: 'Third-party services and availability', body: 'Trading and market data rely on Deriv and, where configured, optional third-party services. Availability, pricing, execution, settlement, and account decisions remain controlled by those providers. The dashboard may be unavailable during maintenance, network, or provider interruptions.' },
+      { heading: 'Intellectual property and changes', body: 'The dashboard software, marks, and interface remain subject to their applicable ownership and licence terms. The operator may change, suspend, or end access and may update these terms. Contact the operator for questions or to report misuse.' },
+    ],
+  },
+  refunds: {
+    eyebrow: 'Refunds', title: 'Refund policy',
+    intro: 'This dashboard codebase does not contain a checkout, subscription, payment processor, or paid digital-delivery flow, so it cannot promise or process refunds itself.',
+    sections: [
+      { heading: 'Scope', body: 'This policy applies only if the dashboard operator separately charges for access or related services. It does not apply to Deriv deposits, withdrawals, contract payouts, fees, or other broker transactions.' },
+      { heading: 'Requests and eligibility', body: 'Where a separate access charge exists, send a request to the operator with the purchase date, amount, and the access issue. Eligibility, if any, depends on the operator’s separately communicated commercial terms; no outcome or refund period is implied by this dashboard.' },
+      { heading: 'Cancellations and disputes', body: 'You may request cancellation of future access from the operator. Raise broker-contract questions directly with Deriv. Before opening a payment dispute or chargeback, contact the relevant merchant or payment provider so the issue can be reviewed using the applicable payment terms.' },
+      { heading: 'Processing', body: 'If an operator approves a refund, any processing time and return method depend on the original payment provider. This application does not store payment-card details or control payment settlement.' },
+    ],
+  },
+  cookies: {
+    eyebrow: 'Storage', title: 'Cookie and storage policy',
+    intro: 'This application does not load advertising or analytics trackers. It uses only the storage needed for authentication, service operation, and optional interface preferences.',
+    sections: [
+      { heading: 'Essential cookies', body: 'When owner access is configured, a signed, HTTP-only zeronine_owner cookie keeps the owner session active for up to 12 hours. The optional Gold OAuth flow uses a short-lived signed nonce cookie to validate the authorization callback.' },
+      { heading: 'Browser storage', body: 'sessionStorage temporarily caches public market data for a faster reload. localStorage may remember chart zone width and trading-planner choices for Momentum and Gold. These preferences stay in the browser and are not used for advertising.' },
+      { heading: 'No optional tracking consent banner', body: 'Because this build contains no non-essential analytics, advertising, or fingerprinting storage, it does not show a misleading accept/reject tracking banner. If the operator adds such a service, it must be blocked until a meaningful consent choice is made and this policy must be updated.' },
+    ],
+  },
+};
+
+function LegalPage({ page }: { page: LegalPageId }): JSX.Element {
+  const content = LEGAL_COPY[page];
+  const [storageMessage, setStorageMessage] = useState('');
+  const clearPreferences = (): void => {
+    const confirmed = window.confirm('Clear saved chart layouts, trade-planner preferences, and the temporary market cache from this browser? This will not close contracts or remove server-side trade history.');
+    if (!confirmed) return;
+    try {
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index);
+        if (key?.startsWith('zeronine:')) localStorage.removeItem(key);
+      }
+      sessionStorage.removeItem('zeronine:public-markets:v1');
+      setStorageMessage('Saved browser preferences and the temporary market cache were cleared.');
+    } catch {
+      setStorageMessage('Browser storage could not be cleared here. Use your browser’s site-data controls.');
+    }
+  };
+  return <article class="legal-page" aria-labelledby={`legal-${page}-title`}>
+    <header class="legal-header"><span>{content.eyebrow}</span><h1 id={`legal-${page}-title`}>{content.title}</h1><p>{content.intro}</p><small>Last updated {LEGAL_UPDATED}</small></header>
+    <div class="legal-sections">
+      {content.sections.map((section) => <section key={section.heading}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
+    </div>
+    {page === 'cookies' && <section class="legal-storage-control" aria-labelledby="clear-browser-storage"><h2 id="clear-browser-storage">Clear saved browser preferences</h2><p>This removes local chart/planner preferences and the temporary market cache only. It does not change a Deriv account, open contract, or server-side trading history.</p><button type="button" onClick={clearPreferences}>Clear saved browser preferences</button><p class="legal-status" role="status" aria-live="polite">{storageMessage}</p></section>}
+    <section class="legal-contact"><h2>Contact</h2><p>For questions about this dashboard or a data request, contact {LEGAL_CONTACT}. No public business email or address is configured in this build.</p></section>
+  </article>;
+}
+
+function SiteFooter({ onNavigate }: { onNavigate: (page: Page) => void }): JSX.Element {
+  return <footer class="site-footer" aria-label="Legal information">
+    <span>ZeroNine · Trading tools carry risk.</span>
+    <nav aria-label="Legal links">
+      <button type="button" onClick={() => onNavigate('privacy')}>Privacy</button>
+      <button type="button" onClick={() => onNavigate('terms')}>Terms</button>
+      <button type="button" onClick={() => onNavigate('refunds')}>Refunds</button>
+      <button type="button" onClick={() => onNavigate('cookies')}>Cookies & preferences</button>
+    </nav>
+  </footer>;
 }
 
 /* ---------------- bottom nav ---------------- */
