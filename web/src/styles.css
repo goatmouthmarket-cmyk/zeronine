@@ -4456,6 +4456,28 @@ button.activity-row {
         overflow-y: auto;
     }
 
+    /* Legal pages are deliberately document-like. They keep the normal
+       desktop shell but own a scrollable reading pane so no policy section is
+       clipped by the fixed trading workspace. */
+    .app[data-page="privacy"] .desk-side,
+    .app[data-page="terms"] .desk-side,
+    .app[data-page="refunds"] .desk-side,
+    .app[data-page="cookies"] .desk-side {
+        height: 100%;
+        overflow-y: scroll;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+    }
+
+    .desk-side .view-legal {
+        width: 100%;
+        max-width: 860px;
+        min-height: 100%;
+        margin: 0 auto;
+        padding: 0 8px 96px;
+        white-space: normal;
+    }
+
     /* Trading workspaces need chart width; unlike reports, they should use
        the full desktop content rail rather than the 920px reading column. */
     .desk-side .view-momentum,
