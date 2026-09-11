@@ -6985,7 +6985,7 @@ function Detail({ label, value, color }: { label: string; value: string; color?:
 type LegalPageId = 'privacy' | 'terms' | 'refunds' | 'cookies';
 
 const LEGAL_UPDATED = '11 September 2026';
-const LEGAL_CONTACT = 'The dashboard operator who provided your ZeroNine access';
+const LEGAL_CONTACT = { name: 'Ruel McNeil', phone: '+1 876 395 3333', telephone: '+18763953333', email: 'mcneilruel@gmail.com' };
 
 const LEGAL_COPY: Record<LegalPageId, { eyebrow: string; title: string; intro: string; sections: Array<{ heading: string; body: string }> }> = {
   privacy: {
@@ -7055,7 +7055,7 @@ function LegalPage({ page }: { page: LegalPageId }): JSX.Element {
       {content.sections.map((section) => <section key={section.heading}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
     </div>
     {page === 'cookies' && <section class="legal-storage-control" aria-labelledby="clear-browser-storage"><h2 id="clear-browser-storage">Clear saved browser preferences</h2><p>This removes local chart/planner preferences and the temporary market cache only. It does not change a Deriv account, open contract, or server-side trading history.</p><button type="button" onClick={clearPreferences}>Clear saved browser preferences</button><p class="legal-status" role="status" aria-live="polite">{storageMessage}</p></section>}
-    <section class="legal-contact"><h2>Contact</h2><p>For questions about this dashboard or a data request, contact {LEGAL_CONTACT}. No public business email or address is configured in this build.</p></section>
+    <section class="legal-contact"><h2>Contact</h2><p>For questions about this dashboard or a data request, contact {LEGAL_CONTACT.name}.</p><p><a href={`tel:${LEGAL_CONTACT.telephone}`}>{LEGAL_CONTACT.phone}</a><br /><a href={`mailto:${LEGAL_CONTACT.email}`}>{LEGAL_CONTACT.email}</a></p></section>
   </article>;
 }
 
