@@ -101,6 +101,28 @@ td, th { padding: var(--space-3); }
 tbody tr:hover { background: var(--surface); }
 
 /* Prevent flex children and long messages from widening narrow screens. */
+html:has(.view-legal), body:has(.view-legal) {
+    height: auto;
+    overflow-y: auto;
+}
+.app:has(.view-legal) {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    grid-template-rows: auto auto;
+}
+.app:has(.view-legal) .desk-side {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+}
+.app .desk-side .view-legal {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
+    padding-bottom: var(--space-8);
+}
 .desk-side, .view, .connect-embedded { min-width: 0; }
 .tl-picker-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
 .tl-pick { min-width: 0; min-height: var(--control-height); border-radius: var(--control-radius); }
