@@ -401,7 +401,7 @@ export function App(): JSX.Element {
         </div>
         {!(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as LegalPageId) && !legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       </main>
-      <SiteFooter onNavigate={navigate} />
+      {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as LegalPageId) && <SiteFooter onNavigate={navigate} />}
       <BottomNav page={page} setPage={navigate} />
     </>
   );
