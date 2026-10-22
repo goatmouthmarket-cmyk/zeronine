@@ -20,7 +20,7 @@ The Lab remembers its selected research tab using validated, optional browser st
 
 ## Manual trade review
 
-Manual execution now separates `Trade now`, `Wait for model`, and `Wait for pattern`. Trade-now requests a server-validated Deriv quote and presents stake, payout, potential profit, break-even, model estimate, edge, balance impact, account mode, and quote expiry before confirmation. Real accounts require an explicit real-funds acknowledgement. The server refreshes the proposal at confirmation, rejects material quote deterioration, applies shared risk checks, reserves the digit lane before asynchronous work, and deduplicates retries with an idempotency key. Live five-contract basket execution is disabled; manual history remains available as setup and entry-instruction evidence.
+Manual execution now separates `Trade now`, `Wait for model`, and `Wait for pattern`. Trade-now requests a server-validated Deriv quote and presents stake, payout, potential profit, break-even, model estimate, edge, balance impact, account mode, and quote expiry before confirmation. Real accounts require an explicit real-funds acknowledgement. The server refreshes the proposal at confirmation, rejects material quote deterioration, applies shared account and balance risk checks, reserves the digit lane before asynchronous work, and deduplicates retries with an idempotency key. The bot maximum-stake setting applies to automated sizing rather than owner-entered manual stakes. Live five-contract basket execution is disabled; manual history remains available as setup and entry-instruction evidence.
 
 ## Responsive behavior
 

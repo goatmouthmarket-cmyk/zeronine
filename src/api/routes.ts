@@ -173,7 +173,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const snapshot = registry.snapshot(order.market);
     if (!snapshot.fresh) throw new ManualRequestError(409, 'the selected market feed is stale; wait for a fresh tick');
     const settings = getSettings();
-    if (order.stake > settings.max_stake) throw new ManualRequestError(400, `stake exceeds the configured maximum (${settings.max_stake})`);
     const accountId = accountIdForSession(session.loginid);
     const gate = riskCheck({
       stake: order.stake,

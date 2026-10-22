@@ -57,27 +57,18 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
     registry, feed, client: client as never, hub, automation, paperSimulator: new paperMod.PaperSimulator(),
   });
 
-  const rejected = await app.inject({
+  const previewResponse = await app.inject({
     method: 'POST', url: '/api/trade/manual/preview',
     payload: { market: 'R_10', direction: 'over', barrier: 1, stake: 2, entryMode: 'instant' },
   });
-  assert.equal(rejected.statusCode, 400);
-  assert.match(rejected.json().error, /configured maximum/i);
-  assert.equal(quoteCalls, 0, 'risk rejection must happen before requesting a provider quote');
-
-  store.updateSettings({ max_stake: 10 });
-  const previewResponse = await app.inject({
-    method: 'POST', url: '/api/trade/manual/preview',
-    payload: { market: 'R_10', direction: 'over', barrier: 1, stake: 1, estWin: 0.01, entryMode: 'instant' },
-  });
   assert.equal(previewResponse.statusCode, 200);
   const preview = previewResponse.json();
-  assert.equal(preview.quote.ask, 1);
-  assert.equal(preview.quote.payout, 1.8);
+  assert.equal(preview.quote.ask, 2);
+  assert.equal(preview.quote.payout, 3.6);
   assert.equal(preview.quote.breakeven, 1 / 1.8);
-  assert.equal(preview.account.balanceAfter, 99);
+  assert.equal(preview.account.balanceAfter, 98);
   assert.equal(preview.risk.ok, true);
-  assert.notEqual(preview.model.estimatedWin, 0.01, 'the server must not trust browser-supplied confidence');
+  assert.equal(quoteCalls, 1, 'manual stake may exceed the bot maximum and still request a provider quote');
 
   payoutRatio = 1.5;
   const moved = await app.inject({

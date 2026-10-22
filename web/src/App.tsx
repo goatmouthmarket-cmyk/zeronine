@@ -2892,7 +2892,7 @@ function BotPage(): JSX.Element {
           <div class="set-group bot-tuning">
             <div class="set-label-top">Risk and execution limits</div>
             <div class="risk-grid">
-              <BotLimitInput label="Maximum stake" field="max_stake" value={s.settings.max_stake} min={0} step={0.1} suffix="$" />
+              <BotLimitInput label="Bot maximum stake" field="max_stake" value={s.settings.max_stake} min={0} step={0.1} suffix="$" />
               <BotLimitInput label="Maximum drawdown" field="max_drawdown_pct" value={s.settings.max_drawdown_pct} min={0} step={0.5} suffix="%" />
               <BotLimitInput label="Losses before stop" field="max_consecutive_losses" value={s.settings.max_consecutive_losses} min={1} step={1} />
               <BotLimitInput label="Recovery debt limit" field="max_recovery_debt" value={s.settings.max_recovery_debt} min={0} step={1} suffix="$" />
