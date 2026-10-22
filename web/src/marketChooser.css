@@ -226,6 +226,7 @@
 .manual-execution-track .active i { border-color: rgba(167,139,250,.65); background: rgba(139,92,246,.16); }
 .manual-execution-track.failed { border-color: rgba(244,63,94,.32); }
 .manual-execution-track > p { grid-column: 1 / -1; margin: 2px 0 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.manual-execution-track > small { grid-column: 1 / -1; overflow: hidden; color: var(--muted-2); font-size: 8px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The chooser replaces the small chart on desktop. A two-column control grid
    keeps it inside that footprint so the manual trade rail remains unobscured. */

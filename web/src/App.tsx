@@ -2077,6 +2077,7 @@ function InlineMarketChooser({
         <div class={executionStep >= 4 ? 'pass' : executionStep === 3 ? 'active' : ''}><i>3</i><span>Purchase</span></div>
         <div class={executionStep >= 5 ? 'pass' : executionStep === 4 ? 'active' : ''}><i>4</i><span>Settlement</span></div>
         <p>{manualExecution.message}</p>
+        {manualExecution.trade && <small>Contract {manualExecution.trade.contractId} · entry {fmtMoney(manualExecution.trade.ask)} · payout {fmtMoney(manualExecution.trade.payout)}</small>}
       </div>}
       </>
     </section>
