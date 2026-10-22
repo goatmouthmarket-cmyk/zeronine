@@ -35,7 +35,7 @@ npm run web:dev      # terminal 2: Vite on :5173 (proxies /api and /ws to :8010)
 1. Create a **demo** API token at `app.deriv.com → API token`.
 2. Open the dashboard → **Trade → Connect** and paste it.
    - Sessions use the OTP socket flow on `api.derivws.com` (`GET /accounts`, `POST /accounts/{id}/otp`) — it works even where `ws.deriv.com` is unreachable.
-3. **Manual trade**: pick market/direction/barrier/stake → *Buy*.
+3. **Manual trade**: choose `Trade now` to review the live proposal, account impact, and risk checks before confirming; or arm `Wait for model` / `Wait for pattern` for a three-minute validated entry window. Live five-contract baskets are disabled and remain research-only.
 4. **Auto Sniper**: *START* to run the strongest-market loop. On a **real** account you must *ARM 10min* first (recovery requires a 10-minute arm, demo does not).
 5. *Settings*: stake caps, drawdown limits, martingale depth, edge thresholds.
 
@@ -65,7 +65,10 @@ demo-soak requirements before any broker-connected release.
 | GET/PUT | `/api/settings` | read/update strategy settings |
 | POST | `/api/auth/pat` | connect a PAT (creates OTP session, stores encrypted) |
 | POST | `/api/auth/logout` | disconnect + clear session |
-| POST | `/api/trade/manual` | place one trade |
+| POST | `/api/trade/manual/preview` | owner-only live quote and risk review; never purchases |
+| POST | `/api/trade/manual/confirm` | confirm a reviewed quote with an idempotency key |
+| POST | `/api/trade/manual` | place one authorized timed/manual instruction with server risk and idempotency guards |
+| POST | `/api/trade/manual-basket` | disabled (`410`); concurrent account-funded baskets are not supported |
 | POST | `/api/automation/start` · `/stop` · `/arm` | automation controls |
 | WS | `/ws` | live events: tick, signal, decision, trade, contract, recovery, status |
 

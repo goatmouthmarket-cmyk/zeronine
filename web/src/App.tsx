@@ -2,7 +2,7 @@ import { memo } from 'preact/compat';
 import { useDialogFocus } from './useDialogFocus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct, ManualTradePreview, ManualTradeResult } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { GoldTradeChart } from './GoldTradeChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
@@ -17,7 +17,8 @@ import {
   stopAutomation,
   selectMarket,
   manualTrade,
-  manualBasketTrade,
+  previewManualTrade,
+  confirmManualTrade,
   resetPerformance,
   updateSettings,
   loadTestRuns,
@@ -59,7 +60,7 @@ import {
   runGoldBacktest,
 } from './store';
 import './marketChooser.css';
-import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
+import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
@@ -539,6 +540,12 @@ interface TimedManualIntent extends ManualSetup {
   lastObservedQuote?: number;
 }
 
+interface ManualExecutionView {
+  stage: 'idle' | 'quoting' | 'review' | 'buying' | 'purchased' | 'settled' | 'failed';
+  trade?: ManualTradeResult['trade'];
+  message?: string;
+}
+
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const [startError, setStartError] = useState('');
@@ -556,6 +563,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('model');
   const [timedManualSetup, setTimedManualSetup] = useState<ManualSetup | null>(null);
   const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
+  const [manualPreview, setManualPreview] = useState<ManualTradePreview | null>(null);
+  const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const timedManualExecuting = useRef(false);
   const cooldownLeft = useBotCooldown();
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
@@ -637,6 +646,21 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     .map((trade) => ({ type: 'trade' as const, ts: trade.ts, trade }))
     .sort((a, b) => b.ts - a.ts)
     .slice(0, 5), [digitTrades]);
+  const manualExecutionTrade = manualExecution.trade
+    ? digitTrades.find((trade) => trade.id === manualExecution.trade?.id) ?? null
+    : null;
+  useEffect(() => {
+    if (!manualExecutionTrade || manualExecution.stage !== 'purchased') return;
+    if (['won', 'lost', 'push', 'expired', 'timeout', 'error'].includes(manualExecutionTrade.status)) {
+      setManualExecution((current) => ({
+        ...current,
+        stage: manualExecutionTrade.status === 'error' ? 'failed' : 'settled',
+        message: manualExecutionTrade.status === 'error'
+          ? 'The contract ended with an execution error.'
+          : `Contract settled ${manualExecutionTrade.status}${manualExecutionTrade.profit ? ` · ${fmtMoney(manualExecutionTrade.profit, s.session?.currency)}` : ''}`,
+      }));
+    }
+  }, [manualExecution.stage, manualExecutionTrade?.status, manualExecutionTrade?.profit]);
   const marketsBySymbol = useMemo(
     () => new Map(s.markets.map((item) => [item.symbol, item])),
     [s.markets],
@@ -697,18 +721,22 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualBusy(true);
     setManualMsg('');
     setManualError(false);
+    setManualExecution({ stage: 'buying', message: 'Risk approved · requesting a fresh Deriv proposal' });
     try {
       const stake = stakeOverride;
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
-      await manualTrade({ market: marketSymbol, direction, barrier, stake, estWin, entryMode, companionDemo });
+      const result = await manualTrade({ market: marketSymbol, direction, barrier, stake, estWin, entryMode, companionDemo });
       const label = shortMarketName(s.markets.find((item) => item.symbol === marketSymbol)?.display ?? marketSymbol);
       setManualMsg(`${label} · ${direction === 'under' ? 'Under' : 'Over'} ${barrier} placed @ ${stake}`);
+      setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
+      await refreshTrades();
       return true;
     } catch (e) {
       setManualError(true);
       setManualMsg(e instanceof Error ? e.message : String(e));
+      setManualExecution({ stage: 'failed', message: e instanceof Error ? e.message : String(e) });
       return false;
     } finally {
       setManualBusy(false);
@@ -725,11 +753,30 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     // Companion prompts are an explicit instruction to trade now. They still
     // use the current best model setup and all normal account/lane safeguards.
     if (companionDemo) return executeManualNow(direction, barrier, marketSymbol, manualStake, 'model', true);
-    if (manualEntryMode === 'instant') return executeManualNow(direction, barrier, marketSymbol, manualStake, 'instant');
-    const shouldTimeEntry = manualEntryMode !== 'model' || (timedManualSetup?.market === marketSymbol
-      && timedManualSetup.direction === direction
-      && timedManualSetup.barrier === barrier);
-    if (!shouldTimeEntry) return executeManualNow(direction, barrier, marketSymbol);
+    if (manualEntryMode === 'instant') {
+      setManualBusy(true);
+      setManualError(false);
+      setManualMsg('Requesting a live quote for review…');
+      setManualExecution({ stage: 'quoting', message: 'Checking feed, account risk, and live payout' });
+      try {
+        const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
+        const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
+        const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
+        const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: manualStake, estWin, entryMode: 'instant' });
+        setManualPreview(preview);
+        setManualExecution({ stage: 'review', message: 'Quote ready · review every value before confirming' });
+        setManualMsg('Live quote ready for review · no contract has been purchased');
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setManualError(true);
+        setManualMsg(message);
+        setManualExecution({ stage: 'failed', message });
+        return false;
+      } finally {
+        setManualBusy(false);
+      }
+    }
     if (openAccountTrade) {
       setManualError(true);
       setManualMsg(accountLockMessage);
@@ -754,6 +801,41 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualError(false);
     setManualMsg(`${sideLabel(direction, barrier)} armed · waiting up to 3 minutes for a validated fresh entry digit`);
     return true;
+  };
+
+  const confirmManualPreview = async (): Promise<void> => {
+    if (!manualPreview || manualBusy) return;
+    if (Date.now() >= manualPreview.expiresAt) {
+      setManualPreview(null);
+      setManualError(true);
+      setManualMsg('The quote review expired · request a fresh quote');
+      setManualExecution({ stage: 'failed', message: 'Quote expired before confirmation' });
+      return;
+    }
+    setManualBusy(true);
+    setManualError(false);
+    setManualExecution({ stage: 'buying', message: 'Refreshing the quote and reserving the digit lane' });
+    try {
+      const result = await confirmManualTrade(manualPreview.previewId, crypto.randomUUID());
+      setManualPreview(null);
+      setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
+      setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, manualPreview.account.currency)} · payout ${fmtMoney(result.trade.payout, manualPreview.account.currency)}`);
+      await refreshTrades();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setManualError(true);
+      setManualMsg(message);
+      setManualExecution({ stage: 'failed', message });
+    } finally {
+      setManualBusy(false);
+    }
+  };
+
+  const cancelManualPreview = (): void => {
+    setManualPreview(null);
+    setManualError(false);
+    setManualMsg('Quote review cancelled · no contract was purchased');
+    setManualExecution({ stage: 'idle', message: 'No account order is active' });
   };
 
   useEffect(() => {
@@ -849,39 +931,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     }, 1_000);
     return () => window.clearInterval(timer);
   }, [pendingManualIntent]);
-
-  const placeManualBasket = async (setups: ManualSetup[]): Promise<boolean> => {
-    if (guest || manualBusy || automation || setups.length !== 5) return false;
-    if (openAccountTrade) {
-      setManualError(true);
-      setManualMsg(accountLockMessage);
-      await syncCoreState();
-      await refreshTrades();
-      return false;
-    }
-    setManualBusy(true);
-    setManualMsg('');
-    setManualError(false);
-    try {
-      const stake = manualStake;
-      const result = await manualBasketTrade(setups.map((setup) => ({
-        market: setup.market,
-        direction: setup.direction,
-        barrier: setup.barrier,
-        stake,
-        estWin: setup.confidence,
-      })));
-      setManualMsg(`Basket placed · ${result.purchased}/5 contracts @ ${fmtMoney(stake, s.session?.currency)} each`);
-      setManualError(result.failed > 0);
-      return result.purchased > 0;
-    } catch (e) {
-      setManualError(true);
-      setManualMsg(e instanceof Error ? e.message : String(e));
-      return false;
-    } finally {
-      setManualBusy(false);
-    }
-  };
 
   const resetPerformanceTotals = async () => {
     if (resettingPerformance || !window.confirm('Reset dashboard performance totals? Trade history will be kept.')) return;
@@ -986,34 +1035,43 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               manualEntryMode={manualEntryMode}
               onManualStake={(stake) => {
                 setPendingManualIntent(null);
+                setManualPreview(null);
                 setManualStakeText(stake);
               }}
               onManualDirection={(direction) => {
                 setTimedManualSetup(null);
                 setPendingManualIntent(null);
+                setManualPreview(null);
                 setManualDirection(direction);
               }}
               onManualBarrier={(direction, barrier) => {
                 setTimedManualSetup(null);
                 setPendingManualIntent(null);
+                setManualPreview(null);
                 direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier);
               }}
               onManualMarket={(symbol) => {
                 setTimedManualSetup(null);
                 setPendingManualIntent(null);
+                setManualPreview(null);
                 selectMarket(symbol);
               }}
               onManualEntryMode={(entryMode) => {
                 setPendingManualIntent(null);
+                setManualPreview(null);
                 setManualEntryMode(entryMode);
               }}
               onManualTimedSetup={setTimedManualSetup}
-              onManualBasket={placeManualBasket}
               onManualPlace={(direction, barrier, marketSymbol, companionDemo) => placeManual(direction, barrier, marketSymbol, companionDemo)}
               manualStatus={manualMsg}
               manualQueued={Boolean(pendingManualIntent)}
               queuedIntent={pendingManualIntent}
               queuedMarket={queuedMarket}
+              manualPreview={manualPreview}
+              manualExecution={manualExecution}
+              manualBusy={manualBusy}
+              onConfirmManualPreview={() => void confirmManualPreview()}
+              onCancelManualPreview={cancelManualPreview}
               onCancelManualQueue={() => {
                 setPendingManualIntent(null);
                 setManualError(false);
@@ -1026,7 +1084,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                 <div class="side-selector">
                   <button
                     class={`side-btn over${manualDirection === 'over' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent)}
+                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent) || Boolean(manualPreview)}
                     onClick={() => void placeManual('over', manualOverBarrier)}
                   >
                     <span class="side-name">{pendingManualIntent?.direction === 'over' ? 'Waiting entry...' : `Over ${manualOverBarrier}`}</span>
@@ -1034,7 +1092,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                   </button>
                   <button
                     class={`side-btn under${manualDirection === 'under' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent)}
+                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent) || Boolean(manualPreview)}
                     onClick={() => void placeManual('under', manualUnderBarrier)}
                   >
                     <span class="side-name">{pendingManualIntent?.direction === 'under' ? 'Waiting entry...' : `Under ${manualUnderBarrier}`}</span>
@@ -1784,6 +1842,7 @@ function InlineMarketChooser({
   markets,
   candidates,
   selectedMarket,
+  trades,
   direction,
   barrier,
   stake,
@@ -1794,18 +1853,23 @@ function InlineMarketChooser({
   onEntryMode,
   onTimedSetup,
   onStake,
-  onBasket,
   onPlace,
   onClose,
   manualStatus,
   manualQueued,
   queuedIntent,
   queuedMarket,
+  manualPreview,
+  manualExecution,
+  busy,
+  onConfirmPreview,
+  onCancelPreview,
   onCancelManualQueue,
 }: {
   markets: Market[];
   candidates: SignalCandidate[];
   selectedMarket: Market | null;
+  trades: TradeRow[];
   direction: 'over' | 'under';
   barrier: number;
   stake: string;
@@ -1816,16 +1880,21 @@ function InlineMarketChooser({
   onEntryMode: (mode: ManualEntryMode) => void;
   onTimedSetup: (setup: ManualSetup) => void;
   onStake: (stake: string) => void;
-  onBasket: (setups: ManualSetup[]) => Promise<boolean>;
   onPlace: (direction: 'over' | 'under', barrier: number, market?: string) => Promise<boolean>;
   onClose: () => void;
   manualStatus: string;
   manualQueued: boolean;
   queuedIntent: TimedManualIntent | null;
   queuedMarket: Market | null;
+  manualPreview: ManualTradePreview | null;
+  manualExecution: ManualExecutionView;
+  busy: boolean;
+  onConfirmPreview: () => void;
+  onCancelPreview: () => void;
   onCancelManualQueue: () => void;
 }): JSX.Element {
-  const [execution, setExecution] = useState<'single' | 'basket'>('single');
+  const [realFundsConfirmed, setRealFundsConfirmed] = useState(false);
+  const [clock, setClock] = useState(Date.now());
   const calculateRanking = () => rankMarketsForSetup(markets, candidates, direction, barrier);
   const [rankedSymbols, setRankedSymbols] = useState<string[]>(() => calculateRanking().map((market) => market.symbol));
   useEffect(() => {
@@ -1841,14 +1910,29 @@ function InlineMarketChooser({
     .filter((market): market is Market => Boolean(market));
   const exact = selectedMarket ? exactCandidateForSetup(candidates, selectedMarket.symbol, direction, barrier) ?? null : null;
   const selectedConfidence = selectedMarket ? exact?.estWin ?? confidenceForSetup(selectedMarket, direction, barrier) : null;
+  const settledManual = trades.filter((trade) => trade.origin === 'manual' && (trade.status === 'won' || trade.status === 'lost'));
+  const setupHistory = settledManual.filter((trade) => trade.market === selectedMarket?.symbol
+    && trade.barrier === barrier
+    && trade.contract_type === (direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER'));
+  const modeMarker = entryMode === 'instant' ? 'trade-now' : entryMode === 'model' ? 'validated-model' : 'pattern';
+  const modeHistory = settledManual.filter((trade) => trade.reason.includes(modeMarker));
+  const setupWins = setupHistory.filter((trade) => trade.status === 'won').length;
+  const modeWins = modeHistory.filter((trade) => trade.status === 'won').length;
   const twoPass = confirmedDigitTriggerProgress(direction, selectedMarket?.recentDigits ?? []);
   const queueDirection = queuedIntent?.direction ?? direction;
   const queueStage = queuedIntent?.twoPassStage ?? 0;
   const queueProgress = queuedIntent?.entryMode === 'digit-trigger-confirmed'
     ? { first: queueStage >= 1, follow: queueStage >= 2, reentry: queueStage >= 3 }
     : twoPass;
-  const basket = strongestManualSetups(markets, candidates, 5);
-  const basketStake = Math.max(0.1, Number(stake) || 1);
+  const previewSeconds = manualPreview ? Math.max(0, Math.ceil((manualPreview.expiresAt - clock) / 1_000)) : 0;
+  const executionStep = ({ idle: 0, quoting: 1, review: 2, buying: 3, purchased: 4, settled: 5, failed: -1 } as const)[manualExecution.stage];
+  useEffect(() => {
+    setRealFundsConfirmed(false);
+    if (!manualPreview) return;
+    setClock(Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [manualPreview?.previewId]);
   const min = direction === 'over' ? 0 : 1;
   const max = direction === 'over' ? 8 : 9;
   const setDirection = (next: 'over' | 'under') => {
@@ -1881,11 +1965,6 @@ function InlineMarketChooser({
         .map((market) => market.symbol),
     );
   };
-  const placeBasket = async () => {
-    if (basket.length !== 5) return;
-    if (await onBasket(basket)) onClose();
-  };
-
   return (
     <section class="inline-market-chooser" aria-label="Manual market and barrier setup">
       <div class="inline-chooser-head">
@@ -1912,11 +1991,7 @@ function InlineMarketChooser({
         </div>}
         {manualQueued && <button type="button" onClick={onCancelManualQueue}>Cancel queue</button>}
       </div>
-      <div class="inline-execution" role="group" aria-label="Manual execution mode">
-        <button type="button" class={execution === 'single' ? 'active' : ''} onClick={() => setExecution('single')}>Single</button>
-        <button type="button" class={execution === 'basket' ? 'active' : ''} onClick={() => setExecution('basket')}>5 at once</button>
-      </div>
-      {execution === 'single' ? <>
+      <>
       <label class="inline-market-select">
         <span>Market · strongest first</span>
         <select value={selectedMarket?.symbol ?? ''} onChange={(event) => {
@@ -1947,12 +2022,15 @@ function InlineMarketChooser({
       <label class="inline-entry-mode">
         <span>Entry instruction</span>
         <select value={entryMode} onChange={(event) => onEntryMode((event.currentTarget as HTMLSelectElement).value as ManualEntryMode)}>
-          <option value="instant">Instant — place selected setup now</option>
-          <option value="model">Model validation (default)</option>
-          <option value="digit-trigger">Trigger: 8/9 → Over, 0/1 → Under</option>
-          <option value="digit-trigger-confirmed">Two-pass: extreme → follow-through → extreme</option>
+          <option value="instant">Trade now — review quote, then confirm</option>
+          <option value="model">Wait for model — quality gates</option>
+          <option value="digit-trigger-confirmed">Wait for pattern — two-pass sequence</option>
         </select>
-        <small>{entryMode === 'instant' ? 'Places the exact market, side, barrier, and stake you selected immediately. Account, proposal, and open-contract checks still apply.' : 'Trigger mode still requires the model, quote edge, ROI, and consistency gates. It is stored as a testable hypothesis.'}</small>
+        <small>{entryMode === 'instant'
+          ? 'Gets a live proposal and shows its payout, break-even, account impact, and risk checks. Nothing is purchased until you confirm.'
+          : entryMode === 'model'
+            ? 'Arms this exact setup for up to three minutes and buys only after the model, quote edge, return, consistency, and fresh-tick checks pass.'
+            : 'Waits for extreme, follow-through, and a fresh extreme before requesting the final proposal. Keep this tab open while armed.'}</small>
       </label>
       <div class="inline-confidence">
         <div><span>Confidence</span><b>{selectedConfidence != null ? `${(selectedConfidence * 100).toFixed(1)}%` : '—'}</b></div>
@@ -1962,29 +2040,45 @@ function InlineMarketChooser({
           <button type="button" class="secondary" onClick={useStrongest} disabled={!ranked.length}>Best overall</button>
         </div>
       </div>
-      <p>{entryMode === 'instant' ? 'Instant sends the setup now. It still requires a valid account, fresh Deriv proposal, and no open digit contract.' : 'Best selections queue a specific entry setup. The trade waits for a fresh digit plus validated transition, edge, return, and consistency checks before it can fire.'}</p>
-      <button class="inline-place-single" type="button" disabled={!selectedMarket} onClick={() => void onPlace(direction, barrier, selectedMarket?.symbol)}>
-        {entryMode === 'instant' || entryMode === 'model' ? `Place ${sideLabel(direction, barrier)}` : `Arm ${sideLabel(direction, barrier)} trigger`}
+      <div class="manual-evidence-strip" aria-label="Settled manual trade evidence">
+        <div><span>This setup</span><b>{setupHistory.length ? `${setupWins}/${setupHistory.length} wins` : 'No settled sample'}</b></div>
+        <div><span>Setup P&amp;L</span><b class={setupHistory.reduce((sum, trade) => sum + trade.profit, 0) >= 0 ? 'positive' : 'negative'}>{fmtMoney(setupHistory.reduce((sum, trade) => sum + trade.profit, 0))}</b></div>
+        <div><span>This instruction</span><b>{modeHistory.length ? `${Math.round((modeWins / modeHistory.length) * 100)}% · ${modeHistory.length} trades` : 'No settled sample'}</b></div>
+      </div>
+      <p>{entryMode === 'instant' ? 'A second fresh proposal is checked at confirmation. If price or payout worsens by more than 2%, purchase stops and asks for another review.' : 'The armed instruction belongs to this browser tab. Closing or refreshing the tab cancels it safely.'}</p>
+      <button class="inline-place-single" type="button" disabled={!selectedMarket || busy || manualQueued || Boolean(manualPreview)} onClick={() => void onPlace(direction, barrier, selectedMarket?.symbol)}>
+        {entryMode === 'instant' ? `Review ${sideLabel(direction, barrier)}` : entryMode === 'model' ? `Arm model for ${sideLabel(direction, barrier)}` : `Arm pattern for ${sideLabel(direction, barrier)}`}
       </button>
-      </> : <>
-        <div class="inline-basket-list" aria-label="Five basket predictions">
-          {basket.map((setup, index) => {
-            const basketMarket = markets.find((item) => item.symbol === setup.market);
-            return <div class="inline-basket-leg" key={setup.market}>
-              <span>{index + 1}</span>
-              <b>{shortMarketName(basketMarket?.display ?? setup.market)}</b>
-              <em>{sideLabel(setup.direction, setup.barrier)}</em>
-              <strong>{Math.round(setup.confidence * 100)}%</strong>
-            </div>;
-          })}
+      {manualPreview && <section class={`manual-review-ticket ${manualPreview.account.mode}`} aria-label="Manual trade review">
+        <header>
+          <div><span>{manualPreview.account.mode === 'real' ? 'Real funds' : 'Demo funds'} · review required</span><h3>{shortMarketName(manualPreview.market.display)} · {sideLabel(manualPreview.order.direction, manualPreview.order.barrier)}</h3></div>
+          <b>{previewSeconds}s</b>
+        </header>
+        <div class="manual-review-grid">
+          <div><span>Stake</span><b>{fmtMoney(manualPreview.quote.ask, manualPreview.account.currency)}</b></div>
+          <div><span>Payout</span><b>{fmtMoney(manualPreview.quote.payout, manualPreview.account.currency)}</b></div>
+          <div><span>Potential profit</span><b>{fmtMoney(manualPreview.quote.potentialProfit, manualPreview.account.currency)}</b></div>
+          <div><span>Break-even</span><b>{(manualPreview.quote.breakeven * 100).toFixed(1)}%</b></div>
+          <div><span>Model estimate</span><b>{(manualPreview.model.estimatedWin * 100).toFixed(1)}%</b></div>
+          <div><span>Estimated edge</span><b class={manualPreview.model.edge >= 0 ? 'positive' : 'negative'}>{manualPreview.model.edge >= 0 ? '+' : ''}{(manualPreview.model.edge * 100).toFixed(1)}%</b></div>
+          <div><span>Balance after stake</span><b>{fmtMoney(manualPreview.account.balanceAfter, manualPreview.account.currency)}</b></div>
+          <div><span>Quote status</span><b>{previewSeconds > 0 ? 'Fresh' : 'Expired'}</b></div>
         </div>
-        <label class="inline-stake basket-stake">
-          <span>Stake per trade</span>
-          <input type="number" inputMode="decimal" min="0.1" step="0.1" value={stake} onInput={(event) => onStake((event.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <div class="inline-basket-total"><span>Total exposure</span><b>{fmtMoney(basketStake * 5)}</b></div>
-        <button class="inline-basket-place" type="button" disabled={basket.length !== 5} onClick={() => void placeBasket()}>Place 5 predictions together</button>
-      </>}
+        <p class="manual-review-risk"><i aria-hidden="true">✓</i>{manualPreview.risk.reason}</p>
+        {manualPreview.account.mode === 'real' && <label class="manual-real-confirm"><input type="checkbox" checked={realFundsConfirmed} onChange={(event) => setRealFundsConfirmed((event.currentTarget as HTMLInputElement).checked)} /><span>I understand this purchase uses real funds.</span></label>}
+        <div class="manual-review-actions">
+          <button type="button" class="cancel" onClick={onCancelPreview} disabled={busy}>Cancel</button>
+          <button type="button" class="confirm" onClick={onConfirmPreview} disabled={busy || previewSeconds <= 0 || (manualPreview.account.mode === 'real' && !realFundsConfirmed)}>{busy ? 'Confirming…' : manualPreview.account.mode === 'real' ? 'Confirm real-money trade' : 'Confirm demo trade'}</button>
+        </div>
+      </section>}
+      {manualExecution.stage !== 'idle' && <div class={`manual-execution-track ${manualExecution.stage}`} aria-live="polite">
+        <div class={executionStep >= 1 ? 'pass' : ''}><i>1</i><span>Quote</span></div>
+        <div class={executionStep >= 2 ? 'pass' : ''}><i>2</i><span>Risk review</span></div>
+        <div class={executionStep >= 4 ? 'pass' : executionStep === 3 ? 'active' : ''}><i>3</i><span>Purchase</span></div>
+        <div class={executionStep >= 5 ? 'pass' : executionStep === 4 ? 'active' : ''}><i>4</i><span>Settlement</span></div>
+        <p>{manualExecution.message}</p>
+      </div>}
+      </>
     </section>
   );
 }
@@ -2162,12 +2256,16 @@ function DecisionHero({
   onManualEntryMode,
   onManualTimedSetup,
   onManualStake,
-  onManualBasket,
   onManualPlace,
   manualStatus,
   manualQueued,
   queuedIntent,
   queuedMarket,
+  manualPreview,
+  manualExecution,
+  manualBusy,
+  onConfirmManualPreview,
+  onCancelManualPreview,
   onCancelManualQueue,
 }: {
   markets: Market[];
@@ -2199,12 +2297,16 @@ function DecisionHero({
   onManualEntryMode: (mode: ManualEntryMode) => void;
   onManualTimedSetup: (setup: ManualSetup) => void;
   onManualStake: (stake: string) => void;
-  onManualBasket: (setups: ManualSetup[]) => Promise<boolean>;
   onManualPlace: (direction: 'over' | 'under', barrier: number, market?: string, companionDemo?: boolean) => Promise<boolean>;
   manualStatus: string;
   manualQueued: boolean;
   queuedIntent: TimedManualIntent | null;
   queuedMarket: Market | null;
+  manualPreview: ManualTradePreview | null;
+  manualExecution: ManualExecutionView;
+  manualBusy: boolean;
+  onConfirmManualPreview: () => void;
+  onCancelManualPreview: () => void;
   onCancelManualQueue: () => void;
 }): JSX.Element {
   // Manual mode stays pinned to the operator's chosen market. Automation may
@@ -2335,6 +2437,7 @@ function DecisionHero({
           markets={markets}
           candidates={candidates}
           selectedMarket={selectedMarket}
+          trades={trades}
           direction={manualDirection}
           barrier={manualDirection === 'over' ? manualOverBarrier : manualUnderBarrier}
           stake={manualStake}
@@ -2345,12 +2448,16 @@ function DecisionHero({
           onEntryMode={onManualEntryMode}
           onTimedSetup={onManualTimedSetup}
           onStake={onManualStake}
-          onBasket={onManualBasket}
           onPlace={onManualPlace}
           manualStatus={manualStatus}
           manualQueued={manualQueued}
           queuedIntent={queuedIntent}
           queuedMarket={queuedMarket}
+          manualPreview={manualPreview}
+          manualExecution={manualExecution}
+          busy={manualBusy}
+          onConfirmPreview={onConfirmManualPreview}
+          onCancelPreview={onCancelManualPreview}
           onCancelManualQueue={onCancelManualQueue}
             onClose={onCloseMarketChooser}
           />

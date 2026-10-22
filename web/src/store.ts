@@ -1881,27 +1881,82 @@ export interface ManualOrder {
   entryMode?: 'instant' | 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
   /** A companion-confirmed order. The API rejects this unless the active account is demo. */
   companionDemo?: boolean;
+  /** Stable for one operator action so retries can never create a second buy. */
+  idempotencyKey?: string;
 }
 
-export interface ManualBasketResult {
-  ok: boolean;
-  batchId: string;
-  purchased: number;
-  failed: number;
+export interface ManualTradePreview {
+  previewId: string;
+  expiresAt: number;
+  order: {
+    market: string;
+    direction: 'over' | 'under';
+    barrier: number;
+    stake: number;
+    entryMode: ManualOrder['entryMode'];
+  };
+  quote: {
+    ask: number;
+    payout: number;
+    potentialProfit: number;
+    breakeven: number;
+  };
+  model: {
+    estimatedWin: number;
+    edge: number;
+  };
+  account: {
+    mode: 'demo' | 'real';
+    currency: string;
+    balance: number;
+    balanceAfter: number;
+  };
+  market: {
+    display: string;
+    lastDigit: number;
+    lastEpoch: number;
+    fresh: boolean;
+  };
+  risk: { ok: true; reason: string };
 }
 
-export async function manualTrade(order: ManualOrder): Promise<void> {
-  try {
-    const res = await api<{ ok: boolean; trade: unknown }>('/api/trade/manual', {
-      method: 'POST',
-      body: JSON.stringify(order),
-    });
-    if (res.ok) {
-      return;
-    }
-  } catch (err) {
-    throw err;
-  }
+export interface ManualTradeResult {
+  ok: true;
+  reused?: boolean;
+  trade: {
+    id: number;
+    contractId: string;
+    ask: number;
+    payout: number;
+    estimatedWin: number;
+    breakeven: number;
+    edge: number;
+  };
+}
+
+function withManualIdempotency(order: ManualOrder): ManualOrder {
+  return { ...order, idempotencyKey: order.idempotencyKey ?? crypto.randomUUID() };
+}
+
+export async function manualTrade(order: ManualOrder): Promise<ManualTradeResult> {
+  return api<ManualTradeResult>('/api/trade/manual', {
+    method: 'POST',
+    body: JSON.stringify(withManualIdempotency(order)),
+  });
+}
+
+export async function previewManualTrade(order: ManualOrder): Promise<ManualTradePreview> {
+  return api<ManualTradePreview>('/api/trade/manual/preview', {
+    method: 'POST',
+    body: JSON.stringify(order),
+  });
+}
+
+export async function confirmManualTrade(previewId: string, idempotencyKey: string): Promise<ManualTradeResult> {
+  return api<ManualTradeResult>('/api/trade/manual/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ previewId, idempotencyKey }),
+  });
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
@@ -1950,13 +2005,6 @@ export async function refreshTrades(limit = 50): Promise<void> {
   } })().finally(() => tradeRefreshes.delete(limit));
   tradeRefreshes.set(limit, refresh);
   return refresh;
-}
-
-export async function manualBasketTrade(orders: ManualOrder[]): Promise<ManualBasketResult> {
-  return api<ManualBasketResult>('/api/trade/manual-basket', {
-    method: 'POST',
-    body: JSON.stringify({ orders }),
-  });
 }
 
 /** Owner-only audit history. The API scopes account rows to the active login. */

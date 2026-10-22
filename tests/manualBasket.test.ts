@@ -7,7 +7,7 @@ import test from 'node:test';
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'overunder-manual-basket-'));
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
 
-test('manual basket quotes first and launches five distinct purchases concurrently', async () => {
+test('live manual basket execution is disabled before any provider call', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, routesMod, store, cfg, paperMod] = await Promise.all([
     import('fastify'),
     import('../src/api/hub.ts'),
@@ -32,8 +32,6 @@ test('manual basket quotes first and launches five distinct purchases concurrent
   const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
   let quoteCalls = 0;
   let buyCalls = 0;
-  let releaseBuys: (() => void) | undefined;
-  const buyGate = new Promise<void>((resolve) => { releaseBuys = resolve; });
   const client = {
     isConnected: true,
     getQuote: async (request: { symbol: string; direction: 'over' | 'under'; barrier: number; amount: number }) => {
@@ -42,8 +40,6 @@ test('manual basket quotes first and launches five distinct purchases concurrent
     },
     placeBuy: async (proposalId: string, askPrice: number) => {
       buyCalls += 1;
-      if (buyCalls === 5) releaseBuys?.();
-      await buyGate;
       return { contractId: `contract-${proposalId}`, buyPrice: askPrice, payout: askPrice * 1.8 };
     },
     settleContract: async () => new Promise(() => undefined),
@@ -62,22 +58,11 @@ test('manual basket quotes first and launches five distinct purchases concurrent
     estWin: 0.7,
   }));
   const response = await app.inject({ method: 'POST', url: '/api/trade/manual-basket', payload: { orders } });
-  assert.equal(response.statusCode, 200);
-  assert.equal(response.json().purchased, 5);
-  assert.equal(response.json().failed, 0);
-  assert.equal(quoteCalls, 5);
-  assert.equal(buyCalls, 5, 'all purchases must begin before any one purchase resolves');
-  const pending = store.getPendingTrades();
-  assert.equal(pending.length, 5);
-  assert.equal(new Set(pending.map((trade) => trade.market)).size, 5);
-  assert.ok(pending.every((trade) => trade.origin === 'manual' && trade.reason.includes(response.json().batchId)));
-
-  const blocked = await app.inject({ method: 'POST', url: '/api/trade/manual-basket', payload: { orders } });
-  assert.equal(blocked.statusCode, 409);
-  assert.equal(buyCalls, 5);
-
-  const wrongCount = await app.inject({ method: 'POST', url: '/api/trade/manual-basket', payload: { orders: orders.slice(0, 4) } });
-  assert.equal(wrongCount.statusCode, 400);
+  assert.equal(response.statusCode, 410);
+  assert.match(response.json().error, /virtual-paper/i);
+  assert.equal(quoteCalls, 0);
+  assert.equal(buyCalls, 0);
+  assert.equal(store.getPendingTrades().length, 0);
 
   automation.dispose();
   await app.close();

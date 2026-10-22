@@ -64,7 +64,7 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   assert.equal(purchasingWasHidden, true, 'watch reconciliation must not see a row before contract purchase');
   assert.equal(store.getPendingTrades().length, 1);
   assert.equal(store.getPendingTrades()[0]?.contract_id, 'manual-contract-1');
-  assert.equal(store.getPendingTrades()[0]?.est_win, 0.73, 'manual confidence snapshot must be retained');
+  assert.notEqual(store.getPendingTrades()[0]?.est_win, 0.73, 'manual confidence must be recomputed from server-owned evidence');
   const purchaseEvent = events.find((event) => event.type === 'trade')?.trade as { status?: string; contract_id?: string } | undefined;
   assert.equal(purchaseEvent?.status, 'pending');
   assert.equal(purchaseEvent?.contract_id, 'manual-contract-1');
@@ -106,7 +106,7 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
     payload: { market: 'R_10', direction: 'over', barrier: 0, stake: 2, estWin: 0.73 },
   });
   assert.equal(blockedByOldOpenContract.statusCode, 409);
-  assert.match(blockedByOldOpenContract.json().error, /settlement recovery is active/i);
+  assert.match(blockedByOldOpenContract.json().error, /digit contract still settling/i);
   assert.equal(buyCalls, 2, 'elapsed time must never unlock a still-open provider contract');
 
   automation.dispose();

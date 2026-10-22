@@ -95,6 +95,135 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const accountCoordinator = deps.accountCoordinator ?? new AccountCoordinator();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
   const multiplierProbeCache = new Map<string, { ts: number; result: MultiplierProbeResult }>();
+  type ManualEntryMode = 'instant' | 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
+  type ManualOrderInput = {
+    market: string;
+    direction: Direction;
+    barrier: number;
+    stake: number;
+    entryMode: ManualEntryMode;
+    companionDemo: boolean;
+  };
+  type ManualPreview = {
+    id: string;
+    accountId: string;
+    createdAt: number;
+    expiresAt: number;
+    order: ManualOrderInput;
+    ask: number;
+    payout: number;
+    estimatedWin: number;
+    breakeven: number;
+    edge: number;
+    consumedBy?: string;
+  };
+  type ManualExecutionResponse = { status: number; body: Record<string, unknown> };
+  const manualPreviews = new Map<string, ManualPreview>();
+  const manualExecutions = new Map<string, { signature: string; expiresAt: number; promise: Promise<ManualExecutionResponse> }>();
+  const manualLaneLocks = new Map<string, string>();
+  const MANUAL_PREVIEW_TTL_MS = 30_000;
+  const MANUAL_IDEMPOTENCY_TTL_MS = 5 * 60_000;
+
+  class ManualRequestError extends Error {
+    readonly status: number;
+    constructor(status: number, message: string) {
+      super(message);
+      this.status = status;
+    }
+  }
+
+  const accountIdForSession = (loginid: string): string => `deriv:${loginid}`;
+  const theoreticalManualWin = (direction: Direction, barrier: number): number => direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
+  const manualModelWin = (order: Pick<ManualOrderInput, 'market' | 'direction' | 'barrier'>): number => {
+    const snapshot = registry.snapshot(order.market);
+    const theoretical = theoreticalManualWin(order.direction, order.barrier);
+    const digits = snapshot.recentDigits.filter((digit) => Number.isInteger(digit) && digit >= 0 && digit <= 9);
+    if (!digits.length) return theoretical;
+    const wins = digits.filter((digit) => order.direction === 'over' ? digit > order.barrier : digit < order.barrier).length;
+    return (wins + theoretical * 20) / (digits.length + 20);
+  };
+  const normalizeManualOrder = (body: unknown): ManualOrderInput => {
+    const input = (body ?? {}) as { market?: unknown; direction?: unknown; barrier?: unknown; stake?: unknown; entryMode?: unknown; companionDemo?: unknown };
+    const market = typeof input.market === 'string' ? input.market : '';
+    const direction = input.direction === 'over' || input.direction === 'under' ? input.direction : null;
+    const barrier = Number(input.barrier);
+    const stake = Number(input.stake);
+    const entryMode: ManualEntryMode = input.entryMode === 'instant'
+      ? 'instant'
+      : input.entryMode === 'digit-trigger-confirmed'
+        ? 'digit-trigger-confirmed'
+        : input.entryMode === 'digit-trigger'
+          ? 'digit-trigger'
+          : 'model';
+    if (!market || !direction || !Number.isFinite(barrier) || !Number.isFinite(stake)) {
+      throw new ManualRequestError(400, 'market, direction, barrier, and stake are required');
+    }
+    const validBarrier = Number.isInteger(barrier)
+      && (direction === 'over' ? barrier >= 0 && barrier <= 8 : barrier >= 1 && barrier <= 9);
+    if (!validBarrier) {
+      throw new ManualRequestError(400, direction === 'over' ? 'over barrier must be an integer from 0 to 8' : 'under barrier must be an integer from 1 to 9');
+    }
+    if (!(stake > 0)) throw new ManualRequestError(400, 'stake must be greater than zero');
+    if (!registry.has(market)) throw new ManualRequestError(400, `unknown market ${market}`);
+    return { market, direction, barrier, stake, entryMode, companionDemo: input.companionDemo === true };
+  };
+  const assertManualPreflight = (order: ManualOrderInput, session: NonNullable<ReturnType<typeof getSession>>): void => {
+    if (order.companionDemo && session.mode !== 'demo') throw new ManualRequestError(403, 'companion-confirmed trades are available on demo accounts only');
+    if (automation.isRunning()) throw new ManualRequestError(409, 'stop the bot before placing a manual trade');
+    const snapshot = registry.snapshot(order.market);
+    if (!snapshot.fresh) throw new ManualRequestError(409, 'the selected market feed is stale; wait for a fresh tick');
+    const settings = getSettings();
+    if (order.stake > settings.max_stake) throw new ManualRequestError(400, `stake exceeds the configured maximum (${settings.max_stake})`);
+    const accountId = accountIdForSession(session.loginid);
+    const gate = riskCheck({
+      stake: order.stake,
+      settings,
+      balance: session.balance,
+      context: buildRecoveryContext(settings, accountId),
+      lastTradeAt: 0,
+      tradeGapMs: 0,
+      now: Date.now(),
+      accountId,
+      skipRecoveryDebtCap: true,
+      lane: 'digit',
+    });
+    if (!gate.ok) throw new ManualRequestError(409, `manual trade blocked: ${gate.reason}`);
+    if (manualLaneLocks.has(accountId)) throw new ManualRequestError(409, 'another manual digit order is already being processed');
+  };
+  const ensureManualClient = async (session: NonNullable<ReturnType<typeof getSession>>): Promise<void> => {
+    if (client.isConnected) return;
+    try {
+      const token = await resolveStoredToken();
+      await client.reconnect(token, session.loginid);
+    } catch (error) {
+      throw new ManualRequestError(409, `socket reconnect failed: ${String(error)}`);
+    }
+  };
+  const cleanupManualState = (): void => {
+    const now = Date.now();
+    for (const [id, preview] of manualPreviews) if (preview.expiresAt <= now) manualPreviews.delete(id);
+    for (const [id, execution] of manualExecutions) if (execution.expiresAt <= now) manualExecutions.delete(id);
+  };
+  const runManualIdempotent = (
+    accountId: string,
+    idempotencyKey: string,
+    signature: string,
+    work: () => Promise<ManualExecutionResponse>,
+  ): Promise<ManualExecutionResponse> => {
+    cleanupManualState();
+    const key = `${accountId}:${idempotencyKey}`;
+    const existing = manualExecutions.get(key);
+    if (existing) {
+      if (existing.signature !== signature) return Promise.resolve({ status: 409, body: { error: 'idempotency key was already used for a different manual order' } });
+      return existing.promise;
+    }
+    const promise = work().catch((error) => ({
+      status: error instanceof ManualRequestError ? error.status : 502,
+      body: { error: error instanceof Error ? error.message : String(error) },
+    }));
+    manualExecutions.set(key, { signature, expiresAt: Date.now() + MANUAL_IDEMPOTENCY_TTL_MS, promise });
+    return promise;
+  };
   const multiplierCandidates = [10, 20, 30, 50, 75, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000];
   type MultiplierProbeResult = {
     symbol: string;
@@ -1895,6 +2024,209 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return { ok: true };
   });
 
+  const performManualPurchase = async (
+    order: ManualOrderInput,
+    session: NonNullable<ReturnType<typeof getSession>>,
+    preview?: ManualPreview,
+  ): Promise<ManualExecutionResponse> => {
+    assertManualPreflight(order, session);
+    const accountId = accountIdForSession(session.loginid);
+    const laneToken = crypto.randomUUID();
+    manualLaneLocks.set(accountId, laneToken);
+    let reservation: ReturnType<AccountCoordinator['reserve']> | null = null;
+    let recordedTrade: ReturnType<typeof insertTrade> | null = null;
+    let buyAttempted = false;
+    let buyConfirmed = false;
+    try {
+      try {
+        reservation = accountCoordinator.reserve({ accountId, product: 'digits', exposure: order.stake });
+      } catch (error) {
+        throw new ManualRequestError(409, `manual trade blocked: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      await ensureManualClient(session);
+      const entrySnapshot = registry.snapshot(order.market);
+      if (!entrySnapshot.fresh) throw new ManualRequestError(409, 'the selected market feed became stale before purchase');
+      const quote = await client.getQuote({
+        direction: order.direction,
+        barrier: order.barrier,
+        amount: order.stake,
+        currency: session.currency || 'USD',
+        duration: 1,
+        durationUnit: 't',
+        symbol: order.market,
+      });
+      if (preview) {
+        const askWorsened = quote.askPrice > preview.ask * 1.02 + 1e-9;
+        const payoutWorsened = quote.payout + 1e-9 < preview.payout * 0.98;
+        if (askWorsened || payoutWorsened) {
+          throw new ManualRequestError(409, 'the live quote moved more than 2%; review a fresh quote before buying');
+        }
+      }
+      const estimatedWin = manualModelWin(order);
+      const breakeven = quote.payout > 0 ? quote.askPrice / quote.payout : 1;
+      const edge = estimatedWin - breakeven;
+      const entryLabel = order.companionDemo
+        ? 'companion-confirmed model entry'
+        : order.entryMode === 'instant'
+          ? 'manual trade-now entry'
+          : order.entryMode === 'digit-trigger-confirmed'
+            ? 'manual two-pass pattern entry'
+            : order.entryMode === 'digit-trigger'
+              ? 'manual pattern entry'
+              : 'manual validated-model entry';
+      const evidence = `model ${(estimatedWin * 100).toFixed(1)}% | breakeven ${(breakeven * 100).toFixed(1)}% | edge ${edge >= 0 ? '+' : ''}${(edge * 100).toFixed(1)}% | quote ${quote.askPrice.toFixed(2)}/${quote.payout.toFixed(2)}`;
+      const trade = recordedTrade = insertTrade({
+        ts: Date.now(),
+        market: order.market,
+        contract_type: order.direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
+        barrier: quote.barrier,
+        duration: 1,
+        duration_unit: 't',
+        stake: order.stake,
+        ask_price: quote.askPrice,
+        payout: quote.payout,
+        est_win: estimatedWin,
+        profit: 0,
+        status: 'purchasing',
+        contract_id: '',
+        purchase_id: `manual-${Date.now()}-${laneToken.slice(0, 8)}`,
+        reason: `${entryLabel} | ${evidence}`,
+        origin: 'manual',
+      });
+      const bought = await accountCoordinator.runCommand('manual_open', session.loginid, async () => {
+        const conflict = listOpenTrades(accountId).find((open) => open.id !== trade.id && (open.contract_type === 'DIGITOVER' || open.contract_type === 'DIGITUNDER'));
+        if (conflict) throw new ManualRequestError(409, 'another digit contract opened before this purchase could be submitted');
+        buyAttempted = true;
+        const result = await client.placeBuy(quote.id, quote.askPrice);
+        buyConfirmed = true;
+        return result;
+      });
+      const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : order.stake;
+      const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
+      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
+      const purchasedTrade = getTrade(trade.id, trade.account_id) ?? trade;
+      hub.emit({ type: 'trade', ts: Date.now(), trade: purchasedTrade, manual: true });
+      settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          trade: { id: trade.id, contractId: bought.contractId, ask: actualStake, payout: actualPayout, estimatedWin, breakeven, edge },
+        },
+      };
+    } catch (error) {
+      if (recordedTrade) {
+        if (buyAttempted && !buyConfirmed) markTradePurchaseOutcomeUnknown(recordedTrade.id, recordedTrade.account_id);
+        else resolveTrade(recordedTrade.id, 'error', 0, recordedTrade.contract_id || '', undefined, recordedTrade.account_id);
+      }
+      if (error instanceof ManualRequestError) throw error;
+      console.warn(`[manual] order failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new ManualRequestError(
+        502,
+        buyAttempted && !buyConfirmed
+          ? 'purchase outcome is unknown at Deriv; the digit lane remains locked for reconciliation and no retry was submitted'
+          : 'manual order could not be completed; no retry was submitted automatically',
+      );
+    } finally {
+      if (reservation) accountCoordinator.release(reservation);
+      if (manualLaneLocks.get(accountId) === laneToken) manualLaneLocks.delete(accountId);
+    }
+  };
+
+  app.post('/api/trade/manual/preview', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'not connected' };
+    }
+    try {
+      cleanupManualState();
+      const order = normalizeManualOrder(req.body);
+      assertManualPreflight(order, session);
+      await ensureManualClient(session);
+      const snapshot = registry.snapshot(order.market);
+      const quote = await client.getQuote({
+        direction: order.direction,
+        barrier: order.barrier,
+        amount: order.stake,
+        currency: session.currency || 'USD',
+        duration: 1,
+        durationUnit: 't',
+        symbol: order.market,
+      });
+      const estimatedWin = manualModelWin(order);
+      const breakeven = quote.payout > 0 ? quote.askPrice / quote.payout : 1;
+      const preview: ManualPreview = {
+        id: crypto.randomUUID(),
+        accountId: accountIdForSession(session.loginid),
+        createdAt: Date.now(),
+        expiresAt: Date.now() + MANUAL_PREVIEW_TTL_MS,
+        order,
+        ask: quote.askPrice,
+        payout: quote.payout,
+        estimatedWin,
+        breakeven,
+        edge: estimatedWin - breakeven,
+      };
+      manualPreviews.set(preview.id, preview);
+      return {
+        previewId: preview.id,
+        expiresAt: preview.expiresAt,
+        order: { market: order.market, direction: order.direction, barrier: order.barrier, stake: order.stake, entryMode: order.entryMode },
+        quote: { ask: quote.askPrice, payout: quote.payout, potentialProfit: Math.max(0, quote.payout - quote.askPrice), breakeven },
+        model: { estimatedWin, edge: preview.edge },
+        account: {
+          mode: session.mode,
+          currency: session.currency || 'USD',
+          balance: session.balance,
+          balanceAfter: Math.max(0, session.balance - quote.askPrice),
+        },
+        market: { display: snapshot.display, lastDigit: snapshot.lastDigit, lastEpoch: snapshot.lastEpoch, fresh: snapshot.fresh },
+        risk: { ok: true as const, reason: 'All account, feed, stake, drawdown, and open-contract checks passed.' },
+      };
+    } catch (error) {
+      reply.code(error instanceof ManualRequestError ? error.status : 502);
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  app.post('/api/trade/manual/confirm', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    const session = getSession();
+    if (!session) {
+      reply.code(401);
+      return { error: 'not connected' };
+    }
+    cleanupManualState();
+    const body = (req.body ?? {}) as { previewId?: unknown; idempotencyKey?: unknown };
+    const previewId = typeof body.previewId === 'string' ? body.previewId : '';
+    const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey : '';
+    if (!previewId || !idempotencyKey || idempotencyKey.length > 128) {
+      reply.code(400);
+      return { error: 'previewId and idempotencyKey are required' };
+    }
+    const preview = manualPreviews.get(previewId);
+    const accountId = accountIdForSession(session.loginid);
+    if (!preview || preview.expiresAt <= Date.now()) {
+      reply.code(409);
+      return { error: 'the quote review expired; request a fresh quote' };
+    }
+    if (preview.accountId !== accountId) {
+      reply.code(403);
+      return { error: 'the quote review belongs to a different account' };
+    }
+    if (preview.consumedBy && preview.consumedBy !== idempotencyKey) {
+      reply.code(409);
+      return { error: 'this quote review has already been confirmed' };
+    }
+    preview.consumedBy = idempotencyKey;
+    const signature = JSON.stringify(preview.order);
+    const result = await runManualIdempotent(accountId, idempotencyKey, signature, () => performManualPurchase(preview.order, session, preview));
+    reply.code(result.status);
+    return result.body;
+  });
+
   app.post('/api/trade/manual', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     const session = getSession();
@@ -1902,239 +2234,29 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(401);
       return { error: 'not connected' };
     }
-    const body = req.body as { market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number; entryMode?: unknown; companionDemo?: boolean };
-    // The companion's "force" and game confirmations are strictly a demo
-    // feature. This guard belongs on the server so a stale browser state can
-    // never send one through a live account.
-    if (body.companionDemo === true && session.mode !== 'demo') {
-      reply.code(403);
-      return { error: 'companion-confirmed trades are available on demo accounts only' };
-    }
-    const market = body.market;
-    const direction = body.direction;
-    const barrier = Number(body.barrier);
-    const stake = Number(body.stake);
-    const entryMode = body.entryMode === 'instant' ? 'instant' : body.entryMode === 'digit-trigger-confirmed' ? 'digit-trigger-confirmed' : body.entryMode === 'digit-trigger' ? 'digit-trigger' : 'model';
-    const theoreticalWin = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
-    const requestedEstWin = Number(body.estWin);
-    const estWin = Number.isFinite(requestedEstWin) && requestedEstWin > 0 && requestedEstWin < 1
-      ? requestedEstWin
-      : theoreticalWin;
-    if (!market || (direction !== 'over' && direction !== 'under') || !Number.isFinite(barrier) || !Number.isFinite(stake)) {
-      reply.code(400);
-      return { error: 'market/direction/barrier/stake required' };
-    }
-    const validBarrier = Number.isInteger(barrier)
-      && (direction === 'over' ? barrier >= 0 && barrier <= 8 : barrier >= 1 && barrier <= 9);
-    if (!validBarrier) {
-      reply.code(400);
-      return { error: direction === 'over' ? 'over barrier must be an integer from 0 to 8' : 'under barrier must be an integer from 1 to 9' };
-    }
-    if (!(stake > 0)) {
-      reply.code(400);
-      return { error: 'stake must be greater than zero' };
-    }
-    if (!registry.has(market)) {
-      reply.code(400);
-      return { error: `unknown market ${market}` };
-    }
-    
-    // Auto-reconnect if socket is down
-    if (!client.isConnected) {
-      try {
-        const token = await resolveStoredToken();
-        await client.reconnect(token, session.loginid);
-      } catch (err) {
-        reply.code(409);
-        return { error: `socket reconnect failed: ${String(err)}` };
-      }
-    }
-    
-    // Never clear a provider contract merely because local time elapsed. A
-    // delayed settlement retains its digit-lane lock while a multiplier may
-    // remain open independently.
-    const openTrade = getOpenTradeByLane('digit');
-    if (openTrade) {
-      const staleness = Date.now() - openTrade.ts;
-      reply.code(409);
-      return { error: `a contract is still open (${(staleness / 1000).toFixed(1)}s old); settlement recovery is active` };
-    }
-    
-    let recordedTrade: ReturnType<typeof insertTrade> | null = null;
     try {
-      const entrySnapshot = registry.snapshot(market);
-      const quote = await client.getQuote({
-        direction,
-        barrier,
-        amount: stake,
-        currency: session.currency || 'USD',
-        duration: 1,
-        durationUnit: 't',
-        symbol: market,
-      });
-      if (getOpenTradeByLane('digit')) {
-        reply.code(409);
-        return { error: 'another digit contract opened while the quote was loading' };
-      }
-      // Keep this row out of reconciliation until Deriv confirms a contract
-      // id. The always-on watch loop must not turn a valid in-flight manual
-      // buy into an error between proposal and purchase.
-      const trade = recordedTrade = insertTrade({
-        ts: Date.now(),
-        market,
-        contract_type: direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
-        barrier: quote.barrier,
-        duration: 1,
-        duration_unit: 't',
-        stake,
-        ask_price: quote.askPrice,
-        payout: quote.payout,
-        est_win: estWin,
-        profit: 0,
-        status: 'purchasing',
-        contract_id: '',
-        purchase_id: `manual-${Date.now()}`,
-        reason: body.companionDemo ? 'companion-confirmed model entry' : entryMode === 'instant' ? 'manual instant entry' : entryMode === 'digit-trigger-confirmed' ? 'manual two-pass digit-trigger hypothesis' : entryMode === 'digit-trigger' ? 'manual digit-trigger hypothesis' : 'manual model entry',
-        // Keep the persisted origin within the established audit enum; the
-        // explicit reason retains the companion attribution.
-        origin: 'manual',
-      });
-      const bought = await accountCoordinator.runCommand('manual_open', session.loginid, () => client.placeBuy(quote.id, quote.askPrice));
-      const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : stake;
-      const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
-      markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
-      hub.emit({ type: 'trade', ts: Date.now(), trade: getTrade(trade.id, trade.account_id) ?? trade, manual: true });
-      settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
-      return { ok: true, trade: { id: trade.id, contractId: bought.contractId, ask: quote.askPrice, payout: quote.payout } };
-    } catch (err) {
-      if (recordedTrade) {
-        resolveTrade(recordedTrade.id, 'error', 0, recordedTrade.contract_id || '', undefined, recordedTrade.account_id);
-      }
-      console.warn(`[manual] order failed: ${String(err)}`);
-      reply.code(502);
-      return { error: String(err) };
+      const order = normalizeManualOrder(req.body);
+      const body = (req.body ?? {}) as { idempotencyKey?: unknown };
+      const idempotencyKey = typeof body.idempotencyKey === 'string' && body.idempotencyKey.length > 0 && body.idempotencyKey.length <= 128
+        ? body.idempotencyKey
+        : crypto.randomUUID();
+      const accountId = accountIdForSession(session.loginid);
+      const signature = JSON.stringify(order);
+      const result = await runManualIdempotent(accountId, idempotencyKey, signature, () => performManualPurchase(order, session));
+      reply.code(result.status);
+      return result.body;
+    } catch (error) {
+      reply.code(error instanceof ManualRequestError ? error.status : 502);
+      return { error: error instanceof Error ? error.message : String(error) };
     }
   });
 
   app.post('/api/trade/manual-basket', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
-    const session = getSession();
-    if (!session) {
-      reply.code(401);
-      return { error: 'not connected' };
-    }
-    if (automation.isRunning()) {
-      reply.code(409);
-      return { error: 'stop the bot before placing a manual basket' };
-    }
-    const orders = (req.body as { orders?: Array<{ market?: string; direction?: Direction; barrier?: number; stake?: number; estWin?: number }> } | undefined)?.orders;
-    if (!Array.isArray(orders) || orders.length !== 5) {
-      reply.code(400);
-      return { error: 'a manual basket requires exactly five orders' };
-    }
-    if (new Set(orders.map((order) => order.market)).size !== 5) {
-      reply.code(400);
-      return { error: 'basket markets must be distinct' };
-    }
-    const normalized = orders.map((order) => {
-      const market = String(order.market ?? '');
-      const direction = order.direction;
-      const barrier = Number(order.barrier);
-      const stake = Number(order.stake);
-      const theoreticalWin = direction === 'over' ? (9 - barrier) / 10 : barrier / 10;
-      const requestedEstWin = Number(order.estWin);
-      const estWin = Number.isFinite(requestedEstWin) && requestedEstWin > 0 && requestedEstWin < 1 ? requestedEstWin : theoreticalWin;
-      return { market, direction, barrier, stake, estWin };
-    });
-    const invalid = normalized.find((order) => {
-      const validBarrier = Number.isInteger(order.barrier)
-        && (order.direction === 'over' ? order.barrier >= 0 && order.barrier <= 8 : order.direction === 'under' && order.barrier >= 1 && order.barrier <= 9);
-      return !order.market || !registry.has(order.market) || !validBarrier || !(order.stake > 0);
-    });
-    if (invalid) {
-      reply.code(400);
-      return { error: `invalid basket order for ${invalid.market || 'unknown market'}` };
-    }
-    if (getOpenTradeByLane('digit')) {
-      reply.code(409);
-      return { error: 'wait for the open contract to settle before placing a basket' };
-    }
-    if (!client.isConnected) {
-      try {
-        const token = await resolveStoredToken();
-        await client.reconnect(token, session.loginid);
-      } catch (err) {
-        reply.code(409);
-        return { error: `socket reconnect failed: ${String(err)}` };
-      }
-    }
-
-    const batchId = crypto.randomUUID();
-    try {
-      const entrySnapshots = new Map(normalized.map((order) => [order.market, registry.snapshot(order.market)]));
-      // Obtain every proposal before purchasing so no leg starts while another
-      // is still waiting for its quote. Provider buys are then launched in one
-      // concurrent turn (network arrival can still differ by milliseconds).
-      const quotes = await Promise.all(normalized.map((order) => client.getQuote({
-        direction: order.direction as Direction,
-        barrier: order.barrier,
-        amount: order.stake,
-        currency: session.currency || 'USD',
-        duration: 1,
-        durationUnit: 't',
-        symbol: order.market,
-      })));
-      const trades = normalized.map((order, index) => insertTrade({
-        ts: Date.now(),
-        market: order.market,
-        contract_type: order.direction === 'over' ? 'DIGITOVER' : 'DIGITUNDER',
-        barrier: quotes[index].barrier,
-        duration: 1,
-        duration_unit: 't',
-        stake: order.stake,
-        ask_price: quotes[index].askPrice,
-        payout: quotes[index].payout,
-        est_win: order.estWin,
-        profit: 0,
-        status: 'purchasing',
-        contract_id: '',
-        purchase_id: `manual-basket-${batchId}-${index + 1}`,
-        reason: `manual basket ${batchId}`,
-        origin: 'manual',
-      }));
-      // A basket is intentionally a single concurrent operation. The private
-      // client correlates each request by req_id; do not turn this into five
-      // sequential entries and destroy its distinct-market timing semantics.
-      const outcomes = await Promise.allSettled(quotes.map((quote) => client.placeBuy(quote.id, quote.askPrice)));
-      let purchased = 0;
-      const results = outcomes.map((outcome, index) => {
-        const trade = trades[index];
-        const quote = quotes[index];
-        if (outcome.status === 'rejected') {
-          resolveTrade(trade.id, 'error', 0, '', undefined, trade.account_id);
-          return { market: trade.market, ok: false, error: String(outcome.reason) };
-        }
-        purchased += 1;
-        const bought = outcome.value;
-        const actualStake = bought.buyPrice > 0 ? bought.buyPrice : quote.askPrice > 0 ? quote.askPrice : normalized[index].stake;
-        const actualPayout = bought.payout > 0 ? bought.payout : quote.payout;
-        const entrySnapshot = entrySnapshots.get(trade.market)!;
-        markTradePurchased(trade.id, bought.contractId, actualStake, actualPayout, trade.account_id, entrySnapshot.lastQuote, entrySnapshot.lastDigit);
-        const purchasedTrade = getTrade(trade.id, trade.account_id) ?? trade;
-        hub.emit({ type: 'trade', ts: Date.now(), trade: purchasedTrade, manual: true, batchId });
-        settleInBackground(client, hub, trade.id, bought.contractId, actualStake, actualPayout, trade.account_id);
-        return { market: trade.market, ok: true, tradeId: trade.id, contractId: bought.contractId };
-      });
-      if (purchased === 0) {
-        reply.code(502);
-        return { error: 'all five basket purchases failed', batchId, results };
-      }
-      return { ok: true, batchId, purchased, failed: 5 - purchased, results };
-    } catch (err) {
-      console.warn(`[manual-basket] quote phase failed: ${String(err)}`);
-      reply.code(502);
-      return { error: `basket quote failed before purchase: ${String(err)}` };
-    }
+    reply.code(410);
+    return {
+      error: 'live manual baskets are disabled; use the virtual-paper research tools instead',
+    };
   });
 
   app.post('/api/automation/start', async (req, reply) => {
