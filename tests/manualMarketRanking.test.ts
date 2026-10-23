@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assessTimedManualEntry, confidenceForSetup, isSensibleManualSetup, manualSetupScore, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
+import { assessTimedManualEntry, confidenceForSetup, isSensibleManualSetup, manualSetupScore, matchesDigitTrigger, priorityManualTargets, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, strongestManualSetups } from '../web/src/manualMarketRanking.ts';
 import type { ManualMarket, ManualSignalCandidate } from '../web/src/manualMarketRanking.ts';
 
 function market(symbol: string, digits: number[]): ManualMarket {
@@ -90,4 +90,16 @@ test('digit-trigger entry mode only arms the matching high or low digit family',
   assert.equal(matchesDigitTrigger('under', 0), true);
   assert.equal(matchesDigitTrigger('under', 1), true);
   assert.equal(matchesDigitTrigger('under', 2), false);
+});
+
+test('priority arena returns the strongest market for each of the four focus plays', () => {
+  const high = { ...market('HIGH', [7, 8, 9, 8, 6, 9]), health: { score: 91 } };
+  const low = { ...market('LOW', [0, 1, 2, 1, 3, 0]), health: { score: 88 } };
+  const targets = priorityManualTargets([high, low], [], [
+    { market: 'HIGH', direction: 'over', barrier: 1, status: 'won' },
+    { market: 'LOW', direction: 'under', barrier: 8, status: 'won' },
+  ]);
+  assert.deepEqual(targets.map((target) => target.label), ['Over 1', 'Over 2', 'Under 7', 'Under 8']);
+  assert.equal(targets.find((target) => target.label === 'Over 1')?.market.symbol, 'HIGH');
+  assert.equal(targets.find((target) => target.label === 'Under 8')?.market.symbol, 'LOW');
 });

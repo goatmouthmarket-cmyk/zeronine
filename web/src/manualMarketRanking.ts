@@ -75,6 +75,75 @@ export interface ManualSetup {
   confidence: number;
 }
 
+export const PRIORITY_MANUAL_PLAYS = [
+  { direction: 'over', barrier: 1, label: 'Over 1' },
+  { direction: 'over', barrier: 2, label: 'Over 2' },
+  { direction: 'under', barrier: 7, label: 'Under 7' },
+  { direction: 'under', barrier: 8, label: 'Under 8' },
+] as const satisfies ReadonlyArray<{ direction: ManualDirection; barrier: number; label: string }>;
+
+export interface ManualPaperOutcome {
+  market: string;
+  direction: ManualDirection;
+  barrier: number;
+  status: 'open' | 'won' | 'lost' | 'cancelled';
+}
+
+export interface PriorityManualTarget<M extends ManualMarket = ManualMarket> {
+  market: M;
+  direction: ManualDirection;
+  barrier: number;
+  label: string;
+  baseline: number;
+  observedWin: number;
+  modelWin: number;
+  transitionWin: number | null;
+  paperWins: number;
+  paperLosses: number;
+  paperWin: number | null;
+  score: number;
+}
+
+/**
+ * Ranks one best market for each deliberately narrow manual play. The score is
+ * evidence-weighted and latency-aware: sampled next-digit transitions matter
+ * more than the current digit, while small paper samples are strongly shrunk
+ * toward the contract's theoretical probability.
+ */
+export function priorityManualTargets<M extends ManualMarket>(
+  markets: M[],
+  candidates: ManualSignalCandidate[],
+  paperOutcomes: ManualPaperOutcome[] = [],
+): PriorityManualTarget<M>[] {
+  return PRIORITY_MANUAL_PLAYS.flatMap((play) => {
+    const ranked = markets.map((market) => {
+      const baseline = theoreticalWinForSetup(play.direction, play.barrier);
+      const observedWin = confidenceForSetup(market, play.direction, play.barrier);
+      const candidate = exactCandidateForSetup(candidates, market.symbol, play.direction, play.barrier);
+      const modelWin = candidate?.estWin ?? observedWin;
+      const transitionWin = (candidate?.transitionSamples ?? 0) >= 20 && Number.isFinite(candidate?.transitionProb)
+        ? candidate!.transitionProb!
+        : null;
+      const settled = paperOutcomes.filter((trade) => trade.market === market.symbol
+        && trade.direction === play.direction
+        && trade.barrier === play.barrier
+        && (trade.status === 'won' || trade.status === 'lost'));
+      const paperWins = settled.filter((trade) => trade.status === 'won').length;
+      const paperLosses = settled.length - paperWins;
+      const paperWin = settled.length ? paperWins / settled.length : null;
+      const paperShrunk = (paperWins + baseline * 20) / (settled.length + 20);
+      const latencyEvidence = transitionWin ?? observedWin;
+      const health = Math.max(0, Math.min(1, (market.health?.score ?? 50) / 100));
+      const score = (modelWin * .38) + (latencyEvidence * .27) + (paperShrunk * .25) + (health * .1) - baseline;
+      return {
+        market, direction: play.direction, barrier: play.barrier, label: play.label,
+        baseline, observedWin, modelWin, transitionWin, paperWins, paperLosses, paperWin, score,
+      } satisfies PriorityManualTarget<M>;
+    }).sort((a, b) => b.score - a.score || b.modelWin - a.modelWin || (b.market.health?.score ?? 0) - (a.market.health?.score ?? 0));
+    return ranked[0] ? [ranked[0]] : [];
+  });
+}
+
 const MIN_SENSIBLE_BASE_WIN = 0.45;
 const LOW_BASE_EXCEPTION_WIN = 0.62;
 const LOW_BASE_EXCEPTION_EDGE = 0.08;

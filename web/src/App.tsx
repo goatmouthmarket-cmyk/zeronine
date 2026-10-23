@@ -34,7 +34,6 @@ import {
   loadPaperTrade,
   loadPaperTrades,
   startPaperSimulation,
-  stopPaperSimulation,
   resetPaperSimulation,
   loadDerivAccounts,
   switchDerivAccount,
@@ -60,7 +59,7 @@ import {
   runGoldBacktest,
 } from './store';
 import './marketChooser.css';
-import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesDigitTrigger, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
+import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesDigitTrigger, priorityManualTargets, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
@@ -548,7 +547,6 @@ interface ManualExecutionView {
 
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
-  const [startError, setStartError] = useState('');
   const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
@@ -566,7 +564,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [manualPreview, setManualPreview] = useState<ManualTradePreview | null>(null);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const timedManualExecuting = useRef(false);
-  const cooldownLeft = useBotCooldown();
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
 
   useEffect(() => {
@@ -590,28 +587,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }), [digitTrades]);
   const performance = s.performance ?? fallbackPerformance;
 
-  const activeDirection = decision?.direction ?? (s.settings?.barrier_preference === 'under' ? 'under' : 'over');
-  const activeSide = decision ? sideLabel(decision.direction, decision.barrier) : activeDirection === 'under' ? 'Under 9' : 'Over 0';
-
   const candidates = s.signal?.signal.candidates ?? [];
   const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
   const queuedMarket = pendingManualIntent
     ? s.markets.find((item) => item.symbol === pendingManualIntent.market) ?? null
     : null;
-  const queuedCandidate = pendingManualIntent
-    ? exactCandidateForSetup(candidates, pendingManualIntent.market, pendingManualIntent.direction, pendingManualIntent.barrier) ?? null
-    : null;
-  const queuedAssessment = assessTimedManualEntry(queuedCandidate);
-  const queuedFreshTick = Boolean(queuedMarket && pendingManualIntent && (
-    queuedMarket.lastEpoch > pendingManualIntent.armedAfterEpoch
-    || (pendingManualIntent.entryMode === 'digit-trigger-confirmed' && (pendingManualIntent.twoPassStage ?? 0) > 0)
-  ));
-  const queuedSecondsLeft = pendingManualIntent ? Math.max(0, Math.ceil((pendingManualIntent.expiresAt - Date.now()) / 1_000)) : 0;
-  const queuedBaseline = pendingManualIntent ? theoreticalWinForSetup(pendingManualIntent.direction, pendingManualIntent.barrier) : 0;
-  const queuedTriggerReady = Boolean(!pendingManualIntent || pendingManualIntent.entryMode === 'model'
-    || (pendingManualIntent.entryMode === 'digit-trigger-confirmed'
-      ? pendingManualIntent.twoPassStage === 3
-      : matchesDigitTrigger(pendingManualIntent.direction, queuedMarket?.lastDigit)));
   const tickerPredictions = useMemo(() => new Map(
     (s.signal?.signal.candidates ?? []).map((candidate) => [candidate.market, candidate]),
   ), [s.signal]);
@@ -638,6 +618,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   useEffect(() => {
     void loadTestRuns();
   }, []);
+
+  useEffect(() => {
+    if (s.owner) void loadPaperTrades(300);
+  }, [s.owner, s.paperSimulation?.totalTrades]);
 
   const recentItems = useMemo(() => digitTrades
     // Failed pre-purchase attempts remain in the audit trail, but they are
@@ -667,35 +651,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   );
   const openMarketChooser = useCallback(() => setMarketChooserOpen(true), []);
   const closeMarketChooser = useCallback(() => setMarketChooserOpen(false), []);
-
-  const toggleBot = async () => {
-    setStartError('');
-    if (guest) {
-      onNavigate('account');
-      return;
-    }
-    if (automation) {
-      try {
-        await stopAutomation();
-      } catch (err) {
-        setStartError(err instanceof Error ? err.message : String(err));
-      }
-      return;
-    }
-    if (cooldownLeft > 0) return;
-    if (openAccountTrade) {
-      setStartError(accountLockMessage);
-      await syncCoreState();
-      await refreshTrades();
-      return;
-    }
-    try {
-      const stake = Math.max(0.1, s.settings?.base_stake ?? 1);
-      await startAutomation({ strategyMode: s.settings?.strategy_mode ?? 'conservative', baseStake: stake });
-    } catch (err) {
-      setStartError(err instanceof Error ? err.message : String(err));
-    }
-  };
 
   const executeManualNow = async (
     direction: 'over' | 'under',
@@ -741,6 +696,48 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     } finally {
       setManualBusy(false);
     }
+  };
+
+  const previewManualNow = async (
+    direction: 'over' | 'under',
+    barrier: number,
+    marketSymbol: string,
+  ): Promise<boolean> => {
+    setManualBusy(true);
+    setManualError(false);
+    setManualMsg('Requesting a live quote for review...');
+    setManualExecution({ stage: 'quoting', message: 'Checking feed, account risk, and live payout' });
+    try {
+      const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
+      const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
+      const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
+      const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: manualStake, estWin, entryMode: 'instant' });
+      setManualPreview(preview);
+      setMarketChooserOpen(true);
+      setManualExecution({ stage: 'review', message: 'Quote ready - review every value before confirming' });
+      setManualMsg('Live quote ready for review - no contract has been purchased');
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setManualError(true);
+      setManualMsg(message);
+      setManualExecution({ stage: 'failed', message });
+      return false;
+    } finally {
+      setManualBusy(false);
+    }
+  };
+
+  const playArenaTarget = async (direction: 'over' | 'under', barrier: number, marketSymbol: string): Promise<boolean> => {
+    setManualDirection(direction);
+    direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier);
+    selectMarket(marketSymbol);
+    if (guest) {
+      onNavigate('account');
+      return false;
+    }
+    if (s.session?.mode === 'real') return previewManualNow(direction, barrier, marketSymbol);
+    return executeManualNow(direction, barrier, marketSymbol, manualStake, 'instant');
   };
 
   const placeManual = async (
@@ -945,13 +942,14 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const recoverOpenTrade = async () => {
     if (!openAccountTrade || settlementBusy) return;
     setSettlementBusy(true);
-    setStartError('');
+    setManualError(false);
     try {
       if (!openAccountTrade.contract_id) await clearStuckTrade();
       await syncCoreState();
       await refreshTrades();
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : String(err));
+      setManualError(true);
+      setManualMsg(err instanceof Error ? err.message : String(err));
     } finally {
       setSettlementBusy(false);
     }
@@ -992,7 +990,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             </button>
           </div>
         </div>
-        <div class="subtitle">{automation ? `Betting ${activeSide} or cycling` : 'Auto-cycling across markets'}</div>
+        <div class="subtitle">Manual arena · four focused digit plays · continuous virtual research</div>
       </header>
 
       {active && <div class="ticker">
@@ -1009,7 +1007,23 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       {active && <div class="dashboard">
         <div class="dash-main">
           <section class="trade-card">
-            <DecisionHero
+            {!marketChooserOpen ? <ManualGameArena
+              markets={s.markets}
+              candidates={heroCandidates}
+              paperTrades={s.paperTrades}
+              stake={manualStakeText}
+              currency={s.session?.currency}
+              accountMode={s.session?.mode}
+              feedConnected={s.feed?.connected ?? false}
+              busy={manualBusy}
+              locked={startLocked}
+              queued={Boolean(pendingManualIntent)}
+              status={manualMsg}
+              error={manualError}
+              onStake={(stake) => { setPendingManualIntent(null); setManualPreview(null); setManualStakeText(stake); }}
+              onPlay={playArenaTarget}
+              onAdvanced={openMarketChooser}
+            /> : <DecisionHero
               markets={s.markets}
               selectedMarket={market ?? null}
               candidates={heroCandidates}
@@ -1077,71 +1091,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                 setManualError(false);
                 setManualMsg('Queued trade cancelled - no contract was purchased');
               }}
-            />
+            />}
 
-            <div class={`manual-slot${marketChooserOpen ? ' setup-open' : ''}`}>
-              {!marketChooserOpen && !automation && !decision && (
-                <div class="side-selector">
-                  <button
-                    class={`side-btn over${manualDirection === 'over' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent) || Boolean(manualPreview)}
-                    onClick={() => void placeManual('over', manualOverBarrier)}
-                  >
-                    <span class="side-name">{pendingManualIntent?.direction === 'over' ? 'Waiting entry...' : `Over ${manualOverBarrier}`}</span>
-                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(manualStake, s.session?.currency)}</span>
-                  </button>
-                  <button
-                    class={`side-btn under${manualDirection === 'under' ? ' active' : ''}`}
-                    disabled={guest || !market || manualBusy || startLocked || Boolean(pendingManualIntent) || Boolean(manualPreview)}
-                    onClick={() => void placeManual('under', manualUnderBarrier)}
-                  >
-                    <span class="side-name">{pendingManualIntent?.direction === 'under' ? 'Waiting entry...' : `Under ${manualUnderBarrier}`}</span>
-                    <span class="side-odds">{shortMarketName(market?.display ?? market?.symbol ?? '')} · Entry {fmtMoney(manualStake, s.session?.currency)}</span>
-                  </button>
-                  <div class={`manual-msg${manualError ? ' error' : ''}`} aria-live="polite">{manualMsg}</div>
-                  {pendingManualIntent && (
-                    <div class="manual-queued-entry" aria-live="polite">
-                      <div class="manual-queued-head">
-                        <span>Queued trade</span>
-                        <b>{queuedSecondsLeft}s safety limit</b>
-                      </div>
-                      <strong>{sideLabel(pendingManualIntent.direction, pendingManualIntent.barrier)} on {shortMarketName(queuedMarket?.display ?? pendingManualIntent.market)}</strong>
-                      <small>It will place only after every entry check passes. The safety limit cancels the queue; it never buys by itself.</small>
-                      <div class="manual-queued-checks" aria-label="Queued trade entry checks">
-                        <span class={queuedFreshTick ? 'pass' : ''}>Fresh tick</span>
-                        {pendingManualIntent.entryMode === 'digit-trigger' && <span class={queuedTriggerReady ? 'pass' : ''}>{pendingManualIntent.direction === 'over' ? 'Trigger 8 / 9' : 'Trigger 0 / 1'}</span>}
-                        <span class={(queuedCandidate?.transitionSamples ?? 0) >= 20 ? 'pass' : ''}>Transitions {Math.min(20, queuedCandidate?.transitionSamples ?? 0)}/20</span>
-                        <span class={(queuedCandidate?.transitionProb ?? 0) >= queuedBaseline + .03 ? 'pass' : ''}>Lift {queuedCandidate?.transitionProb != null ? `${((queuedCandidate.transitionProb - queuedBaseline) * 100).toFixed(1)}%` : '--'}</span>
-                        <span class={(queuedCandidate?.edge ?? 0) >= .01 ? 'pass' : ''}>Edge {queuedCandidate?.edge != null ? `${(queuedCandidate.edge * 100).toFixed(1)}%` : '--'}</span>
-                        <span class={(queuedCandidate?.expectedROI ?? 0) >= .01 ? 'pass' : ''}>ROI {queuedCandidate?.expectedROI != null ? `${(queuedCandidate.expectedROI * 100).toFixed(1)}%` : '--'}</span>
-                        <span class={(queuedCandidate?.consistency ?? 0) >= .55 ? 'pass' : ''}>Consistency {queuedCandidate?.consistency != null ? `${(queuedCandidate.consistency * 100).toFixed(0)}%` : '--'}</span>
-                      </div>
-                      <em>{!queuedFreshTick ? 'Waiting for a new digit after the queue was armed.' : !queuedTriggerReady ? pendingManualIntent.direction === 'over' ? 'Waiting for 8 or 9 before considering an Over entry.' : 'Waiting for 0 or 1 before considering an Under entry.' : queuedAssessment.reason}</em>
-                      <button
-                        type="button"
-                        class="manual-cancel-entry"
-                        onClick={() => {
-                          setPendingManualIntent(null);
-                          setManualError(false);
-                          setManualMsg('Queued trade cancelled - no contract was purchased');
-                        }}
-                      >Cancel queued trade</button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {!marketChooserOpen && startError && (
-              <div class="bot-feedback" aria-live="polite">
-                <div class="bot-error">{startError}</div>
-              </div>
-            )}
-
-            {!marketChooserOpen && <button class={`bot-control${automation ? ' running' : ''}`} disabled={!automation && !guest && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
-              <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
-              <span>{automation ? 'Stop Bot' : guest ? 'Connect Deriv to trade' : startLocked ? 'Waiting for outcome' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
-            </button>}
             {!marketChooserOpen && openAccountTrade && <button class="bot-inline-action" type="button" disabled={settlementBusy} onClick={() => void recoverOpenTrade()}>
               {settlementBusy ? 'Checking outcome...' : openAccountTrade.contract_id ? 'Refresh outcome' : 'Check submitted order'}
             </button>}
@@ -1172,7 +1123,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               <button class="section-action" onClick={() => onNavigate('history')}>View All</button>
             </div>
             <div class="activity">
-              {digitTrades.length === 0 && <div class="empty-hint">No Over/Under trades yet - start the bot</div>}
+              {digitTrades.length === 0 && <div class="empty-hint">No Over/Under trades yet - choose a target in the arena</div>}
               {recentItems.map((item) => (
                 <ActivityRow key={`trade-${item.trade.id}`} trade={item.trade} market={marketsBySymbol.get(item.trade.market)} onOpen={() => setActivityDetail({ type: 'trade', trade: item.trade })} />
               ))}
@@ -1836,6 +1787,103 @@ function QueueQuote({ quote, digit }: { quote: number; digit: number }): JSX.Ele
     <small>Live quote</small>
     <b>{text.slice(0, index)}<mark>{text.charAt(index)}</mark></b>
   </span>;
+}
+
+function ManualGameArena({
+  markets, candidates, paperTrades, stake, currency, accountMode, feedConnected,
+  busy, locked, queued, status, error, onStake, onPlay, onAdvanced,
+}: {
+  markets: Market[];
+  candidates: SignalCandidate[];
+  paperTrades: PaperTrade[];
+  stake: string;
+  currency?: string;
+  accountMode?: 'demo' | 'real';
+  feedConnected: boolean;
+  busy: boolean;
+  locked: boolean;
+  queued: boolean;
+  status: string;
+  error: boolean;
+  onStake: (stake: string) => void;
+  onPlay: (direction: 'over' | 'under', barrier: number, market: string) => Promise<boolean>;
+  onAdvanced: () => void;
+}): JSX.Element {
+  const targets = priorityManualTargets(markets, candidates, paperTrades);
+  const bestScore = Math.max(...targets.map((target) => target.score), -Infinity);
+  const settledPaper = paperTrades.filter((trade) => trade.status === 'won' || trade.status === 'lost');
+  const paperWins = settledPaper.filter((trade) => trade.status === 'won').length;
+  const playAmount = Math.max(.1, Number(stake) || 1);
+
+  return (
+    <section class="manual-arena" aria-label="Manual trade arena">
+      <header class="arena-head">
+        <div>
+          <span class="arena-eyebrow"><i class={feedConnected ? 'online' : ''}></i>{feedConnected ? 'Live market field' : 'Reconnecting market field'}</span>
+          <h1>Pick a power play.</h1>
+          <p>Each target locks onto the strongest market for that contract. Pressing it is the trade action.</p>
+        </div>
+        <div class="arena-wallet">
+          <label><span>Play amount</span><input type="number" min="0.1" step="0.1" inputMode="decimal" value={stake} onInput={(event) => onStake((event.currentTarget as HTMLInputElement).value)} /></label>
+          <small>{accountMode === 'real' ? 'Real account · review required' : accountMode === 'demo' ? 'Demo account · one-press play' : 'Connect to play'}</small>
+        </div>
+      </header>
+
+      <div class="arena-field">
+        <div class="arena-field-lines" aria-hidden="true"><i></i><i></i><i></i></div>
+        {targets.length === 0 && [
+          ['Over 1', 'over'], ['Over 2', 'over'], ['Under 7', 'under'], ['Under 8', 'under'],
+        ].map(([label, tone], index) => (
+          <div class={`arena-target arena-target-loading ${tone}`} key={label}>
+            <span class="arena-rank">ZONE 0{index + 1}</span>
+            <span class="arena-orb"><b>·</b><i></i></span>
+            <span class="arena-contract">{label}</span>
+            <strong>Scanning markets</strong>
+            <span class="arena-signal"><i></i>Waiting for live ticks</span>
+            <span class="arena-launch">LOCKING TARGET...</span>
+          </div>
+        ))}
+        {targets.map((target, index) => {
+          const paperTotal = target.paperWins + target.paperLosses;
+          const highDigits = target.market.recentDigits.filter((digit) => digit >= 5).length;
+          const highMix = target.market.recentDigits.length ? highDigits / target.market.recentDigits.length : .5;
+          const lift = target.score * 100;
+          const isBest = target.score === bestScore;
+          const tone = target.direction === 'over' ? 'over' : 'under';
+          const strength = lift >= 3 ? 'Hot' : lift >= 1 ? 'Ready' : 'Watch';
+          return (
+            <button
+              type="button"
+              class={`arena-target ${tone}${isBest ? ' best' : ''}`}
+              style={{ '--arena-delay': `${index * 80}ms` } as JSX.CSSProperties}
+              disabled={busy || locked || queued || !feedConnected}
+              onClick={() => void onPlay(target.direction, target.barrier, target.market.symbol)}
+              key={`${target.direction}-${target.barrier}`}
+              aria-label={`Play ${target.label} on ${shortMarketName(target.market.display)} for ${fmtMoney(playAmount, currency)}`}
+            >
+              <span class="arena-rank">{isBest ? 'BEST NOW' : `ZONE 0${index + 1}`}</span>
+              <span class="arena-orb"><b>{target.market.lastDigit}</b><i></i></span>
+              <span class="arena-contract">{target.label}</span>
+              <strong>{shortMarketName(target.market.display)}</strong>
+              <span class="arena-signal"><i></i>{strength} · {lift >= 0 ? '+' : ''}{lift.toFixed(1)} model lift</span>
+              <span class="arena-evidence">
+                <small>Recent {Math.round(target.observedWin * 100)}%</small>
+                <small>High digits {Math.round(highMix * 100)}%</small>
+                <small>Paper {paperTotal ? `${target.paperWins}–${target.paperLosses}` : 'learning'}</small>
+              </span>
+              <span class="arena-launch">{busy ? 'SENDING...' : `PLAY ${fmtMoney(playAmount, currency)}`}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <footer class="arena-foot">
+        <div class="arena-paper"><span><i></i>Paper scout runs continuously</span><b>{settledPaper.length ? `${paperWins}/${settledPaper.length} wins observed` : 'Building the first evidence sample'}</b></div>
+        <div class={`arena-message${error ? ' error' : ''}`} aria-live="polite">{status || 'Targets use public ticks and delayed-entry evidence. A live quote is requested only when you play.'}</div>
+        <button type="button" class="arena-advanced" onClick={onAdvanced}>Advanced setup <Icon name="chevronRight" size={14} /></button>
+      </footer>
+    </section>
+  );
 }
 
 function InlineMarketChooser({
@@ -2658,7 +2706,7 @@ function BotPage(): JSX.Element {
   if (!s.session) {
     return (
       <>
-        <header class="header"><div class="page-title">Bot Settings</div><div class="subtitle">Read-only while exploring the public dashboard</div></header>
+        <header class="header"><div class="page-title">Bot Cockpit</div><div class="subtitle">Automation controls live here, separate from manual play</div></header>
         <div class="section">
           <Detail label="Strategy" value={s.settings?.strategy_mode ?? 'conservative'} />
           <Detail label="Mode" value={s.settings?.bot_mode ?? 'balanced'} />
@@ -2750,8 +2798,8 @@ function BotPage(): JSX.Element {
   return (
     <>
       <header class="header">
-        <div class="page-title">Bot Settings</div>
-        <div class="subtitle">{automation ? 'Bot is running' : 'Bot is stopped'}</div>
+        <div class="page-title">Bot Cockpit</div>
+        <div class="subtitle">Configure, protect, and launch automation from one control room</div>
       </header>
 
       <ObservationRail
@@ -2761,6 +2809,23 @@ function BotPage(): JSX.Element {
         reason={s.hold?.reason}
         compact
       />
+
+      <section class={`bot-command-deck${automation ? ' running' : ''}`}>
+        <div class="bot-command-state">
+          <span>{automation ? 'AUTOMATION LIVE' : 'AUTOMATION PARKED'}</span>
+          <strong>{automation ? 'The bot is scanning and managing its run.' : 'Manual trading remains available on Home.'}</strong>
+          <small>{s.paperSimulation?.phase === 'running' ? 'Virtual paper scout is running independently.' : 'Virtual paper scout is reconnecting.'}</small>
+        </div>
+        <div class="bot-command-metrics">
+          <div><span>Account</span><b>{s.session.mode === 'demo' ? 'Demo' : 'Real'}</b></div>
+          <div><span>Run</span><b>{s.automation?.runTarget ? `${s.automation.runTrades ?? 0}/${s.automation.runTarget}` : 'Open-ended'}</b></div>
+          <div><span>Paper sample</span><b>{s.paperSimulation?.totalTrades ?? 0}</b></div>
+        </div>
+        <button class="bot-command-button" disabled={!automation && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
+          <Icon name={automation ? 'square' : 'play'} size={16} strokeWidth={2.2} />
+          <span>{automation ? 'Stop automation' : startLocked ? 'Settlement recovery active' : cooldownLeft > 0 ? `Ready in ${cooldownLeft}s` : 'Launch automation'}</span>
+        </button>
+      </section>
 
       <div class={`section bot-settings-section${advancedOpen ? ' advanced-open' : ''}`}>
         <div class="set-group bot-account">
@@ -2915,10 +2980,6 @@ function BotPage(): JSX.Element {
           </div>
         )}
 
-        <button class="bot-control" disabled={!automation && (cooldownLeft > 0 || startLocked)} onClick={() => void toggleBot()}>
-          <Icon name={automation ? 'square' : 'play'} size={14} strokeWidth={2.2} />
-          <span>{automation ? 'Stop Bot' : startLocked ? 'Settlement recovery active' : cooldownLeft > 0 ? `Start in ${cooldownLeft}s` : 'Start Bot'}</span>
-        </button>
       </div>
     </>
   );
@@ -4624,8 +4685,7 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
     setErr('');
     onBusy(true);
     try {
-      if (paperSimulation?.phase === 'running') await stopPaperSimulation();
-      else await startPaperSimulation();
+      if (paperSimulation?.phase !== 'running') await startPaperSimulation();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -4637,9 +4697,9 @@ function PaperTab({ busy, onBusy }: { busy: boolean; onBusy: (b: boolean) => voi
     <>
       <LabControls
         busy={busy}
-        disabled={!owner}
+        disabled={!owner || paperSimulation?.phase === 'running'}
         onRun={run}
-        runLabel={!owner ? 'Unlock dashboard to run simulation' : paperSimulation?.phase === 'running' ? 'Stop paper simulation' : 'Start paper simulation'}
+        runLabel={!owner ? 'Unlock dashboard to view research' : paperSimulation?.phase === 'running' ? 'Continuous paper scout is on' : 'Resume paper scout'}
       />
       <PaperSimulationStage
         market={selectedMarket}

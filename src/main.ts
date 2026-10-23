@@ -57,7 +57,13 @@ function paperSignalFromHubEvent(
 ): PaperSignal | null {
   const raw = event.signal as { holds?: unknown; candidates?: unknown; reason?: unknown } | undefined;
   if (raw?.holds || !Array.isArray(raw?.candidates)) return null;
-  const candidate = raw.candidates[0] as Record<string, unknown> | undefined;
+  const candidates = raw.candidates as Record<string, unknown>[];
+  // Continuous virtual research concentrates on the four manual plays used in
+  // the cockpit. This never changes live account execution or sizing.
+  const candidate = candidates.find((item) => (
+    (item.direction === 'over' && (item.barrier === 1 || item.barrier === 2))
+    || (item.direction === 'under' && (item.barrier === 7 || item.barrier === 8))
+  )) ?? candidates[0];
   if (!candidate) return null;
   const direction = candidate.direction;
   const market = candidate.market;
@@ -215,6 +221,9 @@ async function main(): Promise<void> {
       ...(('reason' in event && event.reason) ? { reason: event.reason } : {}),
     });
   });
+  // Public-feed paper research is intentionally always on. It is isolated
+  // from Deriv balances, recovery, stake sizing, and the private order lane.
+  paperSimulator.start();
   const registry = new MarketRegistry({
     onTick: (snap) => {
       enqueueDigit(snap.symbol, snap.lastEpoch, snap.lastQuote, snap.lastDigit);
