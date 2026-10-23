@@ -1193,6 +1193,26 @@ input::placeholder, textarea::placeholder { color: #aeb5c4; opacity: 1; }
    existing manual arena actions and their server-side quote/risk workflow.
 ========================================================= */
 
+.trading-room-frame-shell {
+  position: relative;
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(105, 110, 157, .42);
+  background: #090a12;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .32);
+}
+
+.trading-room-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #090a12;
+}
+
 .trading-room-home {
   position: relative;
   grid-column: 1;
@@ -1272,6 +1292,7 @@ input::placeholder, textarea::placeholder { color: #aeb5c4; opacity: 1; }
 }
 
 @media (max-width: 999.98px) {
+  .trading-room-frame-shell { grid-row: auto; height: calc(100dvh - 150px); min-height: 620px; border-inline: 0; }
   .trading-room-home{grid-row:auto;min-height:calc(100dvh - 150px);overflow-y:auto;border-inline:0}.room-environment{height:270px;position:absolute}.room-ceiling,.room-wall,.room-shelf,.room-plant,.room-lamp,.room-gym{display:none}.room-window{left:8%;top:11%;width:48%;height:44%}.room-desk{left:22%;right:10%;top:30%;bottom:8%}.room-avatar{left:60%;bottom:-8%;transform:scale(.7)!important}.room-chair{left:56%;bottom:-14%;transform:scale(.72)}.room-hud{left:8px;right:8px;top:8px;justify-content:flex-end}.room-hud>div{padding:6px 8px}.room-hud b{font-size:10px}.room-action-rail{top:70px;left:8px;right:8px;justify-content:center}.room-action-rail button{min-height:38px}.trading-room-home .room-ticker{top:116px;left:8px;right:8px}.room-mode-readout{top:155px;bottom:auto}.trading-room-home .room-dashboard{position:relative;inset:auto;padding-top:245px;overflow:visible}.trading-room-home .room-dashboard .dash-main,.trading-room-home .room-dashboard .dash-side{position:relative;inset:auto;width:auto;height:auto;max-height:none;margin:0 8px 12px;overflow:visible}.trading-room-home .arena-target{min-height:245px}.trading-room-home .arena-foot{grid-template-columns:1fr auto}.trading-room-home .arena-message{grid-column:1/-1;grid-row:2}.trading-room-home .dash-side>.section{margin-top:0}
 }
 

@@ -562,6 +562,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
   const [manualPreview, setManualPreview] = useState<ManualTradePreview | null>(null);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
+  const roomFrameRef = useRef<HTMLIFrameElement>(null);
   const timedManualExecuting = useRef(false);
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
 
@@ -701,6 +702,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     direction: 'over' | 'under',
     barrier: number,
     marketSymbol: string,
+    stakeOverride = manualStake,
   ): Promise<boolean> => {
     setManualBusy(true);
     setManualError(false);
@@ -710,7 +712,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
-      const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: manualStake, estWin, entryMode: 'instant' });
+      const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant' });
       setManualPreview(preview);
       setMarketChooserOpen(true);
       setManualExecution({ stage: 'review', message: 'Quote ready - review every value before confirming' });
@@ -727,7 +729,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     }
   };
 
-  const playArenaTarget = async (direction: 'over' | 'under', barrier: number, marketSymbol: string): Promise<boolean> => {
+  const playArenaTarget = async (direction: 'over' | 'under', barrier: number, marketSymbol: string, stakeOverride = manualStake): Promise<boolean> => {
     setManualDirection(direction);
     direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier);
     selectMarket(marketSymbol);
@@ -735,8 +737,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       onNavigate('account');
       return false;
     }
-    if (s.session?.mode === 'real') return previewManualNow(direction, barrier, marketSymbol);
-    return executeManualNow(direction, barrier, marketSymbol, manualStake, 'instant');
+    if (s.session?.mode === 'real') return previewManualNow(direction, barrier, marketSymbol, stakeOverride);
+    return executeManualNow(direction, barrier, marketSymbol, stakeOverride, 'instant');
   };
 
   const placeManual = async (
@@ -954,6 +956,83 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     }
   };
 
+  const roomState = useMemo(() => ({
+    balance: s.session?.balance ?? 0,
+    currency: s.session?.currency ?? 'USD',
+    profit: performance.profit,
+    feedConnected: s.feed?.connected ?? false,
+    owner: Boolean(s.owner),
+    accountMode: s.session?.mode ?? null,
+    selected: market?.symbol ?? '',
+    busy: manualBusy,
+    status: manualMsg,
+    canTrade: Boolean(s.session && s.feed?.connected && !openAccountTrade && !manualBusy),
+    markets: s.markets.map((item) => ({
+      symbol: item.symbol,
+      display: item.display,
+      lastQuote: item.lastQuote,
+      lastDigit: item.lastDigit,
+      recentQuotes: item.recentQuotes,
+      recentDigits: item.recentDigits,
+    })),
+    trades: digitTrades.slice(0, 30).map((trade) => ({
+      id: trade.id,
+      ts: trade.ts,
+      market: trade.market,
+      direction: trade.contract_type === 'DIGITUNDER' ? 'under' : 'over',
+      barrier: trade.barrier,
+      stake: trade.stake,
+      profit: trade.profit,
+      status: trade.status,
+      entrySpot: trade.entry_spot,
+      exitDigit: trade.exit_digit,
+    })),
+  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.feed?.connected, s.markets, s.owner, s.session]);
+
+  const postRoomState = useCallback(() => {
+    roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
+  }, [roomState]);
+
+  useEffect(() => {
+    if (active && !marketChooserOpen) postRoomState();
+  }, [active, marketChooserOpen, postRoomState]);
+
+  useEffect(() => {
+    const receiveRoomAction = (event: MessageEvent): void => {
+      if (event.origin !== window.location.origin || event.source !== roomFrameRef.current?.contentWindow) return;
+      const message = event.data as { type?: string; page?: Page; payload?: { direction?: string; barrier?: number; stake?: number; market?: string } } | null;
+      if (!message?.type) return;
+      if (message.type === 'zeronine:room-ready') {
+        postRoomState();
+        return;
+      }
+      if (message.type === 'zeronine:room-select-market' && typeof message.payload?.market === 'string') {
+        if (s.markets.some((item) => item.symbol === message.payload?.market)) selectMarket(message.payload.market);
+        return;
+      }
+      if (message.type === 'zeronine:room-navigate' && message.page && ['history', 'account'].includes(message.page)) {
+        onNavigate(message.page);
+        return;
+      }
+      if (message.type !== 'zeronine:room-trade') return;
+      const { direction, barrier, stake, market: marketSymbol } = message.payload ?? {};
+      if ((direction !== 'over' && direction !== 'under') || typeof barrier !== 'number' || !Number.isInteger(barrier) || barrier < 0 || barrier > 9 || typeof stake !== 'number' || !Number.isFinite(stake) || stake <= 0 || typeof marketSymbol !== 'string' || !s.markets.some((item) => item.symbol === marketSymbol)) {
+        roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-trade-result', ok: false, message: 'That game target is not valid.' }, window.location.origin);
+        return;
+      }
+      setManualStakeText(String(stake));
+      void playArenaTarget(direction, barrier, marketSymbol, stake).then((ok) => {
+        roomFrameRef.current?.contentWindow?.postMessage({
+          type: 'zeronine:room-trade-result',
+          ok,
+          message: ok ? (s.session?.mode === 'real' ? 'Live quote ready for your confirmation.' : 'Deriv order submitted.') : 'No contract was purchased. Check the room status.',
+        }, window.location.origin);
+      });
+    };
+    window.addEventListener('message', receiveRoomAction);
+    return () => window.removeEventListener('message', receiveRoomAction);
+  }, [onNavigate, playArenaTarget, postRoomState, s.markets, s.session?.mode]);
+
   return (
     <>
       <header class="header">
@@ -996,7 +1075,17 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <div class="subtitle">Interactive trading room · choose a live target to play · Deriv execution stays behind the game</div>
       </header>
 
-      {active && <section class={`trading-room-home room-${roomActivity}`} aria-label="Interactive manual trading room">
+      {active && !marketChooserOpen && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
+        <iframe
+          ref={roomFrameRef}
+          class="trading-room-frame"
+          src="/trading-room.html"
+          title="ZeroNine interactive trading room"
+          onLoad={postRoomState}
+        />
+      </section>}
+
+      {active && marketChooserOpen && <section class={`trading-room-home room-${roomActivity}`} aria-label="Advanced manual trading controls">
         <TradingRoomEnvironment
           market={market ?? null}
           balance={s.session?.balance ?? 0}
