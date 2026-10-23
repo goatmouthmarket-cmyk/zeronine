@@ -113,11 +113,14 @@ async function main(): Promise<void> {
 
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   app.addHook('onSend', async (req, reply, payload) => {
+    const isTradingRoom = req.url.split('?', 1)[0] === '/trading-room.html';
     reply.header('X-Content-Type-Options', 'nosniff');
-    reply.header('X-Frame-Options', 'DENY');
+    reply.header('X-Frame-Options', isTradingRoom ? 'SAMEORIGIN' : 'DENY');
     reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
-    reply.header('Content-Security-Policy', "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; connect-src 'self' ws: wss:");
+    reply.header('Content-Security-Policy', isTradingRoom
+      ? "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net"
+      : "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; connect-src 'self' ws: wss:");
     if (req.url.startsWith('/api/') || req.url.startsWith('/health')) {
       reply.header('Cache-Control', 'private, no-store, max-age=0');
       reply.header('Pragma', 'no-cache');
