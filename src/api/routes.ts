@@ -542,6 +542,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         accountId: owner ? session?.loginid ?? null : null,
         multiplierOptions: [10, 20, 30, 50, 100, 200, 500],
         defaultMultiplier: 20,
+        maxStake: config.goldMaxStake,
         openTrades,
         blockedByOpenTrade: null,
         message: !owner
@@ -761,8 +762,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   /**
    * Gold demo execution uses Deriv API multiplier contracts, not MT5 or
-   * cTrader CFD order routing. It shares the account-wide single-open-contract
-   * lock with Momentum and manual trades.
+   * cTrader CFD order routing. It shares the account-level execution lock
+   * with other contract products.
    */
   app.post('/api/gold/trade', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
@@ -810,9 +811,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       return { error: goldState.research.reason ?? 'Gold market data is not ready yet' };
     }
     const settings = getSettings();
-    if (stake > settings.max_stake) {
+    if (stake > config.goldMaxStake) {
       reply.code(400);
-      return { error: `stake exceeds the configured maximum (${settings.max_stake})` };
+      return { error: `Gold stake exceeds the configured maximum (${config.goldMaxStake})` };
     }
     await reconcileSettledMultiplierLots(`deriv:${session.loginid}`);
     const admission = multiplierLotAdmission(`deriv:${session.loginid}`, 'gold', stake, session.balance);

@@ -102,6 +102,8 @@ test('manual Gold demo trade can deliberately differ from the research suggestio
   cfg.config.dashboardAdminToken = '';
   cfg.config.goldDerivSymbol = 'frxXAUUSD';
   cfg.config.goldDerivDisplay = 'Gold / US Dollar';
+  cfg.config.goldMaxStake = 100;
+  store.updateSettings({ max_stake: 2 });
   store.setSession({
     id: 'gold-demo', loginid: 'VRTC_GOLD', balance: 500, currency: 'USD', mode: 'demo', auth_kind: 'pat',
     token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
@@ -135,11 +137,11 @@ test('manual Gold demo trade can deliberately differ from the research suggestio
     paperSimulator: new paperMod.PaperSimulator(), gold: { state: () => goldState('BUY') } as never,
   });
 
-  const response = await app.inject({ method: 'POST', url: '/api/gold/trade', payload: { side: 'SELL', stake: 2, multiplier: 20, takeProfit: 1.5, stopLoss: .75 } });
+  const response = await app.inject({ method: 'POST', url: '/api/gold/trade', payload: { side: 'SELL', stake: 3, multiplier: 20, takeProfit: 1.5, stopLoss: .75 } });
   assert.equal(response.statusCode, 200);
   assert.equal(boughtProposal, 'gold-proposal');
   assert.deepEqual(quoteArgs, {
-    direction: 'down', amount: 2, currency: 'USD', symbol: 'frxXAUUSD', multiplier: 20, takeProfit: 1.5, stopLoss: .75,
+    direction: 'down', amount: 3, currency: 'USD', symbol: 'frxXAUUSD', multiplier: 20, takeProfit: 1.5, stopLoss: .75,
   });
   const trade = store.getOpenTrade('deriv:VRTC_GOLD');
   assert.ok(trade);

@@ -877,6 +877,7 @@ export interface GoldDerivState {
   accountId: string | null;
   multiplierOptions: number[];
   defaultMultiplier: number;
+  maxStake: number;
   openTrades: TradeRow[];
   blockedByOpenTrade: TradeRow | null;
   message: string;
@@ -1556,7 +1557,6 @@ export async function bootstrap(): Promise<void> {
   }
   void loadAutoBacktestStatus();
   void loadAutoPaperStatus();
-  void loadMomentumState();
   void loadGoldState();
   connectWs();
 }

@@ -47,6 +47,8 @@ export interface AppConfig {
   autoTuneFreshnessMs: number;
   goldDerivSymbol: string;
   goldDerivDisplay: string;
+  /** Independent demo-only Gold order cap; digit bot sizing never applies here. */
+  goldMaxStake: number;
   goldSentimentEnabled: boolean;
   goldSentimentIntervalMs: number;
   goldSentimentTimeoutMs: number;
@@ -141,6 +143,7 @@ export function loadConfig(): AppConfig {
     autoTuneFreshnessMs: num('AUTO_TUNE_FRESHNESS_MS', 48 * 60 * 60 * 1000),
     goldDerivSymbol: process.env.GOLD_DERIV_SYMBOL || 'frxXAUUSD',
     goldDerivDisplay: process.env.GOLD_DERIV_DISPLAY || 'Gold / US Dollar',
+    goldMaxStake: Math.max(0.35, num('GOLD_MAX_STAKE', 100)),
     // News/social sentiment worker for Gold research. Enabled by default; a
     // total fetch failure only leaves sentiment absent, never blocks trading.
     goldSentimentEnabled: process.env.GOLD_SENTIMENT_ENABLED !== '0',

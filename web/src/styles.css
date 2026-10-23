@@ -4122,6 +4122,15 @@ button.activity-row {
     gap: 5px;
 }
 
+.nav-link.icon-only {
+    display: inline-flex;
+    align-items: center;
+    width: 40px;
+    min-width: 40px;
+    padding-inline: 0;
+    justify-content: center;
+}
+
 /* =========================================================
    KEYFRAMES
 ========================================================= */

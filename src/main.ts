@@ -7,7 +7,6 @@ import { config } from './config.ts';
 import { resolveStoredToken } from './deriv/oauth.ts';
 import { Hub } from './api/hub.ts';
 import { registerApi } from './api/routes.ts';
-import { MomentumObserver } from './momentum/observer.ts';
 import { registerWs } from './api/ws.ts';
 import { MarketRegistry } from './core/marketState.ts';
 import { DerivPublicFeed } from './deriv/publicFeed.ts';
@@ -303,7 +302,6 @@ async function main(): Promise<void> {
   client.onDisconnect = () => hub.emit({ type: 'session', ts: Date.now(), session: null, reason: 'disconnected' });
 
   const automation = new Automation(registry, client, hub, decisionMemory);
-  const momentum = new MomentumObserver(hub);
   // News/social sentiment is research evidence only: it feeds the Gold signal
   // weights and the perfect-setup indicator, never order placement itself.
   const goldSentimentFeeds: GoldSentimentFeedConfig[] = config.goldSentimentNewsFeeds.length > 0
@@ -365,43 +363,8 @@ async function main(): Promise<void> {
   // Product-specific research adapters run on a bounded timer. They observe
   // compact existing state; they never open sockets, block a feed, or submit
   // an account order. The high-frequency digit adapter above remains tick-led.
-  let lastMomentumOutcomeKey = '';
   const entryResearchTimer = setInterval(() => {
     try {
-      const momentumState = momentum.state();
-      const window = momentumState.window;
-      const signal = window?.decisionSignal ?? window?.signal;
-      const latest = window?.samples.at(-1);
-      if (window && signal && signal.direction !== 'wait' && latest) {
-        const signalId = `momentum:${window.startedAt}:${signal.direction}`;
-        const decisions = entryResearch.observe({
-          product: 'multipliers', market: momentumState.config?.symbol ?? 'momentum', signalId,
-          epoch: latest.epoch, direction: signal.direction,
-          momentum: Math.abs(window.changePct) / .01,
-          extension: Math.abs(window.changePct) / .03,
-          rugRisk: 0,
-          pullback: Math.max(0, Math.min(1, 1 - Math.abs(window.changePct) / .02)),
-        });
-        for (const decision of decisions) {
-          const key = `multipliers:${decision.methodId}:${signalId}`;
-          if (decision.state === 'ready' && !pendingEntryOutcomes.has(key)) {
-            pendingEntryOutcomes.set(key, { product: 'multipliers', methodId: decision.methodId, signalId, market: momentumState.config?.symbol ?? 'momentum', afterEpoch: latest.epoch, direction: signal.direction });
-          }
-        }
-      }
-      const outcome = momentumState.lastOutcome;
-      if (outcome) {
-        const outcomeKey = `${outcome.openPrice}:${outcome.exitPrice}:${outcome.direction}`;
-        if (outcomeKey !== lastMomentumOutcomeKey) {
-          lastMomentumOutcomeKey = outcomeKey;
-          for (const [key, pending] of pendingEntryOutcomes) {
-            if (pending.product !== 'multipliers') continue;
-            entryResearch.recordOutcome({ product: 'multipliers', methodId: pending.methodId, signalId: pending.signalId, pnl: outcome.won ? .9 : -1 });
-            pendingEntryOutcomes.delete(key);
-          }
-        }
-      }
-
       const goldState = gold.state().research.state;
       const goldSignal = goldState.signal;
       const quote = goldState.quote;
@@ -433,16 +396,7 @@ async function main(): Promise<void> {
     }
   }, 500);
   entryResearchTimer.unref();
-  const startMomentumResearch = (): void => {
-    void momentum.startAutomatic().catch((error) => {
-      console.warn(`[momentum] automatic research start failed; retrying in 30 seconds: ${String(error)}`);
-      const retry = setTimeout(startMomentumResearch, 30_000);
-      retry.unref();
-    });
-  };
-  startMomentumResearch();
-
-  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, momentum, gold, entryResearch });
+  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, gold, entryResearch });
   await registerWs(app, hub, registry);
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');

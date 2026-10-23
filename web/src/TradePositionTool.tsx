@@ -23,6 +23,7 @@ export interface TradePositionToolProps {
   onClose?: () => void;
   closeDisabled?: boolean;
   stake?: string;
+  stakeMax?: number;
   onStakeChange?: (value: string) => void;
   stakeDisabled?: boolean;
   multiplier?: string;
@@ -85,6 +86,7 @@ export function TradePositionTool({
   onClose,
   closeDisabled = false,
   stake,
+  stakeMax,
   onStakeChange,
   stakeDisabled = false,
   multiplier,
@@ -276,7 +278,7 @@ export function TradePositionTool({
         <button type="button" class={side === 'long' ? 'active long' : ''} onClick={() => onSideChange('long')}>Long</button>
         <button type="button" class={side === 'short' ? 'active short' : ''} onClick={() => onSideChange('short')}>Short</button>
       </div>}
-      {onStakeChange && <label class="position-stake"><span>Stake</span><input type="number" inputMode="decimal" min="0.35" step="0.01" value={stake ?? ''} disabled={stakeDisabled} onInput={(event) => onStakeChange(event.currentTarget.value)} /></label>}
+      {onStakeChange && <label class="position-stake"><span>{stakeMax ? `Stake · max ${stakeMax}` : 'Stake'}</span><input type="number" inputMode="decimal" min="0.35" max={stakeMax} step="0.01" value={stake ?? ''} disabled={stakeDisabled} onInput={(event) => onStakeChange(event.currentTarget.value)} /></label>}
       {onMultiplierChange && multiplierOptions && <label class="position-stake"><span>Multiplier</span><select value={multiplier ?? ''} disabled={multiplierDisabled} onChange={(event) => onMultiplierChange(event.currentTarget.value)}>{multiplierOptions.map((value) => <option value={value} key={value}>x{value}</option>)}</select></label>}
       {(onPlaceLong || onPlaceShort) && <div class="position-place-actions">
         {onPlaceLong && <button class="long" type="button" disabled={longActionDisabled} onClick={onPlaceLong}>{placingSide === 'long' ? 'Buying…' : 'Buy'}</button>}

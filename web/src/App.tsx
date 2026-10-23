@@ -63,7 +63,7 @@ import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgre
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
 
-type Page = 'home' | 'bot' | 'history' | 'backtest' | 'momentum' | 'gold' | 'account' | 'privacy' | 'terms' | 'refunds' | 'cookies';
+type Page = 'home' | 'bot' | 'history' | 'backtest' | 'gold' | 'account' | 'privacy' | 'terms' | 'refunds' | 'cookies';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
 type ActivityDetail = { type: 'trade'; trade: TradeRow } | { type: 'run'; run: TestRunRow };
 
@@ -72,7 +72,6 @@ const PAGE_PATHS: Record<Page, string> = {
   history: '/history',
   backtest: '/lab',
   bot: '/bot',
-  momentum: '/momentum',
   gold: '/gold',
   account: '/account',
   privacy: '/privacy',
@@ -103,8 +102,8 @@ function isMultiplierTrade(trade: TradeRow): boolean {
   return trade.contract_type === 'MULTUP' || trade.contract_type === 'MULTDOWN';
 }
 
-function multiplierTradeFamily(trade: TradeRow): 'Gold' | 'Momentum' {
-  return /gold/i.test(`${trade.reason ?? ''} ${trade.market ?? ''}`) ? 'Gold' : 'Momentum';
+function multiplierTradeFamily(trade: TradeRow): 'Gold' | 'Multiplier' {
+  return /gold/i.test(`${trade.reason ?? ''} ${trade.market ?? ''}`) ? 'Gold' : 'Multiplier';
 }
 
 function tradeContractLabel(trade: TradeRow): string {
@@ -374,7 +373,7 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const labels: Record<Page, string> = {
-      home: 'ZeroNine', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', momentum: 'Momentum', gold: 'Gold', account: 'Account',
+      home: 'ZeroNine', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', gold: 'Gold', account: 'Account',
       privacy: 'Privacy policy', terms: 'Terms of use', refunds: 'Refund policy', cookies: 'Cookie and storage policy',
     };
     document.title = `${labels[page]} | ZeroNine`;
@@ -391,7 +390,6 @@ export function App(): JSX.Element {
           {page === 'bot' && <div class="view view-bot"><BotPage /></div>}
           {page === 'history' && <div class="view view-history"><HistoryPage /></div>}
           {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
-          {page === 'momentum' && <div class="view view-momentum"><MomentumPage /></div>}
           {page === 'gold' && <div class="view view-gold"><GoldPage /></div>}
           {page === 'account' && <div class="view view-account"><AccountPage /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
@@ -975,11 +973,15 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             </div>
           </div>
           <nav class="desktop-nav" aria-label="Main navigation">
-            {(['home', 'history', 'backtest', 'bot', 'momentum', 'gold', 'account'] as const).map((destination) => (
+            {(['home', 'backtest', 'bot', 'gold', 'history', 'account'] as const).map((destination) => (
               <button key={destination} type="button" aria-current={page === destination ? 'page' : undefined}
-                class={`nav-link${destination === 'gold' ? ' gold' : ''}${page === destination ? ' active' : ''}`}
+                aria-label={destination === 'history' ? 'History' : destination === 'account' ? 'Account' : undefined}
+                title={destination === 'history' ? 'History' : destination === 'account' ? 'Account' : undefined}
+                class={`nav-link${destination === 'gold' ? ' gold' : ''}${destination === 'history' || destination === 'account' ? ' icon-only' : ''}${page === destination ? ' active' : ''}`}
                 onClick={() => onNavigate(destination)}>
-                {{ home: 'Home', history: 'History', backtest: 'Lab', bot: 'Bot', momentum: 'Momentum', gold: 'Gold', account: 'Account' }[destination]}
+                {destination === 'history' || destination === 'account'
+                  ? <><Icon name={destination} size={19} /><span class="sr-only">{destination === 'history' ? 'History' : 'Account'}</span></>
+                  : { home: 'Home', backtest: 'Lab', bot: 'Bot', gold: 'Gold' }[destination]}
               </button>
             ))}
           </nav>
@@ -3118,7 +3120,7 @@ function HistoryPage(): JSX.Element {
 
       <div class="section">
         <div class="section-title">Multiplier trades</div>
-        {multiplierTrades.length === 0 && <div class="empty-hint">No Momentum or Gold multiplier trades yet</div>}
+        {multiplierTrades.length === 0 && <div class="empty-hint">No Gold or legacy multiplier trades yet</div>}
         {multiplierTrades.length > 0 && <>
           <Bar label="Up / Buy" rate={multiplierUpRate} count={multiplierUp.length} tone="over" />
           <Bar label="Down / Sell" rate={multiplierDownRate} count={multiplierDown.length} tone="under" />
@@ -3409,7 +3411,7 @@ function SectionTradeHistory({ trades, currency, empty }: { trades: TradeRow[]; 
 }
 
 function MomentumLedgerWorkspace({ rows, trades, currency }: { rows?: MomentumResearchRow[]; trades: TradeRow[]; currency: string }): JSX.Element {
-  const momentumTrades = trades.filter((trade) => isMultiplierTrade(trade) && multiplierTradeFamily(trade) === 'Momentum');
+  const momentumTrades = trades.filter((trade) => isMultiplierTrade(trade) && multiplierTradeFamily(trade) === 'Multiplier');
   const settled = momentumTrades.filter((trade) => trade.status === 'won' || trade.status === 'lost' || trade.status === 'push');
   const pnl = settled.reduce((sum, trade) => sum + Number(trade.profit ?? 0), 0);
   return <div class="section-ledger-page">
@@ -3510,7 +3512,7 @@ function MomentumTradeDesk({
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
   const openMomentumTrades = trades.filter((trade) =>
-    isOpenAccountTrade(trade) && isMultiplierTrade(trade) && multiplierTradeFamily(trade) === 'Momentum'
+    isOpenAccountTrade(trade) && isMultiplierTrade(trade) && multiplierTradeFamily(trade) === 'Multiplier'
   );
   const openMomentumTrade = openMomentumTrades[0] ?? null;
   const closableMomentumTrade = openMomentumTrade;
@@ -5027,11 +5029,10 @@ function PatternsTab({ busy }: { busy: boolean }): JSX.Element {
   );
 }
 
-type EntryProductTab = 'digits' | 'multipliers' | 'gold';
+type EntryProductTab = 'digits' | 'gold';
 
 const ENTRY_PRODUCT_COPY: Record<EntryProductTab, { label: string; kicker: string; empty: string }> = {
   digits: { label: 'Over / Under', kicker: 'Digit entry race', empty: 'Waiting for tick-safe entry evidence.' },
-  multipliers: { label: 'Multipliers', kicker: 'Momentum entry race', empty: 'Waiting for multiplier entry evidence.' },
   gold: { label: 'Gold', kicker: 'Candle entry race', empty: 'Waiting for closed-candle entry evidence.' },
 };
 
@@ -5041,7 +5042,7 @@ function entryProduct(s: ReturnType<typeof useStore>, product: EntryProductTab):
 
 function EntryTrace({ product, method }: { product: EntryProductTab; method: EntryLabMethod | null }): JSX.Element {
   const points = method?.equity?.length ? method.equity : [];
-  const fallback = product === 'gold' ? [42, 38, 55, 48, 68, 61, 78, 70, 88] : product === 'multipliers' ? [38, 44, 41, 55, 52, 67, 61, 74, 82] : [48, 43, 51, 47, 56, 53, 63, 58, 67];
+  const fallback = product === 'gold' ? [42, 38, 55, 48, 68, 61, 78, 70, 88] : [48, 43, 51, 47, 56, 53, 63, 58, 67];
   const values = points.length > 1 ? points : fallback;
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -5601,7 +5602,7 @@ function UnusedGoldDerivTradeWorkspace({
       <div><span>Market data</span><strong>{state?.research.ready ? 'Validated' : 'Waiting'}</strong><small>{state?.research.reason ?? 'Live quote accepted'}</small></div>
       <div><span>Trading access</span><strong>{isDemo ? 'Ready' : 'Locked'}</strong><small>{isDemo ? 'Deriv session connected' : 'Select an eligible Deriv account'}</small></div>
       <div><span>Execution adapter</span><strong>{diagnostics?.executionCapable ? 'Deriv multipliers' : 'Checking'}</strong><small>MT5/cTrader CFD orders are not used</small></div>
-      <div><span>Gold contract</span><strong>{openGoldTrade ? 'Open' : 'Clear'}</strong><small>{openGoldTrade ? `Contract ${openGoldTrade.contract_id || openGoldTrade.id}` : 'Momentum can trade independently'}</small></div>
+      <div><span>Gold contract</span><strong>{openGoldTrade ? 'Open' : 'Clear'}</strong><small>{openGoldTrade ? `Contract ${openGoldTrade.contract_id || openGoldTrade.id}` : 'Gold order lane is available'}</small></div>
     </section>
   </>;
 }
@@ -5798,7 +5799,7 @@ function GoldResearchWorkspace({
   const activeStrategy = settings ? STRATEGY_META[settings.strategy_mode]?.label ?? settings.strategy_mode : 'Manual guarded';
   const botModel = settings ? MODE_META[settings.bot_mode]?.label ?? settings.bot_mode : 'Manual';
   const modelWeights = [
-    ['Momentum', .25],
+    ['Price velocity', .25],
     ['Timeframe agreement', .20],
     ['EMA alignment', .15],
     ['Structure', .15],
@@ -6049,8 +6050,10 @@ function GoldDerivTradeWorkspace({
   const multiplierOptions = probedGoldOptions ?? deriv?.multiplierOptions?.filter((value) => value <= 1000) ?? [10, 20, 30, 50, 100, 200, 500, 1000];
   const maxMultiplier = activeMultiplierProbe?.max ?? null;
   const multiplierWithinLiveMax = maxMultiplier == null || selectedMultiplier <= maxMultiplier;
+  const goldMaxStake = deriv?.maxStake ?? 100;
+  const stakeWithinGoldMax = Number.isFinite(stake) && stake > 0 && stake <= goldMaxStake;
   const canPlace = owner && demoConnected && marketReady && !marketClosed && !automation?.running && !openAnyTrade && Number.isFinite(stake) && stake > 0
-    && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && multiplierWithinLiveMax && limitsValid && !busy;
+    && stakeWithinGoldMax && Number.isFinite(selectedMultiplier) && selectedMultiplier > 0 && multiplierWithinLiveMax && limitsValid && !busy;
   const closing = closingContractId !== null;
   const canClose = owner && demoConnected && Boolean(openGoldTrade?.contract_id) && !closing;
   const purchasedGoldTrade = purchase?.id ? trades.find((trade) => trade.id === purchase.id) ?? null : null;
@@ -6136,7 +6139,7 @@ function GoldDerivTradeWorkspace({
     : null;
   const backtest = state?.backtest.result;
 const modelWeights = [
-    ['Momentum', .25],
+    ['Price velocity', .25],
     ['Timeframe agreement', .20],
     ['EMA alignment', .15],
     ['Structure', .15],
@@ -6180,6 +6183,8 @@ const modelWeights = [
               ? `Wait for open contract ${openAnyTrade.contract_id || openAnyTrade.id} to settle`
               : !marketReady
                 ? state?.research.reason ?? diagnostics?.reason ?? 'Waiting for live Deriv Gold prices'
+                : !stakeWithinGoldMax
+                  ? `Gold stake must be between 0.35 and ${fmtMoney(goldMaxStake, session?.currency ?? 'USD')}`
                 : !multiplierWithinLiveMax
                   ? `Selected multiplier exceeds live max x${maxMultiplier}`
                 : !limitsValid
@@ -6428,6 +6433,7 @@ const modelWeights = [
               onClose: activeTrade ? () => void close(activeTrade) : undefined,
               closeDisabled: !activeTrade || !owner || !demoConnected || !trackedContractId || Boolean(closingContractId) || matchingContract?.isValidToSell === false,
               stake: stakeText,
+              stakeMax: goldMaxStake,
               onStakeChange: setStakeText,
               stakeDisabled: busy || Boolean(openAnyTrade),
               multiplier: multiplierText,
@@ -7218,7 +7224,7 @@ const LEGAL_COPY: Record<LegalPageId, { eyebrow: string; title: string; intro: s
     intro: 'This application does not load advertising or analytics trackers. It uses only the storage needed for authentication, service operation, and optional interface preferences.',
     sections: [
       { heading: 'Essential cookies', body: 'When owner access is configured, a signed, HTTP-only zeronine_owner cookie keeps the owner session active for up to 12 hours. The optional Gold OAuth flow uses a short-lived signed nonce cookie to validate the authorization callback.' },
-      { heading: 'Browser storage', body: 'sessionStorage temporarily caches public market data for a faster reload. localStorage may remember chart zone width and trading-planner choices for Momentum and Gold. These preferences stay in the browser and are not used for advertising.' },
+      { heading: 'Browser storage', body: 'sessionStorage temporarily caches public market data for a faster reload. localStorage may remember chart zone width and Gold trading-planner choices. These preferences stay in the browser and are not used for advertising.' },
       { heading: 'No optional tracking consent banner', body: 'Because this build contains no non-essential analytics, advertising, or fingerprinting storage, it does not show a misleading accept/reject tracking banner. If the operator adds such a service, it must be blocked until a meaningful consent choice is made and this policy must be updated.' },
     ],
   },
@@ -7302,10 +7308,6 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
             <Icon name={automation ? 'square' : 'play'} size={15} strokeWidth={2.4} />
           </span>
           Bot
-        </button>
-        <button class={`nav-item${page === 'momentum' ? ' active' : ''}`} onClick={() => setPage('momentum')}>
-          <Icon name="crosshair" size={20} />
-          Momentum
         </button>
         <button class={`nav-item gold${page === 'gold' ? ' active' : ''}`} onClick={() => setPage('gold')}>
           <span class="gold-nav-logo" aria-hidden="true"><img src="/gold-logo.png" alt="" /></span>
