@@ -1865,7 +1865,7 @@ function ManualGameArena({
               <span class="arena-orb"><b>{target.market.lastDigit}</b><i></i></span>
               <span class="arena-contract">{target.label}</span>
               <strong>{shortMarketName(target.market.display)}</strong>
-              <span class="arena-signal"><i></i>{strength} · {lift >= 0 ? '+' : ''}{lift.toFixed(1)} model lift</span>
+              <span class="arena-signal"><i></i>{strength} · {lift >= 0 ? '+' : ''}{lift.toFixed(1)} research score</span>
               <span class="arena-evidence">
                 <small>Recent {Math.round(target.observedWin * 100)}%</small>
                 <small>High digits {Math.round(highMix * 100)}%</small>
