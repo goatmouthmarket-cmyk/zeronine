@@ -1040,11 +1040,11 @@ export function useStore(): State {
   );
 }
 
-export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+export async function api<T = unknown>(path: string, init?: RequestInit, timeoutMs = 15_000): Promise<T> {
   const headers: Record<string, string> = { ...((init?.headers as Record<string, string>) ?? {}) };
   if (init?.body != null) headers['Content-Type'] = 'application/json';
   const timeoutController = init?.signal ? null : new AbortController();
-  const timeout = timeoutController ? window.setTimeout(() => timeoutController.abort(), 15_000) : null;
+  const timeout = timeoutController ? window.setTimeout(() => timeoutController.abort(), timeoutMs) : null;
   let res: Response;
   try {
     res = await fetch(path, { ...init, cache: 'no-store', headers, signal: init?.signal ?? timeoutController?.signal });
@@ -1956,7 +1956,7 @@ export async function confirmManualTrade(previewId: string, idempotencyKey: stri
   return api<ManualTradeResult>('/api/trade/manual/confirm', {
     method: 'POST',
     body: JSON.stringify({ previewId, idempotencyKey }),
-  });
+  }, 45_000);
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {

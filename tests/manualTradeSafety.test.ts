@@ -8,7 +8,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'overunder-manual-s
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
 
 test('manual preview enforces risk and confirmation is idempotent', async () => {
-  const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, routesMod, store, cfg, paperMod] = await Promise.all([
+  const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, routesMod, store, cfg, paperMod, cryptoMod] = await Promise.all([
     import('fastify'),
     import('../src/api/hub.ts'),
     import('../src/core/marketState.ts'),
@@ -18,11 +18,12 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
     import('../src/db/store.ts'),
     import('../src/config.ts'),
     import('../src/simulation/paperSimulator.ts'),
+    import('../src/db/crypto.ts'),
   ]);
   cfg.config.dashboardAdminToken = '';
   store.setSession({
     id: 'manual-safety', loginid: 'CR_SAFE', balance: 100, currency: 'USD', mode: 'demo', auth_kind: 'pat',
-    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+    token_cipher: cryptoMod.encryptToken('test-token'), created_at: Date.now(), updated_at: Date.now(),
   });
   store.updateSettings({ max_stake: 1 });
 
@@ -34,14 +35,24 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
   }
   const feed = new feedMod.DerivPublicFeed(registry, () => undefined);
   let quoteCalls = 0;
+  let reconnectCalls = 0;
   let buyCalls = 0;
   let payoutRatio = 1.8;
   let failBuy = false;
+  let failNextQuote = false;
   const client = {
     isConnected: true,
     getQuote: async (request: { direction: 'over' | 'under'; barrier: number; amount: number }) => {
       quoteCalls += 1;
+      if (failNextQuote) {
+        failNextQuote = false;
+        throw new Error('proposal: private socket closed');
+      }
       return { id: `proposal-${quoteCalls}`, direction: request.direction, barrier: request.barrier, askPrice: request.amount, payout: request.amount * payoutRatio };
+    },
+    reconnect: async () => {
+      reconnectCalls += 1;
+      return { loginid: 'CR_SAFE', balance: 100, currency: 'USD', mode: 'demo' as const };
     },
     placeBuy: async (_proposalId: string, askPrice: number) => {
       buyCalls += 1;
@@ -88,6 +99,7 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
   const refreshedPreview = refreshedPreviewResponse.json();
 
   const confirmation = { previewId: refreshedPreview.previewId, idempotencyKey: 'same-operator-action' };
+  failNextQuote = true;
   const [first, retry] = await Promise.all([
     app.inject({ method: 'POST', url: '/api/trade/manual/confirm', payload: confirmation }),
     app.inject({ method: 'POST', url: '/api/trade/manual/confirm', payload: confirmation }),
@@ -95,7 +107,8 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
   assert.equal(first.statusCode, 200);
   assert.equal(retry.statusCode, 200);
   assert.equal(first.json().trade.contractId, retry.json().trade.contractId);
-  assert.equal(quoteCalls, 4, 'each preview and confirmation requires one fresh quote');
+  assert.equal(quoteCalls, 5, 'a transient pre-purchase quote failure is retried once after reconnecting');
+  assert.equal(reconnectCalls, 1);
   assert.equal(buyCalls, 1, 'an idempotent retry must reuse the original purchase result');
   assert.match(store.getPendingTrades()[0]?.reason ?? '', /model .*breakeven .*edge .*quote/i);
 
@@ -108,7 +121,7 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
 
   store.setSession({
     id: 'manual-unknown', loginid: 'CR_UNKNOWN', balance: 100, currency: 'USD', mode: 'demo', auth_kind: 'pat',
-    token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
+    token_cipher: cryptoMod.encryptToken('test-token'), created_at: Date.now(), updated_at: Date.now(),
   });
   failBuy = true;
   const unknown = await app.inject({

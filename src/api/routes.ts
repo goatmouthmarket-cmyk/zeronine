@@ -198,6 +198,36 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       throw new ManualRequestError(409, `socket reconnect failed: ${String(error)}`);
     }
   };
+  const requestManualQuote = async (
+    order: ManualOrderInput,
+    session: NonNullable<ReturnType<typeof getSession>>,
+  ): ReturnType<DerivPrivateClient['getQuote']> => {
+    const request = (): ReturnType<DerivPrivateClient['getQuote']> => client.getQuote({
+      direction: order.direction,
+      barrier: order.barrier,
+      amount: order.stake,
+      currency: session.currency || 'USD',
+      duration: 1,
+      durationUnit: 't',
+      symbol: order.market,
+    });
+    try {
+      return await request();
+    } catch (firstError) {
+      const firstMessage = firstError instanceof Error ? firstError.message : String(firstError);
+      const transientConnectionFailure = /private socket (?:not open|closed|disconnected)|proposal timeout|socket error/i.test(firstMessage);
+      if (transientConnectionFailure) {
+        try {
+          await client.reconnect(await resolveStoredToken(), session.loginid);
+          return await request();
+        } catch (retryError) {
+          const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+          throw new ManualRequestError(503, `Deriv could not refresh the quote: ${retryMessage}. No contract was purchased; request a fresh quote.`);
+        }
+      }
+      throw new ManualRequestError(503, `Deriv could not refresh the quote: ${firstMessage}. No contract was purchased; request a fresh quote.`);
+    }
+  };
   const cleanupManualState = (): void => {
     const now = Date.now();
     for (const [id, preview] of manualPreviews) if (preview.expiresAt <= now) manualPreviews.delete(id);
@@ -2045,15 +2075,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       await ensureManualClient(session);
       const entrySnapshot = registry.snapshot(order.market);
       if (!entrySnapshot.fresh) throw new ManualRequestError(409, 'the selected market feed became stale before purchase');
-      const quote = await client.getQuote({
-        direction: order.direction,
-        barrier: order.barrier,
-        amount: order.stake,
-        currency: session.currency || 'USD',
-        duration: 1,
-        durationUnit: 't',
-        symbol: order.market,
-      });
+      const quote = await requestManualQuote(order, session);
       if (preview) {
         const askWorsened = quote.askPrice > preview.ask * 1.02 + 1e-9;
         const payoutWorsened = quote.payout + 1e-9 < preview.payout * 0.98;
@@ -2145,15 +2167,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       assertManualPreflight(order, session);
       await ensureManualClient(session);
       const snapshot = registry.snapshot(order.market);
-      const quote = await client.getQuote({
-        direction: order.direction,
-        barrier: order.barrier,
-        amount: order.stake,
-        currency: session.currency || 'USD',
-        duration: 1,
-        durationUnit: 't',
-        symbol: order.market,
-      });
+      const quote = await requestManualQuote(order, session);
       const estimatedWin = manualModelWin(order);
       const breakeven = quote.payout > 0 ? quote.askPrice / quote.payout : 1;
       const preview: ManualPreview = {
