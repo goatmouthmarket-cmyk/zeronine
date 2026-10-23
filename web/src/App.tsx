@@ -551,6 +551,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [manualError, setManualError] = useState(false);
   const [resettingPerformance, setResettingPerformance] = useState(false);
   const [activityDetail, setActivityDetail] = useState<ActivityDetail | null>(null);
+  const [roomActivity, setRoomActivity] = useState<'focus' | 'reset' | 'break'>('focus');
   const [marketChooserOpen, setMarketChooserOpen] = useState(false);
   const [manualDirection, setManualDirection] = useState<'over' | 'under'>('over');
   const [manualOverBarrier, setManualOverBarrier] = useState(0);
@@ -992,10 +993,24 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             </button>
           </div>
         </div>
-        <div class="subtitle">Manual arena · four focused digit plays · continuous virtual research</div>
+        <div class="subtitle">Interactive trading room · choose a live target to play · Deriv execution stays behind the game</div>
       </header>
 
-      {active && <div class="ticker">
+      {active && <section class={`trading-room-home room-${roomActivity}`} aria-label="Interactive manual trading room">
+        <TradingRoomEnvironment
+          market={market ?? null}
+          balance={s.session?.balance ?? 0}
+          currency={s.session?.currency}
+          profit={performance.profit}
+          feedConnected={s.feed?.connected ?? false}
+          activity={roomActivity}
+        />
+        <div class="room-action-rail" aria-label="Trading room activities">
+          <button type="button" class={roomActivity === 'focus' ? 'active' : ''} onClick={() => setRoomActivity('focus')}><Icon name="crosshair" size={15} />Focus desk</button>
+          <button type="button" class={roomActivity === 'reset' ? 'active' : ''} onClick={() => setRoomActivity('reset')}><Icon name="rotateCcw" size={15} />Reset corner</button>
+          <button type="button" class={roomActivity === 'break' ? 'active' : ''} onClick={() => setRoomActivity('break')}><Icon name="square" size={15} />Cool down</button>
+        </div>
+        <div class="ticker room-ticker" aria-label="Live market ribbon">
         <div class="ticker-row">
           {s.markets.map((m) => (
             <TickerItem key={m.symbol} market={m} active={m.symbol === market?.symbol} prediction={tickerPredictions.get(m.symbol)} performance={tickerProfits.get(m.symbol)} />
@@ -1004,9 +1019,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             <TickerItem key={`dup-${m.symbol}`} market={m} active={m.symbol === market?.symbol} prediction={tickerPredictions.get(m.symbol)} performance={tickerProfits.get(m.symbol)} />
           ))}
         </div>
-      </div>}
+      </div>
 
-      {active && <div class="dashboard">
+      <div class="dashboard room-dashboard">
         <div class="dash-main">
           <section class="trade-card">
             {!marketChooserOpen ? <ManualGameArena
@@ -1018,9 +1033,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               accountMode={s.session?.mode}
               feedConnected={s.feed?.connected ?? false}
               busy={manualBusy}
-              locked={startLocked}
+              locked={startLocked || roomActivity !== 'focus'}
               queued={Boolean(pendingManualIntent)}
-              status={manualMsg}
+              status={roomActivity === 'reset'
+                ? 'Reset corner active · targets are paused while you review the room journal'
+                : roomActivity === 'break'
+                  ? 'Cooldown active · return to the focus desk when you are ready to trade'
+                  : manualMsg}
               error={manualError}
               onStake={(stake) => { setPendingManualIntent(null); setManualPreview(null); setManualStakeText(stake); }}
               onPlay={playArenaTarget}
@@ -1156,10 +1175,50 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             </div>
           </section>
         </div>
-      </div>}
+      </div>
+      </section>}
       {active && activityDetail && <ActivityDetailModal detail={activityDetail} markets={s.markets} equity={s.testEquity} onClose={() => setActivityDetail(null)} />}
     </>
   );
+}
+
+function TradingRoomEnvironment({
+  market, balance, currency, profit, feedConnected, activity,
+}: {
+  market: Market | null;
+  balance: number;
+  currency?: string;
+  profit: number;
+  feedConnected: boolean;
+  activity: 'focus' | 'reset' | 'break';
+}): JSX.Element {
+  const recentDigits = market?.recentDigits.slice(-10) ?? [];
+  return <div class="room-environment" aria-hidden="true">
+    <div class="room-ceiling"><i></i><i></i><i></i></div>
+    <div class="room-wall room-wall-left"></div>
+    <div class="room-wall room-wall-right"></div>
+    <div class="room-window"><span></span><i></i><i></i><i></i></div>
+    <div class="room-city"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="room-floor-grid"></div>
+    <div class="room-shelf"><i></i><i></i><i></i><span></span></div>
+    <div class="room-plant"><i></i><i></i><i></i><b></b></div>
+    <div class="room-lamp"><i></i><span></span></div>
+    <div class="room-desk">
+      <div class="room-monitor monitor-left"><span>MARKET FIELD</span><b>{market ? shortMarketName(market.display) : 'SCANNING'}</b></div>
+      <div class="room-monitor monitor-main"><span>LIVE DIGITS</span><div>{recentDigits.map((digit, index) => <b class={index === recentDigits.length - 1 ? 'live' : ''} key={`${digit}-${index}`}>{digit}</b>)}</div></div>
+      <div class="room-monitor monitor-right"><span>LAST QUOTE</span><b>{market?.lastQuote?.toFixed(2) ?? '--'}</b></div>
+      <div class="room-desktop"></div><div class="room-desk-leg left"></div><div class="room-desk-leg right"></div>
+    </div>
+    <div class={`room-avatar ${activity}`}><i class="head"></i><i class="body"></i><i class="arm left"></i><i class="arm right"></i><i class="leg left"></i><i class="leg right"></i><span></span></div>
+    <div class="room-chair"><i></i><span></span></div>
+    <div class="room-gym"><span></span><i></i><b></b></div>
+    <div class="room-hud">
+      <div><span>Balance</span><b>{fmtMoney(balance, currency)}</b></div>
+      <div><span>Session P/L</span><b class={profit < 0 ? 'down' : 'up'}>{fmtSigned(profit, currency)}</b></div>
+      <div><span>Feed</span><b class={feedConnected ? 'up' : 'down'}>{feedConnected ? 'LIVE' : 'RECONNECTING'}</b></div>
+    </div>
+    <div class="room-mode-readout"><i></i><span>{activity === 'focus' ? 'At the desk · trade controls active' : activity === 'reset' ? 'Reset corner · slow down and review' : 'Cooldown · no room action submits a trade'}</span></div>
+  </div>;
 }
 
 const TickerItem = memo(function TickerItem({ market, active, prediction: pred, performance }: { market: Market; active: boolean; prediction?: SignalCandidate; performance?: { count: number; profit: number } }): JSX.Element {
@@ -1882,7 +1941,7 @@ function ManualGameArena({
       <footer class="arena-foot">
         <div class="arena-paper"><span><i></i>Paper scout runs continuously</span><b>{settledPaper.length ? `${paperWins}/${settledPaper.length} wins observed` : 'Building the first evidence sample'}</b></div>
         <div class={`arena-message${error ? ' error' : ''}`} aria-live="polite">{status || 'Targets use public ticks and delayed-entry evidence. A live quote is requested only when you play.'}</div>
-        <button type="button" class="arena-advanced" onClick={onAdvanced}>Advanced setup <Icon name="chevronRight" size={14} /></button>
+        <button type="button" class="arena-advanced" onClick={onAdvanced}>Open control console <Icon name="chevronRight" size={14} /></button>
       </footer>
     </section>
   );

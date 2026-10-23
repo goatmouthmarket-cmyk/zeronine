@@ -1187,6 +1187,102 @@ input::placeholder, textarea::placeholder { color: #aeb5c4; opacity: 1; }
     .mom-ledger-row { grid-template-columns: 37px minmax(0, 1fr) 74px; gap: 9px; padding-inline: 14px; }.mom-ledger-row > span:not(.mom-watch-signal) { display: none; }
 }
 
+/* =========================================================
+   INTERACTIVE TRADING ROOM HOME
+   The room is the game-facing layer. Account execution remains behind the
+   existing manual arena actions and their server-side quote/risk workflow.
+========================================================= */
+
+.trading-room-home {
+  position: relative;
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid rgba(105, 110, 157, .42);
+  background: #060811;
+  box-shadow: inset 0 0 90px rgba(3, 4, 9, .86), 0 24px 70px rgba(0, 0, 0, .32);
+}
+
+.room-environment {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 66% 25%, rgba(127, 100, 255, .17), transparent 28%),
+    radial-gradient(circle at 38% 72%, rgba(70, 227, 201, .08), transparent 34%),
+    linear-gradient(155deg, #141527 0 22%, #0a0c16 22% 64%, #05060c 64%);
+  transition: filter .35s ease, background .35s ease;
+}
+
+.room-environment::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  opacity: .18;
+  background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 4px);
+  mix-blend-mode: soft-light;
+}
+
+.room-reset .room-environment { filter: saturate(.78) hue-rotate(-14deg); }
+.room-break .room-environment { filter: saturate(.68) brightness(.86); }
+
+.room-ceiling { position: absolute; inset: 0 0 auto; height: 20%; clip-path: polygon(0 0,100% 0,78% 100%,22% 100%); background: linear-gradient(#0c0d18,#17182b); border-bottom: 1px solid rgba(147,127,255,.22); }
+.room-ceiling i { position: absolute; top: 32%; width: 18%; height: 4px; background: linear-gradient(90deg,transparent,#bbaeff,transparent); box-shadow: 0 0 18px rgba(164,138,255,.66); }
+.room-ceiling i:nth-child(1) { left: 14%; transform: rotate(11deg); }.room-ceiling i:nth-child(2) { left: 42%; }.room-ceiling i:nth-child(3) { right: 14%; transform: rotate(-11deg); }
+.room-wall { position: absolute; top: 18%; bottom: 17%; width: 52%; background: linear-gradient(180deg,rgba(22,23,40,.96),rgba(10,12,21,.94)); }
+.room-wall-left { left: 0; clip-path: polygon(0 0,100% 15%,82% 100%,0 100%); border-right: 1px solid rgba(127,108,218,.18); }
+.room-wall-right { right: 0; clip-path: polygon(0 15%,100% 0,100% 100%,18% 100%); border-left: 1px solid rgba(127,108,218,.18); }
+.room-floor-grid { position: absolute; inset: 53% -15% -26%; transform: perspective(540px) rotateX(58deg); transform-origin: top; background-color: #080a12; background-image: linear-gradient(rgba(129,109,217,.15) 1px,transparent 1px),linear-gradient(90deg,rgba(129,109,217,.13) 1px,transparent 1px); background-size: 54px 54px; box-shadow: inset 0 50px 70px rgba(0,0,0,.65); }
+
+.room-window { position: absolute; left: 39%; top: 12%; width: 31%; height: 30%; overflow: hidden; border: 7px solid #141726; background: radial-gradient(circle at 72% 26%,#ddd4ff 0 3%,rgba(180,164,255,.24) 4%,transparent 16%),linear-gradient(180deg,#171936,#0d1227 65%,#11162a); box-shadow: 0 0 40px rgba(125,102,255,.14); }
+.room-window::before,.room-window::after { content:""; position:absolute; z-index:3; background:#1d2032; }.room-window::before{left:49%;top:0;width:5px;height:100%}.room-window::after{left:0;top:52%;width:100%;height:5px}
+.room-window > span { position:absolute; inset:0; background:linear-gradient(25deg,transparent 48%,rgba(110,235,217,.13) 49% 50%,transparent 51%); }
+.room-window > i { position:absolute; bottom:0; width:18%; background:linear-gradient(180deg,#20264b,#090b16); clip-path:polygon(30% 0,70% 0,100% 100%,0 100%); }.room-window > i:nth-of-type(1){left:8%;height:38%}.room-window > i:nth-of-type(2){left:36%;height:56%}.room-window > i:nth-of-type(3){right:8%;height:43%}
+.room-city { position:absolute; left:41%; top:27%; width:27%; height:14%; display:flex; align-items:flex-end; gap:4%; opacity:.64; }.room-city i{flex:1;background:#111831;border-top:2px solid rgba(110,235,217,.42);box-shadow:inset 0 0 8px rgba(143,117,255,.18)}.room-city i:nth-child(2n){height:72%}.room-city i:nth-child(3n){height:100%}.room-city i:nth-child(1),.room-city i:nth-child(5){height:48%}
+
+.room-shelf { position:absolute; left:3%; top:19%; width:14%; height:24%; border:5px solid #242035; border-bottom-width:12px; background:rgba(9,10,18,.82); box-shadow:8px 14px 28px rgba(0,0,0,.38) }.room-shelf::before,.room-shelf::after{content:"";position:absolute;left:0;right:0;height:4px;background:#302942}.room-shelf::before{top:32%}.room-shelf::after{top:66%}.room-shelf i{position:absolute;bottom:4%;width:12%;height:24%;background:#7963c9}.room-shelf i:nth-child(1){left:12%}.room-shelf i:nth-child(2){left:27%;height:31%;background:#3dbfab}.room-shelf i:nth-child(3){right:15%;height:18%;background:#d59b67}.room-shelf span{position:absolute;left:10%;top:9%;width:42%;height:16%;border-radius:50% 50% 10% 10%;background:#454059}
+.room-plant { position:absolute; left:20%; top:34%; width:90px; height:170px; }.room-plant b{position:absolute;left:25%;bottom:0;width:50%;height:34%;background:linear-gradient(90deg,#3a2c3c,#6c4e63,#302333);clip-path:polygon(8% 0,92% 0,78% 100%,22% 100%)}.room-plant i{position:absolute;left:42%;bottom:29%;width:20%;height:56%;border-radius:100% 0 100% 0;background:linear-gradient(135deg,#58b68b,#1c5c4d);transform-origin:bottom}.room-plant i:nth-child(1){transform:rotate(-35deg)}.room-plant i:nth-child(2){transform:rotate(28deg);height:68%}.room-plant i:nth-child(3){transform:rotate(-2deg);height:80%}
+.room-lamp { position:absolute; right:3%; top:21%; width:110px; height:230px; }.room-lamp i{position:absolute;left:53px;top:45px;bottom:15px;width:5px;background:#514460}.room-lamp span{position:absolute;left:18px;top:0;width:75px;height:60px;clip-path:polygon(28% 0,72% 0,100% 100%,0 100%);background:#7a5684;box-shadow:0 28px 45px rgba(255,185,133,.16)}
+
+.room-desk { position:absolute; left:27%; right:23%; top:31%; bottom:18%; perspective:900px; }.room-desktop{position:absolute;left:2%;right:2%;bottom:25%;height:7%;background:linear-gradient(#5b4659,#241d2b);transform:rotateX(7deg);box-shadow:0 18px 26px rgba(0,0,0,.48)}.room-desk-leg{position:absolute;bottom:0;width:4%;height:27%;background:#201c29}.room-desk-leg.left{left:8%}.room-desk-leg.right{right:8%}
+.room-monitor { position:absolute; top:7%; display:grid; align-content:center; gap:7px; padding:10px; border:7px solid #1b1d2a; color:#d9fff8; background:linear-gradient(180deg,#10182a,#080d18); box-shadow:0 0 26px rgba(94,222,200,.12),0 18px 25px rgba(0,0,0,.35); text-align:center; transform-origin:bottom; }.room-monitor::after{content:"";position:absolute;left:46%;top:100%;width:8%;height:25%;background:#222330}.room-monitor span{color:#889ab8;font-size:7px;font-weight:900;letter-spacing:.18em}.room-monitor>b{font-size:clamp(10px,1.2vw,17px)}.monitor-left{left:0;width:27%;height:43%;transform:rotateY(14deg)}.monitor-main{left:28%;width:44%;height:55%;top:0}.monitor-main div{display:flex;justify-content:center;gap:5px}.monitor-main b{display:grid;place-items:center;width:20px;height:24px;border:1px solid #333956;color:#9884e6;font-size:11px}.monitor-main b.live{color:#69ead3;border-color:#58cfbb;box-shadow:0 0 12px rgba(91,230,207,.3)}.monitor-right{right:0;width:27%;height:43%;transform:rotateY(-14deg)}
+
+.room-avatar { position:absolute; left:49%; bottom:8%; width:82px; height:190px; z-index:5; transition:transform .45s cubic-bezier(.2,.8,.2,1); }.room-avatar i{position:absolute;display:block;background:#29263a}.room-avatar .head{left:28px;top:0;width:34px;height:38px;border-radius:45% 45% 40% 40%;background:#9a705f;border-top:10px solid #211b25}.room-avatar .body{left:18px;top:36px;width:52px;height:74px;border-radius:13px 13px 6px 6px;background:linear-gradient(135deg,#443c56,#272534)}.room-avatar .arm{top:46px;width:16px;height:70px;border-radius:9px}.room-avatar .arm.left{left:7px;transform:rotate(15deg)}.room-avatar .arm.right{right:4px;transform:rotate(-28deg);transform-origin:top}.room-avatar .leg{top:104px;width:18px;height:72px;background:#181927}.room-avatar .leg.left{left:22px;transform:rotate(5deg)}.room-avatar .leg.right{right:17px;transform:rotate(-6deg)}.room-avatar span{position:absolute;left:31px;top:58px;width:25px;height:17px;background:#62d4c0;clip-path:polygon(0 0,100% 0,70% 100%,30% 100%)}.room-avatar.reset{transform:translate(-215px,28px) rotate(-3deg)}.room-avatar.break{transform:translate(195px,42px) rotate(4deg)}
+.room-chair { position:absolute; left:46.8%; bottom:4%; width:120px; height:145px; z-index:4 }.room-chair i{position:absolute;left:15%;right:15%;top:0;height:72%;border-radius:18px 18px 8px 8px;background:#171722;border:5px solid #292838}.room-chair span{position:absolute;left:5%;right:5%;bottom:9%;height:18%;border-radius:45%;background:#222230;box-shadow:0 18px 0 -9px #171722}
+.room-gym { position:absolute; right:10%; bottom:8%; width:130px; height:90px; }.room-gym span{position:absolute;inset:auto 0 0;height:30%;transform:skewX(-20deg);background:rgba(42,143,126,.25);border:1px solid rgba(74,216,191,.35)}.room-gym i{position:absolute;right:20%;bottom:20%;width:34px;height:65px;border-radius:45% 45% 15% 15%;background:#533f52}.room-gym b{position:absolute;left:12%;bottom:24%;width:42px;height:18px;border-radius:50%;background:#454051;box-shadow:0 0 0 5px #1d1e2a}
+
+.room-hud { position:absolute; z-index:30; top:13px; right:14px; display:flex; gap:0; border:1px solid rgba(117,121,164,.5); background:rgba(10,12,21,.84); box-shadow:0 12px 30px rgba(0,0,0,.28); backdrop-filter:blur(12px) }.room-hud>div{display:grid;gap:2px;padding:8px 13px}.room-hud>div+div{border-left:1px solid rgba(117,121,164,.26)}.room-hud span{color:#969bb8;font-size:7px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.room-hud b{font-size:12px;font-variant-numeric:tabular-nums}.room-hud b.up{color:#6de4bd}.room-hud b.down{color:#ff94b4}
+.room-mode-readout{position:absolute;z-index:30;left:50%;bottom:9px;display:flex;align-items:center;gap:7px;max-width:340px;padding:7px 12px;border:1px solid rgba(92,114,135,.45);border-radius:999px;background:rgba(8,12,20,.76);color:#b7c5d6;font-size:9px;transform:translateX(-50%);backdrop-filter:blur(8px)}.room-mode-readout i{width:6px;height:6px;border-radius:50%;background:#63ead5;box-shadow:0 0 10px #63ead5}
+
+.room-action-rail { position:absolute; z-index:35; left:13px; top:13px; display:flex; gap:5px; padding:5px; border:1px solid rgba(96,106,145,.44); background:rgba(9,11,19,.78); backdrop-filter:blur(9px) }.room-action-rail button{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:0 9px;border:0!important;border-radius:2px!important;background:transparent!important;color:#8e96b5;font-size:9px;font-weight:850;letter-spacing:.04em;cursor:pointer}.room-action-rail button:hover,.room-action-rail button.active{color:#eafefa;background:rgba(99,234,213,.1)!important}.room-action-rail button.active{box-shadow:inset 0 -2px #63ead5!important}
+
+.trading-room-home .room-ticker { position:absolute; z-index:25; top:58px; left:26%; right:26%; height:32px; margin:0; overflow:hidden; border:1px solid rgba(96,102,142,.34); background:rgba(8,10,18,.68); backdrop-filter:blur(8px) }.trading-room-home .room-ticker .ticker-row{height:100%}.trading-room-home .room-ticker .ticker-item{min-height:30px;padding-block:3px;background:transparent}
+.trading-room-home .room-dashboard { position:absolute; inset:0; z-index:10; display:block; pointer-events:none; overflow:hidden }.trading-room-home .room-dashboard .dash-main,.trading-room-home .room-dashboard .dash-side{position:absolute;display:block;pointer-events:auto;overflow:auto;scrollbar-width:thin}.trading-room-home .room-dashboard .dash-main{left:14px;bottom:14px;width:min(64%,820px);height:min(67%,560px)}.trading-room-home .room-dashboard .dash-side{right:14px;top:102px;width:min(30%,390px);max-height:62%}
+.trading-room-home .trade-card,.trading-room-home .dash-side>.section{border:1px solid rgba(106,104,154,.56)!important;background:rgba(8,10,18,.88)!important;box-shadow:0 20px 50px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,255,255,.018);backdrop-filter:blur(10px)}
+.trading-room-home .manual-arena{min-height:100%;border:0;background:transparent}.trading-room-home .manual-arena::before{opacity:.12}.trading-room-home .arena-head{padding:13px 16px 8px}.trading-room-home .arena-head h1{font-size:clamp(20px,2vw,30px)}.trading-room-home .arena-head p{max-width:520px;font-size:10px}.trading-room-home .arena-wallet label{min-width:145px}.trading-room-home .arena-field{gap:7px;padding:11px 14px 14px}.trading-room-home .arena-target{min-height:194px;padding:9px 8px}.trading-room-home .arena-orb{width:54px;height:54px;margin:3px 0 5px}.trading-room-home .arena-orb b{font-size:24px}.trading-room-home .arena-evidence{gap:2px;margin-top:6px}.trading-room-home .arena-evidence small{padding:4px 2px;font-size:6.5px}.trading-room-home .arena-launch{min-height:27px;margin-top:7px;font-size:8px}.trading-room-home .arena-foot{grid-template-columns:minmax(150px,.7fr) minmax(180px,1fr) auto;padding:8px 12px}.trading-room-home .arena-advanced{min-height:34px;font-size:9px}.trading-room-home .dash-side>.section{padding:13px}.trading-room-home .activity{max-height:310px;overflow:auto}.trading-room-home .activity-row{padding:9px 2px}.trading-room-home .perf-footer{display:none}
+
+@media (max-width: 1180px) and (min-width: 1000px) {
+  .trading-room-home .room-dashboard .dash-main{width:67%;height:64%}.trading-room-home .room-dashboard .dash-side{width:29%}.trading-room-home .arena-evidence small:nth-child(2){display:none}.room-shelf,.room-plant{opacity:.55}.room-hud>div{padding-inline:9px}
+}
+
+@media (max-width: 999.98px) {
+  .trading-room-home{grid-row:auto;min-height:calc(100dvh - 150px);overflow-y:auto;border-inline:0}.room-environment{height:270px;position:absolute}.room-ceiling,.room-wall,.room-shelf,.room-plant,.room-lamp,.room-gym{display:none}.room-window{left:8%;top:11%;width:48%;height:44%}.room-desk{left:22%;right:10%;top:30%;bottom:8%}.room-avatar{left:60%;bottom:-8%;transform:scale(.7)!important}.room-chair{left:56%;bottom:-14%;transform:scale(.72)}.room-hud{left:8px;right:8px;top:8px;justify-content:flex-end}.room-hud>div{padding:6px 8px}.room-hud b{font-size:10px}.room-action-rail{top:70px;left:8px;right:8px;justify-content:center}.room-action-rail button{min-height:38px}.trading-room-home .room-ticker{top:116px;left:8px;right:8px}.room-mode-readout{top:155px;bottom:auto}.trading-room-home .room-dashboard{position:relative;inset:auto;padding-top:245px;overflow:visible}.trading-room-home .room-dashboard .dash-main,.trading-room-home .room-dashboard .dash-side{position:relative;inset:auto;width:auto;height:auto;max-height:none;margin:0 8px 12px;overflow:visible}.trading-room-home .arena-target{min-height:245px}.trading-room-home .arena-foot{grid-template-columns:1fr auto}.trading-room-home .arena-message{grid-column:1/-1;grid-row:2}.trading-room-home .dash-side>.section{margin-top:0}
+}
+
+@media (max-width: 620px) {
+  .room-hud>div:nth-child(2){display:none}.room-action-rail button{flex:1;justify-content:center;padding-inline:4px}.room-action-rail button svg{display:none}.trading-room-home .room-ticker{top:120px}.trading-room-home .room-dashboard{padding-top:230px}.trading-room-home .arena-head{padding-inline:12px}.trading-room-home .arena-field{grid-template-columns:repeat(2,minmax(0,1fr))}.trading-room-home .arena-target{min-height:228px}.trading-room-home .arena-evidence small:nth-child(2){display:none}.trading-room-home .room-dashboard .dash-main,.trading-room-home .room-dashboard .dash-side{margin-inline:4px}.room-window{width:60%}.monitor-left,.monitor-right{display:none}.monitor-main{left:12%;width:76%}
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .room-avatar,.room-environment{transition:none}
+}
+
 @media (prefers-reduced-motion: reduce) { .mom-watch-progress em { transition: none; } }
 
 /* Momentum demo execution is deliberately one compact desk. It reuses the
