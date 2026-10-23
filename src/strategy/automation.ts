@@ -307,14 +307,15 @@ export class Automation {
     this.phase = 'standby';
     setAutomation({ running: 0, stopped_at: Date.now(), reason, trades_done: this.runTrades });
     this.emit({ type: 'status', ts: Date.now(), state: this.state(), reason });
-    // Keep manual-bet signals fresh, but the scheduled pass is read-only.
+    // Keep public-market manual signals fresh. Stopped watch mode must not
+    // consume the account's private Deriv proposal allowance.
     this.schedule(50);
   }
 
   /**
-   * Watch mode: keep the scanner alive even when the bot is stopped so the
-   * hero always shows a fresh entry (useful for manual bets). Scan + quote
-   * run on every cycle, but purchases only happen while `this.running`.
+   * Watch mode keeps the public scanner alive for manual bets. Private Deriv
+   * proposals are requested only by an explicit manual preview or a running
+   * bot, so an idle dashboard cannot exhaust the trading-call allowance.
    */
   watch(): void {
     if (this.timer) return;
@@ -402,7 +403,7 @@ export class Automation {
       intelligence,
       scanMinWin,
       scanMinEdge,
-      undefined,
+      3,
       barrierAllowed(settings),
     );
     this.emit({ type: 'signal', ts: Date.now(), signal, phase: this.phase });
@@ -427,6 +428,13 @@ export class Automation {
       this.emit({ type: HOLD, ts: Date.now(), reason: signal.reason });
       this.phase = 'waiting-edge';
       return 1500; // WAIT is a valid outcome: no obligation to trade every scan
+    }
+
+    // Public ticks and model candidates are enough to keep the stopped UI
+    // current. A manual Trade now action requests its own reviewed proposal.
+    if (!canBuy()) {
+      if (!this.running) this.phase = 'standby';
+      return 1500;
     }
 
     if (!this.client.isConnected || !session) {
@@ -484,6 +492,7 @@ export class Automation {
     // give the actual breakeven / edge / EV that drive the pick.
     this.phase = 'quoting';
     const quotes: QuotedOption[] = [];
+    let quoteRateLimited = false;
     for (const c of signal.candidates) {
       try {
         const calibration = calibrateResearchProbability(c.market, c.direction, c.barrier, c.estWin, accountIdForLogin(session?.loginid ?? ''));
@@ -528,19 +537,22 @@ export class Automation {
         });
       } catch (err) {
         this.emit({ type: 'quote_error', ts: Date.now(), option: { ...c }, message: String(err) });
+        if (/rate limit/i.test(String(err))) {
+          quoteRateLimited = true;
+          break;
+        }
       }
+    }
+    if (quoteRateLimited) {
+      this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
+      this.emit({ type: HOLD, ts: Date.now(), reason: 'Deriv proposal rate limit reached; cooling down before another quote cycle' });
+      this.phase = 'waiting-quotes';
+      return 10_000;
     }
     if (quotes.length === 0) {
       this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
       this.emit({ type: HOLD, ts: Date.now(), reason: 'no live quotes available' });
       this.phase = 'waiting-quotes';
-      return 1500;
-    }
-
-    // Watch mode: bot is stopped but we still surface fresh signals so the
-    // hero always has a target for manual bets. Nothing is ever purchased here.
-    if (!canBuy()) {
-      if (!this.running) this.phase = 'standby';
       return 1500;
     }
 
@@ -709,7 +721,7 @@ export class Automation {
         this.confirmation.reset(confirmationTicksForMode(settings.bot_mode));
         this.phase = 'waiting-entry-trigger';
         this.emit({ type: HOLD, ts: Date.now(), reason: `waiting for validated ${settings.entry_mode === 'digit_trigger_confirmed' ? 'two-pass ' : ''}${desired.direction === 'over' ? '8/9 high' : '0/1 low'} entry trigger; ${Math.floor((Date.now() - (this.entryWaitStarted.get(key) ?? Date.now())) / 1000)}s watched` });
-        return 250;
+        return 1500;
       }
       const selected = settings.entry_mode !== 'model' ? triggerReady[0] : (timed[0]?.option ?? eligible[0]);
       const timingReason = settings.entry_mode === 'model' ? timed[0]?.assessment.reason : settings.entry_mode;
@@ -754,7 +766,7 @@ export class Automation {
         confirmation,
       });
       this.emit({ type: 'status', ts: Date.now(), state: this.state() });
-      return 250;
+      return 1500;
     }
     // Re-check the run state after the async quoting phase: the user may have
     // stopped the bot mid-span, and we must not broadcast (or buy) a bet once

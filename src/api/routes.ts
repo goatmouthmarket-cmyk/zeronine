@@ -215,6 +215,15 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       return await request();
     } catch (firstError) {
       const firstMessage = firstError instanceof Error ? firstError.message : String(firstError);
+      if (/rate limit/i.test(firstMessage)) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        try {
+          return await request();
+        } catch (retryError) {
+          const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+          throw new ManualRequestError(503, `Deriv could not refresh the quote: ${retryMessage}. No contract was purchased; wait a moment and request a fresh quote.`);
+        }
+      }
       const transientConnectionFailure = /private socket (?:not open|closed|disconnected)|proposal timeout|socket error/i.test(firstMessage);
       if (transientConnectionFailure) {
         try {

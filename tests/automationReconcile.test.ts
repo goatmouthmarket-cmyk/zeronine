@@ -54,3 +54,39 @@ test('reconciliation records the real settled result and restores automation rec
   assert.equal(store.getRecovery().streak, 1);
   automation.dispose();
 });
+
+test('stopped watch cycles publish model candidates without requesting private proposals', async () => {
+  const [hubMod, registryMod, autoMod] = await Promise.all([
+    import('../src/api/hub.ts'),
+    import('../src/core/marketState.ts'),
+    import('../src/strategy/automation.ts'),
+  ]);
+  const registry = new registryMod.MarketRegistry({ onTick: () => undefined });
+  registry.ensure('1HZ10V');
+  const now = Math.floor(Date.now() / 1000) - 699;
+  const digits = [7, 8, 9];
+  for (let index = 0; index < 700; index += 1) {
+    registry.push('1HZ10V', 1_000 + index / 100, now + index, digits[index % digits.length]);
+  }
+  let proposalCalls = 0;
+  const client = {
+    isConnected: true,
+    getQuote: async () => {
+      proposalCalls += 1;
+      throw new Error('stopped watch mode must not request a proposal');
+    },
+  };
+  const hub = new hubMod.Hub();
+  let candidateCount = 0;
+  hub.on((event) => {
+    if (event.type === 'signal') candidateCount = ((event.signal as { candidates?: unknown[] })?.candidates ?? []).length;
+  });
+  const automation = new autoMod.Automation(registry, client as never, hub);
+
+  const delay = await (automation as unknown as { cycle(epoch: number, startedRunning: boolean): Promise<number> }).cycle(0, false);
+
+  assert.ok(candidateCount > 0, 'the public scanner should still publish manual candidates');
+  assert.equal(proposalCalls, 0);
+  assert.equal(delay, 1500);
+  automation.dispose();
+});
