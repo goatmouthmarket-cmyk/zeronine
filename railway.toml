@@ -17,5 +17,6 @@ name = "overunder-data"
 
 [env]
 NODE_ENV = "production"
+PORT = "8080"
 DATA_DIR = "/data"
 DERIV_PUBLIC_URL = "wss://api.derivws.com/trading/v1/options/ws/public"
