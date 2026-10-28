@@ -1137,6 +1137,10 @@ input::placeholder, textarea::placeholder { color: #aeb5c4; opacity: 1; }
     .mom-research-rail { display: block; padding-inline: 14px; }.mom-research-rail > span, .mom-research-rail small { display: block; margin-top: 6px; }
 }
 
+@media (max-width: 620px) {
+  .trading-room-frame-shell { height: calc(100dvh - 136px); min-height: 480px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .mom-status.observing i, .mom-trace-bar i { animation: none; }
     .mom-trace-bar i { transition: none; }
