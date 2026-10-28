@@ -91,7 +91,9 @@ export function loadConfig(): AppConfig {
   fs.mkdirSync(dataDir, { recursive: true });
 
   return {
-    port: num('PORT', 8010),
+    // Railway's public service target is 8080. Keep local development on
+    // 8010, but make production safe even if the platform variable is absent.
+    port: num('PORT', process.env.NODE_ENV === 'production' ? 8080 : 8010),
     nodeEnv: process.env.NODE_ENV || 'development',
     dataDir,
     dbPath: path.join(dataDir, 'overunder.db'),
