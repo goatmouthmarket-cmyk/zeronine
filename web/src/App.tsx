@@ -373,10 +373,10 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const labels: Record<Page, string> = {
-      home: 'ZeroNine', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', gold: 'Gold', account: 'Account',
+      home: 'Deriv Cows', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', gold: 'Gold', account: 'Account',
       privacy: 'Privacy policy', terms: 'Terms of use', refunds: 'Refund policy', cookies: 'Cookie and storage policy',
     };
-    document.title = `${labels[page]} | ZeroNine`;
+    document.title = `${labels[page]} | Deriv Cows`;
   }, [page]);
 
   return (
@@ -413,17 +413,14 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
     <>
       <div class="connect-hero">
         <div class="brand connect-brand">
-          <div class="logo">
-            <span class="logo-zero"></span>
-            <span class="logo-nine"></span>
-          </div>
+          <div class="logo cow-logo" aria-hidden="true">🐄</div>
           <div class="brand-title">
-            <span class="zero">Zero</span><span class="nine">Nine</span>
+            <span class="zero">Deriv</span> <span class="nine">Cows</span>
           </div>
         </div>
         <div class="connect-kicker">
           <span class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></span>
-          <span>ZeroNine trading workspace</span>
+          <span>Deriv Cows trading pasture</span>
         </div>
         <h1>See the signal. Trade when you are ready.</h1>
         <p>Explore live market intelligence and shared research first. Connect Deriv only when you want to place a trade.</p>
@@ -1038,18 +1035,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       <header class="header">
         <div class="header-top">
           <div class="brand">
-            <div class="logo">
-              <span class="logo-zero"></span>
-              <span class="logo-nine"></span>
-              <span class="logo-chart-arrow" aria-hidden="true">
-                <svg viewBox="0 0 24 18" fill="none">
-                  <path d="M2 15.5 8 10l4 3 8-9" />
-                  <path d="M14.5 4H20v5.5" />
-                </svg>
-              </span>
-            </div>
+            <div class="logo cow-logo" aria-hidden="true">🐄</div>
             <div class="brand-title">
-              <span class="zero">Zero</span><span class="nine">Nine</span>
+              <span class="zero">Deriv</span> <span class="nine">Cows</span>
             </div>
           </div>
           <nav class="desktop-nav" aria-label="Main navigation">
@@ -1080,7 +1068,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           ref={roomFrameRef}
           class="trading-room-frame"
           src="/trading-room.html"
-          title="ZeroNine interactive trading room"
+          title="Deriv Cows interactive trading pasture"
           onLoad={postRoomState}
         />
       </section>}
