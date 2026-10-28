@@ -373,10 +373,10 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const labels: Record<Page, string> = {
-      home: 'ZeroNine', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', gold: 'Gold', account: 'Account',
+      home: 'Deriv Cows', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', gold: 'Gold', account: 'Account',
       privacy: 'Privacy policy', terms: 'Terms of use', refunds: 'Refund policy', cookies: 'Cookie and storage policy',
     };
-    document.title = `${labels[page]} | ZeroNine`;
+    document.title = `${labels[page]} | Deriv Cows`;
   }, [page]);
 
   return (
@@ -413,17 +413,20 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
     <>
       <div class="connect-hero">
         <div class="brand connect-brand">
-          <div class="logo">
-            <span class="logo-zero"></span>
-            <span class="logo-nine"></span>
-          </div>
+          <div class="cow-logo" aria-hidden="true"><svg viewBox="0 0 44 44" fill="none">
+            <path d="M10 17 5 11l2-4 8 5M34 17l5-6-2-4-8 5" />
+            <path d="M11 17c0-6 4-10 11-10s11 4 11 10v11c0 7-5 11-11 11s-11-4-11-11V17Z" />
+            <path d="M16 25c2-2 4-3 6-3s4 1 6 3c0 5-2 8-6 8s-6-3-6-8Z" />
+            <circle cx="17" cy="19" r="1.5" fill="currentColor" stroke="none" /><circle cx="27" cy="19" r="1.5" fill="currentColor" stroke="none" />
+            <path d="M19 29h2m2 0h2" />
+          </svg></div>
           <div class="brand-title">
-            <span class="zero">Zero</span><span class="nine">Nine</span>
+            <span class="zero">Deriv</span><span class="nine"> Cows</span>
           </div>
         </div>
         <div class="connect-kicker">
           <span class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></span>
-          <span>ZeroNine trading workspace</span>
+          <span>Deriv Cows trading pasture</span>
         </div>
         <h1>See the signal. Trade when you are ready.</h1>
         <p>Explore live market intelligence and shared research first. Connect Deriv only when you want to place a trade.</p>
@@ -1038,18 +1041,15 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       <header class="header">
         <div class="header-top">
           <div class="brand">
-            <div class="logo">
-              <span class="logo-zero"></span>
-              <span class="logo-nine"></span>
-              <span class="logo-chart-arrow" aria-hidden="true">
-                <svg viewBox="0 0 24 18" fill="none">
-                  <path d="M2 15.5 8 10l4 3 8-9" />
-                  <path d="M14.5 4H20v5.5" />
-                </svg>
-              </span>
-            </div>
+            <div class="cow-logo" aria-hidden="true"><svg viewBox="0 0 44 44" fill="none">
+              <path d="M10 17 5 11l2-4 8 5M34 17l5-6-2-4-8 5" />
+              <path d="M11 17c0-6 4-10 11-10s11 4 11 10v11c0 7-5 11-11 11s-11-4-11-11V17Z" />
+              <path d="M16 25c2-2 4-3 6-3s4 1 6 3c0 5-2 8-6 8s-6-3-6-8Z" />
+              <circle cx="17" cy="19" r="1.5" fill="currentColor" stroke="none" /><circle cx="27" cy="19" r="1.5" fill="currentColor" stroke="none" />
+              <path d="M19 29h2m2 0h2" />
+            </svg></div>
             <div class="brand-title">
-              <span class="zero">Zero</span><span class="nine">Nine</span>
+              <span class="zero">Deriv</span><span class="nine"> Cows</span>
             </div>
           </div>
           <nav class="desktop-nav" aria-label="Main navigation">
@@ -1080,7 +1080,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           ref={roomFrameRef}
           class="trading-room-frame"
           src="/trading-room.html"
-          title="ZeroNine interactive trading room"
+          title="Deriv Cows interactive trading room"
           onLoad={postRoomState}
         />
       </section>}
@@ -7407,7 +7407,7 @@ function LegalPage({ page }: { page: LegalPageId }): JSX.Element {
 
 function SiteFooter({ onNavigate }: { onNavigate: (page: Page) => void }): JSX.Element {
   return <footer class="site-footer" aria-label="Legal information">
-    <span>ZeroNine · Trading tools carry risk.</span>
+    <span>Deriv Cows · Trading tools carry risk.</span>
     <nav aria-label="Legal links">
       <button type="button" onClick={() => onNavigate('privacy')}>Privacy</button>
       <button type="button" onClick={() => onNavigate('terms')}>Terms</button>

@@ -36,6 +36,14 @@
     --radius-sm: 14px;
 }
 
+/* Deriv Cows identity: a warm, simple ranch mark replaces the abstract
+   ZeroNine monogram while keeping the existing shell dimensions stable. */
+.cow-logo { display:grid; place-items:center; width:40px; height:40px; flex:0 0 40px; border:2px solid #ffd166; border-radius:13px; color:#ffd166; background:#243329; box-shadow:0 0 0 5px rgba(255,209,102,.06); }
+.cow-logo svg { width:30px; height:30px; }
+.cow-logo path { stroke:currentColor; stroke-width:2.4; stroke-linecap:round; stroke-linejoin:round; }
+.brand-title .zero { color:#ffd166; }
+.brand-title .nine { color:#f5f5f7; }
+
 html {
     background: var(--bg);
     -webkit-text-size-adjust: 100%;
