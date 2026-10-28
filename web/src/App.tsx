@@ -620,6 +620,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     if (s.owner) void loadPaperTrades(300);
   }, [s.owner, s.paperSimulation?.totalTrades]);
 
+  useEffect(() => {
+    if (s.owner && s.paperSimulation?.phase !== 'running') void startPaperSimulation().catch(() => undefined);
+  }, [s.owner, s.paperSimulation?.phase]);
+
   const recentItems = useMemo(() => digitTrades
     // Failed pre-purchase attempts remain in the audit trail, but they are
     // not account trades and do not belong in the operator's trade feed.
@@ -972,6 +976,21 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       recentQuotes: item.recentQuotes,
       recentDigits: item.recentDigits,
     })),
+    candidates: s.signal?.signal.candidates ?? s.displaySignal?.candidates ?? [],
+    paperTrades: s.paperTrades.slice(0, 100).map((trade) => ({
+      market: trade.market,
+      direction: trade.direction,
+      barrier: trade.barrier,
+      status: trade.status,
+      profit: trade.profit,
+    })),
+    paperSimulation: s.paperSimulation ? {
+      phase: s.paperSimulation.phase,
+      totalTrades: s.paperSimulation.totalTrades,
+      wins: s.paperSimulation.wins,
+      losses: s.paperSimulation.losses,
+      netPnl: s.paperSimulation.netPnl,
+    } : null,
     trades: digitTrades.slice(0, 30).map((trade) => ({
       id: trade.id,
       ts: trade.ts,
@@ -984,7 +1003,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.feed?.connected, s.markets, s.owner, s.session]);
+  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal]);
 
   const postRoomState = useCallback(() => {
     roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
