@@ -447,16 +447,22 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
           <span>Your trading pasture</span>
         </div>
         <h1>Welcome to<br />the pasture.</h1>
-        <p>Choose a market cow and send your ranger after it. Once Deriv is connected, defeating a target can start a trade; real-account orders require quote review. Enjoy the pasture during your break.</p>
+        <p>Choose a market cow and send your ranger after it. Once Deriv is connected, defeating a target can start a trade. Enjoy the pasture during your break.</p>
         <div class="connect-features" aria-label="Ways to play">
           <span><PastureIcon kind="cow" /> Guest play: no bets</span>
           <span><PastureIcon kind="arrow" /> Connect Deriv to trade</span>
         </div>
-        <div class="connect-scene" aria-label="Illustration of a ranger shooting a cow and an example bet status">
-          <span class="connect-scene-bet">EXAMPLE <strong>BET SUBMITTED</strong></span>
-          <svg class="connect-scene-art" viewBox="0 0 380 150" aria-hidden="true">
-            <ellipse cx="238" cy="137" rx="107" ry="10" fill="#244e2b" opacity=".45" />
-            <g class="connect-scene-cow">
+        <div class="connect-scene" role="img" aria-label="Practice animation: a ranger shoots a cow, misses once, then a virtual trade wins. No real bet is placed.">
+          <div class="practice-scene-label">PRACTICE <span>NO REAL BET</span></div>
+          <div class="practice-market"><strong>VOL 100 · OVER 1</strong><span>$1.00 virtual</span><div class="practice-health"><i /></div></div>
+          <div class="practice-balance" aria-hidden="true"><small>VIRTUAL BALANCE</small><strong class="practice-balance-before">$25.00</strong><strong class="practice-balance-after">$25.80</strong></div>
+          <div class="practice-miss" aria-hidden="true">MISS</div>
+          <div class="practice-result practice-open" aria-hidden="true"><small>VIRTUAL TRADE</small><strong>Digit 6 · Open</strong></div>
+          <div class="practice-result practice-win" aria-hidden="true"><small>VIRTUAL RESULT</small><strong>Won +$0.80</strong></div>
+          <svg class="connect-scene-art" viewBox="0 0 500 240" aria-hidden="true">
+            <ellipse cx="310" cy="216" rx="140" ry="13" fill="#244e2b" opacity=".38" />
+            <g class="practice-ranger"><ellipse cx="62" cy="218" rx="29" ry="7" fill="#244e2b" opacity=".35"/><path d="M44 175v35h13v-35m12 0v35h13v-35" fill="#393a3d" stroke="#28332f" stroke-width="3"/><path d="M40 205h20v9H40zm29 0h20v9H69z" fill="#5d4530"/><path d="M40 114h45l3 66H39z" fill="#326db1" stroke="#224470" stroke-width="4"/><path d="M40 165h47v7H40z" fill="#866338"/><path d="M37 111 27 82 16 100l8 24" fill="#7c4934"/><circle cx="63" cy="93" r="22" fill="#cba17d"/><path d="M41 88q2-24 22-24t22 22l-12-10-16 8z" fill="#4d3729"/><circle cx="65" cy="92" r="2" fill="#271f1d"/><circle cx="75" cy="92" r="2" fill="#271f1d"/><path d="M45 126 61 137l19-12M80 125l24-4" fill="none" stroke="#c69b75" stroke-width="9" stroke-linecap="round"/><g class="practice-bow"><path d="M101 93q30 26 0 58" fill="none" stroke="#925d32" stroke-width="6" stroke-linecap="round"/><path d="M101 93v58" fill="none" stroke="#fff0cb" stroke-width="2"/></g></g>
+            <g transform="translate(0 35) scale(1.35)"><g class="connect-scene-cow">
               <path d="M157 97 147 133h17l7-31m75-1 5 32h17l-3-46" fill="#e4c99f" stroke="#553524" stroke-width="4" stroke-linejoin="round" />
               <path d="M144 71q-24 4-26 27-2 9-11 8" fill="none" stroke="#f4dfb6" stroke-width="6" stroke-linecap="round" />
               <ellipse cx="210" cy="76" rx="71" ry="46" fill="#fff0cb" stroke="#553524" stroke-width="4" />
@@ -464,10 +470,10 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
               <circle cx="203" cy="75" r="24" fill="#ed3544" /><circle cx="203" cy="75" r="15" fill="#fff1cf" /><circle cx="203" cy="75" r="7" fill="#ed3544" />
               <path d="M267 45 256 23l25 10m21 10 13-18-3 27" fill="#bd875a" stroke="#553524" stroke-width="3" stroke-linejoin="round" />
               <path d="M255 54q16-27 40-18 27 11 28 37l-12 28h-46q-20-10-10-47z" fill="#fff0cb" stroke="#553524" stroke-width="4" />
-              <circle cx="281" cy="61" r="4" fill="#39271d" /><circle cx="307" cy="62" r="4" fill="#39271d" />
+              <g class="practice-eyes"><circle cx="281" cy="61" r="4" fill="#39271d" /><circle cx="307" cy="62" r="4" fill="#39271d" /></g><g class="practice-dead-eyes" fill="none" stroke="#39271d" stroke-width="3" stroke-linecap="round"><path d="m277 57 8 8m0-8-8 8m26-7 8 8m0-8-8 8" /></g>
               <ellipse cx="298" cy="89" rx="26" ry="16" fill="#f49691" stroke="#a7625a" stroke-width="2" /><circle cx="289" cy="89" r="3" fill="#8b514b" /><circle cx="307" cy="89" r="3" fill="#8b514b" />
-            </g>
-            <g class="connect-scene-arrow"><path d="M20 74h143" stroke="#543624" stroke-width="5" stroke-linecap="round" /><path d="m162 74-14-8v16z" fill="#e92b43" /><path d="M35 74 23 64H10l11 10-11 10h13z" fill="#e92b43" /></g>
+            </g></g>
+            {[1, 2, 3, 4].map((shot) => <g class={`practice-arrow shot-${shot}`} key={shot}><path d="M0 0h52" stroke="#543624" stroke-width="4" stroke-linecap="round"/><path d="m52 0-12-7v14z" fill="#e92b43"/><path d="M11 0 2-7H-8L0 0l-8 7H2z" fill="#e92b43"/></g>)}
           </svg>
         </div>
         <a class="connect-play-link" href="/">← Back to the pasture</a>
@@ -5461,12 +5467,17 @@ function TestLabPage(): JSX.Element {
         <div class={`cow-lab-stage${running ? ' is-replaying' : ''}`}>
           <div class="cow-lab-stage-title"><span>HISTORICAL REPLAY</span><strong>{running ? 'Experiment in progress' : 'A fresh start, every test'}</strong></div>
           <div class="cow-lab-machine" aria-hidden="true">
-            <div class="cow-lab-lamp lamp-left" /><div class="cow-lab-lamp lamp-right" /><div class="cow-lab-beam" />
+            <div class="cow-lab-lamp lamp-left" /><div class="cow-lab-lamp lamp-right" /><div class="cow-lab-beam" /><div class="cow-lab-impact" />
             <div class="cow-lab-chamber"><div class="cow-lab-bubbles"><i /><i /><i /></div>
-              <svg class="cow-lab-cow" viewBox="0 0 240 155"><ellipse cx="122" cy="135" rx="90" ry="10" fill="#163f39" opacity=".3" /><g><path d="M48 100 42 135h18l7-30m89 0 5 30h18l-5-43" fill="#e4c99f" stroke="#563725" stroke-width="4" stroke-linejoin="round" /><path d="M39 76Q13 78 16 100" fill="none" stroke="#ffe7bd" stroke-width="6" stroke-linecap="round" /><ellipse cx="106" cy="73" rx="68" ry="46" fill="#fff0cd" stroke="#563725" stroke-width="4" /><path d="M71 40Q47 54 48 83l17 14 19-17-5-20 13-14zm61-10q24 6 34 25l-6 29-21 10-11-17 9-19z" fill="#88543a" /><circle cx="104" cy="73" r="24" fill="#f03346" /><circle cx="104" cy="73" r="15" fill="#fff0cd" /><circle cx="104" cy="73" r="7" fill="#f03346" /><path d="M161 50 153 25l24 10m22 12 13-18-3 29" fill="#bd875a" stroke="#563725" stroke-width="3" stroke-linejoin="round" /><path d="M155 55q14-26 37-19 25 9 27 36l-11 27h-42q-19-10-11-44z" fill="#fff0cd" stroke="#563725" stroke-width="4" /><circle cx="180" cy="62" r="4" fill="#39271d" /><circle cx="203" cy="63" r="4" fill="#39271d" /><ellipse cx="196" cy="88" rx="23" ry="14" fill="#f39992" /><circle cx="188" cy="88" r="3" fill="#8b514b" /><circle cx="204" cy="88" r="3" fill="#8b514b" /></g></svg>
+              <svg class="cow-lab-cow-art" viewBox="0 0 240 155"><ellipse cx="122" cy="135" rx="90" ry="10" fill="#163f39" opacity=".3" /><g class="cow-lab-cow"><path d="M48 100 42 135h18l7-30m89 0 5 30h18l-5-43" fill="#e4c99f" stroke="#563725" stroke-width="4" stroke-linejoin="round" /><path d="M39 76Q13 78 16 100" fill="none" stroke="#ffe7bd" stroke-width="6" stroke-linecap="round" /><ellipse cx="106" cy="73" rx="68" ry="46" fill="#fff0cd" stroke="#563725" stroke-width="4" /><path d="M71 40Q47 54 48 83l17 14 19-17-5-20 13-14zm61-10q24 6 34 25l-6 29-21 10-11-17 9-19z" fill="#88543a" /><circle cx="104" cy="73" r="24" fill="#f03346" /><circle cx="104" cy="73" r="15" fill="#fff0cd" /><circle cx="104" cy="73" r="7" fill="#f03346" /><path d="M161 50 153 25l24 10m22 12 13-18-3 29" fill="#bd875a" stroke="#563725" stroke-width="3" stroke-linejoin="round" /><path d="M155 55q14-26 37-19 25 9 27 36l-11 27h-42q-19-10-11-44z" fill="#fff0cd" stroke="#563725" stroke-width="4" /><g class="cow-lab-eyes"><circle cx="180" cy="62" r="4" fill="#39271d" /><circle cx="203" cy="63" r="4" fill="#39271d" /></g><g class="cow-lab-dead-eyes" fill="none" stroke="#39271d" stroke-width="3" stroke-linecap="round"><path d="m176 58 8 8m0-8-8 8m23-7 8 8m0-8-8 8" /></g><ellipse cx="196" cy="88" rx="23" ry="14" fill="#f39992" /><circle cx="188" cy="88" r="3" fill="#8b514b" /><circle cx="204" cy="88" r="3" fill="#8b514b" /></g></svg>
             </div><div class="cow-lab-platform"><span /><b>REPLAY CHAMBER</b><span /></div>
           </div>
           <div class="cow-lab-stage-foot"><span>Illustration of a historical replay</span><strong>{running ? (s.testlab?.message || 'Preparing experiment…') : 'No real trades in this experiment'}</strong></div>
+          <div class="cow-lab-stage-results" aria-label="Latest completed backtest configuration">
+            <div><span>LAST COMPLETED CONFIGURATION</span><strong>{latest ? `${latest.strategy_mode} / ${latest.bot_mode}` : 'No completed replay yet'}</strong></div>
+            <div><span>SIMULATED P&amp;L</span><strong class={latest && latest.net_pnl < 0 ? 'negative' : ''}>{latest ? fmtSigned(latest.net_pnl, '$') : '—'}</strong></div>
+            <div><span>RESULTS</span><strong>{latest ? `${latest.wins}W / ${latest.losses}L · ${latest.trades} trades` : 'Waiting'}</strong></div>
+          </div>
         </div>
         <div class="cow-lab-readouts">
           <article><span>LAST BACKTEST</span><strong>{latest ? `${latest.wins} wins · ${latest.losses} losses` : 'No replay yet'}</strong><small>{latest ? `${latest.trades} simulated trades · ${latest.strategy_mode} / ${latest.bot_mode}` : 'Run a replay using your saved market history.'}</small>{latest && <b>{latest.win_rate == null ? 'Win rate unavailable' : `${latest.win_rate.toFixed(1)}% win rate`} · {fmtSigned(latest.net_pnl, '$')} simulated</b>}</article>
