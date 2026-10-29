@@ -701,10 +701,15 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   useEffect(() => { if (s.session) void refreshTrades(); }, [s.session?.loginid]);
   useEffect(() => {
     if (!active || !rememberedReal) { setShowRealCowNotice(false); return; }
+    const noticeKey = `zeronine:real-cow-notice-seen:${s.session?.loginid ?? ''}`;
+    try {
+      if (localStorage.getItem(noticeKey) === 'seen') { setShowRealCowNotice(false); return; }
+      localStorage.setItem(noticeKey, 'seen');
+    } catch { /* If storage is unavailable, show the reminder for this visit only. */ }
     setShowRealCowNotice(true);
     const timer = window.setTimeout(() => setShowRealCowNotice(false), 10_000);
     return () => window.clearTimeout(timer);
-  }, [active, rememberedReal]);
+  }, [active, rememberedReal, s.session?.loginid]);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const roomFrameRef = useRef<HTMLIFrameElement>(null);
   const timedManualExecuting = useRef(false);
