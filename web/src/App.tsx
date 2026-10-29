@@ -5520,6 +5520,7 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
   const [cashingOut, setCashingOut] = useState(false);
   const [cashingOutAll, setCashingOutAll] = useState(false);
   const [accountError, setAccountError] = useState('');
+  const [disconnecting, setDisconnecting] = useState(false);
   useEffect(() => {
     if (!session) return;
     setLoadingAccounts(true);
@@ -5539,6 +5540,18 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
       setAccountError(error instanceof Error ? error.message : String(error));
     } finally {
       setSwitchingAccount('');
+    }
+  };
+  const disconnectDeriv = async (): Promise<void> => {
+    if (disconnecting || cashingOut || cashingOutAll || switchingAccount) return;
+    setDisconnecting(true);
+    setAccountError('');
+    try {
+      await logout();
+    } catch (error) {
+      setAccountError(error instanceof Error ? error.message : 'Could not disconnect Deriv. Please try again.');
+    } finally {
+      setDisconnecting(false);
     }
   };
   const cashOutOpenContract = async (): Promise<void> => {
@@ -5643,9 +5656,9 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
           {cashingOut ? 'Cashing out contract…' : 'Cash out open contract'}
         </button>}
       </div>
-      <button class="logout-btn" onClick={() => void logout()}>
+      <button class="logout-btn" type="button" disabled={disconnecting || cashingOut || cashingOutAll || !!switchingAccount} onClick={() => void disconnectDeriv()}>
         <Icon name="logout" size={15} strokeWidth={1.8} />
-        Disconnect
+        {disconnecting ? 'Disconnecting…' : 'Disconnect'}
       </button>
     </>
   );
