@@ -1,5 +1,6 @@
 import { memo } from 'preact/compat';
 import { useDialogFocus } from './useDialogFocus';
+import { goldMiningDirection } from './goldMining';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, SessionInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct, ManualTradePreview, ManualTradeResult } from './store';
@@ -5549,6 +5550,34 @@ function AccountPage(): JSX.Element {
 
 type GoldTab = 'research' | 'trade' | 'ledger';
 
+function GoldMiningScene({ state }: { state: GoldModuleState | null }): JSX.Element {
+  const [hits, setHits] = useState(0);
+  const research = state?.research.state;
+  const signal = research?.signal;
+  const quote = research?.quote;
+  const now = Date.now();
+  const quoteFresh = Boolean(quote && Number.isFinite(quote.timestamp) && now - quote.timestamp <= 10_000 && quote.timestamp <= now + 10_000);
+  const status = research?.symbol?.tradingStatus;
+  const open = status === 'open';
+  const direction = goldMiningDirection(state, now);
+  const explanation = !state ? 'Connecting to Gold research…'
+    : !open ? 'Gold market is not open.'
+    : !quoteFresh ? 'Waiting for a fresh Gold quote.'
+    : state.research.ready !== true ? state.research.reason ?? 'Gold research is warming up.'
+    : signal && signal.expiresAt <= now ? 'The last signal expired; waiting for a fresh setup.'
+    : signal?.blockers?.[0] ?? signal?.reasons?.[0] ?? 'Waiting for the Gold model to confirm a setup.';
+  return <section class={`gold-mine ${direction ? direction.toLowerCase() : 'waiting'}`} aria-label="Interactive Gold mining and research signal">
+    <div class="gold-mine-copy"><span class="gold-mine-kicker">GOLD MINE · RESEARCH SIGNAL</span><h2>Mine the moment.</h2><p>Tap the rock to mine while the Gold model watches for a setup.</p><div class="gold-mine-readout" role="status" aria-live="polite"><span>{direction ? 'MODEL SIGNAL' : 'WAIT FOR A SETUP'}</span><strong>{direction ? `${direction === 'BUY' ? 'UP' : 'DOWN'} signal · review entry` : 'Waiting'}</strong><small>{direction ? (signal?.reasons?.[0] ?? 'Signal is current. Review the chart and trade controls before entering.') : explanation}</small></div><small class="gold-mine-note">Mining is just for play. Signals can change and do not place a trade.</small></div>
+    <button class="gold-mine-field" type="button" onClick={() => setHits((value) => value + 1)} aria-label="Mine the Gold rock; does not place a trade">
+      <span class="gold-mine-rock-label">{direction ? `${direction === 'BUY' ? '↑ UP' : '↓ DOWN'} · REVIEW` : 'WAIT'}</span>
+      <svg viewBox="0 0 340 190" aria-hidden="true"><ellipse cx="180" cy="169" rx="150" ry="14" fill="#182e22" opacity=".35" />
+        <g class="gold-mine-ranger"><path d="M102 130v30h12v-30m9 0v30h12v-30" fill="#393a3d" stroke="#2e3433" stroke-width="3" /><path d="M98 155h19v8H98zm25 0h19v8h-19z" fill="#5d4530" /><path d="M96 77h43l3 56H95z" fill="#326db1" stroke="#224470" stroke-width="3" /><path d="M95 120h47v7H95z" fill="#866338" /><path d="M97 77 87 51 75 67l8 23" fill="#7c4934" /><circle cx="118" cy="59" r="19" fill="#cba17d" /><path d="M99 54q2-22 20-22t19 20l-11-9-15 7z" fill="#4d3729" /><circle cx="119" cy="58" r="2" fill="#271f1d" /><circle cx="129" cy="58" r="2" fill="#271f1d" /><path d="M101 86 113 102l20-9" fill="none" stroke="#c69b75" stroke-width="10" stroke-linecap="round" /><g key={hits} class={hits ? 'gold-mine-swing' : ''}><path d="M130 91 176 49" stroke="#9d663a" stroke-width="7" stroke-linecap="round" /><path d="M157 45q18-18 35 1-15-5-26 9z" fill="#d2ddd3" stroke="#53635c" stroke-width="3" /></g></g>
+        <g key={`rock-${hits}`} class={hits ? 'gold-mine-hit' : ''}><path d="M186 150 181 118l17-37 37-15 38 17 18 39-8 30z" fill="#78684f" stroke="#514839" stroke-width="5" stroke-linejoin="round" /><path d="m198 82 36-16 5 30-22 15z" fill="#a99b79" /><path d="m239 96 34-13 18 39-27 4z" fill="#8b8068" /><path d="m196 121 20-10 12 14-10 21-25-4zm53-21 13-6 10 12-9 13-16-4z" fill="#f4c64d" stroke="#d99322" stroke-width="3" /><path d="m234 124 11-4 8 10-5 12-13-2z" fill="#ffe379" /></g>
+      </svg><span class="gold-mine-tap">{hits ? 'Mine again' : 'Tap to mine'}</span>
+    </button>
+  </section>;
+}
+
 function GoldPage(): JSX.Element {
   const store = useStore();
   const [tab, setTab] = useState<GoldTab>('trade');
@@ -5583,6 +5612,7 @@ function GoldPage(): JSX.Element {
     </header>
 
     <div class="gold-workspace">
+      {tab === 'trade' && <GoldMiningScene state={store.gold} />}
       {tab === 'ledger'
         ? <GoldLedgerWorkspace state={store.gold} trades={store.trades} ledgerEntries={store.ledgerEntries} currency={store.session?.currency ?? 'USD'} />
         : tab === 'research'
