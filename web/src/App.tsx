@@ -414,9 +414,6 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
       <div class="connect-hero">
         <div class="brand connect-brand">
           <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
-          <div class="brand-title">
-            <span class="zero">Deriv</span> <span class="nine">Cows</span>
-          </div>
         </div>
         <div class="connect-kicker">
           <span class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></span>
@@ -1055,9 +1052,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <div class="header-top">
           <div class="brand">
           <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
-            <div class="brand-title">
-              <span class="zero">Deriv</span> <span class="nine">Cows</span>
-            </div>
           </div>
           <nav class="desktop-nav" aria-label="Main navigation">
             {(['home', 'backtest', 'bot', 'gold', 'history', 'account'] as const).map((destination) => (
