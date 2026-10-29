@@ -677,14 +677,27 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
   const [manualPreview, setManualPreview] = useState<ManualTradePreview | null>(null);
   const [rememberedAccount, setRememberedAccount] = useState<string | null>(null);
+  const [showRealCowNotice, setShowRealCowNotice] = useState(false);
   const sessionRef = useRef(s.session);
   sessionRef.current = s.session;
   useEffect(() => {
     const account = s.session?.mode === 'real' ? s.session.loginid : null;
-    try { setRememberedAccount(account && localStorage.getItem(`zeronine:real-cow-confirm:${account}`) === 'enabled' ? account : null); }
-    catch { setRememberedAccount(null); }
+    const refreshPreference = () => {
+      try { setRememberedAccount(account && localStorage.getItem(`zeronine:real-cow-confirm:${account}`) === 'enabled' ? account : null); }
+      catch { setRememberedAccount(null); }
+    };
+    refreshPreference();
+    window.addEventListener('real-cow-preference', refreshPreference);
+    window.addEventListener('storage', refreshPreference);
+    return () => { window.removeEventListener('real-cow-preference', refreshPreference); window.removeEventListener('storage', refreshPreference); };
   }, [s.session?.loginid, s.session?.mode]);
   const rememberedReal = Boolean(s.session?.mode === 'real' && rememberedAccount === s.session.loginid);
+  useEffect(() => {
+    if (!active || !rememberedReal) { setShowRealCowNotice(false); return; }
+    setShowRealCowNotice(true);
+    const timer = window.setTimeout(() => setShowRealCowNotice(false), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [active, rememberedReal]);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const roomFrameRef = useRef<HTMLIFrameElement>(null);
   const timedManualExecuting = useRef(false);
@@ -1221,7 +1234,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>
 
-      {active && rememberedReal && <div class="real-cow-mode" role="status"><span>Real-money cow trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); }}>Turn confirmation on</button></div>}
+      {active && rememberedReal && showRealCowNotice && <div class="real-cow-mode" role="status"><span>Real-money cow trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); window.dispatchEvent(new Event('real-cow-preference')); }}>Turn confirmation on</button></div>}
 
       {active && !marketChooserOpen && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
         <iframe
@@ -2987,6 +3000,23 @@ function BotLimitInput({
   );
 }
 
+function CowConfirmationSettings({ session }: { session: SessionInfo }): JSX.Element | null {
+  const [disabled, setDisabled] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const refresh = () => {
+      try { setDisabled(session.mode === 'real' && localStorage.getItem(`zeronine:real-cow-confirm:${session.loginid}`) === 'enabled'); }
+      catch { setDisabled(false); }
+    };
+    refresh();
+    window.addEventListener('real-cow-preference', refresh);
+    window.addEventListener('storage', refresh);
+    return () => { window.removeEventListener('real-cow-preference', refresh); window.removeEventListener('storage', refresh); };
+  }, [session.loginid, session.mode]);
+  if (session.mode !== 'real') return null;
+  return <section class="cow-confirm-settings" aria-label="Real-money cow trade confirmation"><div><span>PASTURE SETTINGS</span><h2>Real-money confirmation</h2><p>{disabled ? 'Confirmation is off for cow trades on this account in this browser.' : 'You will review and confirm real-money cow trades before they are placed.'}</p></div><button type="button" disabled={!disabled} onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${session.loginid}`); setError(''); window.dispatchEvent(new Event('real-cow-preference')); } catch { setError('Could not update this browser setting. Please try again.'); } }}>{disabled ? 'Turn confirmation on' : 'Confirmation on'}</button>{error && <small role="alert">{error}</small>}</section>;
+}
+
 function BotPage(): JSX.Element {
   const s = useStore();
   const [stakeText, setStakeText] = useState(String(s.settings?.base_stake ?? 1));
@@ -3101,6 +3131,8 @@ function BotPage(): JSX.Element {
         <div class="page-title">Bot Cockpit</div>
         <div class="subtitle">Configure, protect, and launch automation from one control room</div>
       </header>
+
+      <CowConfirmationSettings session={s.session} />
 
       <ObservationRail
         automation={automation}
