@@ -5346,9 +5346,16 @@ function TestLabPage(): JSX.Element {
   const s = useStore();
   const [tab, setTab] = useViewPreference<LabTab>('lab-tab', 'backtest', ['backtest', 'paper', 'compare', 'patterns', 'entry']);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const latest = s.testRuns.find((run) => run.kind === 'backtest');
+  const running = busy || s.testlab?.kind === 'backtest';
+  const paper = s.paperSimulation;
+  const paperContract = paper?.openContract ?? paper?.lastSettled;
 
   useEffect(() => {
     void loadTestRuns();
+    const timer = window.setInterval(() => void loadTestRuns().catch(() => undefined), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
     if (tab === 'patterns') void loadPatternsData();
@@ -5356,10 +5363,26 @@ function TestLabPage(): JSX.Element {
 
   return (
     <>
-      <header class="header">
-        <div class="page-title">Test Lab</div>
-        <div class="subtitle">Backtest the replay · sweep the demo · retain research evidence</div>
-      </header>
+      <section class="cow-lab" aria-label="Cow research laboratory">
+        <div class="cow-lab-intro"><div><span class="cow-lab-kicker">THE PASTURE LAB</span><h1>The Cow Lab</h1><p>Replay past market ticks, then watch the paper scout test new signals in the background.</p></div><span class={`cow-lab-status${running ? ' live' : ''}`}><i />{running ? 'Replaying history' : 'Ready to experiment'}</span></div>
+        <div class={`cow-lab-stage${running ? ' is-replaying' : ''}`}>
+          <div class="cow-lab-stage-title"><span>HISTORICAL REPLAY</span><strong>{running ? 'Experiment in progress' : 'A fresh start, every test'}</strong></div>
+          <div class="cow-lab-machine" aria-hidden="true">
+            <div class="cow-lab-lamp lamp-left" /><div class="cow-lab-lamp lamp-right" /><div class="cow-lab-beam" />
+            <div class="cow-lab-chamber"><div class="cow-lab-bubbles"><i /><i /><i /></div>
+              <svg class="cow-lab-cow" viewBox="0 0 240 155"><ellipse cx="122" cy="135" rx="90" ry="10" fill="#163f39" opacity=".3" /><g><path d="M48 100 42 135h18l7-30m89 0 5 30h18l-5-43" fill="#e4c99f" stroke="#563725" stroke-width="4" stroke-linejoin="round" /><path d="M39 76Q13 78 16 100" fill="none" stroke="#ffe7bd" stroke-width="6" stroke-linecap="round" /><ellipse cx="106" cy="73" rx="68" ry="46" fill="#fff0cd" stroke="#563725" stroke-width="4" /><path d="M71 40Q47 54 48 83l17 14 19-17-5-20 13-14zm61-10q24 6 34 25l-6 29-21 10-11-17 9-19z" fill="#88543a" /><circle cx="104" cy="73" r="24" fill="#f03346" /><circle cx="104" cy="73" r="15" fill="#fff0cd" /><circle cx="104" cy="73" r="7" fill="#f03346" /><path d="M161 50 153 25l24 10m22 12 13-18-3 29" fill="#bd875a" stroke="#563725" stroke-width="3" stroke-linejoin="round" /><path d="M155 55q14-26 37-19 25 9 27 36l-11 27h-42q-19-10-11-44z" fill="#fff0cd" stroke="#563725" stroke-width="4" /><circle cx="180" cy="62" r="4" fill="#39271d" /><circle cx="203" cy="63" r="4" fill="#39271d" /><ellipse cx="196" cy="88" rx="23" ry="14" fill="#f39992" /><circle cx="188" cy="88" r="3" fill="#8b514b" /><circle cx="204" cy="88" r="3" fill="#8b514b" /></g></svg>
+            </div><div class="cow-lab-platform"><span /><b>REPLAY CHAMBER</b><span /></div>
+          </div>
+          <div class="cow-lab-stage-foot"><span>Illustration of a historical replay</span><strong>{running ? (s.testlab?.message || 'Preparing experiment…') : 'No real trades in this experiment'}</strong></div>
+        </div>
+        <div class="cow-lab-readouts">
+          <article><span>LAST BACKTEST</span><strong>{latest ? `${latest.wins} wins · ${latest.losses} losses` : 'No replay yet'}</strong><small>{latest ? `${latest.trades} simulated trades · ${latest.strategy_mode} / ${latest.bot_mode}` : 'Run a replay using your saved market history.'}</small>{latest && <b>{latest.win_rate == null ? 'Win rate unavailable' : `${latest.win_rate.toFixed(1)}% win rate`} · {fmtSigned(latest.net_pnl, '$')} simulated</b>}</article>
+          <article><span>BACKGROUND PAPER SCOUT</span><strong>{paper ? (paper.phase === 'running' ? 'Watching the market' : `Scout ${paper.phase}`) : 'Waiting for scout'}</strong><small>{paper ? `${paper.totalTrades} virtual trades this run · ${paper.wins} wins / ${paper.losses} losses` : 'Paper activity appears when the simulator reports in.'}</small><b>{paperContract ? `${paperContract.market} · ${paperContract.direction.toUpperCase()} ${paperContract.barrier} · ${paperContract.status.toUpperCase()}` : 'No virtual contract yet'}</b></article>
+        </div>
+        <div class="cow-lab-actions"><button type="button" disabled={running || !s.owner || !s.session} onClick={async () => { setError(''); setBusy(true); try { await runTestBacktest({ target: 200, configs: ALL_CONFIG_KEYS }); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } }}>{running ? 'Running experiment…' : 'Run backtest'}</button><span>{!s.owner ? 'Owner access is required to start a replay.' : !s.session ? 'Connect an account to start a replay.' : '200 simulated trades per configuration · no account funds used'}</span></div>
+        {error && <p class="cow-lab-error" role="alert">{error}</p>}
+      </section>
+      <details class="cow-lab-details"><summary>More research &amp; controls</summary>
       <div class="seg tl-tabs">
         {(['backtest', 'paper', 'compare', 'patterns', 'entry'] as LabTab[]).map((t) => (
           <button
@@ -5377,6 +5400,7 @@ function TestLabPage(): JSX.Element {
       {tab === 'compare' && <CompareTab busy={busy} />}
       {tab === 'patterns' && <PatternsTab busy={busy} />}
       {tab === 'entry' && <EntryTab />}
+      </details>
     </>
   );
 }
