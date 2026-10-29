@@ -1459,6 +1459,22 @@ export function listTrades(limit = 50, accountId = currentAccountId()): TradeRow
     .all(accountId, limit) as unknown as TradeRow[];
 }
 
+/** Historical digit loss remaining after later digit profits, for display only. */
+export function getDigitRemainingLoss(accountId = currentAccountId()): { amount: number; lastSettledTradeId: number | null } {
+  const rows = getDb().prepare(`SELECT id, profit FROM trades
+    WHERE account_id = ? AND contract_type IN ('DIGITOVER', 'DIGITUNDER')
+      AND status IN ('won', 'lost') AND profit IS NOT NULL
+    ORDER BY COALESCE(NULLIF(resolved_at, 0), ts), id`).iterate(accountId) as Iterable<{ id: number; profit: number }>;
+  let amount = 0;
+  let lastSettledTradeId: number | null = null;
+  for (const row of rows) {
+    if (!Number.isFinite(row.profit)) continue;
+    amount = Math.max(0, Math.round((amount - row.profit) * 100) / 100);
+    lastSettledTradeId = row.id;
+  }
+  return { amount, lastSettledTradeId };
+}
+
 /** All retained settled digit trades for the active account, grouped by exact contract. */
 export function digitTradeEvidence(accountId = currentAccountId()): Array<{ market: string; contract_type: string; barrier: number; wins: number; losses: number }> {
   return getDb().prepare(`SELECT market, contract_type, barrier,

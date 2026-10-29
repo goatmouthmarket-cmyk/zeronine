@@ -85,6 +85,7 @@ export interface Settings {
 
 export interface TradeRow {
   id: number;
+  account_id?: string;
   ts: number;
   market: string;
   contract_type: 'DIGITOVER' | 'DIGITUNDER' | 'MULTUP' | 'MULTDOWN';
@@ -936,6 +937,7 @@ export interface State {
   automation: AutomationState | null;
   trades: TradeRow[];
   digitTradeEvidence: Array<{ market: string; contract_type: string; barrier: number; wins: number; losses: number }>;
+  digitRemainingLoss: { amount: number; lastSettledTradeId: number | null } | null;
   ledgerEntries: LedgerEntry[];
   paperLedgerEntries: LedgerEntry[];
   paperTrades: PaperTrade[];
@@ -975,6 +977,7 @@ const initial: State = {
   automation: null,
   trades: [],
   digitTradeEvidence: [],
+  digitRemainingLoss: null,
   ledgerEntries: [],
   paperLedgerEntries: [],
   paperTrades: [],
@@ -1153,6 +1156,7 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       if (state.session?.loginid !== nextSession?.loginid) {
         patch.trades = [];
         patch.digitTradeEvidence = [];
+        patch.digitRemainingLoss = null;
         patch.performance = null;
         patch.recovery = null;
         patch.contract = null;
@@ -1227,7 +1231,14 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       break;
     case 'trade': {
       const t = evt.trade as TradeRow;
+      if (t?.account_id && (!state.session || t.account_id !== `deriv:${state.session.loginid}`)) break;
       if (t) patch.trades = [t, ...state.trades.filter((x) => x.id !== t.id)].slice(0, 50);
+      if (t && (t.contract_type === 'DIGITOVER' || t.contract_type === 'DIGITUNDER') && (t.status === 'won' || t.status === 'lost')) {
+        patch.digitRemainingLoss = null;
+        // A prior history request may have started before settlement. Follow it
+        // with a fresh read so an old response cannot leave the counter stale.
+        queueMicrotask(() => { void refreshTrades().then(() => refreshTrades()); });
+      }
       const performance = evt.performance as PerformanceSummary | undefined;
       if (performance && typeof performance.profit === 'number') patch.performance = performance;
       break;
@@ -1516,11 +1527,13 @@ window.setInterval(() => {
 
 function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean }): void {
   const markets = Array.isArray(s.markets) ? s.markets : [];
+  const accountChanged = state.session?.loginid !== s.session?.loginid;
   cachePublicMarkets(markets);
   set({
       feed: s.feed,
       markets,
       session: s.session,
+      ...(accountChanged ? { digitRemainingLoss: null, digitTradeEvidence: [] } : {}),
       recovery: s.recovery,
       settings: s.settings,
       automation: s.automation,
@@ -1629,7 +1642,7 @@ export async function oauthStart(): Promise<string> {
 export async function logout(): Promise<void> {
   await api('/api/auth/logout', { method: 'POST' });
   signalStabilizer.reset();
-  set({ session: null, digitTradeEvidence: [], automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null, contracts: {}, ledgerEntries: [] });
+  set({ session: null, digitTradeEvidence: [], digitRemainingLoss: null, automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null, contracts: {}, ledgerEntries: [] });
 }
 
 export async function startAutomation(opts?: {
@@ -1876,7 +1889,7 @@ export async function switchDerivAccount(accountId: string): Promise<SessionInfo
     body: JSON.stringify({ accountId }),
   });
   signalStabilizer.reset();
-  set({ session: res.session, trades: [], digitTradeEvidence: [], performance: null, recovery: null, contract: null, contracts: {}, decision: null });
+  set({ session: res.session, trades: [], digitTradeEvidence: [], digitRemainingLoss: null, performance: null, recovery: null, contract: null, contracts: {}, decision: null });
   await refreshTrades();
   return res.session;
 }
@@ -2008,7 +2021,7 @@ export async function clearStuckTrade(): Promise<void> {
   }
 }
 
-const tradeRefreshes = new Map<number, Promise<void>>();
+const tradeRefreshes = new Map<string, Promise<void>>();
 
 function mergeTradeRefreshRows(rows: TradeRow[], requestedLimit: number): TradeRow[] {
   const next = rows.slice(0, requestedLimit);
@@ -2022,17 +2035,19 @@ function mergeTradeRefreshRows(rows: TradeRow[], requestedLimit: number): TradeR
 }
 
 export async function refreshTrades(limit = 50): Promise<void> {
-  const current = tradeRefreshes.get(limit);
+  const account = state.session?.loginid ?? '';
+  const refreshKey = `${account}:${limit}`;
+  const current = tradeRefreshes.get(refreshKey);
   if (current) return current;
   const refresh = (async () => { try {
     const session = state.session;
-    const res = await api<{ trades: TradeRow[]; evidence?: State['digitTradeEvidence']; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
+    const res = await api<{ trades: TradeRow[]; evidence?: State['digitTradeEvidence']; remainingLoss?: State['digitRemainingLoss']; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
     if (state.session?.loginid !== session?.loginid) return;
-    if (Array.isArray(res.trades)) set({ trades: mergeTradeRefreshRows(res.trades, limit), digitTradeEvidence: Array.isArray(res.evidence) ? res.evidence : [], performance: res.performance ?? state.performance });
+    if (Array.isArray(res.trades)) set({ trades: mergeTradeRefreshRows(res.trades, limit), digitTradeEvidence: Array.isArray(res.evidence) ? res.evidence : [], digitRemainingLoss: res.remainingLoss && Number.isFinite(res.remainingLoss.amount) ? res.remainingLoss : null, performance: res.performance ?? state.performance });
   } catch {
     // best-effort refresh; stale list is fine
-  } })().finally(() => tradeRefreshes.delete(limit));
-  tradeRefreshes.set(limit, refresh);
+  } })().finally(() => tradeRefreshes.delete(refreshKey));
+  tradeRefreshes.set(refreshKey, refresh);
   return refresh;
 }
 

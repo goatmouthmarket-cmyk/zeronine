@@ -50,4 +50,15 @@ test('financial history, performance, pending trades, and recovery are isolated 
   assert.equal(store.listTrades().length, 2);
   assert.equal(store.getPerformanceSummary().profit, 1.8, 'B reset must not alter A dashboard totals');
   assert.equal(store.getRecovery().debt, 2, 'B recovery must not alter A debt');
+
+  session('B');
+  assert.equal(store.getDigitRemainingLoss().amount, 2);
+  for (let i = 0; i < 35; i++) add('won', 0.01, `b-small-win-${i}`);
+  assert.equal(store.getDigitRemainingLoss().amount, 1.65, 'wins beyond the recent display window reduce the earlier loss');
+  add('won', 2, 'b-clear');
+  assert.equal(store.getDigitRemainingLoss().amount, 0, 'the remaining loss never becomes negative');
+  const latestLoss = add('lost', -3, 'b-new-loss');
+  assert.deepEqual(store.getDigitRemainingLoss(), { amount: 3, lastSettledTradeId: latestLoss.id });
+  session('A');
+  assert.equal(store.getDigitRemainingLoss().amount, 0, 'other accounts cannot contribute to this counter');
 });

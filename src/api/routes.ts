@@ -44,6 +44,7 @@ import {
   isMomentumMultiplierTrade,
   getTrade,
   getPerformanceSummary,
+  getDigitRemainingLoss,
   getPaperTrade,
   getRecovery,
   getSession,
@@ -1618,7 +1619,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!isOwner(req)) return { trades: [], evidence: [], performance: { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 } };
     const q = req.query as { limit?: string };
     const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
-    return { trades: listTrades(limit), evidence: digitTradeEvidence(), performance: getPerformanceSummary() };
+    return { trades: listTrades(limit), evidence: digitTradeEvidence(), remainingLoss: getDigitRemainingLoss(), performance: getPerformanceSummary() };
   });
 
   // Account entries are scoped to the active Deriv login and never include

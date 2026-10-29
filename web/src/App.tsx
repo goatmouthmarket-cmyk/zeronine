@@ -692,6 +692,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     return () => { window.removeEventListener('real-cow-preference', refreshPreference); window.removeEventListener('storage', refreshPreference); };
   }, [s.session?.loginid, s.session?.mode]);
   const rememberedReal = Boolean(s.session?.mode === 'real' && rememberedAccount === s.session.loginid);
+  useEffect(() => { if (s.session) void refreshTrades(); }, [s.session?.loginid]);
   useEffect(() => {
     if (!active || !rememberedReal) { setShowRealCowNotice(false); return; }
     setShowRealCowNotice(true);
@@ -1118,6 +1119,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     feedConnected: s.feed?.connected ?? false,
     owner: Boolean(s.owner),
     accountMode: s.session?.mode ?? null,
+    accountId: s.session?.loginid ?? null,
+    remainingLoss: s.digitRemainingLoss,
     selected: market?.symbol ?? '',
     busy: manualBusy,
     status: manualMsg,
@@ -1159,7 +1162,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal]);
+  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal]);
 
   const postRoomState = useCallback(() => {
     roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
