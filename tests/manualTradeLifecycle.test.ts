@@ -39,6 +39,7 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
   hub.on((event) => events.push(event));
   const client = {
     isConnected: true,
+    connectedAccountId: 'CR_MANUAL',
     getQuote: async () => ({ id: 'proposal-1', direction: 'over' as const, barrier: 0, askPrice: 2, payout: 3.8 }),
     placeBuy: async () => {
       buyCalls += 1;
@@ -91,6 +92,7 @@ test('manual buy is protected from reconciliation and ledger failures', async ()
     id: 'manual-real', loginid: 'CR_REAL', balance: 100, currency: 'USD', mode: 'real', auth_kind: 'pat',
     token_cipher: 'x', created_at: Date.now(), updated_at: Date.now(),
   });
+  client.connectedAccountId = 'CR_REAL';
   const directReal = await app.inject({
     method: 'POST',
     url: '/api/trade/manual',

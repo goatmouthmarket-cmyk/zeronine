@@ -191,10 +191,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (manualLaneLocks.has(accountId)) throw new ManualRequestError(409, 'another manual digit order is already being processed');
   };
   const ensureManualClient = async (session: NonNullable<ReturnType<typeof getSession>>): Promise<void> => {
-    if (client.isConnected) return;
+    if (client.isConnected) {
+      if (client.connectedAccountId !== session.loginid) throw new ManualRequestError(409, 'Connected Deriv account does not match the selected account. No trade was submitted.');
+      return;
+    }
     try {
       const token = await resolveStoredToken();
-      await client.reconnect(token, session.loginid);
+      const connected = await client.reconnect(token, session.loginid);
+      if (connected.loginid !== session.loginid || client.connectedAccountId !== session.loginid) throw new Error('Deriv reconnected to a different account');
     } catch (error) {
       throw new ManualRequestError(409, `socket reconnect failed: ${String(error)}`);
     }
@@ -229,6 +233,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (transientConnectionFailure) {
         try {
           await client.reconnect(await resolveStoredToken(), session.loginid);
+          await ensureManualClient(session);
           return await request();
         } catch (retryError) {
           const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
@@ -1956,6 +1961,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const tokenSession = getSession() ?? session;
     try {
       const info = await client.reconnect(token, accountId);
+      if (info.loginid !== accountId || client.connectedAccountId !== accountId) throw new Error('Deriv connected to a different account; the account switch was not completed');
       const now = Date.now();
       setSession({ ...tokenSession, id: crypto.randomUUID(), loginid: info.loginid, balance: info.balance,
         currency: info.currency, mode: info.mode, created_at: now, updated_at: now });
@@ -2087,6 +2093,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const entrySnapshot = registry.snapshot(order.market);
       if (!entrySnapshot.fresh) throw new ManualRequestError(409, 'the selected market feed became stale before purchase');
       const quote = await requestManualQuote(order, session);
+      if (getSession()?.loginid !== session.loginid || client.connectedAccountId !== session.loginid) throw new ManualRequestError(409, 'Selected account changed while preparing the order. No trade was submitted.');
       if (preview) {
         const askWorsened = quote.askPrice > preview.ask * 1.02 + 1e-9;
         const payoutWorsened = quote.payout + 1e-9 < preview.payout * 0.98;
@@ -2126,6 +2133,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         origin: 'manual',
       });
       const bought = await accountCoordinator.runCommand('manual_open', session.loginid, async () => {
+        if (getSession()?.loginid !== session.loginid || client.connectedAccountId !== session.loginid) throw new ManualRequestError(409, 'Selected account changed before purchase. No trade was submitted.');
         const conflict = listOpenTrades(accountId).find((open) => open.id !== trade.id && (open.contract_type === 'DIGITOVER' || open.contract_type === 'DIGITUNDER'));
         if (conflict) throw new ManualRequestError(409, 'another digit contract opened before this purchase could be submitted');
         buyAttempted = true;
@@ -2171,6 +2179,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!session) {
       reply.code(401);
       return { error: 'not connected' };
+    }
+    const expectedAccountId = (req.body as { expectedAccountId?: unknown } | undefined)?.expectedAccountId;
+    if (expectedAccountId !== undefined && expectedAccountId !== session.loginid) {
+      reply.code(409);
+      return { error: 'The selected account changed. Refresh your account and try again; no trade was submitted.' };
     }
     try {
       cleanupManualState();
@@ -2257,6 +2270,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     if (!session) {
       reply.code(401);
       return { error: 'not connected' };
+    }
+    const expectedAccountId = (req.body as { expectedAccountId?: unknown } | undefined)?.expectedAccountId;
+    if (expectedAccountId !== undefined && expectedAccountId !== session.loginid) {
+      reply.code(409);
+      return { error: 'The selected account changed. Refresh your account and try again; no trade was submitted.' };
     }
     try {
       const order = normalizeManualOrder(req.body);

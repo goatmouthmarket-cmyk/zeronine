@@ -1148,9 +1148,19 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       }
       break;
     }
-    case 'session':
-      patch.session = evt.session ? (evt.session as SessionInfo) : null;
+    case 'session': {
+      const nextSession = evt.session ? (evt.session as SessionInfo) : null;
+      if (state.session?.loginid !== nextSession?.loginid) {
+        patch.trades = [];
+        patch.digitTradeEvidence = [];
+        patch.performance = null;
+        patch.recovery = null;
+        patch.contract = null;
+        patch.contracts = {};
+      }
+      patch.session = nextSession;
       break;
+    }
     case 'balance':
       patch.session = state.session ? { ...state.session, balance: Number(evt.balance ?? 0) } : state.session;
       break;
@@ -1889,6 +1899,7 @@ export async function cashOutAllAccountOpenContracts(): Promise<AccountCashOutAl
 }
 
 export interface ManualOrder {
+  expectedAccountId?: string;
   market: string;
   direction: 'over' | 'under';
   barrier: number;

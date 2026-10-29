@@ -128,6 +128,7 @@ export class DerivPrivateClient {
   onBalance: ((balance: number) => void) | null = null;
   onDisconnect: (() => void) | null = null;
   private connected = false;
+  private socketAccountId: string | null = null;
 
   private rejectPending(reason: string): void {
     for (const p of this.pending.values()) {
@@ -139,6 +140,10 @@ export class DerivPrivateClient {
 
   get isConnected(): boolean {
     return this.connected;
+  }
+
+  get connectedAccountId(): string | null {
+    return this.connected ? this.socketAccountId : null;
   }
 
   private nextReqId(): number {
@@ -202,6 +207,7 @@ export class DerivPrivateClient {
         handshakeDone = true;
         clearTimeout(handshakeTimer);
         this.connected = true;
+        this.socketAccountId = String(account.account_id);
         this.lastMessageAt = Date.now();
         this.startPing();
         this.send({ balance: 1, subscribe: 1, req_id: this.nextReqId() });
@@ -236,6 +242,7 @@ export class DerivPrivateClient {
       ws.on('close', () => {
         if (this.ws !== ws) return;
         this.connected = false;
+        this.socketAccountId = null;
         this.stopPing();
         this.rejectPending('private socket closed');
         this.ws = null;
@@ -512,6 +519,7 @@ export class DerivPrivateClient {
   disconnect(): void {
     this.stopPing();
     this.connected = false;
+    this.socketAccountId = null;
     if (this.ws) {
       try {
         this.ws.close();

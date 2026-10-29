@@ -810,7 +810,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
-      const result = await manualTrade({ market: marketSymbol, direction, barrier, stake, estWin, entryMode, companionDemo });
+      const result = await manualTrade({ market: marketSymbol, direction, barrier, stake, estWin, entryMode, companionDemo, expectedAccountId: s.session?.loginid });
       const label = shortMarketName(s.markets.find((item) => item.symbol === marketSymbol)?.display ?? marketSymbol);
       setManualMsg(`${label} · ${direction === 'under' ? 'Under' : 'Over'} ${barrier} placed @ ${stake}`);
       setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
@@ -840,7 +840,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
-      const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant' });
+      const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid });
       if (sessionRef.current?.loginid !== s.session?.loginid || sessionRef.current?.mode !== s.session?.mode) throw new Error('Account changed while requesting the quote. No trade was submitted.');
       if (maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode)) {
         setManualExecution({ stage: 'buying', message: 'Real funds · checking the fresh quote and account safeguards' });
@@ -896,7 +896,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
         const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
         const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
-        const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: manualStake, estWin, entryMode: 'instant' });
+        const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: manualStake, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid });
         setManualPreview(preview);
         setManualExecution({ stage: 'review', message: 'Quote ready · review every value before confirming' });
         setManualMsg('Live quote ready for review · no contract has been purchased');

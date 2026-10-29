@@ -42,6 +42,7 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
   let failNextQuote = false;
   const client = {
     isConnected: true,
+    connectedAccountId: 'CR_SAFE',
     getQuote: async (request: { direction: 'over' | 'under'; barrier: number; amount: number }) => {
       quoteCalls += 1;
       if (failNextQuote) {
@@ -67,6 +68,16 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
   routesMod.registerApi(app, {
     registry, feed, client: client as never, hub, automation, paperSimulator: new paperMod.PaperSimulator(),
   });
+
+  client.connectedAccountId = 'OTHER_ACCOUNT';
+  const wrongAccount = await app.inject({ method: 'POST', url: '/api/trade/manual/preview', payload: { market: 'R_10', direction: 'over', barrier: 1, stake: 1, entryMode: 'instant' } });
+  assert.equal(wrongAccount.statusCode, 409);
+  assert.match(wrongAccount.json().error, /does not match/i);
+  assert.equal(buyCalls, 0, 'a mismatched broker socket must never place a purchase');
+  client.connectedAccountId = 'CR_SAFE';
+  const staleSelection = await app.inject({ method: 'POST', url: '/api/trade/manual/preview', payload: { market: 'R_10', direction: 'over', barrier: 1, stake: 1, entryMode: 'instant', expectedAccountId: 'OTHER_ACCOUNT' } });
+  assert.equal(staleSelection.statusCode, 409);
+  assert.equal(buyCalls, 0, 'a stale browser selection must never place a purchase');
 
   const previewResponse = await app.inject({
     method: 'POST', url: '/api/trade/manual/preview',
@@ -123,6 +134,7 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
     id: 'manual-unknown', loginid: 'CR_UNKNOWN', balance: 100, currency: 'USD', mode: 'demo', auth_kind: 'pat',
     token_cipher: cryptoMod.encryptToken('test-token'), created_at: Date.now(), updated_at: Date.now(),
   });
+  client.connectedAccountId = 'CR_UNKNOWN';
   failBuy = true;
   const unknown = await app.inject({
     method: 'POST', url: '/api/trade/manual',
