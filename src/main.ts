@@ -36,6 +36,7 @@ import { runBacktest } from './testlab/backtest.ts';
 import { runPaperSweep } from './testlab/paper.ts';
 import { scanPatterns } from './testlab/patterns.ts';
 import { PaperSimulator } from './simulation/paperSimulator.ts';
+import { MarketScout } from './simulation/marketScout.ts';
 import { GoldRuntime } from './gold/runtime.ts';
 import { DerivGoldMarketDataAdapter } from './gold/deriv.ts';
 import { DerivGoldFeed } from './gold/derivFeed.ts';
@@ -177,6 +178,8 @@ async function main(): Promise<void> {
   let latestEntrySignal: PaperSignal | null = null;
   const decisionMemory = new DecisionMemory();
   const paperSimulator = new PaperSimulator({ defaultStake: getSettings().base_stake });
+  const marketScout = new MarketScout();
+  let lastScoutBroadcast = 0;
   let latestPaperSignal: PaperSignal | null = null;
   hub.on((event) => {
     if (event.type !== 'signal') return;
@@ -230,6 +233,15 @@ async function main(): Promise<void> {
     onTick: (snap) => {
       enqueueDigit(snap.symbol, snap.lastEpoch, snap.lastQuote, snap.lastDigit);
       decisionMemory.onTick(snap.symbol, snap.lastDigit);
+      try {
+        marketScout.onTick({ market: snap.symbol, quote: snap.lastQuote, digit: snap.lastDigit, epoch: snap.lastEpoch });
+        if (Date.now() - lastScoutBroadcast >= 5000) {
+          lastScoutBroadcast = Date.now();
+          hub.emit({ type: 'market_scout', ts: lastScoutBroadcast, samples: marketScout.snapshot() });
+        }
+      } catch (error) {
+        console.error('[market-scout] research update failed:', error instanceof Error ? error.message : String(error));
+      }
       // A scanner pick gets one matching-market entry opportunity only. This
       // avoids opening repeated contracts from a stale "latest" candidate.
       const paperSignal = latestPaperSignal?.market === snap.symbol

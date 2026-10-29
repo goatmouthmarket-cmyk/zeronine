@@ -382,6 +382,15 @@ export interface PaperSimulationState {
   lastTick: { market: string; quote: number; digit: number; epoch: number } | null;
 }
 
+export interface MarketScoutSample {
+  market: string;
+  direction: 'over' | 'under';
+  barrier: number;
+  wins: number;
+  losses: number;
+  samples: number;
+}
+
 /** A contract-level virtual-paper record. It never represents Deriv account funds. */
 export interface PaperTrade {
   contractRef: string;
@@ -948,6 +957,7 @@ export interface State {
   autoBacktest: { intervalMs: number; lastRunAt: number; nextRunAt: number; lastFingerprint: number; minNewDigits: number } | null;
   autoPaper: { enabled: boolean; intervalMs: number; lastRunAt: number; nextRunAt: number | null } | null;
   paperSimulation: PaperSimulationState | null;
+  marketScout: MarketScoutSample[];
   patterns: { patterns: PatternRow[]; calibration: CalibrationReport | null } | null;
   entryLab: EntryLabState | null;
   momentum: MomentumState | null;
@@ -985,6 +995,7 @@ const initial: State = {
   autoBacktest: null,
   autoPaper: null,
   paperSimulation: null,
+  marketScout: [],
   patterns: null,
   entryLab: null,
   momentum: null,
@@ -1332,6 +1343,9 @@ function applyEvent(evt: Record<string, unknown>, notify = true): void {
       break;
     case 'paper_simulation':
       patch.paperSimulation = (evt.state as PaperSimulationState | null) ?? null;
+      break;
+    case 'market_scout':
+      patch.marketScout = Array.isArray(evt.samples) ? evt.samples as MarketScoutSample[] : [];
       break;
     case 'momentum':
       patch.momentum = (evt.state as MomentumState | null) ?? null;

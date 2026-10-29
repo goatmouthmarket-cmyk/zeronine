@@ -8,7 +8,7 @@ import { isOwner } from './access.ts';
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning', 'paper_simulation', 'momentum']);
+const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning', 'paper_simulation', 'market_scout', 'momentum']);
 
 export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
   await app.register(websocket, { options: { maxPayload: 8192 } });
@@ -17,11 +17,13 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
   let lastHold: unknown = null;
   let lastIntelligence: unknown = null;
   let lastPaperSimulation: unknown = null;
+  let lastMarketScout: unknown = null;
   hub.on((evt) => {
     if (evt.type === 'signal') lastSignal = evt;
     if (evt.type === 'hold') lastHold = evt;
     if (evt.type === 'intelligence') lastIntelligence = evt;
     if (evt.type === 'paper_simulation') lastPaperSimulation = evt;
+    if (evt.type === 'market_scout') lastMarketScout = evt;
   });
 
   app.get('/ws', { websocket: true }, (socket: WebSocket, req) => {
@@ -68,6 +70,7 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     if (owner && lastHold) safeSend(lastHold, true);
     if (lastIntelligence) safeSend(lastIntelligence, true);
     if (lastPaperSimulation) safeSend(lastPaperSimulation, true);
+    if (lastMarketScout) safeSend(lastMarketScout, true);
 
     heartbeatTimer = setInterval(() => {
       safeSend({ type: 'heartbeat', ts: Date.now() });
