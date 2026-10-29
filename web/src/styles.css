@@ -6368,3 +6368,15 @@ button.activity-row {
 .quick-account-menu p { margin: 8px 3px; font-size: 11px; line-height: 1.4; }
 .quick-account-menu p[role="alert"] { color: #a4162f; }
 .quick-account-menu .quick-account-details { justify-content: center; color: #fff; background: #293c52; font-weight: 800; }
+
+/* Guest connection screen, using the pasture's illustrated palette. */
+.connect-embedded { padding: clamp(18px, 3vw, 36px); background: radial-gradient(circle at 80% 10%, #6caf64 0, #315c3c 32%, #142c22 75%); border-radius: 20px; }
+.connect-hero { padding: 14px 8px 22px; }
+.connect-hero h1 { color: #fff4dc; font-weight: 900; text-shadow: 2px 3px #31513a; }
+.connect-hero p { color: #e4f0dc; }
+.connect-kicker { color: #ffdf91; }
+.connect-hero-pulse span { background: #ff405d; }
+.connect-card .connect-copy, .connect-card .connect-hint { color: #674632; }
+.connect-card .connect-divider { color: #76523d; }
+.connect-card .connect-err { color: #9f1830; }
+@media(max-width:700px) { .connect-embedded { padding: 16px; border-radius: 14px; } }

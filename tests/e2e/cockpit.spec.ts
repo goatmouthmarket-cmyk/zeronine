@@ -12,7 +12,7 @@ test('guest account page presents the branded connection view and favicon', asyn
   await page.routeWebSocket('**/ws', () => {});
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Account', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'See the signal. Trade when you are ready.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome to the pasture.' })).toBeVisible();
   await expect(page.getByText('Connect Deriv', { exact: true })).toBeVisible();
   const heroBox = await page.locator('.connect-hero').boundingBox();
   const cardBox = await page.locator('.connect-card').boundingBox();

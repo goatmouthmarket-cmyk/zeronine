@@ -419,14 +419,15 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
           <span class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></span>
           <span>Deriv Cows trading pasture</span>
         </div>
-        <h1>See the signal. Trade when you are ready.</h1>
-        <p>Explore live market intelligence and shared research first. Connect Deriv only when you want to place a trade.</p>
+        <h1>Welcome to the pasture.</h1>
+        <p>Play cow archery without an account. Connect Deriv when you want to place trades; guest cow hits never place a bet.</p>
       </div>
 
       <div class="connect-card">
         {s.publicDashboard && !s.owner && (
           <>
           <div class="connect-title">Owner access</div>
+            <div class="connect-copy">Connecting a Deriv account currently requires owner access. Guests can play without connecting.</div>
             <label class="form-label" for="owner-access-token">Dashboard owner token</label>
             <input
               id="owner-access-token"
@@ -458,7 +459,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
           </>
         )}
         <div class="connect-title">Connect Deriv</div>
-        <div class="connect-copy">Use a trading-enabled token to activate manual trading and the bot.</div>
+        <div class="connect-copy">Connect your Deriv account to unlock trading. You can still play the game without connecting.</div>
         <label class="form-label" for="deriv-api-token">Deriv API token</label>
         <input
           id="deriv-api-token"
@@ -1068,6 +1069,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         return;
       }
       if (message.type !== 'zeronine:room-trade') return;
+      if (!s.session) {
+        roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-trade-result', ok: false, message: 'Connect Deriv before placing a trade.' }, window.location.origin);
+        return;
+      }
       const { direction, barrier, stake, market: marketSymbol } = message.payload ?? {};
       if ((direction !== 'over' && direction !== 'under') || typeof barrier !== 'number' || !Number.isInteger(barrier) || barrier < 0 || barrier > 9 || typeof stake !== 'number' || !Number.isFinite(stake) || stake <= 0 || typeof marketSymbol !== 'string' || !s.markets.some((item) => item.symbol === marketSymbol)) {
         roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-trade-result', ok: false, message: 'That game target is not valid.' }, window.location.origin);
@@ -1084,7 +1089,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     };
     window.addEventListener('message', receiveRoomAction);
     return () => window.removeEventListener('message', receiveRoomAction);
-  }, [onNavigate, playArenaTarget, postRoomState, s.markets, s.session?.mode]);
+  }, [onNavigate, playArenaTarget, postRoomState, s.markets, s.session]);
 
   return (
     <>
