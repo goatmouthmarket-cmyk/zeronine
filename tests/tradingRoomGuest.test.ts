@@ -21,10 +21,16 @@ test('guest cow defeat is practice and does not send a trade request', () => {
     innerWidth: 800, innerHeight: 600, devicePixelRatio: 1,
     performance: { now: () => 100 }, setTimeout: () => 1, clearTimeout() {},
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated;})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission;})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   context.testDefeat({ contract: { market: 'Test market', symbol: 'TEST', kind: 'OVER', barrier: 1 } });
   assert.equal(messages.some((message) => message.type === 'zeronine:room-trade'), false);
   assert.match(elements.get('toast').textContent, /no bet placed/i);
+  context.testMission('kills');
+  context.testMission('kills');
+  assert.equal(elements.get('missionProgress').textContent, '2 / 3');
+  context.testMission('kills');
+  assert.equal(elements.get('missionTitle').textContent, 'Defeat 5 cows');
+  assert.equal(elements.get('missionProgress').textContent, '0 / 5');
 });
