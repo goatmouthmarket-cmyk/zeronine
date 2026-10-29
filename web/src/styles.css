@@ -6418,6 +6418,62 @@ button.activity-row {
 .pasture-review-grid strong { margin-top: 3px; font-size: 15px; }
 .pasture-review-confirm { display: flex; align-items: center; gap: 8px; margin: 15px 0; font-size: 12px; font-weight: 700; }
 .pasture-review-confirm input { width: 18px; height: 18px; accent-color: #e92545; }
+
+/* Account pasture: one identity in the site header, with a clear connection card. */
+.connect-embedded {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 490px);
+  align-items: center; gap: clamp(28px, 5vw, 84px); padding: clamp(28px, 5vw, 70px);
+  color: #fff9ea; background: #76bd6b;
+}
+.connect-embedded::before {
+  inset: 0; filter: none;
+  background: radial-gradient(ellipse at 13% 16%, #ffffffb8 0 5%, transparent 5.5%),
+    radial-gradient(ellipse at 20% 18%, #ffffff9c 0 7%, transparent 7.5%),
+    linear-gradient(164deg, transparent 0 48%, #548f54 48.2% 58%, transparent 58.2%),
+    linear-gradient(195deg, transparent 0 48%, #73a75b 48.2% 64%, transparent 64.2%),
+    linear-gradient(#71c8f2 0 49%, #9bd36a 49% 100%);
+}
+.connect-embedded::after {
+  background: linear-gradient(90deg, #19452ba8, #315e3270 48%, #23483148),
+    repeating-linear-gradient(90deg, transparent 0 96px, #8a542e99 97px 109px, transparent 110px 172px) 0 73% / 100% 14% no-repeat,
+    linear-gradient(transparent 71%, #a76d3b 71% 72.2%, transparent 72.2% 77%, #a76d3b 77% 78.2%, transparent 78.2%);
+}
+.connect-hero { max-width: 590px; padding: 0; }
+.connect-hero h1 { margin: 0; max-width: 600px; font-size: clamp(42px, 5.5vw, 78px); line-height: .98; }
+.connect-hero p { max-width: 480px; font-size: clamp(15px, 1.2vw, 18px); line-height: 1.55; }
+.connect-kicker { width: fit-content; gap: 8px; margin-bottom: 18px; padding: 8px 12px; border-radius: 99px; background: #173d2dcc; color: #ffe7a7; letter-spacing: .11em; }
+.connect-kicker-dot { width: 8px; height: 8px; border-radius: 50%; background: #a9ec72; box-shadow: 0 0 0 3px #a9ec7238; }
+.connect-features { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; }
+.connect-features span { padding: 9px 12px; border: 1px solid #ffffff4d; border-radius: 10px; background: #173e2db5; color: #fff9e8; font-size: 12px; font-weight: 750; }
+.connect-features b { margin-right: 5px; color: #ffda78; font-size: 16px; }
+.connect-play-link { display: inline-block; margin-top: 25px; color: #fff9e9; font-size: 13px; font-weight: 800; text-decoration: none; }
+.connect-play-link:hover { text-decoration: underline; }
+.connect-card { width: 100%; max-width: 490px; justify-self: end; padding: clamp(22px, 3vw, 34px); color: #4a291b; }
+.connect-card-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.connect-card-emblem { display: grid; place-items: center; width: 48px; height: 48px; flex: none; border: 3px solid #e65e42; border-radius: 50%; background: #fffae8; color: #e62b43; font-size: 32px; font-weight: 900; line-height: 1; }
+.connect-card .connect-title { margin: 2px 0 0; font-size: clamp(22px, 2.2vw, 30px); line-height: 1.08; }
+.connect-eyebrow { color: #a65d39; font-size: 10px; font-weight: 900; letter-spacing: .12em; }
+.connect-card .connect-copy { margin: 0 0 14px; color: #68412d; font-size: 13px; line-height: 1.5; }
+.connect-card .connect-btn--oauth { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 56px; background: linear-gradient(#ff4056, #ed183b); border: 2px solid #ff7783; color: #fff; box-shadow: inset 0 2px #ffffff52, 0 4px #a91832; text-shadow: 0 2px #a71b31; font-size: 15px; }
+.connect-card .connect-btn--oauth:hover:not(:disabled) { background: linear-gradient(#ff5969, #e91438); box-shadow: inset 0 2px #ffffff52, 0 5px #a91832; }
+.connect-deriv-mark { width: 26px; height: 26px; flex: none; }
+.connect-oauth-note { margin-top: 10px; color: #755039; font-size: 11px; text-align: center; }
+.connect-card .connect-divider { margin: 19px 0 16px; color: #8b6046; font-size: 11px; font-weight: 750; }
+.connect-card .connect-divider::before, .connect-card .connect-divider::after { background: #b88762; }
+.connect-card .form-label { display: block; margin: 0 0 7px; font-size: 12px; }
+.connect-card .connect-input { min-height: 48px; color: #fff; }
+.connect-card .connect-input::placeholder { color: #aab8c4; }
+.connect-card .connect-hint { margin-top: 13px; font-size: 11px; line-height: 1.4; }
+.connect-card button:focus-visible, .connect-play-link:focus-visible { outline: 3px solid #ffef9d; outline-offset: 3px; }
+@media(max-width: 760px) {
+  .connect-embedded, .desk-side .view-account .connect-embedded { grid-template-columns: minmax(0,1fr); gap: 24px; padding: 28px 18px; }
+  .connect-hero h1 { font-size: clamp(38px, 10vw, 58px); }
+  .connect-hero p { font-size: 14px; }
+  .connect-features { margin-top: 16px; }
+  .connect-play-link { margin-top: 18px; }
+  .connect-card { max-width: none; justify-self: stretch; }
+}
+@media(prefers-reduced-motion: reduce) { .connect-hero, .connect-card { animation: none; } }
 .pasture-review-actions { display: flex; gap: 8px; }
 .pasture-review-actions button { flex: 1; min-height: 44px; padding: 8px; border: 0; border-radius: 9px; color: white; background: #46596b; font-weight: 800; cursor: pointer; }
 .pasture-review-actions button:last-child { background: #c9213d; }

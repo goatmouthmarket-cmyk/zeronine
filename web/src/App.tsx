@@ -412,23 +412,24 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
   const content = (
     <>
       <div class="connect-hero">
-        <div class="brand connect-brand">
-          <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
-        </div>
         <div class="connect-kicker">
-          <span class="connect-hero-pulse" aria-hidden="true"><span></span><span></span><span></span></span>
-          <span>Deriv Cows trading pasture</span>
+          <span class="connect-kicker-dot" aria-hidden="true" />
+          <span>Your trading pasture</span>
         </div>
-        <h1>Welcome to the pasture.</h1>
-        <p>Play cow archery without an account. Connect Deriv when you want to place trades; guest cow hits never place a bet.</p>
-        <div class="connect-cow-art" aria-hidden="true" />
+        <h1>Welcome to<br />the pasture.</h1>
+        <p>Take aim, explore the pasture and play at your own pace. Connect your Deriv account when you’re ready to trade.</p>
+        <div class="connect-features" aria-label="Ways to play">
+          <span><b aria-hidden="true">✦</b> Play free as a guest</span>
+          <span><b aria-hidden="true">◎</b> Connect to trade</span>
+        </div>
+        <a class="connect-play-link" href="/">← Back to the pasture</a>
       </div>
 
       <div class="connect-card">
         {s.publicDashboard && !s.owner && (
           <>
           <div class="connect-title">Owner access</div>
-            <div class="connect-copy">Connecting a Deriv account currently requires owner access. Guests can play without connecting.</div>
+            <div class="connect-copy">This dashboard currently requires owner access to connect an account. Guest play is available without it.</div>
             <label class="form-label" for="owner-access-token">Dashboard owner token</label>
             <input
               id="owner-access-token"
@@ -456,43 +457,14 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
             >
               {busy ? 'Unlocking...' : 'Unlock dashboard'}
             </button>
-            <div class="connect-divider">or</div>
+            <div class="connect-divider">then connect your account</div>
           </>
         )}
-        <div class="connect-title">Connect Deriv</div>
-        <div class="connect-copy">Connect your Deriv account to unlock trading. You can still play the game without connecting.</div>
-        <label class="form-label" for="deriv-api-token">Deriv API token</label>
-        <input
-          id="deriv-api-token"
-          class="connect-input"
-          type="password"
-          autoComplete="off"
-          placeholder="Paste your Deriv API token"
-          value={token}
-          onInput={(e: any) => setToken(e.currentTarget.value)}
-        />
-        <button
-          class="connect-btn"
-          disabled={busy || !token.trim()}
-          onClick={async () => {
-            setBusy(true);
-            setError('');
-            try {
-              await connectPat(token.trim());
-            } catch (e) {
-              setError(String(e));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? 'Connecting…' : 'Connect'}
-        </button>
-        {error && <div class="connect-err" role="alert">{error}</div>}
-        <div class="connect-divider">or</div>
+        <div class="connect-card-heading"><span class="connect-card-emblem" aria-hidden="true">◎</span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
+        <div class="connect-copy">Sign in with Deriv to trade, or keep playing as a guest. Guest play never places a bet.</div>
         <button
           class="connect-btn connect-btn--oauth"
-          disabled={oauthBusy}
+          disabled={oauthBusy || (s.publicDashboard && !s.owner)}
           onClick={async () => {
             setOauthBusy(true);
             setError('');
@@ -505,9 +477,41 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
             }
           }}
         >
-          {oauthBusy ? 'Opening Deriv login…' : 'Sign in with Deriv'}
+          <svg class="connect-deriv-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 4h13c3 0 5 1 7 4l6 8-6 8c-2 3-4 4-7 4H3l12-12z" fill="currentColor" /></svg>
+          <span>{oauthBusy ? 'Opening Deriv…' : 'Continue with Deriv'}</span>
         </button>
-        <div class="connect-hint">Demo or real account • trading-enabled API token</div>
+        <div class="connect-oauth-note">You’ll securely sign in with Deriv, then return here.</div>
+        <div class="connect-divider">or use an API token</div>
+        <label class="form-label" for="deriv-api-token">Deriv API token</label>
+        <input
+          id="deriv-api-token"
+          class="connect-input"
+          type="password"
+          autoComplete="off"
+          placeholder="Paste your Deriv API token"
+          value={token}
+          onInput={(e: any) => setToken(e.currentTarget.value)}
+        />
+        <button
+          class="connect-btn"
+          disabled={busy || !token.trim() || (s.publicDashboard && !s.owner)}
+          onClick={async () => {
+            setBusy(true);
+            setError('');
+            try {
+              await connectPat(token.trim());
+              setToken('');
+            } catch (e) {
+              setError(String(e));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? 'Connecting…' : 'Connect with token'}
+        </button>
+        {error && <div class="connect-err" role="alert">{error}</div>}
+        <div class="connect-hint">For token sign-in, use a Deriv API token with trading permission.</div>
         {s.ws === 'closed' && <div class="connect-err">Feed disconnected – reconnecting…</div>}
       </div>
     </>
