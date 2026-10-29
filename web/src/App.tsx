@@ -376,7 +376,7 @@ export function App(): JSX.Element {
       home: 'Deriv Cows', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', gold: 'Gold', account: 'Account',
       privacy: 'Privacy policy', terms: 'Terms of use', refunds: 'Refund policy', cookies: 'Cookie and storage policy',
     };
-    document.title = `${labels[page]} | Deriv Cows`;
+    document.title = page === 'home' ? 'Deriv Cows' : `${labels[page]} | Deriv Cows`;
   }, [page]);
 
   return (
