@@ -6501,6 +6501,26 @@ button.activity-row {
 @media (prefers-reduced-motion: reduce) {
   .app:not([data-page="home"]) .desktop-nav .nav-link { transition: none; }
 }
+
+/* A self-contained illustration; the status is explicitly an example. */
+.connect-features span { display: inline-flex; align-items: center; gap: 7px; }
+.connect-features svg { width: 23px; height: 23px; flex: none; color: #ffe5a3; }
+.connect-card-emblem svg { width: 35px; height: 35px; }
+.connect-scene { position: relative; width: min(100%, 390px); height: 165px; margin-top: 16px; overflow: hidden; }
+.connect-scene-art { position: absolute; inset: 15px 0 0; width: 100%; height: 150px; overflow: visible; }
+.connect-scene-cow { transform-box: fill-box; transform-origin: 55% 85%; animation: pasture-cow-demo 9s ease-in-out infinite; }
+.connect-scene-arrow { animation: pasture-arrow-demo 9s ease-in-out infinite; }
+.connect-scene-bet { position: absolute; z-index: 1; top: 4px; left: 42%; padding: 7px 10px; border: 2px solid #e9bd76; border-radius: 10px; background: #493020ed; color: #ffe9bd; font-size: 9px; font-weight: 900; letter-spacing: .08em; white-space: nowrap; opacity: 0; animation: pasture-bet-demo 9s ease-in-out infinite; }
+.connect-scene-bet strong { margin-left: 4px; color: #a7ef9b; }
+@keyframes pasture-arrow-demo { 0%, 14% { opacity: 0; transform: translateX(-95px); } 18% { opacity: 1; transform: translateX(-95px); } 31%, 55% { opacity: 1; transform: translateX(40px); } 62%, 100% { opacity: 0; transform: translateX(40px); } }
+@keyframes pasture-cow-demo { 0%, 30% { opacity: 1; transform: rotate(0); } 34% { transform: rotate(-5deg); } 40% { transform: rotate(4deg); } 53% { opacity: 1; transform: rotate(72deg) translateY(12px); } 62%, 78% { opacity: 0; transform: rotate(72deg) translateY(12px); } 90%, 100% { opacity: 1; transform: rotate(0); } }
+@keyframes pasture-bet-demo { 0%, 35% { opacity: 0; transform: translateY(8px); } 42%, 72% { opacity: 1; transform: translateY(0); } 80%, 100% { opacity: 0; transform: translateY(-5px); } }
+@media (max-width: 760px) { .connect-scene { height: 130px; margin-top: 12px; } .connect-scene-art { height: 120px; } }
+@media (prefers-reduced-motion: reduce) {
+  .connect-scene-cow, .connect-scene-arrow, .connect-scene-bet { animation: none; }
+  .connect-scene-arrow { transform: translateX(40px); }
+  .connect-scene-bet { opacity: 1; }
+}
 .pasture-review-actions { display: flex; gap: 8px; }
 .pasture-review-actions button { flex: 1; min-height: 44px; padding: 8px; border: 0; border-radius: 9px; color: white; background: #46596b; font-weight: 800; cursor: pointer; }
 .pasture-review-actions button:last-child { background: #c9213d; }

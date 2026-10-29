@@ -401,6 +401,10 @@ export function App(): JSX.Element {
   );
 }
 
+function PastureIcon({ kind }: { kind: 'cow' | 'arrow' }): JSX.Element {
+  return kind === 'arrow' ? <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 27 25 6M20 5h7v7M5 20l7 7M6 25l-2 3 4-1" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg> : <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 12 3 7l6 1m16 4 4-5-6 1" fill="#ba7950" stroke="#543323" stroke-width="1.5" stroke-linejoin="round" /><path d="M6 17c0-8 4-12 10-12s10 4 10 12v5c0 5-4 7-10 7S6 27 6 22z" fill="#fff0cf" stroke="#543323" stroke-width="1.5" /><circle cx="11" cy="16" r="1.5" fill="#35231d" /><circle cx="21" cy="16" r="1.5" fill="#35231d" /><ellipse cx="16" cy="23" rx="7" ry="4.5" fill="#f29891" /><circle cx="13" cy="23" r=".9" fill="#814c44" /><circle cx="19" cy="23" r=".9" fill="#814c44" /></svg>;
+}
+
 function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element {
   const s = useStore();
   const [token, setToken] = useState('');
@@ -417,10 +421,28 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
           <span>Your trading pasture</span>
         </div>
         <h1>Welcome to<br />the pasture.</h1>
-        <p>Take aim, explore the pasture and play at your own pace. Connect your Deriv account when you’re ready to trade.</p>
+        <p>Choose a market cow and send your ranger after it. Once Deriv is connected, defeating a target can start a trade; real-account orders require quote review. Enjoy the pasture during your break.</p>
         <div class="connect-features" aria-label="Ways to play">
-          <span><b aria-hidden="true">✦</b> Play free as a guest</span>
-          <span><b aria-hidden="true">◎</b> Connect to trade</span>
+          <span><PastureIcon kind="cow" /> Guest play: no bets</span>
+          <span><PastureIcon kind="arrow" /> Connect Deriv to trade</span>
+        </div>
+        <div class="connect-scene" aria-label="Illustration of a ranger shooting a cow and an example bet status">
+          <span class="connect-scene-bet">EXAMPLE <strong>BET SUBMITTED</strong></span>
+          <svg class="connect-scene-art" viewBox="0 0 380 150" aria-hidden="true">
+            <ellipse cx="238" cy="137" rx="107" ry="10" fill="#244e2b" opacity=".45" />
+            <g class="connect-scene-cow">
+              <path d="M157 97 147 133h17l7-31m75-1 5 32h17l-3-46" fill="#e4c99f" stroke="#553524" stroke-width="4" stroke-linejoin="round" />
+              <path d="M144 71q-24 4-26 27-2 9-11 8" fill="none" stroke="#f4dfb6" stroke-width="6" stroke-linecap="round" />
+              <ellipse cx="210" cy="76" rx="71" ry="46" fill="#fff0cb" stroke="#553524" stroke-width="4" />
+              <path d="M170 41q-22 17-17 46l19 11 16-16-5-19 10-13zM238 36q22 8 32 25l-7 30-20 6-11-17 9-20z" fill="#895238" />
+              <circle cx="203" cy="75" r="24" fill="#ed3544" /><circle cx="203" cy="75" r="15" fill="#fff1cf" /><circle cx="203" cy="75" r="7" fill="#ed3544" />
+              <path d="M267 45 256 23l25 10m21 10 13-18-3 27" fill="#bd875a" stroke="#553524" stroke-width="3" stroke-linejoin="round" />
+              <path d="M255 54q16-27 40-18 27 11 28 37l-12 28h-46q-20-10-10-47z" fill="#fff0cb" stroke="#553524" stroke-width="4" />
+              <circle cx="281" cy="61" r="4" fill="#39271d" /><circle cx="307" cy="62" r="4" fill="#39271d" />
+              <ellipse cx="298" cy="89" rx="26" ry="16" fill="#f49691" stroke="#a7625a" stroke-width="2" /><circle cx="289" cy="89" r="3" fill="#8b514b" /><circle cx="307" cy="89" r="3" fill="#8b514b" />
+            </g>
+            <g class="connect-scene-arrow"><path d="M20 74h143" stroke="#543624" stroke-width="5" stroke-linecap="round" /><path d="m162 74-14-8v16z" fill="#e92b43" /><path d="M35 74 23 64H10l11 10-11 10h13z" fill="#e92b43" /></g>
+          </svg>
         </div>
         <a class="connect-play-link" href="/">← Back to the pasture</a>
       </div>
@@ -460,8 +482,8 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
             <div class="connect-divider">then connect your account</div>
           </>
         )}
-        <div class="connect-card-heading"><span class="connect-card-emblem" aria-hidden="true">◎</span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
-        <div class="connect-copy">Sign in with Deriv to trade, or keep playing as a guest. Guest play never places a bet.</div>
+        <div class="connect-card-heading"><span class="connect-card-emblem"><PastureIcon kind="cow" /></span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
+        <div class="connect-copy">Sign in to use your demo or real Deriv account. You can explore and shoot cows as a guest; guest shots never place bets.</div>
         <button
           class="connect-btn connect-btn--oauth"
           disabled={oauthBusy || (s.publicDashboard && !s.owner)}
