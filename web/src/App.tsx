@@ -578,6 +578,30 @@ function QuickAccountMenu({ session, onNavigate }: { session: SessionInfo | null
   </div>;
 }
 
+function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { preview: ManualTradePreview; busy: boolean; error: string; onConfirm: () => void; onCancel: () => void }): JSX.Element {
+  const [confirmed, setConfirmed] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(timer); }, []);
+  const seconds = Math.max(0, Math.ceil((preview.expiresAt - now) / 1000));
+  return <div class="pasture-review-backdrop">
+    <section class="pasture-review" role="dialog" aria-modal="true" aria-labelledby="pasture-review-title">
+      <span class="pasture-review-kicker">Real funds · review required</span>
+      <h2 id="pasture-review-title">{shortMarketName(preview.market.display)} · {sideLabel(preview.order.direction, preview.order.barrier)}</h2>
+      <p>No bet has been placed. Review the live quote before confirming.</p>
+      <div class="pasture-review-grid">
+        <div><span>Stake</span><strong>{fmtMoney(preview.quote.ask, preview.account.currency)}</strong></div>
+        <div><span>Payout</span><strong>{fmtMoney(preview.quote.payout, preview.account.currency)}</strong></div>
+        <div><span>Potential profit</span><strong>{fmtMoney(preview.quote.potentialProfit, preview.account.currency)}</strong></div>
+        <div><span>Quote</span><strong>{seconds ? `${seconds}s remaining` : 'Expired'}</strong></div>
+      </div>
+      <p>{preview.risk.reason}</p>
+      {error && <p role="alert">{error}</p>}
+      <label class="pasture-review-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed((event.currentTarget as HTMLInputElement).checked)} /> I understand this uses real funds.</label>
+      <div class="pasture-review-actions"><button type="button" onClick={onCancel} disabled={busy}>Cancel</button><button type="button" onClick={onConfirm} disabled={busy || !confirmed || !seconds}>{busy ? 'Confirming…' : 'Confirm real-money trade'}</button></div>
+    </section>
+  </div>;
+}
+
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const [settlementBusy, setSettlementBusy] = useState(false);
@@ -753,7 +777,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
       const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant' });
       setManualPreview(preview);
-      setMarketChooserOpen(true);
       setManualExecution({ stage: 'review', message: 'Quote ready - review every value before confirming' });
       setManualMsg('Live quote ready for review - no contract has been purchased');
       return true;
@@ -857,6 +880,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       setManualPreview(null);
       setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
       setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, manualPreview.account.currency)} · payout ${fmtMoney(result.trade.payout, manualPreview.account.currency)}`);
+      roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-review-purchased' }, window.location.origin);
       await refreshTrades();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -873,6 +897,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualError(false);
     setManualMsg('Quote review cancelled · no contract was purchased');
     setManualExecution({ stage: 'idle', message: 'No account order is active' });
+    roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-review-cancelled' }, window.location.origin);
   };
 
   useEffect(() => {
@@ -1083,6 +1108,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         roomFrameRef.current?.contentWindow?.postMessage({
           type: 'zeronine:room-trade-result',
           ok,
+          phase: ok && s.session?.mode === 'real' ? 'review' : undefined,
           message: ok ? (s.session?.mode === 'real' ? 'Live quote ready for your confirmation.' : 'Deriv order submitted.') : 'No contract was purchased. Check the room status.',
         }, window.location.origin);
       });
@@ -1124,6 +1150,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           onLoad={postRoomState}
         />
       </section>}
+
+      {active && !marketChooserOpen && manualPreview && <PastureQuoteReview key={manualPreview.previewId} preview={manualPreview} busy={manualBusy} error={manualError ? manualMsg : ''} onConfirm={() => void confirmManualPreview()} onCancel={cancelManualPreview} />}
 
       {active && marketChooserOpen && <section class={`trading-room-home room-${roomActivity}`} aria-label="Advanced manual trading controls">
         <TradingRoomEnvironment
