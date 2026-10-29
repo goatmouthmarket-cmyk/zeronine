@@ -1042,6 +1042,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     })),
     candidates: s.signal?.signal.candidates ?? s.displaySignal?.candidates ?? [],
     marketScout: s.marketScout,
+    digitTradeEvidence: s.digitTradeEvidence,
     paperTrades: s.paperTrades.slice(0, 100).map((trade) => ({
       market: trade.market,
       direction: trade.direction,
@@ -1068,7 +1069,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal]);
+  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal]);
 
   const postRoomState = useCallback(() => {
     roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);

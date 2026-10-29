@@ -25,6 +25,8 @@ import {
   enqueueDigit,
   flushDigitQueue,
   listPaperLedgerEntries,
+  listMarkets,
+  lastDigitEvents,
   listPendingGoldPredictions,
   pruneDigits,
   recordGoldPredictionEvidence,
@@ -179,6 +181,17 @@ async function main(): Promise<void> {
   const decisionMemory = new DecisionMemory();
   const paperSimulator = new PaperSimulator({ defaultStake: getSettings().base_stake });
   const marketScout = new MarketScout();
+  // Reconstruct the bounded observation window from already retained ticks.
+  // Research restoration must never prevent the service from starting.
+  try {
+    for (const market of listMarkets()) {
+      if (typeof market.symbol !== 'string') continue;
+      const ticks = lastDigitEvents(market.symbol, 501).sort((a, b) => a.epoch - b.epoch);
+      for (const tick of ticks) marketScout.onTick({ market: market.symbol, ...tick });
+    }
+  } catch (error) {
+    console.error('[market-scout] history restoration failed:', error instanceof Error ? error.message : String(error));
+  }
   let lastScoutBroadcast = 0;
   let latestPaperSignal: PaperSignal | null = null;
   hub.on((event) => {

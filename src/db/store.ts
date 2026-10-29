@@ -1459,6 +1459,15 @@ export function listTrades(limit = 50, accountId = currentAccountId()): TradeRow
     .all(accountId, limit) as unknown as TradeRow[];
 }
 
+/** All retained settled digit trades for the active account, grouped by exact contract. */
+export function digitTradeEvidence(accountId = currentAccountId()): Array<{ market: string; contract_type: string; barrier: number; wins: number; losses: number }> {
+  return getDb().prepare(`SELECT market, contract_type, barrier,
+    SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) AS wins,
+    SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END) AS losses
+    FROM trades WHERE account_id = ? AND contract_type IN ('DIGITOVER', 'DIGITUNDER')
+    AND status IN ('won', 'lost') GROUP BY market, contract_type, barrier`).all(accountId) as unknown as Array<{ market: string; contract_type: string; barrier: number; wins: number; losses: number }>;
+}
+
 function normalizeAccountMode(mode: TradeRow['account_mode']): LedgerEntryRow['account_mode'] {
   return mode === 'demo' || mode === 'real' ? mode : 'unknown';
 }

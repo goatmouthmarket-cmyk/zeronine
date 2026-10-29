@@ -935,6 +935,7 @@ export interface State {
   settings: Settings | null;
   automation: AutomationState | null;
   trades: TradeRow[];
+  digitTradeEvidence: Array<{ market: string; contract_type: string; barrier: number; wins: number; losses: number }>;
   ledgerEntries: LedgerEntry[];
   paperLedgerEntries: LedgerEntry[];
   paperTrades: PaperTrade[];
@@ -973,6 +974,7 @@ const initial: State = {
   settings: null,
   automation: null,
   trades: [],
+  digitTradeEvidence: [],
   ledgerEntries: [],
   paperLedgerEntries: [],
   paperTrades: [],
@@ -1617,7 +1619,7 @@ export async function oauthStart(): Promise<string> {
 export async function logout(): Promise<void> {
   await api('/api/auth/logout', { method: 'POST' });
   signalStabilizer.reset();
-  set({ session: null, automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null, contracts: {}, ledgerEntries: [] });
+  set({ session: null, digitTradeEvidence: [], automation: null, signal: null, displaySignal: null, quotes: {}, decision: null, hold: null, contract: null, contracts: {}, ledgerEntries: [] });
 }
 
 export async function startAutomation(opts?: {
@@ -1864,7 +1866,7 @@ export async function switchDerivAccount(accountId: string): Promise<SessionInfo
     body: JSON.stringify({ accountId }),
   });
   signalStabilizer.reset();
-  set({ session: res.session, trades: [], performance: null, recovery: null, contract: null, contracts: {}, decision: null });
+  set({ session: res.session, trades: [], digitTradeEvidence: [], performance: null, recovery: null, contract: null, contracts: {}, decision: null });
   await refreshTrades();
   return res.session;
 }
@@ -2012,8 +2014,10 @@ export async function refreshTrades(limit = 50): Promise<void> {
   const current = tradeRefreshes.get(limit);
   if (current) return current;
   const refresh = (async () => { try {
-    const res = await api<{ trades: TradeRow[]; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
-    if (Array.isArray(res.trades)) set({ trades: mergeTradeRefreshRows(res.trades, limit), performance: res.performance ?? state.performance });
+    const session = state.session;
+    const res = await api<{ trades: TradeRow[]; evidence?: State['digitTradeEvidence']; performance?: PerformanceSummary }>(`/api/history?limit=${limit}`);
+    if (state.session?.loginid !== session?.loginid) return;
+    if (Array.isArray(res.trades)) set({ trades: mergeTradeRefreshRows(res.trades, limit), digitTradeEvidence: Array.isArray(res.evidence) ? res.evidence : [], performance: res.performance ?? state.performance });
   } catch {
     // best-effort refresh; stale list is fine
   } })().finally(() => tradeRefreshes.delete(limit));

@@ -74,6 +74,10 @@ test('ledger preserves actual lifecycle entries and keeps virtual results out of
   assert.equal(paperEntries[0].account_mode, 'not_applicable');
   assert.match(paperEntries[0].reason, /virtual research/);
   assert.equal(store.getPerformanceSummary().profit, 1.8, 'paper profit must not affect account performance');
+  assert.deepEqual(store.digitTradeEvidence().map(({ market, contract_type, barrier, wins, losses }) => ({ market, contract_type, barrier, wins, losses })), [
+    { market: 'R_50', contract_type: 'DIGITOVER', barrier: 0, wins: 1, losses: 0 },
+  ], 'account evidence excludes the virtual paper settlement');
+  assert.deepEqual(store.digitTradeEvidence('deriv:OTHER'), [], 'account evidence never crosses account boundaries');
 
   const contextualContract = {
     id: 2,

@@ -59,6 +59,7 @@ import {
   listPaperTrades,
   listTestRuns,
   listTrades,
+  digitTradeEvidence,
   markTradePurchaseOutcomeUnknown,
   markTradePurchased,
   recordGoldTradeKnowledge,
@@ -1609,10 +1610,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.get('/api/history', async (req) => {
-    if (!isOwner(req)) return { trades: [], performance: { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 } };
+    if (!isOwner(req)) return { trades: [], evidence: [], performance: { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 } };
     const q = req.query as { limit?: string };
     const limit = Math.min(200, Math.max(1, Number(q.limit) || 50));
-    return { trades: listTrades(limit), performance: getPerformanceSummary() };
+    return { trades: listTrades(limit), evidence: digitTradeEvidence(), performance: getPerformanceSummary() };
   });
 
   // Account entries are scoped to the active Deriv login and never include
