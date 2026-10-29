@@ -21,7 +21,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
     innerWidth: 800, innerHeight: 600, devicePixelRatio: 1,
     performance: { now: () => 100 }, setTimeout: () => 1, clearTimeout() {},
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; };})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; }; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = ghost.x = 400; cows[0].y = cows[1].y = ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; };})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   context.testDefeat({ contract: { market: 'Test market', symbol: 'TEST', kind: 'OVER', barrier: 1 } });
@@ -38,6 +38,12 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   assert.equal(observed.high, 2);
   assert.equal(observed.n, 4, 'invalid values must not become market evidence');
   assert.equal(context.testSplit(Array.from({ length: 80 }, () => 9)).n, 50, 'every market uses the same latest 50 observations');
+  const spacing = context.testSpacing();
+  assert.ok(Math.hypot(spacing.cows[0].x - spacing.cows[1].x, spacing.cows[0].y - spacing.cows[1].y) >= 124, 'overlapping cows are separated');
+  for (const cow of spacing.cows) {
+    assert.ok(Math.hypot(cow.x - spacing.ghost.x, cow.y - spacing.ghost.y) >= 94, 'ghost keeps clear of cows');
+    assert.ok(Math.hypot(cow.x - spacing.spot.x, cow.y - spacing.spot.y) >= 125, 'ghost cow spawns in an open spot');
+  }
   context.testConnect('REAL_A');
   element('cowStake').value = '2.50';
   context.testDefeat({ contract: { market: 'Changed', symbol: 'CHANGED', kind: 'UNDER', barrier: 8 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
