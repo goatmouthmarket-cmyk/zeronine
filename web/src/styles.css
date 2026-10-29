@@ -6580,6 +6580,18 @@ button.activity-row {
 @media(max-width: 700px) { .real-cow-mode { top: 72px; width: max-content; font-size: 10px; } }
 .cow-confirm-settings { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 0 0 16px; padding: 15px 17px; border: 2px solid #aa7045; border-radius: 13px; background: linear-gradient(#f9e3bf,#edc896); color: #4f3020; box-shadow: inset 0 2px #fff9,0 4px #72472c; }
 .cow-confirm-settings > div { flex: 1 1 230px; }.cow-confirm-settings span { color: #a05b35; font-size: 9px; font-weight: 900; letter-spacing: .1em; }.cow-confirm-settings h2 { margin: 3px 0 4px; font-size: 16px; font-weight: 900; }.cow-confirm-settings p { color: #70503b; font-size: 12px; line-height: 1.4; }.cow-confirm-settings button { min-height: 40px; padding: 8px 12px; border: 2px solid #cb8a50; border-radius: 9px; background: #fff5e4; color: #69412c; font-size: 12px; font-weight: 850; cursor: pointer; }.cow-confirm-settings button:disabled { opacity: .65; cursor: default; }.cow-confirm-settings button:focus-visible { outline: 3px solid #287b4d; outline-offset: 2px; }.cow-confirm-settings small[role="alert"] { width: 100%; color: #9f1830; }
+
+.pasture-nav-toggle { display: none; }
+@media (max-width: 999.98px) {
+  .pasture-nav.bottom-nav-wrap { inset: auto max(10px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) auto; width: auto; padding: 0; background: transparent; }
+  .pasture-nav .pasture-nav-toggle { display: grid; place-items: center; width: 52px; height: 52px; margin-left: auto; pointer-events: auto; border: 2px solid #fff0d1; border-radius: 15px; color: #fff; background: linear-gradient(#ed4d5d,#c81f3a); box-shadow: 0 4px #8e1a30,0 6px 16px #0005; }
+  .pasture-nav .bottom-nav { display: none; position: absolute; right: 0; bottom: 64px; width: min(300px, calc(100vw - 20px)); height: auto; padding: 8px; grid-template-columns: repeat(3,1fr); gap: 4px; border: 2px solid #a66b42; border-radius: 16px; background: #f6ddb9f5; box-shadow: 0 8px 24px #0006; }
+  .pasture-nav.is-open .bottom-nav { display: grid; }
+  .pasture-nav .bottom-nav .nav-item { min-height: 52px; margin: 0; font-size: 10px; }
+  .pasture-nav .nav-item.bot .nav-bot-circle { width: 23px; height: 23px; margin: 0; background: transparent; box-shadow: none; }
+  .app[data-page="home"] .view-home .header { padding: max(4px,env(safe-area-inset-top)) 8px 0; }
+  .app[data-page="home"] .view-home .header .cow-logo { width: 135px; height: 54px; flex-basis: 135px; background-size: 360px auto; }
+}
 .pasture-review-actions { display: flex; gap: 8px; }
 .pasture-review-actions button { flex: 1; min-height: 44px; padding: 8px; border: 0; border-radius: 9px; color: white; background: #46596b; font-weight: 800; cursor: pointer; }
 .pasture-review-actions button:last-child { background: #c9213d; }

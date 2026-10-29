@@ -7670,10 +7670,13 @@ function LegalQuickLinks({ onDismiss }: { onDismiss: () => void }): JSX.Element 
 function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const automation = s.automation?.running ?? false;
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(false); }, [page]);
 
   return (
-    <div class="bottom-nav-wrap">
-      <nav class="bottom-nav" aria-label="Main navigation">
+    <div class={`bottom-nav-wrap${page === 'home' ? ' pasture-nav' : ''}${open ? ' is-open' : ''}`}>
+      {page === 'home' && <button type="button" class="pasture-nav-toggle" aria-label={open ? 'Close game menu' : 'Open game menu'} aria-expanded={open} aria-controls="mobile-game-navigation" onClick={() => setOpen((value) => !value)}><Icon name={open ? 'x' : 'dots'} size={22} /></button>}
+      <nav id="mobile-game-navigation" class="bottom-nav" aria-label="Main navigation">
         <button class={`nav-item${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>
           <Icon name="home" size={20} />
           Home
