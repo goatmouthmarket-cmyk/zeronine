@@ -6320,3 +6320,19 @@ button.activity-row {
   .position-tool.dragging .position-level.target > button,
   .position-tool.dragging .position-level.stop > button { filter: brightness(1.25); }
 }
+
+/* Illustrated cow-game controls */
+.view-home .header { background: linear-gradient(115deg, #25374b, #101c2b 65%); border-bottom: 4px solid #0b1421; box-shadow: inset 0 2px #536980; }
+.view-home .header .balance { background: linear-gradient(#293c52, #142233); border: 3px solid #40546d; border-radius: 15px; box-shadow: inset 0 2px #ffffff18, 0 4px #09121d; padding: 5px 7px 5px 14px; }
+.view-home .balance-amount { color: white; font-weight: 900; text-shadow: 2px 2px #08111c; }
+.view-home .balance-add { background: linear-gradient(#34ee81,#00b756); border: 2px solid #59ff9b; border-radius: 9px; color: white; box-shadow: inset 0 2px #ffffff45, 0 3px #006b35; }
+.desktop-nav .nav-link { min-height: 42px; padding-inline: 14px; text-transform: uppercase; letter-spacing: .03em; text-shadow: 1px 2px #101825; }
+.desktop-nav .nav-link:focus-visible, .bottom-nav .nav-item:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.bottom-nav-wrap { background: #111d2c; border-top: 3px solid #40536b; }
+.bottom-nav .nav-item { margin: 4px 2px; border: 2px solid #3d5068; border-radius: 10px; color: #dce7f3; background: linear-gradient(#304158,#1b2a3b); box-shadow: inset 0 2px #ffffff18, 0 3px #101925; font-weight: 850; }
+.bottom-nav .nav-item.active, .bottom-nav .nav-item.bot.active, .bottom-nav .nav-item.gold.active { background: linear-gradient(#ff4963,#e91139); border-color: #ff788b; color: white; box-shadow: inset 0 2px #ffffff45, 0 3px #86122a; }
+.connect-card { border: 4px solid #9b5b32; border-radius: 18px; background: linear-gradient(#f5d7ad,#e9bf8f); color: #442719; box-shadow: inset 0 3px #fff8, 0 6px #62391f, 0 16px 35px #0005; }
+.connect-card .form-label, .connect-card .connect-title { color: #4d2b1a; font-weight: 850; }
+.connect-card .connect-input { background: #101d2c; color: white; border: 2px solid #435570; border-radius: 10px; }
+.connect-card .connect-btn { background: linear-gradient(#30e878,#00af52); border: 2px solid #60fa9d; border-radius: 10px; color: white; font-weight: 900; box-shadow: inset 0 2px #ffffff48, 0 4px #08743b; }
+@media(max-width:700px) { .bottom-nav .nav-item { min-height: 48px; } .view-home .header .balance { padding: 3px 5px 3px 9px; } }
