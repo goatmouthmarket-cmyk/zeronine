@@ -21,7 +21,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
     innerWidth: 800, innerHeight: 600, devicePixelRatio: 1,
     performance: { now: () => 100 }, setTimeout: () => 1, clearTimeout() {},
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission;})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits;})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   context.testDefeat({ contract: { market: 'Test market', symbol: 'TEST', kind: 'OVER', barrier: 1 } });
@@ -33,4 +33,9 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   context.testMission('kills');
   assert.equal(elements.get('missionTitle').textContent, 'Defeat 5 cows');
   assert.equal(elements.get('missionProgress').textContent, '0 / 5');
+  const observed = context.testSplit([0, 4, 5, 9, -1, 10, 2.5]);
+  assert.equal(observed.low, 2);
+  assert.equal(observed.high, 2);
+  assert.equal(observed.n, 4, 'invalid values must not become market evidence');
+  assert.equal(context.testSplit(Array.from({ length: 80 }, () => 9)).n, 50, 'every market uses the same latest 50 observations');
 });

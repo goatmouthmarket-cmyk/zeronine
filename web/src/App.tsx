@@ -1130,6 +1130,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       display: item.display,
       lastQuote: item.lastQuote,
       lastDigit: item.lastDigit,
+      lastEpoch: item.lastEpoch,
+      fresh: item.fresh,
       recentQuotes: item.recentQuotes,
       recentDigits: item.recentDigits,
     })),
@@ -1149,6 +1151,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       wins: s.paperSimulation.wins,
       losses: s.paperSimulation.losses,
       netPnl: s.paperSimulation.netPnl,
+      openContract: s.paperSimulation.openContract,
+      lastSettled: s.paperSimulation.lastSettled,
+      lastTick: s.paperSimulation.lastTick,
     } : null,
     trades: digitTrades.slice(0, 30).map((trade) => ({
       id: trade.id,
