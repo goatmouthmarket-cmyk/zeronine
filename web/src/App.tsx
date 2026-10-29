@@ -421,6 +421,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
         </div>
         <h1>Welcome to the pasture.</h1>
         <p>Play cow archery without an account. Connect Deriv when you want to place trades; guest cow hits never place a bet.</p>
+        <div class="connect-cow-art" aria-hidden="true" />
       </div>
 
       <div class="connect-card">

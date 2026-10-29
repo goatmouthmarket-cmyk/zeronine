@@ -6381,6 +6381,31 @@ button.activity-row {
 .connect-card .connect-err { color: #9f1830; }
 @media(max-width:700px) { .connect-embedded { padding: 16px; border-radius: 14px; } }
 
+/* Illustrated pasture connection screen. The form remains live HTML. */
+.view-account:has(.connect-embedded) { max-width: none; }
+.connect-embedded { position: relative; isolation: isolate; overflow: hidden; width: 100%; min-height: min(760px, calc(100dvh - 110px)); padding: clamp(24px, 5vw, 70px); background: #76b84a; border-radius: 22px; }
+.connect-embedded::before { content: ''; position: absolute; inset: -28px; z-index: -2; background: url('/pasture-login-reference.png') center / cover no-repeat; filter: blur(24px); }
+.connect-embedded::after { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(110deg, #173b288c, #326a4052 55%, #1b342c82); }
+.connect-hero { overflow: visible; align-self: center; }
+.connect-hero .connect-brand { display: flex !important; margin: 0 0 18px; }
+.connect-hero .cow-logo { width: 210px; height: 83px; flex-basis: 210px; background-size: 560px auto; transform: none; animation: none; }
+.connect-hero h1 { max-width: 520px; font-size: clamp(38px, 5vw, 72px); line-height: .98; font-weight: 900; letter-spacing: -.045em; color: #fff2d2; text-shadow: 0 4px #274332, 3px 5px #173020; }
+.connect-hero p { max-width: 490px; color: #fff9e9; font-size: 15px; font-weight: 650; line-height: 1.5; text-shadow: 0 2px 6px #213b27; }
+.connect-kicker { color: #ffdd83; }
+.connect-cow-art { width: min(280px, 75%); height: 145px; margin-top: 18px; border-radius: 16px; background: url('/pasture-login-reference.png') -145px -270px / 810px auto no-repeat; mix-blend-mode: normal; box-shadow: 0 8px 20px #102a2033; }
+.connect-card { padding: clamp(20px, 3vw, 32px); border: 5px solid #8c4e29; border-radius: 24px; background: linear-gradient(#ffe7c1,#f8ce92); box-shadow: inset 0 0 0 3px #f7b871, 0 6px #4e291a, 0 16px 35px #0006; }
+.connect-card .connect-title { font-size: clamp(20px, 2.4vw, 30px); font-weight: 900; letter-spacing: -.04em; }
+.connect-card .connect-input { min-height: 50px; background: #101f2d; border: 3px solid #3d5367; border-radius: 12px; }
+.connect-card .connect-input:focus-visible { outline: 3px solid #267e4b; outline-offset: 2px; }
+.connect-card .connect-btn { min-height: 50px; text-shadow: 1px 2px #075d2a; }
+@media(min-width:1000px) {
+  .desk-side .view-account:has(.connect-embedded) { max-width: none; overflow-y: auto; }
+  .desk-side .view-account .connect-embedded { width: 100%; min-height: calc(100dvh - 100px); padding: clamp(30px, 5vw, 70px); grid-template-columns: minmax(0,1fr) minmax(350px,520px); gap: clamp(24px, 5vw, 80px); }
+  .desk-side .view-account .connect-hero h1 { max-width: 600px; font-size: clamp(42px, 5vw, 72px); }
+  .desk-side .view-account .connect-card { max-width: 520px; }
+}
+@media(max-width:700px) { .connect-embedded { min-height: 0; padding: 22px 16px 30px; } .connect-hero h1 { font-size: clamp(38px, 11vw, 54px); } .connect-hero p { font-size: 13px; } .connect-cow-art { width: 210px; height: 110px; margin-top: 12px; background-size: 620px auto; background-position: -110px -207px; } .connect-card { padding: 20px; } }
+
 .pasture-review-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: #07130eb8; }
 .pasture-review { width: min(440px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; padding: 22px; color: #3c2b1d; background: #fff0d6; border: 3px solid #a8653b; border-radius: 18px; box-shadow: 0 16px 50px #0008; }
 .pasture-review-kicker { color: #a3213a; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
