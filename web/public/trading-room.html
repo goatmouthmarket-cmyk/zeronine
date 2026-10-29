@@ -59,7 +59,6 @@ function splitDigits(values){const digits=Array.isArray(values)?values.slice(-50
 }
 function separatePastureActors(){
   const herd=cows.filter(v=>v.alive);
-  if(ghostCow&&ghostCow.alive)herd.push(ghostCow);
   // Resolve overlap gently, without moving the player or interrupting a charge.
   for(let pass=0;pass<3;pass++)for(let i=0;i<herd.length;i++){
     const a=herd[i];
@@ -71,14 +70,6 @@ function separatePastureActors(){
       a.x=Math.max(75,Math.min(world.w-75,a.x-ux*push));a.y=Math.max(110,Math.min(world.h-100,a.y-uy*push));
       b.x=Math.max(75,Math.min(world.w-75,b.x+ux*push));b.y=Math.max(110,Math.min(world.h-100,b.y+uy*push));
     }
-  }
-  if(herd.some(v=>Math.hypot(ghost.x-v.x,ghost.y-v.y)<95)){
-    const origin={x:ghost.x,y:ghost.y};let best=null;
-    for(let radius=10;radius<=200&&!best;radius+=10)for(let i=0;i<24;i++){
-      const angle=i*Math.PI/12,x=Math.max(65,Math.min(world.w-65,origin.x+Math.cos(angle)*radius)),y=Math.max(110,Math.min(world.h-100,origin.y+Math.sin(angle)*radius));
-      if(herd.every(v=>Math.hypot(x-v.x,y-v.y)>=95)){best={x,y};break}
-    }
-    if(best){ghost.x=best.x;ghost.y=best.y}
   }
 }
 function poly(points,fill,stroke){c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=2;c.stroke()}}function rect(x,y,w,h,col){c.fillStyle=col;c.fillRect(x,y,w,h)}function circle(x,y,r,col){c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fillStyle=col;c.fill()}function tree(x,y){circle(x+8,y+13,24,'#213e26aa');rect(x-7,y-34,14,48,'#765039');poly([[x-48,y-44],[x-34,y-91],[x,y-114],[x+40,y-94],[x+52,y-45],[x+12,y-25],[x-27,y-28]],'#427e3e');poly([[x-36,y-53],[x-18,y-99],[x+11,y-107],[x+10,y-45]],'#57924a');poly([[x+10,y-105],[x+42,y-85],[x+50,y-45],[x+10,y-45]],'#356c37');poly([[x-48,y-44],[x-34,y-91],[x-3,y-73],[x-13,y-35]],'#659a4b');circle(x-21,y-70,6,'#7fac5d');circle(x+22,y-77,5,'#70a556')};function cow(v){if(!v.alive)return;const {x,y}=v;const bounce=Math.sin(performance.now()/850+x)*1.2;
