@@ -71,8 +71,8 @@
 /* Illustrated game identity and raised navigation, based on the supplied sheet. */
 .brand .cow-logo,
 .header .brand:not(.connect-brand) .cow-logo {
-    width: 150px; height: 59px; flex-basis: 150px;
-    background: url('/cow-ui-assets.png') left top / 400px auto no-repeat;
+    width: 180px; height: 71px; flex-basis: 180px;
+    background: url('/cow-ui-assets.png') left top / 480px auto no-repeat;
     border-radius: 10px;
 }
 .cow-logo img { opacity: 0; }
