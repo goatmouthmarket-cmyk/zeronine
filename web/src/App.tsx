@@ -1056,13 +1056,12 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           <nav class="desktop-nav" aria-label="Main navigation">
             {(['home', 'backtest', 'bot', 'gold', 'history', 'account'] as const).map((destination) => (
               <button key={destination} type="button" aria-current={page === destination ? 'page' : undefined}
-                aria-label={destination === 'history' ? 'History' : destination === 'account' ? 'Account' : undefined}
-                title={destination === 'history' ? 'History' : destination === 'account' ? 'Account' : undefined}
+                aria-label={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}
+                title={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}
                 class={`nav-link${destination === 'gold' ? ' gold' : ''}${destination === 'history' || destination === 'account' ? ' icon-only' : ''}${page === destination ? ' active' : ''}`}
                 onClick={() => onNavigate(destination)}>
-                {destination === 'history' || destination === 'account'
-                  ? <><Icon name={destination} size={19} /><span class="sr-only">{destination === 'history' ? 'History' : 'Account'}</span></>
-                  : { home: 'Home', backtest: 'Lab', bot: 'Bot', gold: 'Gold' }[destination]}
+                <Icon name={{ home: 'home', backtest: 'stats', bot: 'crosshair', gold: 'flame', history: 'history', account: 'account' }[destination]} size={19} />
+                <span class="sr-only">{{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}</span>
               </button>
             ))}
           </nav>

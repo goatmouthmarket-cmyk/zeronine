@@ -6336,3 +6336,21 @@ button.activity-row {
 .connect-card .connect-input { background: #101d2c; color: white; border: 2px solid #435570; border-radius: 10px; }
 .connect-card .connect-btn { background: linear-gradient(#30e878,#00af52); border: 2px solid #60fa9d; border-radius: 10px; color: white; font-weight: 900; box-shadow: inset 0 2px #ffffff48, 0 4px #08743b; }
 @media(max-width:700px) { .bottom-nav .nav-item { min-height: 48px; } .view-home .header .balance { padding: 3px 5px 3px 9px; } }
+
+/* Full-field home: navigation and balance float above the pasture. */
+.app[data-page="home"] .view-home .trading-room-frame-shell {
+  position: fixed; inset: 0; z-index: 0; width: 100%; height: 100dvh;
+  min-height: 0; border: 0; box-shadow: none;
+}
+.app[data-page="home"] .view-home .header {
+  position: fixed; z-index: 20; top: 0; left: 0; right: 0;
+  padding: 8px 16px; background: linear-gradient(180deg, #101b28c9, transparent);
+  border: 0; box-shadow: none; pointer-events: none;
+}
+.app[data-page="home"] .view-home .header-top > * { pointer-events: auto; }
+.app[data-page="home"] .view-home .subtitle { display: none; }
+.app[data-page="home"] .desktop-nav .nav-link { width: 44px; min-width: 44px; padding: 0; display: inline-grid; place-items: center; transition: transform .18s ease, filter .18s ease; }
+.app[data-page="home"] .desktop-nav .nav-link:hover { transform: translateY(-2px); filter: brightness(1.12); }
+.app[data-page="home"] .bottom-nav-wrap { background: linear-gradient(0deg,#101b28e8,transparent); border: 0; }
+@media(max-width:700px) { .app[data-page="home"] .view-home .header { padding: 5px 8px; } .app[data-page="home"] .bottom-nav .nav-item { box-shadow: 0 3px #101925; } }
+@media(prefers-reduced-motion:reduce) { .app[data-page="home"] .desktop-nav .nav-link { transition: none; } }
