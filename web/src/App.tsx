@@ -2,7 +2,7 @@ import { memo } from 'preact/compat';
 import { useDialogFocus } from './useDialogFocus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
-import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct, ManualTradePreview, ManualTradeResult } from './store';
+import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, SessionInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct, ManualTradePreview, ManualTradeResult } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
 import { GoldTradeChart } from './GoldTradeChart';
 import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulationStage';
@@ -537,6 +537,46 @@ interface ManualExecutionView {
   message?: string;
 }
 
+function QuickAccountMenu({ session, onNavigate }: { session: SessionInfo | null; onNavigate: (p: Page) => void }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [accounts, setAccounts] = useState<DerivAccountInfo[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const toggle = () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    setError('');
+    if (!session) return;
+    setBusy(true);
+    void loadDerivAccounts().then(setAccounts).catch((err) => setError(err instanceof Error ? err.message : String(err))).finally(() => setBusy(false));
+  };
+  const choose = async (account: DerivAccountInfo) => {
+    if (busy || account.accountId === session?.loginid) return;
+    setBusy(true);
+    setError('');
+    try { await switchDerivAccount(account.accountId); setOpen(false); }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    finally { setBusy(false); }
+  };
+  return <div class="balance quick-account">
+    <div class="balance-amount">{fmtMoney(session?.balance ?? 0, session?.currency)}</div>
+    <button class="balance-add" type="button" onClick={toggle} aria-label="Choose Deriv account" aria-expanded={open} aria-controls="quick-account-menu"><Icon name="plus" size={14} strokeWidth={2.2} /></button>
+    {open && <div id="quick-account-menu" class="quick-account-menu" role="region" aria-label="Choose Deriv account">
+      <div class="quick-account-heading">Switch account <button type="button" onClick={() => setOpen(false)} aria-label="Close account menu">×</button></div>
+      {!session ? <button type="button" onClick={() => { setOpen(false); onNavigate('account'); }}>Connect Deriv</button> : <>
+        {busy && <p role="status">Loading or switching account…</p>}
+        {!busy && !accounts.length && !error && <p>No accounts available.</p>}
+        {accounts.map(account => <button type="button" key={account.accountId} disabled={busy || account.accountId === session.loginid} onClick={() => void choose(account)}>
+          <span><strong>{account.mode === 'real' ? 'Real' : 'Demo'}</strong><small>{account.accountId} · {account.currency}</small></span>
+          <b>{account.accountId === session.loginid ? 'Current' : fmtMoney(account.balance, account.currency)}</b>
+        </button>)}
+        {error && <p role="alert">{error}</p>}
+        <button type="button" class="quick-account-details" onClick={() => { setOpen(false); onNavigate('account'); }}>Account settings</button>
+      </>}
+    </div>}
+  </div>;
+}
+
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const [settlementBusy, setSettlementBusy] = useState(false);
@@ -1065,12 +1105,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               </button>
             ))}
           </nav>
-          <div class="balance">
-            <div class="balance-amount">{fmtMoney(s.session?.balance ?? 0, s.session?.currency)}</div>
-            <button class="balance-add" type="button" onClick={() => onNavigate('account')} aria-label="Manage balance and switch Deriv account" title="Manage Deriv account">
-              <Icon name="plus" size={14} strokeWidth={2.2} />
-            </button>
-          </div>
+          <QuickAccountMenu session={s.session} onNavigate={onNavigate} />
         </div>
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>

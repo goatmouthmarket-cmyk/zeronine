@@ -6354,3 +6354,17 @@ button.activity-row {
 .app[data-page="home"] .bottom-nav-wrap { background: linear-gradient(0deg,#101b28e8,transparent); border: 0; }
 @media(max-width:700px) { .app[data-page="home"] .view-home .header { padding: 5px 8px; } .app[data-page="home"] .bottom-nav .nav-item { box-shadow: 0 3px #101925; } }
 @media(prefers-reduced-motion:reduce) { .app[data-page="home"] .desktop-nav .nav-link { transition: none; } }
+
+.quick-account { position: relative; }
+.quick-account-menu { position: absolute; z-index: 60; top: calc(100% + 10px); right: 0; width: min(300px, calc(100vw - 24px)); max-height: min(65vh, 440px); overflow-y: auto; padding: 12px; border-radius: 14px; background: #f9e5c9; color: #4b2d1b; box-shadow: 0 10px 32px #0006; }
+.quick-account-heading { display: flex; align-items: center; justify-content: space-between; padding: 0 3px 8px; font-size: 13px; font-weight: 900; }
+.quick-account-menu button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px; margin-top: 5px; border: 0; border-radius: 9px; background: #fff8eb; color: #4b2d1b; text-align: left; cursor: pointer; }
+.quick-account-heading button { width: 30px; min-height: 30px; margin: 0; padding: 0; justify-content: center; background: transparent; font-size: 20px; }
+.quick-account-menu button:disabled { opacity: .7; cursor: default; }
+.quick-account-menu button:focus-visible { outline: 3px solid #e92545; }
+.quick-account-menu strong, .quick-account-menu small { display: block; }
+.quick-account-menu small { margin-top: 3px; color: #765a46; font-size: 10px; }
+.quick-account-menu b { color: #17663c; font-size: 11px; }
+.quick-account-menu p { margin: 8px 3px; font-size: 11px; line-height: 1.4; }
+.quick-account-menu p[role="alert"] { color: #a4162f; }
+.quick-account-menu .quick-account-details { justify-content: center; color: #fff; background: #293c52; font-weight: 800; }
