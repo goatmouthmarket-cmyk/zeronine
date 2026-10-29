@@ -6474,6 +6474,33 @@ button.activity-row {
   .connect-card { max-width: none; justify-self: stretch; }
 }
 @media(prefers-reduced-motion: reduce) { .connect-hero, .connect-card { animation: none; } }
+
+/* Keep the pasture's shared HUD identity on every page. The subpage header
+   stays in the document flow so it never covers controls or page content. */
+.app:not([data-page="home"]) .view-home .header {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 8px 2px;
+}
+.app:not([data-page="home"]) .view-home .subtitle { display: none; }
+.app:not([data-page="home"]) .desktop-nav .nav-link {
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  transition: transform .18s ease, filter .18s ease;
+}
+.app:not([data-page="home"]) .desktop-nav .nav-link:hover { transform: translateY(-2px); filter: brightness(1.12); }
+@media (max-width: 999.98px) {
+  .app:not([data-page="home"]) .view-home { display: contents; }
+  .app:not([data-page="home"]) .view-home > :not(.header) { display: none; }
+  .app:not([data-page="home"]) .view-home .header { padding: 8px 2px 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app:not([data-page="home"]) .desktop-nav .nav-link { transition: none; }
+}
 .pasture-review-actions { display: flex; gap: 8px; }
 .pasture-review-actions button { flex: 1; min-height: 44px; padding: 8px; border: 0; border-radius: 9px; color: white; background: #46596b; font-weight: 800; cursor: pointer; }
 .pasture-review-actions button:last-child { background: #c9213d; }
