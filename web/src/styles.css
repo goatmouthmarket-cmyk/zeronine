@@ -6564,6 +6564,16 @@ button.activity-row {
 @keyframes gold-pick-swing { 0% { transform: rotate(-38deg); } 55% { transform: rotate(12deg); } 100% { transform: rotate(0); } } @keyframes gold-rock-hit { 0%,50%,100% { transform: translateX(0); } 60% { transform: translateX(5px) rotate(2deg); } 80% { transform: translateX(-3px) rotate(-1deg); } }
 @media(max-width: 650px) { .gold-mine { grid-template-columns: 1fr; padding: 14px; }.gold-mine-field { min-height: 155px; }.gold-mine-field svg { max-height: 155px; } }
 @media(prefers-reduced-motion: reduce) { .gold-mine-swing,.gold-mine-hit { animation: none; } }
+
+/* A brief handoff after successful connection; no trading action is triggered. */
+.pasture-enter { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; overflow: hidden; background: linear-gradient(#74c8ec 0 48%,#a8d66f 48% 100%); color: #fff9e7; animation: pasture-enter-away 2.2s ease both; }
+.pasture-enter-sun { position: absolute; top: 9%; right: 14%; width: 110px; height: 110px; border-radius: 50%; background: #fff2b2; box-shadow: 0 0 0 24px #fff4c12c; }
+.pasture-enter-land { position: absolute; inset: 35% -10% -12%; background: radial-gradient(ellipse at 15% 60%,#70a951 0 31%,transparent 31.5%),radial-gradient(ellipse at 85% 55%,#5d994c 0 33%,transparent 33.5%),linear-gradient(transparent 0 40%,#83b95b 40%); }
+.pasture-enter-content { position: relative; display: flex; flex-direction: column; align-items: center; width: min(90vw,420px); text-align: center; text-shadow: 0 2px 4px #234b2a99; animation: pasture-enter-rise .55s ease both; }
+.pasture-enter-cow { display: grid; place-items: center; width: 84px; height: 84px; margin-bottom: 15px; border: 4px solid #fff0c7; border-radius: 26px; background: #f9d89d; box-shadow: 0 5px #78502e,0 10px 25px #1b412b55; }.pasture-enter-cow svg { width: 68px; height: 68px; }
+.pasture-enter-kicker { font-size: 10px; font-weight: 900; letter-spacing: .16em; color: #fff0bc; }.pasture-enter-content strong { margin: 7px 0; font-size: clamp(28px,6vw,44px); line-height: 1.05; font-weight: 900; letter-spacing: -.04em; }.pasture-enter-content small { font-size: 13px; font-weight: 700; }.pasture-enter-track { width: 160px; height: 8px; margin-top: 20px; overflow: hidden; border-radius: 99px; background: #244d3280; }.pasture-enter-track i { display: block; width: 100%; height: 100%; transform-origin: left; border-radius: inherit; background: #fce588; animation: pasture-enter-fill 1.65s ease both; }
+@keyframes pasture-enter-rise { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } } @keyframes pasture-enter-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } } @keyframes pasture-enter-away { 0%,78% { opacity: 1; } 100% { opacity: 0; } }
+@media(prefers-reduced-motion: reduce) { .pasture-enter,.pasture-enter-content,.pasture-enter-track i { animation: none; } }
 .pasture-review-actions { display: flex; gap: 8px; }
 .pasture-review-actions button { flex: 1; min-height: 44px; padding: 8px; border: 0; border-radius: 9px; color: white; background: #46596b; font-weight: 800; cursor: pointer; }
 .pasture-review-actions button:last-child { background: #c9213d; }

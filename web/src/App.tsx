@@ -350,8 +350,11 @@ function Icon({
 /* ---------------- app shell ---------------- */
 
 export function App(): JSX.Element {
+  const s = useStore();
   const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
   const [legalStripDismissed, setLegalStripDismissed] = useState(false);
+  const [enteringPasture, setEnteringPasture] = useState(false);
+  const oauthReturn = useRef(new URLSearchParams(window.location.search).get('oauth') === 'ok');
 
   useEffect(() => {
     const handlePopState = () => setPage(pageFromPath(window.location.pathname));
@@ -367,6 +370,26 @@ export function App(): JSX.Element {
   const dismissLegalStrip = useCallback(() => {
     setLegalStripDismissed(true);
   }, []);
+  const enterPasture = useCallback(() => {
+    setEnteringPasture(true);
+    navigate('home');
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!oauthReturn.current || !s.session) return;
+    oauthReturn.current = false;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('oauth');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    enterPasture();
+  }, [s.session, enterPasture]);
+
+  useEffect(() => {
+    if (!enteringPasture) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timer = window.setTimeout(() => setEnteringPasture(false), reduced ? 400 : 2200);
+    return () => window.clearTimeout(timer);
+  }, [enteringPasture]);
 
   useEffect(() => {
     if (page === 'history') void refreshTrades(200);
@@ -392,12 +415,13 @@ export function App(): JSX.Element {
           {page === 'history' && <div class="view view-history"><HistoryPage /></div>}
           {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
           {page === 'gold' && <div class="view view-gold"><GoldPage /></div>}
-          {page === 'account' && <div class="view view-account"><AccountPage /></div>}
+          {page === 'account' && <div class="view view-account"><AccountPage onConnected={enterPasture} /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
         </div>
         {!legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       </main>
       <BottomNav page={page} setPage={navigate} />
+      {enteringPasture && <div class="pasture-enter" role="status" aria-live="polite"><div class="pasture-enter-sun" aria-hidden="true" /><div class="pasture-enter-land" aria-hidden="true" /><div class="pasture-enter-content"><span class="pasture-enter-cow"><PastureIcon kind="cow" /></span><span class="pasture-enter-kicker">ACCOUNT CONNECTED</span><strong>Welcome to the pasture.</strong><small>Getting your ranger ready…</small><span class="pasture-enter-track" aria-hidden="true"><i /></span></div></div>}
     </>
   );
 }
@@ -406,7 +430,7 @@ function PastureIcon({ kind }: { kind: 'cow' | 'arrow' }): JSX.Element {
   return kind === 'arrow' ? <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 27 25 6M20 5h7v7M5 20l7 7M6 25l-2 3 4-1" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg> : <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M7 12 3 7l6 1m16 4 4-5-6 1" fill="#ba7950" stroke="#543323" stroke-width="1.5" stroke-linejoin="round" /><path d="M6 17c0-8 4-12 10-12s10 4 10 12v5c0 5-4 7-10 7S6 27 6 22z" fill="#fff0cf" stroke="#543323" stroke-width="1.5" /><circle cx="11" cy="16" r="1.5" fill="#35231d" /><circle cx="21" cy="16" r="1.5" fill="#35231d" /><ellipse cx="16" cy="23" rx="7" ry="4.5" fill="#f29891" /><circle cx="13" cy="23" r=".9" fill="#814c44" /><circle cx="19" cy="23" r=".9" fill="#814c44" /></svg>;
 }
 
-function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element {
+function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; onConnected?: () => void }): JSX.Element {
   const s = useStore();
   const [token, setToken] = useState('');
   const [ownerToken, setOwnerToken] = useState('');
@@ -524,6 +548,7 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
             try {
               await connectPat(token.trim());
               setToken('');
+              onConnected?.();
             } catch (e) {
               setError(String(e));
             } finally {
@@ -5408,7 +5433,7 @@ function TestLabPage(): JSX.Element {
 
 /* ---------------- account ---------------- */
 
-function AccountPage(): JSX.Element {
+function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element {
   const s = useStore();
   const session = s.session;
   const [accounts, setAccounts] = useState<DerivAccountInfo[]>([]);
@@ -5426,7 +5451,7 @@ function AccountPage(): JSX.Element {
       .catch((error) => setAccountError(error instanceof Error ? error.message : String(error)))
       .finally(() => setLoadingAccounts(false));
   }, [session?.loginid]);
-  if (!session) return <ConnectView embedded />;
+  if (!session) return <ConnectView embedded onConnected={onConnected} />;
   const switchAccount = async (account: DerivAccountInfo): Promise<void> => {
     setAccountError('');
     setSwitchingAccount(account.accountId);
