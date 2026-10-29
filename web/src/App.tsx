@@ -413,7 +413,15 @@ function ConnectView({ embedded = false }: { embedded?: boolean }): JSX.Element 
     <>
       <div class="connect-hero">
         <div class="brand connect-brand">
-          <div class="logo cow-logo" aria-hidden="true">🐄</div>
+          <div class="logo cow-logo" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none">
+              <path d="M12 19 7 13l2-5 8 6M36 19l5-6-2-5-8 6" />
+              <path d="M12 18c0-6 5-10 12-10s12 4 12 10v10c0 8-5 12-12 12S12 36 12 28V18Z" />
+              <path d="M18 28c2-2 4-3 6-3s4 1 6 3c0 5-2 7-6 7s-6-2-6-7Z" />
+              <circle cx="19" cy="21" r="1.5" /><circle cx="29" cy="21" r="1.5" />
+              <path d="M31 13 42 7M37 7h5v5" />
+            </svg>
+          </div>
           <div class="brand-title">
             <span class="zero">Deriv</span> <span class="nine">Cows</span>
           </div>
@@ -1054,7 +1062,15 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       <header class="header">
         <div class="header-top">
           <div class="brand">
-            <div class="logo cow-logo" aria-hidden="true">🐄</div>
+          <div class="logo cow-logo" aria-hidden="true">
+            <svg viewBox="0 0 48 48" fill="none">
+              <path d="M12 19 7 13l2-5 8 6M36 19l5-6-2-5-8 6" />
+              <path d="M12 18c0-6 5-10 12-10s12 4 12 10v10c0 8-5 12-12 12S12 36 12 28V18Z" />
+              <path d="M18 28c2-2 4-3 6-3s4 1 6 3c0 5-2 7-6 7s-6-2-6-7Z" />
+              <circle cx="19" cy="21" r="1.5" /><circle cx="29" cy="21" r="1.5" />
+              <path d="M31 13 42 7M37 7h5v5" />
+            </svg>
+          </div>
             <div class="brand-title">
               <span class="zero">Deriv</span> <span class="nine">Cows</span>
             </div>
@@ -1079,7 +1095,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             </button>
           </div>
         </div>
-        <div class="subtitle">Interactive trading room · choose a live target to play · Deriv execution stays behind the game</div>
+        <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>
 
       {active && !marketChooserOpen && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">

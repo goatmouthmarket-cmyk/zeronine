@@ -49,6 +49,17 @@
     line-height: 1;
 }
 
+.cow-logo svg {
+    width: 30px;
+    height: 30px;
+    stroke: #f4c96b;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.cow-logo svg circle { fill: #f4c96b; stroke: none; }
+
 html {
     background: var(--bg);
     -webkit-text-size-adjust: 100%;
