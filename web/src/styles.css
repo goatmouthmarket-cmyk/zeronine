@@ -60,6 +60,19 @@
 
 .cow-logo svg circle { fill: #f4c96b; stroke: none; }
 
+/* Cow archery branding */
+.brand .cow-logo,
+.header .brand:not(.connect-brand) .cow-logo {
+    width: 54px; height: 54px; flex: 0 0 54px; padding: 0;
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+.cow-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.header { background: #091421; border-bottom: 1px solid rgba(255, 40, 66, .35); }
+.brand-title .zero { color: #f8fafc; }
+.brand-title .nine { color: #ff2842; }
+.nav-link.active { color: #fff; border-bottom-color: #ff2842; }
+.nav-link:hover { color: #ff6674; }
+
 html {
     background: var(--bg);
     -webkit-text-size-adjust: 100%;
