@@ -22,7 +22,7 @@ test('guest account page presents the branded connection view and favicon', asyn
     scrollHeight: element.scrollHeight,
   }));
   expect(accountOverflow.scrollHeight).toBeLessThanOrEqual(accountOverflow.clientHeight);
-  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/favicon.svg');
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/deriv-cows-favicon.ico');
 });
 
 test('cockpit is stable and Start Bot sends the automation request', async ({ page }) => {
