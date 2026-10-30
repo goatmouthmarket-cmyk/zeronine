@@ -1359,7 +1359,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             ))}
           </nav>
           <button
-        <button type="button" class="how-to-open" onClick={() => onNavigate('howToPlay')}>How to play</button>
             type="button"
             class={`header-nav-toggle${headerNavOpen ? ' is-open' : ''}`}
             aria-label={headerNavOpen ? 'Collapse navigation' : 'Show navigation'}
@@ -1371,6 +1370,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           <QuickAccountMenu session={s.session} onNavigate={onNavigate} />
         </div>
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
+        <button type="button" class="how-to-open" onClick={() => onNavigate('howToPlay')}>How to play</button>
       </header>
 
       {active && rememberedReal && showRealCowNotice && <div class="real-cow-mode" role="status"><span>Real-money cow trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); window.dispatchEvent(new Event('real-cow-preference')); }}>Turn confirmation on</button></div>}
