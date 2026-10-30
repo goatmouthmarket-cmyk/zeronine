@@ -13,6 +13,7 @@ export interface FeedStatus {
   connected: boolean;
   since: number;
   symbols: string[];
+  pingMs: number | null;
 }
 
 const PING_INTERVAL_MS = 30000;
@@ -33,6 +34,8 @@ export class DerivPublicFeed {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
   private lastMessageAt = 0;
+  private lastPingMs: number | null = null;
+  private pingRequest: { id: number; sentAt: number } | null = null;
   private stopped = false;
 
   private registry: MarketRegistry;
@@ -59,10 +62,12 @@ export class DerivPublicFeed {
   }
 
   status(): FeedStatus {
+    const connected = !!this.ws && this.ws.readyState === WebSocket.OPEN;
     return {
-      connected: !!this.ws && this.ws.readyState === WebSocket.OPEN,
+      connected,
       since: this.connectedAt,
       symbols: this.subSymbols.size ? [...this.subSymbols.values()] : this.registry.symbols(),
+      pingMs: connected ? this.lastPingMs : null,
     };
   }
 
@@ -117,8 +122,14 @@ export class DerivPublicFeed {
   }
 
   private handleMessage(msg: Record<string, any>): void {
-    if (msg.msg_type === 'ping') return;
     const reqId = msg.req_id as number | undefined;
+    if (msg.msg_type === 'ping') {
+      if (this.pingRequest && reqId === this.pingRequest.id) {
+        this.lastPingMs = Math.max(0, Date.now() - this.pingRequest.sentAt);
+        this.pingRequest = null;
+      }
+      return;
+    }
 
     if (msg.msg_type === 'history' && reqId !== undefined && this.histSymbols.has(reqId)) {
       const symbol = this.histSymbols.get(reqId)!;
@@ -251,7 +262,9 @@ export class DerivPublicFeed {
           return;
         }
         try {
-          this.ws.send(JSON.stringify(ping()));
+          const id = this.nextReqId();
+          this.pingRequest = { id, sentAt: Date.now() };
+          this.ws.send(JSON.stringify({ ...ping(), req_id: id }));
         } catch {
           // socket closing
         }

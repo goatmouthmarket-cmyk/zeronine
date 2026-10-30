@@ -596,6 +596,17 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return { progress: recordGameCowKill(playerId, body.eventId, body.duringBreak) };
   });
 
+  app.get('/api/game/health', async (req) => {
+    const owner = isOwner(req);
+    const session = owner ? getSession() : null;
+    return {
+      ok: true,
+      feed: feed.status(),
+      owner,
+      derivAccountConnected: Boolean(session && client.isConnected && client.connectedAccountId === session.loginid),
+    };
+  });
+
   app.get('/api/markets', async () => {
     const rows = listMarkets();
     const bySymbol = new Map(registry.allSnapshots().map((s) => [s.symbol, s]));

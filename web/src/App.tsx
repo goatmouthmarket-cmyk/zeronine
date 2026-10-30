@@ -11,6 +11,7 @@ import { PaperSimulationStage, type PaperSimulationPhase } from './PaperSimulati
 import { MarketPulseChart } from './MarketPulseChart';
 import {
   useStore,
+  connectWs,
   connectPat,
   unlockDashboard,
   oauthStart,
@@ -1131,6 +1132,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     owner: Boolean(s.owner),
     accountMode: s.session?.mode ?? null,
     accountId: s.session?.loginid ?? null,
+    wsStatus: s.ws,
     remainingLoss: s.digitRemainingLoss,
     maxStake: s.settings?.max_stake ?? 0,
     selected: market?.symbol ?? '',
@@ -1193,10 +1195,30 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   useEffect(() => {
     const receiveRoomAction = (event: MessageEvent): void => {
       if (event.origin !== window.location.origin || event.source !== roomFrameRef.current?.contentWindow) return;
-      const message = event.data as { type?: string; page?: Page; payload?: { direction?: string; barrier?: number; stake?: number; market?: string } } | null;
+      const message = event.data as { type?: string; page?: Page; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string } } | null;
       if (!message?.type) return;
       if (message.type === 'zeronine:room-ready') {
         postRoomState();
+        return;
+      }
+      if (message.type === 'zeronine:room-health-refresh') {
+        connectWs();
+        void syncCoreState();
+        if (message.payload?.action === 'reconnect-deriv' && s.session) {
+          void fetch('/api/auth/reconnect', { method: 'POST', credentials: 'same-origin' })
+            .then(async (response) => {
+              const body = await response.json().catch(() => ({})) as { error?: string };
+              roomFrameRef.current?.contentWindow?.postMessage({
+                type: 'zeronine:room-health-refresh-result',
+                ok: response.ok,
+                message: body.error ?? (response.ok ? '' : `Reconnect failed (${response.status}).`),
+              }, window.location.origin);
+            })
+            .catch(() => roomFrameRef.current?.contentWindow?.postMessage({
+              type: 'zeronine:room-health-refresh-result', ok: false, message: 'Could not reach the game server to reconnect Deriv.',
+            }, window.location.origin))
+            .finally(() => { void syncCoreState(); postRoomState(); });
+        }
         return;
       }
       if (message.type === 'zeronine:room-select-market' && typeof message.payload?.market === 'string') {
