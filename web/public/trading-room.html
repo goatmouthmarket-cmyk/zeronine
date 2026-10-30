@@ -151,8 +151,8 @@ function separatePastureActors(){
 }
 function poly(points,fill,stroke){c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=2;c.stroke()}}function rect(x,y,w,h,col){c.fillStyle=col;c.fillRect(x,y,w,h)}function circle(x,y,r,col){c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fillStyle=col;c.fill()}function tree(x,y){circle(x+8,y+13,24,'#213e26aa');rect(x-7,y-34,14,48,'#765039');poly([[x-48,y-44],[x-34,y-91],[x,y-114],[x+40,y-94],[x+52,y-45],[x+12,y-25],[x-27,y-28]],'#427e3e');poly([[x-36,y-53],[x-18,y-99],[x+11,y-107],[x+10,y-45]],'#57924a');poly([[x+10,y-105],[x+42,y-85],[x+50,y-45],[x+10,y-45]],'#356c37');poly([[x-48,y-44],[x-34,y-91],[x-3,y-73],[x-13,y-35]],'#659a4b');circle(x-21,y-70,6,'#7fac5d');circle(x+22,y-77,5,'#70a556')};function cow(v){if(!v.alive)return;const {x,y}=v;const bounce=Math.sin(performance.now()/850+x)*1.2;
 c.save();c.translate(x,y+bounce);if(v===hoverCow&&v!==ghostCow){c.save();c.strokeStyle='#fff1a8';c.lineWidth=3;c.shadowColor='#ffe879';c.shadowBlur=12;c.beginPath();c.ellipse(0,18,53,22,0,0,Math.PI*2);c.stroke();c.restore()}c.fillStyle='#1a36236b';c.beginPath();c.ellipse(2,23,43,13,0,0,Math.PI*2);c.fill();
-const bestCow=contracts.filter(t=>Number.isFinite(t.score)&&Number.isFinite(t.payout)).sort((a,b)=>b.score-a.score||b.p-a.p)[0];
-if(v!==ghostCow&&bestCow&&v.contract.symbol===bestCow.symbol){c.strokeStyle='#ffe37b';c.lineWidth=4;c.beginPath();c.ellipse(0,20,52,20,0,0,Math.PI*2);c.stroke();}
+const bestCow=contracts.filter(t=>Number.isFinite(t.score)&&Number.isFinite(t.payout)).sort((a,b)=>b.score-a.score||b.p-a.p)[0],featured=v!==ghostCow&&!!bestCow&&v.contract.symbol===bestCow.symbol;
+if(featured){c.strokeStyle='#ffe37b';c.lineWidth=4;c.beginPath();c.ellipse(0,20,52,20,0,0,Math.PI*2);c.stroke();}
 c.save();c.scale(v===attackCow?(player.x<x?-1:1):((v.tx||x)<x?-1:1),1);
 // legs behind body
 const gait=(v===attackCow||Math.hypot((v.tx||v.x)-v.x,(v.ty||v.y)-v.y)>4)?Math.sin(performance.now()/140+x)*4:0;
