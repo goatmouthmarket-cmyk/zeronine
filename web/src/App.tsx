@@ -66,8 +66,9 @@ import './marketChooser.css';
 import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesDigitTrigger, priorityManualTargets, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
 import { assessGoldTradeGuidance } from './goldTradeGuidance';
 import { assessGoldProfitProtection } from '../../src/gold/profitProtection';
+import { HowToPlayPage } from './HowToPlayPage';
 
-type Page = 'home' | 'bot' | 'history' | 'backtest' | 'gold' | 'account' | 'privacy' | 'terms' | 'refunds' | 'cookies';
+type Page = 'home' | 'bot' | 'history' | 'backtest' | 'gold' | 'account' | 'howToPlay' | 'privacy' | 'terms' | 'refunds' | 'cookies';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
 type ActivityDetail = { type: 'trade'; trade: TradeRow } | { type: 'run'; run: TestRunRow };
 
@@ -79,6 +80,7 @@ const PAGE_PATHS: Record<Page, string> = {
   gold: '/gold',
   account: '/account',
   privacy: '/privacy',
+  howToPlay: '/how-to-play',
   terms: '/terms',
   refunds: '/refunds',
   cookies: '/cookies',
@@ -403,6 +405,7 @@ export function App(): JSX.Element {
     const labels: Record<Page, string> = {
       home: 'Deriv Cows', bot: 'Bot settings', history: 'Trade history', backtest: 'Research lab', gold: 'Gold', account: 'Account',
       privacy: 'Privacy policy', terms: 'Terms of use', refunds: 'Refund policy', cookies: 'Cookie and storage policy',
+      howToPlay: 'How to play',
     };
     document.title = page === 'home' ? 'Deriv Cows' : `${labels[page]} | Deriv Cows`;
   }, [page]);
@@ -421,6 +424,7 @@ export function App(): JSX.Element {
           {page === 'gold' && <div class="view view-gold"><GoldPage /></div>}
           {page === 'account' && <div class="view view-account"><AccountPage onConnected={enterPasture} /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
+          {page === 'howToPlay' && <div class="view view-how-to-play"><HowToPlayPage onBack={() => navigate('home')} /></div>}
         </div>
         {!legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       </main>
@@ -1343,18 +1347,19 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
           </div>
           <nav id="home-header-navigation" class={`desktop-nav${headerNavOpen ? ' is-expanded' : ''}`} aria-label="Main navigation" aria-hidden={!headerNavOpen}>
-            {(['home', 'backtest', 'bot', 'gold', 'history', 'account'] as const).map((destination) => (
+            {(['home', 'backtest', 'bot', 'gold', 'history', 'account', 'howToPlay'] as const).map((destination) => (
               <button key={destination} type="button" tabIndex={headerNavOpen ? 0 : -1} aria-current={page === destination ? 'page' : undefined}
-                aria-label={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}
-                title={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}
+                aria-label={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account', howToPlay: 'How to play' }[destination]}
+                title={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account', howToPlay: 'How to play' }[destination]}
                 class={`nav-link${destination === 'gold' ? ' gold' : ''}${destination === 'history' || destination === 'account' ? ' icon-only' : ''}${page === destination ? ' active' : ''}`}
                 onClick={() => { onNavigate(destination); setHeaderNavOpen(false); }}>
-                <Icon name={{ home: 'home', backtest: 'stats', bot: 'crosshair', gold: 'flame', history: 'history', account: 'account' }[destination]} size={19} />
-                <span class="sr-only">{{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}</span>
+                <Icon name={{ home: 'home', backtest: 'stats', bot: 'crosshair', gold: 'flame', history: 'history', account: 'account', howToPlay: 'play' }[destination]} size={19} />
+                <span class="sr-only">{{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account', howToPlay: 'How to play' }[destination]}</span>
               </button>
             ))}
           </nav>
           <button
+        <button type="button" class="how-to-open" onClick={() => onNavigate('howToPlay')}>How to play</button>
             type="button"
             class={`header-nav-toggle${headerNavOpen ? ' is-open' : ''}`}
             aria-label={headerNavOpen ? 'Collapse navigation' : 'Show navigation'}

@@ -1,0 +1,368 @@
+html:has(.view-how-to-play),
+body:has(.view-how-to-play) {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
+.app:has(.view-how-to-play) {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.app[data-page="howToPlay"] .view-how-to-play { display: block; }
+
+.how-to-play {
+    position: fixed;
+    z-index: 9999;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    color: #f5f3e8;
+    background: #56894d;
+}
+
+.how-to-simulator,
+.tutorial-game {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border: 0;
+    border-radius: 0;
+    background: #56894d;
+    box-shadow: none;
+}
+
+.tutorial-game-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    outline: none;
+    touch-action: manipulation;
+    cursor: crosshair;
+}
+
+.tutorial-game-canvas:focus-visible {
+    outline: 3px solid #e9bd76;
+    outline-offset: -4px;
+}
+
+.tutorial-hud {
+    position: absolute;
+    z-index: 4;
+    top: max(10px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    left: max(12px, env(safe-area-inset-left));
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.how-to-back {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(255, 244, 207, .62);
+    border-radius: 12px;
+    color: #fff4cf;
+    background: rgba(23, 45, 28, .72);
+    font: 800 24px/1 system-ui, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+    backdrop-filter: blur(8px);
+}
+
+.how-to-back:hover { background: rgba(23, 45, 28, .9); }
+.how-to-back:focus-visible,
+.tutorial-result button:focus-visible { outline: 2px solid #fff4cf; outline-offset: 3px; }
+
+.tutorial-step-guide {
+    display: grid;
+    min-width: 0;
+    justify-items: center;
+    gap: 3px;
+    padding: 2px 6px 5px;
+    color: #fff9e8;
+    text-align: center;
+    text-shadow: 0 1px 3px #142b19;
+}
+
+.tutorial-step-guide > span {
+    color: #fff0c1;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: .11em;
+}
+
+.tutorial-step-guide > strong {
+    font-size: clamp(10px, 1.4vw, 14px);
+    font-weight: 850;
+    line-height: 1.2;
+}
+
+.tutorial-step-track {
+    width: min(100%, 300px);
+    height: 3px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, .36);
+}
+
+.tutorial-step-track > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #ffe091;
+    transition: width .25s ease;
+}
+
+.tutorial-money {
+    display: grid;
+    min-width: 82px;
+    justify-items: end;
+    gap: 2px;
+    padding: 5px 8px;
+    border: 1px solid rgba(255, 244, 207, .28);
+    border-radius: 9px;
+    color: #fff9e8;
+    background: rgba(23, 45, 28, .72);
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 2px #142b19;
+    backdrop-filter: blur(8px);
+}
+
+.tutorial-money > small {
+    color: #ffe091;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: .1em;
+}
+
+.tutorial-money > strong { font-size: 14px; line-height: 1; }
+.tutorial-money > span { color: #cde7c2; font-size: 9px; font-weight: 800; }
+
+.tutorial-market-bubbles {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    pointer-events: none;
+}
+
+.tutorial-market-bubble {
+    position: absolute;
+    display: grid;
+    width: min(210px, 30%);
+    box-sizing: border-box;
+    gap: 4px;
+    padding: 6px 8px;
+    transform: translateX(-50%);
+    border: 1px solid rgba(116, 78, 48, .55);
+    border-radius: 9px;
+    color: #49301e;
+    background: #fff3ddeb;
+    box-shadow: 0 3px 10px #142f2750;
+    text-align: left;
+    font: 700 10px system-ui, sans-serif;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.tutorial-market-bubble::after {
+    position: absolute;
+    bottom: -7px;
+    left: calc(50% - 6px);
+    width: 11px;
+    height: 11px;
+    content: "";
+    transform: rotate(45deg);
+    border-right: 1px solid rgba(116, 78, 48, .55);
+    border-bottom: 1px solid rgba(116, 78, 48, .55);
+    background: #fff3ddeb;
+}
+
+.tutorial-market-bubble:hover:not(:disabled) { filter: brightness(1.05); }
+.tutorial-market-bubble:focus-visible { outline: 2px solid #fff4cf; outline-offset: 2px; }
+.tutorial-market-bubble:disabled { cursor: default; }
+.tutorial-market-bubble.top-rank { border-color: #398454; }
+.tutorial-market-bubble.selected { box-shadow: 0 0 0 2px #ffe091, 0 4px 12px #142f2770; }
+.tutorial-market-bubble.guide-target { animation: tutorial-target-pulse 1.5s ease-in-out infinite; }
+
+.tutorial-bubble-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.tutorial-bubble-top > b { color: #79543c; font-size: 8px; letter-spacing: .06em; }
+.tutorial-market-bubble.top-rank .tutorial-bubble-top > b { color: #26804e; }
+.tutorial-bubble-top > strong { color: #178143; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.tutorial-bubble-edge {
+    display: inline-flex;
+    width: max-content;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 5px;
+    border-radius: 5px;
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: .02em;
+}
+
+.tutorial-bubble-edge.positive { color: #17673b; background: #d8f7e2; }
+.tutorial-bubble-edge.negative { color: #8f1724; background: #ffe0e2; }
+.tutorial-bubble-contract { overflow: hidden; color: #42281a; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.tutorial-bubble-quote { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 3px; }
+.tutorial-bubble-quote > small { min-width: 0; overflow: hidden; color: #78533b; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.tutorial-bubble-quote > strong { flex: 0 0 auto; font-size: 8px; font-variant-numeric: tabular-nums; }
+.tutorial-tick.up { color: #08733d; }
+.tutorial-tick.down { color: #bd2637; }
+.tutorial-tick.flat { color: #78533b; }
+
+.tutorial-ranger-speech {
+    position: absolute;
+    z-index: 2;
+    box-sizing: border-box;
+    width: min(240px, calc(100% - 16px));
+    padding: 9px 12px;
+    transform: translate(-50%, -100%);
+    border: 1px solid #76543a;
+    border-radius: 10px;
+    color: #493423;
+    background: #fff4dc;
+    box-shadow: 0 3px 10px #142f2750;
+    font: 750 12px/1.35 system-ui, sans-serif;
+    text-align: center;
+    pointer-events: none;
+}
+
+.tutorial-ranger-speech::after {
+    position: absolute;
+    bottom: -6px;
+    left: calc(50% - 6px);
+    width: 10px;
+    height: 10px;
+    content: "";
+    transform: rotate(45deg);
+    border-right: 1px solid #76543a;
+    border-bottom: 1px solid #76543a;
+    background: #fff4dc;
+}
+
+.tutorial-ranger-speech[data-placement="below"] { transform: translate(-50%, 0); }
+.tutorial-ranger-speech[data-placement="below"]::after { top: -6px; bottom: auto; transform: rotate(225deg); }
+
+.tutorial-result {
+    position: absolute;
+    z-index: 4;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    left: max(14px, env(safe-area-inset-left));
+    display: flex;
+    min-height: 54px;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(8px, 2vw, 22px);
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 244, 207, .46);
+    border-radius: 12px;
+    color: #fff9e8;
+    background: rgba(23, 45, 28, .86);
+    box-shadow: 0 6px 18px #142b1950;
+    font-size: clamp(9px, 1.4vw, 12px);
+    font-weight: 850;
+    backdrop-filter: blur(8px);
+}
+
+.tutorial-result > strong { font-size: 15px; letter-spacing: .08em; }
+.tutorial-result.won > strong { color: #91efaa; }
+.tutorial-result.lost > strong { color: #ff9a9e; }
+.tutorial-result > span { font-variant-numeric: tabular-nums; }
+.tutorial-result button {
+    min-height: 34px;
+    padding: 5px 11px;
+    border: 1px solid rgba(255, 244, 207, .4);
+    border-radius: 7px;
+    color: #fff4cf;
+    background: rgba(255, 255, 255, .08);
+    font: inherit;
+    cursor: pointer;
+}
+
+.tutorial-speech-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
+}
+
+.how-to-open {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    margin-top: 8px;
+    padding: 5px 10px;
+    border: 1px solid rgba(233, 189, 118, .42);
+    border-radius: 8px;
+    color: #fff4cf;
+    background: rgba(27, 55, 37, .82);
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.app[data-page="home"] .view-home .header .how-to-open {
+    position: relative;
+    z-index: 21;
+    pointer-events: auto;
+}
+
+.how-to-open:hover { border-color: #e9bd76; background: #24482f; }
+
+@keyframes tutorial-target-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 224, 145, .5), 0 3px 10px #142f2750; }
+    50% { box-shadow: 0 0 0 5px rgba(255, 224, 145, 0), 0 3px 10px #142f2750; }
+}
+
+@media (max-width: 420px) {
+    .tutorial-market-bubble {
+        width: min(140px, 38%);
+        padding: 5px 6px;
+        transform: translateX(calc(-50% - 6px));
+    }
+
+    .tutorial-bubble-contract { font-size: 8px; }
+    .tutorial-bubble-quote > small { font-size: 7px; }
+    .tutorial-money { min-width: 72px; padding-inline: 6px; }
+    .tutorial-step-guide > span { font-size: 8px; }
+    .tutorial-step-guide > strong { font-size: 10px; }
+}
+
+@media (max-width: 360px) {
+    .tutorial-hud { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 5px; }
+    .how-to-back { width: 38px; height: 38px; }
+    .tutorial-money { min-width: 66px; padding: 4px; }
+    .tutorial-money > strong { font-size: 12px; }
+    .tutorial-step-guide { padding-inline: 2px; }
+    .tutorial-result { gap: 7px; padding-inline: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tutorial-market-bubble.guide-target { animation: none; }
+    .tutorial-step-track > span { transition: none; }
+}
