@@ -6640,3 +6640,32 @@ button.activity-row {
 .pasture-review-actions button:last-child { background: #c9213d; }
 .pasture-review-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .pasture-review-actions button:focus-visible, .pasture-review-confirm input:focus-visible { outline: 3px solid #267f4b; outline-offset: 2px; }
+
+/* Header links tuck behind a pasture-style menu toggle beside the balance. */
+.header-nav-toggle { display: none; }
+@media (min-width: 1000px) {
+  .app[data-page="home"] .header-nav-toggle {
+    display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px;
+    margin-left: auto; padding: 0; border: 2px solid #ff7183; border-radius: 12px;
+    color: #fff; background: linear-gradient(#ff4964,#df1237);
+    box-shadow: inset 0 2px #ffffff40, 0 4px #87172c, 0 7px 16px #0004;
+    cursor: pointer; transition: transform .22s ease, filter .22s ease, background .22s ease;
+  }
+  .app[data-page="home"] .header-nav-toggle:hover { transform: translateY(-2px); filter: brightness(1.1); }
+  .app[data-page="home"] .header-nav-toggle:focus-visible { outline: 3px solid #fff0d1; outline-offset: 3px; }
+  .app[data-page="home"] .header-nav-toggle svg { transition: transform .24s ease; }
+  .app[data-page="home"] .header-nav-toggle.is-open svg { transform: rotate(90deg); }
+  .app[data-page="home"] .desktop-nav {
+    flex: 0 1 auto; max-width: 0; gap: 0; overflow: hidden; opacity: 0;
+    transform: translateX(10px); pointer-events: none;
+    transition: max-width .34s cubic-bezier(.2,.75,.25,1), gap .25s ease, opacity .2s ease, transform .25s ease;
+  }
+  .app[data-page="home"] .desktop-nav.is-expanded {
+    max-width: 460px; gap: 4px; opacity: 1; transform: translateX(0); pointer-events: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app[data-page="home"] .header-nav-toggle,
+  .app[data-page="home"] .header-nav-toggle svg,
+  .app[data-page="home"] .desktop-nav { transition: none; }
+}

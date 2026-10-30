@@ -299,6 +299,7 @@ const ICON_PATHS: Record<string, JSX.Element> = {
   arrowUp: <path d="M12 19V5m0 0-5.5 5.5M12 5l5.5 5.5" />,
   arrowDown: <path d="M12 5v14m0 0 5.5-5.5M12 19 6.5 13.5" />,
   dots: <path d="M6 12h.01M12 12h.01M18 12h.01" />,
+  menu: <path d="M4 6.5h16M4 12h16M4 17.5h16" />,
   x: <path d="M6 6l12 12M18 6 6 18" />,
   crosshair: (
     <>
@@ -667,6 +668,7 @@ function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { pre
 
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
+  const [headerNavOpen, setHeaderNavOpen] = useState(false);
   const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
@@ -1260,18 +1262,27 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           <div class="brand">
           <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
           </div>
-          <nav class="desktop-nav" aria-label="Main navigation">
+          <nav id="home-header-navigation" class={`desktop-nav${headerNavOpen ? ' is-expanded' : ''}`} aria-label="Main navigation" aria-hidden={!headerNavOpen}>
             {(['home', 'backtest', 'bot', 'gold', 'history', 'account'] as const).map((destination) => (
-              <button key={destination} type="button" aria-current={page === destination ? 'page' : undefined}
+              <button key={destination} type="button" tabIndex={headerNavOpen ? 0 : -1} aria-current={page === destination ? 'page' : undefined}
                 aria-label={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}
                 title={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}
                 class={`nav-link${destination === 'gold' ? ' gold' : ''}${destination === 'history' || destination === 'account' ? ' icon-only' : ''}${page === destination ? ' active' : ''}`}
-                onClick={() => onNavigate(destination)}>
+                onClick={() => { onNavigate(destination); setHeaderNavOpen(false); }}>
                 <Icon name={{ home: 'home', backtest: 'stats', bot: 'crosshair', gold: 'flame', history: 'history', account: 'account' }[destination]} size={19} />
                 <span class="sr-only">{{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account' }[destination]}</span>
               </button>
             ))}
           </nav>
+          <button
+            type="button"
+            class={`header-nav-toggle${headerNavOpen ? ' is-open' : ''}`}
+            aria-label={headerNavOpen ? 'Collapse navigation' : 'Show navigation'}
+            aria-expanded={headerNavOpen}
+            aria-controls="home-header-navigation"
+            title={headerNavOpen ? 'Collapse navigation' : 'Show navigation'}
+            onClick={() => setHeaderNavOpen((open) => !open)}
+          ><Icon name={headerNavOpen ? 'x' : 'menu'} size={21} strokeWidth={2.2} /></button>
           <QuickAccountMenu session={s.session} onNavigate={onNavigate} />
         </div>
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
