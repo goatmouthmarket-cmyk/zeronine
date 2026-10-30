@@ -1132,6 +1132,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     accountMode: s.session?.mode ?? null,
     accountId: s.session?.loginid ?? null,
     remainingLoss: s.digitRemainingLoss,
+    maxStake: s.settings?.max_stake ?? 0,
     selected: market?.symbol ?? '',
     busy: manualBusy,
     status: manualMsg,
