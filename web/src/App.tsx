@@ -1145,6 +1145,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       fresh: item.fresh,
       recentQuotes: item.recentQuotes,
       recentDigits: item.recentDigits,
+      recentTicks: item.recentTicks,
     })),
     candidates: s.signal?.signal.candidates ?? s.displaySignal?.candidates ?? [],
     marketScout: s.marketScout,
