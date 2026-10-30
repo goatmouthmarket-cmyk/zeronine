@@ -387,6 +387,20 @@ function migrate(d: DatabaseSync): void {
       created_at INTEGER,
       updated_at INTEGER
     );
+    CREATE TABLE IF NOT EXISTS game_progress (
+      player_id TEXT PRIMARY KEY,
+      xp INTEGER NOT NULL DEFAULT 0,
+      kills INTEGER NOT NULL DEFAULT 0,
+      mission_index INTEGER NOT NULL DEFAULT 0,
+      mission_count INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS game_progress_events (
+      player_id TEXT NOT NULL,
+      event_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (player_id, event_id)
+    );
     CREATE TABLE IF NOT EXISTS trades (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id TEXT NOT NULL DEFAULT '__legacy__',
@@ -1173,6 +1187,57 @@ export function setAutomation(patch: Partial<AutomationRow>): AutomationRow {
     )
     .run(next.running, next.armed_until, next.started_at, next.stopped_at, next.reason, next.target_trades, next.trades_done);
   return next;
+}
+
+export interface GameProgressRow {
+  xp: number;
+  kills: number;
+  missionIndex: number;
+  missionCount: number;
+  updatedAt: number;
+}
+
+const GAME_MISSIONS = [
+  { goal: 3, type: 'kills' },
+  { goal: 5, type: 'kills' },
+  { goal: 4, type: 'kills' },
+  { goal: 2, type: 'breakKills' },
+] as const;
+
+export function getGameProgress(playerId: string): GameProgressRow {
+  const row = getDb().prepare('SELECT xp, kills, mission_index, mission_count, updated_at FROM game_progress WHERE player_id=?').get(playerId) as Record<string, number> | undefined;
+  return row ? { xp: row.xp, kills: row.kills, missionIndex: row.mission_index, missionCount: row.mission_count, updatedAt: row.updated_at } : { xp: 0, kills: 0, missionIndex: 0, missionCount: 0, updatedAt: Date.now() };
+}
+
+export function recordGameCowKill(playerId: string, eventId: string, duringBreak: boolean): GameProgressRow {
+  const d = getDb();
+  d.exec('BEGIN IMMEDIATE');
+  try {
+    const seen = d.prepare('SELECT 1 FROM game_progress_events WHERE player_id=? AND event_id=?').get(playerId, eventId);
+    if (!seen) {
+      const current = getGameProgress(playerId);
+      let missionIndex = current.missionIndex;
+      let missionCount = current.missionCount;
+      const applyMission = (type: string) => {
+        const mission = GAME_MISSIONS[missionIndex % GAME_MISSIONS.length]!;
+        if (mission.type !== type) return;
+        missionCount++;
+        if (missionCount >= mission.goal) { missionIndex++; missionCount = 0; }
+      };
+      applyMission('kills');
+      if (duringBreak) applyMission('breakKills');
+      const now = Date.now();
+      d.prepare('INSERT INTO game_progress_events (player_id,event_id,created_at) VALUES (?,?,?)').run(playerId, eventId, now);
+      d.prepare(`INSERT INTO game_progress (player_id,xp,kills,mission_index,mission_count,updated_at) VALUES (?,?,?, ?,?,?)
+        ON CONFLICT(player_id) DO UPDATE SET xp=excluded.xp,kills=excluded.kills,mission_index=excluded.mission_index,mission_count=excluded.mission_count,updated_at=excluded.updated_at`)
+        .run(playerId, current.xp + 25, current.kills + 1, missionIndex, missionCount, now);
+    }
+    d.exec('COMMIT');
+  } catch (error) {
+    d.exec('ROLLBACK');
+    throw error;
+  }
+  return getGameProgress(playerId);
 }
 
 export function getSession(): SessionRow | null {

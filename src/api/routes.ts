@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config.ts';
 import { GoldRuntime, GoldRuntimeUnavailableError } from '../gold/runtime.ts';
 import { GoldOAuthError } from '../gold/onboarding.ts';
@@ -48,6 +48,8 @@ import {
   getPaperTrade,
   getRecovery,
   getSession,
+  getGameProgress,
+  recordGameCowKill,
   getSettings,
   insertTrade,
   listMarkets,
@@ -96,6 +98,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   // streaming and settlement subscriptions stay independent and responsive.
   const accountCoordinator = deps.accountCoordinator ?? new AccountCoordinator();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
+  const gamePlayerId = (req: FastifyRequest, reply: FastifyReply): string => {
+    const cookie = req.cookies?.deriv_cows_player;
+    const signed = typeof cookie === 'string' ? req.unsignCookie(cookie) : null;
+    if (signed?.valid && /^[0-9a-f-]{36}$/i.test(signed.value)) return signed.value;
+    const id = crypto.randomUUID();
+    reply.setCookie('deriv_cows_player', id, { httpOnly: true, sameSite: 'lax', path: '/', secure: config.nodeEnv === 'production', signed: true, maxAge: 365 * 24 * 60 * 60 });
+    return id;
+  };
   const multiplierProbeCache = new Map<string, { ts: number; result: MultiplierProbeResult }>();
   type ManualEntryMode = 'instant' | 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
   type ManualOrderInput = {
@@ -570,6 +580,21 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     markets: registry.allSnapshots().length,
     bot: automation.state(),
   }));
+
+  app.get('/api/game/progress', async (req, reply) => {
+    const playerId = gamePlayerId(req, reply);
+    return { progress: getGameProgress(playerId) };
+  });
+
+  app.post('/api/game/progress', async (req, reply) => {
+    const body = req.body as { eventId?: unknown; eventType?: unknown; duringBreak?: unknown } | undefined;
+    if (body?.eventType !== 'cow_killed' || typeof body.eventId !== 'string' || body.eventId.length > 80 || !/^[\w-]+$/.test(body.eventId) || typeof body.duringBreak !== 'boolean') {
+      reply.code(400);
+      return { error: 'invalid game progress event' };
+    }
+    const playerId = gamePlayerId(req, reply);
+    return { progress: recordGameCowKill(playerId, body.eventId, body.duringBreak) };
+  });
 
   app.get('/api/markets', async () => {
     const rows = listMarkets();
