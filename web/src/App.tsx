@@ -1187,7 +1187,38 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal]);
 
   const postRoomState = useCallback(() => {
-    roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
+    const frame = roomFrameRef.current;
+    frame?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
+    const stakeInput = frame?.contentDocument?.getElementById('cowStake') as HTMLInputElement | null;
+    const stakeHint = frame?.contentDocument?.getElementById('stakeHint');
+    if (!stakeInput || !stakeHint) return;
+
+    const connected = roomState.accountMode === 'demo' || roomState.accountMode === 'real';
+    const balanceLimit = roomState.balance > 0 ? roomState.balance * 0.9 : 0;
+    const maxStake = roomState.maxStake > 0 ? roomState.maxStake : Number.POSITIVE_INFINITY;
+    const stakeLimit = Math.min(maxStake, balanceLimit);
+    if (connected && stakeLimit > 0) stakeInput.max = String(stakeLimit);
+    else stakeInput.removeAttribute('max');
+
+    const updateStakeHint = () => {
+      if (!connected) return;
+      if (!(stakeLimit > 0)) {
+        stakeHint.textContent = 'Account balance unavailable. No bet can be placed.';
+        return;
+      }
+      const requested = Number(stakeInput.value);
+      if (!Number.isFinite(requested) || requested <= 0) {
+        stakeHint.textContent = `Enter a stake above zero. Maximum allowed: ${fmtMoney(stakeLimit, roomState.currency)}.`;
+        return;
+      }
+      if (requested > stakeLimit) {
+        stakeHint.textContent = `Final bet: ${fmtMoney(stakeLimit, roomState.currency)} (capped from ${fmtMoney(requested, roomState.currency)} by the account limit).`;
+        return;
+      }
+      stakeHint.textContent = `Starting stake: ${fmtMoney(requested, roomState.currency)}. Recovery may raise it up to ${fmtMoney(stakeLimit, roomState.currency)}; select a cow to see the final bet.`;
+    };
+    stakeInput.oninput = updateStakeHint;
+    updateStakeHint();
   }, [roomState]);
 
   useEffect(() => {
