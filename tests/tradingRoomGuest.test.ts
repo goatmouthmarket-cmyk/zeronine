@@ -21,6 +21,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
         listeners.get(id)!.set(type, listener);
       },
       setAttribute() {},
+      querySelector: (selector: string) => selector === 'svg path' ? { setAttribute() {} } : null,
       removeAttribute() {},
       replaceChildren() {},
       appendChild() {},
@@ -47,6 +48,14 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: Date.now() / 1000 }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; };})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
+  const rangerPanel = elements.get('rangerAutoHud');
+  const rangerToggle = listeners.get('rangerAutoToggle')?.get('click');
+  assert.equal(rangerPanel.hidden, true, 'automation controls start hidden behind the Play icon');
+  assert.ok(rangerToggle);
+  rangerToggle();
+  assert.equal(rangerPanel.hidden, false, 'Play opens the Ranger controls');
+  rangerToggle();
+  assert.equal(rangerPanel.hidden, true, 'the same control hides the Ranger menu');
   context.testDefeat({ contract: { market: 'Test market', symbol: 'TEST', kind: 'OVER', barrier: 1 } });
   assert.equal(messages.some((message) => message.type === 'zeronine:room-trade'), false);
   assert.match(elements.get('toast').textContent, /no bet placed/i);
@@ -378,4 +387,64 @@ test('ranger auto requires three distinct fresh ticks for one contract', () => {
   assert.equal(progress.confirmations, 3);
   progress = updateProgress(progress, { ...candidate, barrier: 3, tickSeq: 53 });
   assert.equal(progress.confirmations, 1, 'a changed contract starts a fresh confirmation sequence');
+});
+
+test('ranger auto controls open from a visible Play launcher outside the player HUD', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const hudStart = html.indexOf('<div id="playerHud">');
+  const rangerStart = html.indexOf('<section id="rangerAutoHud"');
+  const hudEnd = html.indexOf('</div><button id="rangerAutoToggle"', hudStart);
+
+  assert.ok(hudStart >= 0 && hudEnd > hudStart && rangerStart > hudEnd, 'Ranger Auto launcher is a visible HUD sibling, not inside the mobile-hidden player panel');
+  assert.match(html, /id="rangerAutoToggle" type="button" aria-label="Show Ranger Auto controls"/);
+  assert.match(html, /id="rangerAutoHud" aria-label="Ranger automation" hidden/);
+  assert.match(html, /#rangerAutoHud\{top:268px;left:12px/);
+  assert.match(html, /id="rangerAutoArm" type="button" hidden>ARM REAL 10 MIN/);
+  assert.match(html, /id="rangerAutoStake" type="number"/);
+  assert.match(html, /id="rangerAutoStyle">/);
+  assert.match(html, /id="rangerAutoActivity" hidden/);
+  assert.match(html, /id="rangerAutoStart" type="button" aria-label="Start Ranger Auto"/);
+  assert.match(html, /#guestBanner\{top:56px!important;left:50%!important/);
+  assert.match(html, /@media\(max-width:999\.98px\)\{#rangerAutoToggle\{top:110px;left:8px\}#rangerAutoHud\{top:158px;left:8px/);
+});
+
+test('ranger auto start allows demo accounts and explains real-account requirements', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function rangerAutoStartBlocker(');
+  const end = script.indexOf('function renderRangerAutoHud(', start);
+  assert.ok(start >= 0 && end > start, 'the Ranger Auto start gate exists');
+  const blockerSource = script.slice(start, end);
+  const getBlocker = (connectedAccount: boolean, lastRoomState: Record<string, unknown> | null, armedUntil = 0, stakeValue = '1'): string => {
+    const readBlocker = runInNewContext(
+      `let connectedAccount=${JSON.stringify(connectedAccount)};let lastRoomState=${JSON.stringify(lastRoomState)};let rangerAutoArmedUntil=${armedUntil};const $=()=>({value:${JSON.stringify(stakeValue)}});${blockerSource};rangerAutoStartBlocker`,
+    ) as () => string;
+    return readBlocker();
+  };
+
+  assert.equal(getBlocker(true, { accountMode: 'demo', owner: false, feedConnected: true }), '');
+  assert.match(script, /if\(lastRoomState\?\.accountMode==='real'&&!lastRoomState\.owner\)/, 'the active loop keeps demo automation available without weakening the real-account owner gate');
+  assert.equal(getBlocker(false, null), '', 'demo automation can start before connecting and wait safely');
+  assert.match(getBlocker(true, { accountMode: 'real', owner: false, feedConnected: true }, Date.now() + 60_000), /owner controls/);
+  assert.equal(getBlocker(true, { accountMode: 'demo', owner: false, feedConnected: false }), '', 'demo automation can start while the feed reconnects');
+  assert.match(getBlocker(true, { accountMode: 'real', owner: true, feedConnected: true }), /ARM REAL/);
+  assert.match(getBlocker(true, { accountMode: 'demo', owner: false, feedConnected: true }, 0, ''), /positive base stake/);
+});
+
+test('ranger auto activity only includes its five newest tracked trades', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function rangerAutoRecentTrades(');
+  const end = script.indexOf('function renderRangerAutoActivity(', start);
+  assert.ok(start >= 0 && end > start, 'the Ranger Auto trade filter exists');
+  const recentTrades = runInNewContext(`${script.slice(start, end)}; rangerAutoRecentTrades`) as (
+    trades: Array<{ id: number }>,
+    ids: Set<number>,
+  ) => Array<{ id: number }>;
+  const trades = Array.from({ length: 8 }, (_, index) => ({ id: 8 - index }));
+
+  assert.deepEqual([...recentTrades(trades, new Set([1, 2, 3, 4, 5, 6, 7])).map((trade) => trade.id)], [7, 6, 5, 4, 3]);
+  assert.deepEqual([...recentTrades(trades, new Set([8])).map((trade) => trade.id)], [8]);
 });
