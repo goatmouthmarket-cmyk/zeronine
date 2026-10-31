@@ -131,3 +131,56 @@ test('pasture win effects expire by elapsed time instead of frame count', () => 
   assert.equal(result.remainingLife, 0.7);
   assert.equal(result.remainingEffects, 0, 'the effect is removed once its wall-clock duration ends');
 });
+
+test('paper scout shows the matching market, ticket details, and virtual outcome', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function renderPaper(state){');
+  const end = script.indexOf('function estimateRecoveryWins(', start);
+  assert.ok(start >= 0 && end > start, 'the paper scout renderer exists');
+  const elements = new Map<string, { textContent: string; title: string; dataset: Record<string, string> }>();
+  const element = (id: string) => {
+    if (!elements.has(id)) elements.set(id, { textContent: '', title: '', dataset: {} });
+    return elements.get(id)!;
+  };
+  const renderPaper = runInNewContext(`${script.slice(start, end)}; renderPaper`, {
+    $: element,
+    marketName: (symbol: string) => symbol === 'R_100' ? 'Volatility 100 Index' : symbol,
+  }) as (state: Record<string, any>) => void;
+  const openContract = {
+    market: 'R_100', direction: 'over', barrier: 2, entryDigit: 1, stake: 2, status: 'open',
+  };
+  renderPaper({
+    paperSimulation: {
+      phase: 'running', totalTrades: 4, wins: 2, losses: 2, netPnl: 0,
+      openContract, lastSettled: null,
+    },
+    markets: [{ symbol: 'R_100', fresh: true, lastEpoch: Date.now() / 1000, lastDigit: 3 }],
+  });
+  assert.equal(element('paperMiniStatus').textContent, 'OPEN | R_100 | OVER 2');
+  assert.equal(element('paperMiniStats').textContent, 'Volatility 100 Index | ENTRY 1 > LIVE 3 | VIRTUAL $2.00');
+  assert.equal(element('paperMini').dataset.phase, 'open');
+
+  renderPaper({
+    paperSimulation: {
+      phase: 'running', totalTrades: 4, wins: 3, losses: 1, netPnl: 1.8,
+      openContract: null,
+      lastSettled: { ...openContract, status: 'won', exitDigit: 3, profit: 1.8 },
+    },
+    markets: [],
+  });
+  assert.equal(element('paperMiniStatus').textContent, 'WON | R_100 | OVER 2');
+  assert.equal(element('paperMiniStats').textContent, 'Volatility 100 Index | ENTRY 1 > EXIT 3 | +$1.80 VIRTUAL');
+});
+
+test('fresh paper entry signals show a red bet-now marker without replacing other highlights', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+
+  assert.match(script, /signalFeatured=v!==ghostCow&&v\.contract\?\.hitSignal===true/);
+  assert.match(script, /if\(signalFeatured\)\{c\.save\(\);c\.strokeStyle='#ff4057'/);
+  assert.match(script, /entryAlert=a\.hitSignal\?'<em class="entry-alert">BET NOW<\/em>':'/);
+  assert.match(script, /v===ghostCow&&tag\.symbol\?String\(tag\.symbol\)/);
+});
