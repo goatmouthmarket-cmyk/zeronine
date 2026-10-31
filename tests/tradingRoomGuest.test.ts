@@ -320,3 +320,10 @@ test('fresh paper entry signals show a red bet-now marker without replacing othe
   assert.match(script, /entryAlert=a\.hitSignal\?'<em class="entry-alert">BET NOW<\/em>':'/);
   assert.match(script, /v===ghostCow&&tag\.symbol\?String\(tag\.symbol\)/);
 });
+
+test('cooldown timer is centered in the header across viewport sizes', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+
+  assert.match(html, /#breakTimer\.visible\{top:12px!important;left:50%!important;right:auto!important;transform:translateX\(-50%\)/);
+  assert.match(html, /#breakTimer\.visible\{top:12px!important;font-size:10px!important\}/);
+});
