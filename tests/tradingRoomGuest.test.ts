@@ -271,6 +271,45 @@ test('paper scout shows the matching market, ticket details, and virtual outcome
   assert.equal(element('paperMiniStats').textContent, 'Volatility 100 Index | ENTRY 1 > EXIT 3 | +$1.80 VIRTUAL');
 });
 
+test('paper ghost shows its result without a floating popup', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function syncGhostPaper(state){');
+  const end = script.indexOf('function renderPaper(state){', start);
+  assert.ok(start >= 0 && end > start, 'the paper ghost synchronizer exists');
+  const syncGhostPaper = runInNewContext(`
+    let ghostPaperState = null;
+    let ghostPaperContractId = null;
+    let ghostPaperResultId = null;
+    let ghostPaperResultUntil = 0;
+    let ghostLastTickSeq = 0;
+    let ghostCow = { alive: false, hp: 1, contract: { symbol: 'R_100' } };
+    let ghost = { target: {} };
+    let ghostArrows = [{ x: 0, y: 0 }];
+    const fx = [];
+    const performance = { now: () => 100 };
+    function ghostContractKey(contract) { return String(contract.runId || '') + ':' + String(contract.id); }
+    ${script.slice(start, end)}
+    ({ syncGhostPaper, getState: () => ({ ghostCow, fx }) })
+  `) as {
+    syncGhostPaper: (state: Record<string, any>) => void;
+    getState: () => { ghostCow: { alive: boolean; hp: number }; fx: unknown[] };
+  };
+
+  syncGhostPaper.syncGhostPaper({
+    paperSimulation: {
+      phase: 'running',
+      openContract: null,
+      lastSettled: { id: 8, runId: 'run-1', market: 'R_100', status: 'won' },
+    },
+    markets: [],
+  });
+  assert.equal(syncGhostPaper.getState().ghostCow.alive, true);
+  assert.equal(syncGhostPaper.getState().ghostCow.hp, 0, 'a paper win stays visible on the ghost');
+  assert.equal(syncGhostPaper.getState().fx.length, 0, 'paper results never create a floating popup');
+});
+
 test('fresh paper entry signals show a red bet-now marker without replacing other highlights', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
