@@ -6,6 +6,9 @@
     --space-4: 16px;
     --space-6: 24px;
     --space-8: 32px;
+    --layout-columns: 12;
+    --layout-gap: clamp(12px, 1.5vw, 24px);
+    --layout-gutter: clamp(12px, 2vw, 30px);
     --control-height: 40px;
     --control-compact: 32px;
     --control-radius: 3px;
@@ -15,6 +18,22 @@
     --page-gutter: clamp(16px, 2vw, 32px);
     --motion-fast: 140ms;
     --focus-ring: #c4b5fd;
+    --pasture-night: #101b28;
+    --pasture-panel: #1b2a3b;
+    --pasture-panel-raised: #304158;
+    --pasture-outline: #40536b;
+    --pasture-cream: #fff0cf;
+    --pasture-cream-surface: #f6ddb9;
+    --pasture-ink: #4f3020;
+    --pasture-green: #00b756;
+    --pasture-green-light: #34ee81;
+    --pasture-red: #ed1238;
+    --pasture-red-light: #ff6b7c;
+    --pasture-gold: #f4c96b;
+    --pasture-leather: #9b5b32;
+    --pasture-leather-dark: #62391f;
+    --pasture-cream-highlight: #fff8eb;
+    --pasture-input: #101d2c;
 }
 
 /* Shared controls retain semantic colors from their existing variants. */
@@ -163,6 +182,25 @@ body:has(.view-legal) { overflow: visible; }
 @media (prefers-reduced-motion: reduce) {
     :root { --motion-fast: 0ms; }
 }
+
+@media (min-width: 1000px) {
+    .app[data-page="home"] .view-home .dashboard {
+        grid-template-columns: repeat(var(--layout-columns), minmax(0, 1fr));
+        column-gap: var(--layout-gap);
+    }
+
+    .app[data-page="home"] .view-home .dashboard > .dash-main { grid-column: span 7; }
+    .app[data-page="home"] .view-home .dashboard > .dash-side { grid-column: span 5; }
+}
+
+@media (max-width: 999.98px) {
+    .app[data-page="home"] .view-home .dashboard {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: var(--layout-gap);
+    }
+}
+
+
 
 /* Momentum chart view is a compact data display choice, not a workspace tab. */
 .mom-chart-view { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); background: rgba(255,255,255,.018); }
