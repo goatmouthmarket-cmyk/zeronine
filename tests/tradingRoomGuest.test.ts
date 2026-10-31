@@ -84,3 +84,50 @@ test('pasture recovery sizes from the entered base stake without the bot max sta
   assert.equal(context.planCowStake(4, target, account)?.stake, 4, 'recovery does not reduce the entered base stake');
   assert.equal(context.planCowStake(1, target, account)?.stake, 3.33, 'debt recovery raises a smaller base stake');
 });
+
+test('pasture background is rendered once and reused', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function getPastureBackground(');
+  const end = script.indexOf('function advanceFloatingEffects(', start);
+  assert.ok(start >= 0 && end > start, 'the pasture background cache exists');
+  const cache = script.slice(start, end);
+  const result = runInNewContext(`
+    let pastureBackground = null;
+    const world = { w: 1300, h: 850 };
+    let renderCount = 0;
+    const createdCanvas = { getContext: () => ({}) };
+    const document = { createElement: () => createdCanvas };
+    function paintPastureBackground() { renderCount += 1; }
+    ${cache}
+    ({ first: getPastureBackground(), second: getPastureBackground(), renderCount, width: createdCanvas.width, height: createdCanvas.height })
+  `) as { first: object; second: object; renderCount: number; width: number; height: number };
+
+  assert.equal(result.first, result.second);
+  assert.equal(result.renderCount, 1, 'static scenery is painted once');
+  assert.equal(result.width, 1300);
+  assert.equal(result.height, 850);
+});
+
+test('pasture win effects expire by elapsed time instead of frame count', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function advanceFloatingEffects(');
+  const end = script.indexOf('function draw(t)', start);
+  assert.ok(start >= 0 && end > start, 'the floating-effect updater exists');
+  const updateEffects = script.slice(start, end);
+  const result = runInNewContext(`
+    let fx = [{ life: 1.4, y: 0 }];
+    ${updateEffects}
+    advanceFloatingEffects(100, 0.016);
+    advanceFloatingEffects(800, 0.05);
+    const remainingLife = fx[0]?.life ?? null;
+    advanceFloatingEffects(1600, 0.05);
+    ({ remainingLife, remainingEffects: fx.length })
+  `) as { remainingLife: number | null; remainingEffects: number };
+
+  assert.equal(result.remainingLife, 0.7);
+  assert.equal(result.remainingEffects, 0, 'the effect is removed once its wall-clock duration ends');
+});
