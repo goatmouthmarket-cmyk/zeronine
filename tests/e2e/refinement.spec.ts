@@ -48,7 +48,7 @@ test('pasture uses the entered base stake and only caps at the balance safeguard
     public_dashboard: true,
     markets: [],
     trades: [],
-    session: { loginid: 'CR_TEST', balance: 100, currency: 'USD', mode: 'demo' },
+    session: { loginid: 'CR_TEST', balance: 1000, currency: 'USD', mode: 'demo' },
     settings: { base_stake: 1, max_stake: 2 },
     recovery: null,
     automation: null,
@@ -61,13 +61,41 @@ test('pasture uses the entered base stake and only caps at the balance safeguard
   await game.locator('.target-menu summary').click();
   const stake = game.locator('#cowStake');
   await expect(stake).toBeVisible();
-  await expect(stake).toHaveAttribute('max', '90');
+  await expect(stake).toHaveAttribute('max', '900');
+  await expect(game.locator('.account-balance-hud')).toHaveCSS('background-color', 'rgb(240, 215, 177)');
+  await expect(game.locator('#accountBalance')).toHaveCSS('color', 'rgb(18, 62, 43)');
   await stake.fill('100');
-  await expect(game.locator('#stakeHint')).toContainText('Final bet: $90.00');
-  await expect(game.locator('#stakeHint')).toContainText('90% balance safeguard');
-  await stake.fill('4');
-  await expect(game.locator('#stakeHint')).toContainText('Starting stake: $4.00');
+  await stake.blur();
+  await expect(stake).toHaveValue('100');
+  await expect(game.locator('#stakeHint')).toContainText('Starting stake: $100.00');
   await expect(game.locator('#stakeHint')).toContainText('Recovery may raise it based on current debt');
+});
+
+test('pasture clamps an entered stake to the usable account balance on blur', async ({ page }) => {
+  await page.route('**/api/state', (route) => route.fulfill({ json: {
+    owner: true,
+    public_dashboard: true,
+    markets: [],
+    trades: [],
+    session: { loginid: 'CR_TEST', balance: 2.22, currency: 'USD', mode: 'demo' },
+    settings: { base_stake: 1, max_stake: 2 },
+    recovery: null,
+    automation: null,
+    runs: [],
+    entries: [],
+  } }));
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  const game = page.frameLocator('iframe[title="Deriv Cows interactive trading pasture"]');
+  await game.locator('.target-menu summary').click();
+  const stake = game.locator('#cowStake');
+  await expect(stake).toHaveAttribute('max', '1.99');
+  await stake.fill('100');
+  await expect(game.locator('#stakeHint')).toContainText('Final bet: $1.99');
+  await stake.blur();
+  await expect(stake).toHaveValue('1.99');
+  await expect(game.locator('#stakeHint')).toContainText('Stake adjusted to $1.99');
+  await expect(game.locator('#stakeHint')).toContainText('90% balance safeguard');
 });
 
 test('Lab keeps the selected research view after reload', async ({ page }) => {

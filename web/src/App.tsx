@@ -1193,7 +1193,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     if (!stakeInput || !stakeHint) return;
 
     const connected = roomState.accountMode === 'demo' || roomState.accountMode === 'real';
-    const balanceLimit = roomState.balance > 0 ? roomState.balance * 0.9 : 0;
+    const balanceLimit = roomState.balance > 0 ? Math.floor(roomState.balance * 0.9 * 100) / 100 : 0;
     const stakeLimit = balanceLimit;
     if (connected && stakeLimit > 0) stakeInput.max = String(stakeLimit);
     else stakeInput.removeAttribute('max');
@@ -1216,6 +1216,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       stakeHint.textContent = `Starting stake: ${fmtMoney(requested, roomState.currency)}. Recovery may raise it based on current debt and the selected target, up to ${fmtMoney(stakeLimit, roomState.currency)}.`;
     };
     stakeInput.oninput = updateStakeHint;
+    stakeInput.onblur = () => {
+      const requested = Number(stakeInput.value);
+      if (connected && stakeLimit > 0 && Number.isFinite(requested) && requested > stakeLimit) {
+        stakeInput.value = String(stakeLimit);
+        stakeHint.textContent = `Stake adjusted to ${fmtMoney(stakeLimit, roomState.currency)} by the 90% balance safeguard. Recovery may raise it based on current debt and the selected target.`;
+      }
+    };
     updateStakeHint();
   }, [roomState]);
 
