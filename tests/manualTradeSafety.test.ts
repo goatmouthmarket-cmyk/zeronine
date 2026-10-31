@@ -152,6 +152,35 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
   assert.equal(noRetry.statusCode, 409);
   assert.equal(buyCalls, 2, 'an unknown buy must keep the lane locked against a new request');
 
+  store.setSession({
+    id: 'ranger-auto-real', loginid: 'CR_RANGER_REAL', balance: 100, currency: 'USD', mode: 'real', auth_kind: 'pat',
+    token_cipher: cryptoMod.encryptToken('test-token'), created_at: Date.now(), updated_at: Date.now(),
+  });
+  client.connectedAccountId = 'CR_RANGER_REAL';
+  store.setAutomation({ armed_until: 0 });
+  const unarmedRanger = await app.inject({
+    method: 'POST', url: '/api/trade/manual/preview',
+    payload: { market: 'R_10', direction: 'over', barrier: 1, stake: 1, entryMode: 'instant', rangerAutomation: true },
+  });
+  assert.equal(unarmedRanger.statusCode, 403);
+  assert.match(unarmedRanger.json().error, /not armed|approval expired/i);
+  assert.equal(buyCalls, 2, 'an unarmed ranger cannot purchase a real contract');
+
+  store.setAutomation({ armed_until: Date.now() + 60_000 });
+  const armedRanger = await app.inject({
+    method: 'POST', url: '/api/trade/manual/preview',
+    payload: { market: 'R_10', direction: 'over', barrier: 1, stake: 1, entryMode: 'instant', rangerAutomation: true },
+  });
+  assert.equal(armedRanger.statusCode, 200);
+  store.setAutomation({ armed_until: Date.now() - 1 });
+  const expiredArmConfirm = await app.inject({
+    method: 'POST', url: '/api/trade/manual/confirm',
+    payload: { previewId: armedRanger.json().previewId, idempotencyKey: 'expired-ranger-arm' },
+  });
+  assert.equal(expiredArmConfirm.statusCode, 403);
+  assert.match(expiredArmConfirm.json().error, /approval expired/i);
+  assert.equal(buyCalls, 2, 'arm expiry between quote and confirmation prevents real purchase');
+
   automation.dispose();
   await app.close();
 });

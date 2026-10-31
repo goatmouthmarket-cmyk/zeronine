@@ -14,6 +14,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   const element = (id: string): any => {
     if (!elements.has(id)) elements.set(id, {
       style: {},
+      dataset: {},
       classList: { add() {}, remove() {}, toggle() {} },
       addEventListener: (type: string, listener: () => void) => {
         if (!listeners.has(id)) listeners.set(id, new Map());
@@ -326,4 +327,55 @@ test('cooldown timer is centered in the header across viewport sizes', () => {
 
   assert.match(html, /#breakTimer\.visible\{top:12px!important;left:50%!important;right:auto!important;transform:translateX\(-50%\)/);
   assert.match(html, /#breakTimer\.visible\{top:12px!important;font-size:10px!important\}/);
+});
+
+test('ranger auto chooses only fresh positive-edge highlighted contracts', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function selectRangerAutoCandidate(');
+  const end = script.indexOf('function updateRangerAutoProgress(', start);
+  assert.ok(start >= 0 && end > start, 'the ranger candidate selector exists');
+  const selectCandidate = runInNewContext(`${script.slice(start, end)}; selectRangerAutoCandidate`) as (items: Array<Record<string, unknown>>) => Record<string, unknown> | null;
+  const valid = {
+    fresh: true, edge: 0.02, score: 0.08, p: 0.72, digitSamples: 35, riseSamples: 14,
+    alignedRise: 0.8, alignedRate: 0.65, hitSignal: false, payout: 1.5,
+  };
+  const bestConfidence = { ...valid, symbol: 'YELLOW', score: 0.2 };
+  const bestEdge = { ...valid, symbol: 'GREEN', edge: 0.09, score: 0.1 };
+  const stale = { ...valid, symbol: 'STALE', score: 0.01, fresh: false };
+  const selection = selectCandidate([bestConfidence, bestEdge, stale]);
+
+  assert.equal(selection?.symbol, 'YELLOW', 'the best scored highlighted cow wins the selection');
+  assert.equal(selectCandidate([{ ...valid, edge: 0 }]), null, 'non-positive edge is never eligible');
+  assert.equal(selectCandidate([
+    { ...valid, symbol: 'GREEN-TOO-UNCERTAIN', edge: 0.1, p: 0.6 },
+    { ...valid, symbol: 'YELLOW-TOO-UNCERTAIN', score: 0.3, p: 0.6 },
+    { ...valid, symbol: 'NOT-HIGHLIGHTED', edge: 0.03, score: 0.1 },
+  ]), null, 'an eligible but unhighlighted cow is not selected');
+  assert.equal(selectCandidate([{ ...valid, symbol: 'BET-NOW', hitSignal: true }])?.symbol, 'BET-NOW');
+});
+
+test('ranger auto requires three distinct fresh ticks for one contract', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function updateRangerAutoProgress(');
+  const end = script.indexOf('function renderRangerAutoHud(', start);
+  assert.ok(start >= 0 && end > start, 'the ranger tick confirmation tracker exists');
+  const updateProgress = runInNewContext(`${script.slice(start, end)}; updateRangerAutoProgress`) as (
+    progress: { key: string | null; lastSeq: number; confirmations: number },
+    candidate: { symbol: string; kind: string; barrier: number; tickSeq: number } | null,
+  ) => { key: string | null; lastSeq: number; confirmations: number };
+  const candidate = { symbol: 'R_100', kind: 'OVER', barrier: 2, tickSeq: 50 };
+  let progress = updateProgress({ key: null, lastSeq: -1, confirmations: 0 }, candidate);
+  assert.equal(progress.confirmations, 1);
+  progress = updateProgress(progress, candidate);
+  assert.equal(progress.confirmations, 1, 'repeated state without a new tick does not count');
+  progress = updateProgress(progress, { ...candidate, tickSeq: 51 });
+  assert.equal(progress.confirmations, 2);
+  progress = updateProgress(progress, { ...candidate, tickSeq: 52 });
+  assert.equal(progress.confirmations, 3);
+  progress = updateProgress(progress, { ...candidate, barrier: 3, tickSeq: 53 });
+  assert.equal(progress.confirmations, 1, 'a changed contract starts a fresh confirmation sequence');
 });

@@ -1873,9 +1873,12 @@ export async function unlockDashboard(token: string): Promise<void> {
   await bootstrap();
 }
 
-export async function arm(): Promise<void> {
-  await api('/api/automation/arm', { method: 'POST' });
-  return;
+export async function arm(): Promise<number> {
+  const res = await api<{ armed_until: number }>('/api/automation/arm', { method: 'POST' });
+  if (!Number.isFinite(res.armed_until) || res.armed_until <= Date.now()) {
+    throw new Error('The server did not confirm a valid automation arm window.');
+  }
+  return res.armed_until;
 }
 
 export async function loadDerivAccounts(): Promise<DerivAccountInfo[]> {
@@ -1921,6 +1924,8 @@ export interface ManualOrder {
   entryMode?: 'instant' | 'model' | 'digit-trigger' | 'digit-trigger-confirmed';
   /** A companion-confirmed order. The API rejects this unless the active account is demo. */
   companionDemo?: boolean;
+  /** Automated pasture orders require an active server-side arm on real accounts. */
+  rangerAutomation?: boolean;
   /** Stable for one operator action so retries can never create a second buy. */
   idempotencyKey?: string;
 }

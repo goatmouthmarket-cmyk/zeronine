@@ -115,6 +115,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     stake: number;
     entryMode: ManualEntryMode;
     companionDemo: boolean;
+    rangerAutomation: boolean;
   };
   type ManualPreview = {
     id: string;
@@ -155,7 +156,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return (wins + theoretical * 20) / (digits.length + 20);
   };
   const normalizeManualOrder = (body: unknown): ManualOrderInput => {
-    const input = (body ?? {}) as { market?: unknown; direction?: unknown; barrier?: unknown; stake?: unknown; entryMode?: unknown; companionDemo?: unknown };
+    const input = (body ?? {}) as { market?: unknown; direction?: unknown; barrier?: unknown; stake?: unknown; entryMode?: unknown; companionDemo?: unknown; rangerAutomation?: unknown };
     const market = typeof input.market === 'string' ? input.market : '';
     const direction = input.direction === 'over' || input.direction === 'under' ? input.direction : null;
     const barrier = Number(input.barrier);
@@ -177,10 +178,21 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
     if (!(stake > 0)) throw new ManualRequestError(400, 'stake must be greater than zero');
     if (!registry.has(market)) throw new ManualRequestError(400, `unknown market ${market}`);
-    return { market, direction, barrier, stake, entryMode, companionDemo: input.companionDemo === true };
+    return {
+      market,
+      direction,
+      barrier,
+      stake,
+      entryMode,
+      companionDemo: input.companionDemo === true,
+      rangerAutomation: input.rangerAutomation === true,
+    };
   };
   const assertManualPreflight = (order: ManualOrderInput, session: NonNullable<ReturnType<typeof getSession>>): void => {
     if (order.companionDemo && session.mode !== 'demo') throw new ManualRequestError(403, 'companion-confirmed trades are available on demo accounts only');
+    if (order.rangerAutomation && session.mode === 'real' && storeGetAutomation().armed_until <= Date.now()) {
+      throw new ManualRequestError(403, 'Real-money ranger automation is not armed or its 10-minute approval expired. Arm it again; no bet was placed.');
+    }
     if (automation.isRunning()) throw new ManualRequestError(409, 'stop the bot before placing a manual trade');
     const snapshot = registry.snapshot(order.market);
     if (!snapshot.fresh) throw new ManualRequestError(409, 'the selected market feed is stale; wait for a fresh tick');
