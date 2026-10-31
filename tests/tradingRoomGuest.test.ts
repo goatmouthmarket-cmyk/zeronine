@@ -8,20 +8,42 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
   const messages: Array<{ type: string; payload?: { stake?: number; market?: string; barrier?: number } }> = [];
+  const listeners = new Map<string, Map<string, () => void>>();
+  const savedStyles = new Map<string, string>();
   const elements = new Map<string, any>();
   const element = (id: string): any => {
-    if (!elements.has(id)) elements.set(id, { style: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, replaceChildren() {}, appendChild() {}, getContext: () => ({ setTransform() {} }) });
+    if (!elements.has(id)) elements.set(id, {
+      style: {},
+      classList: { add() {}, remove() {}, toggle() {} },
+      addEventListener: (type: string, listener: () => void) => {
+        if (!listeners.has(id)) listeners.set(id, new Map());
+        listeners.get(id)!.set(type, listener);
+      },
+      setAttribute() {},
+      removeAttribute() {},
+      replaceChildren() {},
+      appendChild() {},
+      getContext: () => ({ setTransform() {} }),
+    });
     return elements.get(id);
   };
   const context: Record<string, any> = {
-    document: { querySelector: () => element('canvas'), getElementById: element, createElement: () => element('child') },
+    document: { querySelector: () => element('canvas'), getElementById: element, createElement: () => element('child'), addEventListener() {} },
     parent: { postMessage: (message: { type: string; payload?: { stake?: number; market?: string; barrier?: number } }) => messages.push(message) },
     location: { origin: 'https://example.test' },
     window: { addEventListener() {} }, addEventListener() {}, requestAnimationFrame() {},
+    setInterval: () => 1, clearInterval() {},
+    AbortController: class { signal = {}; abort() {} },
     innerWidth: 800, innerHeight: 600, devicePixelRatio: 1,
     performance: { now: () => 100 }, setTimeout: () => 1, clearTimeout() {},
+    fetch: () => new Promise(() => {}),
+    crypto: { randomUUID: () => 'test-event-id' },
+    localStorage: {
+      getItem: () => null,
+      setItem: (key: string, value: string) => savedStyles.set(key, value),
+    },
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; }; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = ghost.x = 400; cows[0].y = cows[1].y = ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; };})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: Date.now() / 1000 }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; };})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   context.testDefeat({ contract: { market: 'Test market', symbol: 'TEST', kind: 'OVER', barrier: 1 } });
@@ -55,9 +77,14 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, 1, 'an invalid stake never submits a trade');
   context.testDefeat({ contract: { market: 'Test', symbol: 'TEST', kind: 'OVER', barrier: 1 }, tradeIntent: { accountId: 'OTHER_ACCOUNT', stake: 2, contract: { market: 'Test', symbol: 'TEST', kind: 'OVER', barrier: 1 } } });
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, 1, 'switching accounts after aiming never submits a trade');
+  const styleControl = element('cowBetStyle');
+  styleControl.value = 'chase';
+  listeners.get('cowBetStyle')?.get('change')?.();
+  assert.equal(context.testStyle(), 'chase', 'the pasture selector changes the active recovery plan');
+  assert.equal(savedStyles.get('pasture-manual-bet-style'), 'chase', 'the selected style is persisted');
 });
 
-test('pasture recovery sizes from the entered base stake without the bot max stake', () => {
+test('pasture base and martingale styles calculate from the entered stake', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
@@ -67,22 +94,92 @@ test('pasture recovery sizes from the entered base stake without the bot max sta
   const planner = script.slice(plannerStart, plannerEnd).trim();
   const context = runInNewContext(`
     let sessionRecovery = { amount: 0, planDebt: 0, winsApplied: 0 };
+    let cowBetStyle = 'base';
     ${planner}
     ({
       planCowStake: plannedCowStake,
       setRecovery: (amount, planDebt, winsApplied) => { sessionRecovery = { amount, planDebt, winsApplied }; },
+      setStyle: (style) => { cowBetStyle = style; },
     })
   `) as {
-    planCowStake: (base: number, contract: Record<string, number | string>, state: { balance: number }) => { stake: number } | null;
+    planCowStake: (base: number, contract: Record<string, number | string>, state: { balance: number; maxStake?: number }, style?: string) => { stake: number; recoveryTarget?: number; reason?: string } | null;
     setRecovery: (amount: number, planDebt: number, winsApplied: number) => void;
+    setStyle: (style: string) => void;
   };
   const target = { kind: 'OVER', barrier: 1, payout: 2 };
   const account = { balance: 100 };
 
   assert.equal(context.planCowStake(4, target, account)?.stake, 4);
   context.setRecovery(10, 10, 0);
-  assert.equal(context.planCowStake(4, target, account)?.stake, 4, 'recovery does not reduce the entered base stake');
-  assert.equal(context.planCowStake(1, target, account)?.stake, 3.33, 'debt recovery raises a smaller base stake');
+  assert.equal(context.planCowStake(4, target, account, 'base')?.stake, 4, 'base style stays flat during recovery');
+  assert.equal(context.planCowStake(1, target, account, 'martingale')?.stake, 10, 'martingale sizes to recover the full debt in one win');
+});
+
+test('pasture recovery styles scale from large base stakes and report balance limits', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function plannedCowStake(');
+  const end = script.indexOf('function moveToward(', start);
+  assert.ok(start >= 0 && end > start, 'the pasture stake planner exists');
+  const planner = script.slice(start, end).trim();
+  const context = runInNewContext(`
+    let sessionRecovery = { amount: 100, planDebt: 100, winsApplied: 0 };
+    let cowBetStyle = 'martingale';
+    ${planner}
+    ({ planCowStake: plannedCowStake })
+  `) as {
+    planCowStake: (base: number, contract: Record<string, number | string>, state: { balance: number; maxStake?: number }, style?: string) => { stake: number; recoveryTarget?: number; reason?: string } | null;
+  };
+  const contract = { kind: 'OVER', barrier: 1, payout: 1.8 };
+
+  assert.equal(context.planCowStake(100, contract, { balance: 1_000, maxStake: 25 }, 'martingale')?.stake, 125);
+  assert.equal(context.planCowStake(10, contract, { balance: 1_000 }, 'boosted')?.stake, 131.25);
+  assert.equal(context.planCowStake(10, contract, { balance: 1_000 }, 'chase')?.stake, 43.75);
+  assert.equal(context.planCowStake(10, contract, { balance: 1_000 }, 'base')?.stake, 10);
+  const blocked = context.planCowStake(100, contract, { balance: 130 }, 'martingale');
+  assert.equal(blocked?.stake, 0, 'a required recovery stake is not silently reduced');
+  assert.match(blocked?.reason ?? '', /90% balance limit/i);
+});
+
+test('pasture recovery tracks tagged cow losses without counting other manual or bot trades', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function updateSessionRecovery(');
+  const end = script.indexOf('function renderAccountHud(', start);
+  assert.ok(start >= 0 && end > start, 'the session recovery tracker exists');
+  const tracker = script.slice(start, end);
+  const saved = new Map<string, string>([
+    ['deriv-cows-session-recovery-v2:DEMO123', JSON.stringify({ amount: 0, planDebt: 0, winsApplied: 0, processed: ['1'], cowTradeIds: [] })],
+  ]);
+  const context = runInNewContext(`
+    let sessionRecovery = { amount: 0, planDebt: 0, winsApplied: 0, processed: [] };
+    let activeAccountId = 'DEMO123';
+    function updateCowBetStyleHint() {}
+    ${tracker}
+    ({ updateSessionRecovery, registerCowTrade, getRecovery: () => sessionRecovery })
+  `, {
+    sessionStorage: {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => saved.set(key, value),
+    },
+  }) as {
+    updateSessionRecovery: (state: Record<string, unknown>) => void;
+    registerCowTrade: (id: number) => void;
+    getRecovery: () => { amount: number };
+  };
+
+  context.registerCowTrade(1);
+  context.updateSessionRecovery({
+    accountId: 'DEMO123',
+    trades: [
+      { id: 1, status: 'lost', stake: 25, profit: -25, origin: 'manual' },
+      { id: 2, status: 'lost', stake: 75, profit: -75, origin: 'bot' },
+      { id: 3, status: 'lost', stake: 50, profit: -50, origin: 'manual' },
+    ],
+  });
+  assert.equal(context.getRecovery().amount, 25);
 });
 
 test('pasture background is rendered once and reused', () => {

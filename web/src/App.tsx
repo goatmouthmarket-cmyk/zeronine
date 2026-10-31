@@ -815,16 +815,26 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     stakeOverride = manualStake,
     entryMode: ManualEntryMode = manualEntryMode,
     companionDemo = false,
+    onFailure?: (message: string) => void,
   ): Promise<boolean> => {
-    if (guest || !marketSymbol || manualBusy) return false;
+    if (guest || !marketSymbol) {
+      onFailure?.('Connect Deriv and select a live market before placing a bet.');
+      return false;
+    }
+    if (manualBusy) {
+      onFailure?.('Another manual bet is already being processed. Wait for it to finish.');
+      return false;
+    }
     if (companionDemo && s.session?.mode !== 'demo') {
       setManualError(true);
       setManualMsg('Companion trades are available on a demo account only.');
+      onFailure?.('Companion trades are available on a demo account only.');
       return false;
     }
     if (openAccountTrade) {
       setManualError(true);
       setManualMsg(accountLockMessage);
+      onFailure?.(accountLockMessage);
       await syncCoreState();
       await refreshTrades();
       return false;
@@ -848,6 +858,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       setManualError(true);
       setManualMsg(e instanceof Error ? e.message : String(e));
       setManualExecution({ stage: 'failed', message: e instanceof Error ? e.message : String(e) });
+      onFailure?.(e instanceof Error ? e.message : String(e));
       return false;
     } finally {
       setManualBusy(false);
@@ -859,6 +870,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     barrier: number,
     marketSymbol: string,
     stakeOverride = manualStake,
+    onFailure?: (message: string) => void,
   ): Promise<boolean> => {
     setManualBusy(true);
     setManualError(false);
@@ -887,22 +899,30 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       setManualError(true);
       setManualMsg(message);
       setManualExecution({ stage: 'failed', message });
+      onFailure?.(message);
       return false;
     } finally {
       setManualBusy(false);
     }
   };
 
-  const playArenaTarget = async (direction: 'over' | 'under', barrier: number, marketSymbol: string, stakeOverride = manualStake): Promise<boolean> => {
+  const playArenaTarget = async (
+    direction: 'over' | 'under',
+    barrier: number,
+    marketSymbol: string,
+    stakeOverride = manualStake,
+    onFailure?: (message: string) => void,
+  ): Promise<boolean> => {
     setManualDirection(direction);
     direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier);
     selectMarket(marketSymbol);
     if (guest) {
       onNavigate('account');
+      onFailure?.('Connect Deriv before placing a bet.');
       return false;
     }
-    if (s.session?.mode === 'real') return previewManualNow(direction, barrier, marketSymbol, stakeOverride);
-    return executeManualNow(direction, barrier, marketSymbol, stakeOverride, 'instant');
+    if (s.session?.mode === 'real') return previewManualNow(direction, barrier, marketSymbol, stakeOverride, onFailure);
+    return executeManualNow(direction, barrier, marketSymbol, stakeOverride, 'instant', false, onFailure);
   };
 
   const placeManual = async (
@@ -1180,6 +1200,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       stake: trade.stake,
       profit: trade.profit,
       status: trade.status,
+      origin: trade.origin,
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
@@ -1278,12 +1299,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         return;
       }
       setManualStakeText(String(stake));
-      void playArenaTarget(direction, barrier, marketSymbol, stake).then((ok) => {
+      let failureMessage = 'Trade was not submitted. Check the game status for details.';
+      void playArenaTarget(direction, barrier, marketSymbol, stake, (message) => { failureMessage = message; }).then((ok) => {
         roomFrameRef.current?.contentWindow?.postMessage({
           type: 'zeronine:room-trade-result',
           ok,
           phase: ok && s.session?.mode === 'real' && !rememberedReal ? 'review' : undefined,
-          message: ok ? (s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : 'Trade was not confirmed. Check the room status.',
+          message: ok ? (s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
         }, window.location.origin);
       });
     };
