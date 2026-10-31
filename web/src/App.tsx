@@ -7749,29 +7749,29 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
     <div class={`bottom-nav-wrap${page === 'home' ? ' pasture-nav' : ''}${open ? ' is-open' : ''}`}>
       {page === 'home' && <button type="button" class="pasture-nav-toggle" aria-label={open ? 'Close game menu' : 'Open game menu'} aria-expanded={open} aria-controls="mobile-game-navigation" onClick={() => setOpen((value) => !value)}><Icon name={open ? 'x' : 'dots'} size={22} /></button>}
       <nav id="mobile-game-navigation" class="bottom-nav" aria-label="Main navigation">
-        <button class={`nav-item${page === 'home' ? ' active' : ''}`} onClick={() => setPage('home')}>
+        <button class={`nav-item${page === 'home' ? ' active' : ''}`} aria-current={page === 'home' ? 'page' : undefined} onClick={() => setPage('home')}>
           <Icon name="home" size={20} />
           Home
         </button>
-        <button class={`nav-item${page === 'history' ? ' active' : ''}`} onClick={() => setPage('history')}>
+        <button class={`nav-item${page === 'history' ? ' active' : ''}`} aria-current={page === 'history' ? 'page' : undefined} onClick={() => setPage('history')}>
           <Icon name="history" size={20} />
           History
         </button>
-        <button class={`nav-item${page === 'backtest' ? ' active' : ''}`} onClick={() => setPage('backtest')}>
+        <button class={`nav-item${page === 'backtest' ? ' active' : ''}`} aria-current={page === 'backtest' ? 'page' : undefined} onClick={() => setPage('backtest')}>
           <Icon name="stats" size={20} />
           Lab
         </button>
-        <button class={`nav-item bot${page === 'bot' ? ' active' : ''}`} onClick={() => setPage('bot')}>
+        <button class={`nav-item bot${page === 'bot' ? ' active' : ''}`} aria-current={page === 'bot' ? 'page' : undefined} onClick={() => setPage('bot')}>
           <span class="nav-bot-circle">
             <Icon name={automation ? 'square' : 'play'} size={15} strokeWidth={2.4} />
           </span>
           Bot
         </button>
-        <button class={`nav-item gold${page === 'gold' ? ' active' : ''}`} onClick={() => setPage('gold')}>
+        <button class={`nav-item gold${page === 'gold' ? ' active' : ''}`} aria-current={page === 'gold' ? 'page' : undefined} onClick={() => setPage('gold')}>
           <span class="gold-nav-logo" aria-hidden="true"><img src="/gold-logo.png" alt="" /></span>
           Gold
         </button>
-        <button class={`nav-item${page === 'account' ? ' active' : ''}`} onClick={() => setPage('account')}>
+        <button class={`nav-item${page === 'account' ? ' active' : ''}`} aria-current={page === 'account' ? 'page' : undefined} onClick={() => setPage('account')}>
           <Icon name="account" size={20} />
           Account
         </button>

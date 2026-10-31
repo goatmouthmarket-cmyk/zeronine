@@ -32,6 +32,16 @@ test('connection fields have visible labels and legal links clear the home ticke
   if (ticker && strip) expect(strip.y).toBeGreaterThanOrEqual(ticker.y + ticker.height);
 });
 
+test('bottom navigation announces the current page and updates after navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/bot', { waitUntil: 'domcontentloaded' });
+  const nav = page.locator('.bottom-nav');
+  await expect(nav.getByRole('button', { name: 'Bot', exact: true })).toHaveAttribute('aria-current', 'page');
+  await nav.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(nav.getByRole('button', { name: 'History', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('button', { name: 'Bot', exact: true })).not.toHaveAttribute('aria-current', 'page');
+});
+
 test('Lab keeps the selected research view after reload', async ({ page }) => {
   await page.goto('/lab', { waitUntil: 'domcontentloaded' });
   await page.locator('.tl-tabs button').filter({ hasText: 'Paper' }).click();
