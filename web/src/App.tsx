@@ -1136,7 +1136,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     accountId: s.session?.loginid ?? null,
     wsStatus: s.ws,
     remainingLoss: s.digitRemainingLoss,
-    maxStake: s.settings?.max_stake ?? 0,
     selected: market?.symbol ?? '',
     busy: manualBusy,
     status: manualMsg,
@@ -1195,8 +1194,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
 
     const connected = roomState.accountMode === 'demo' || roomState.accountMode === 'real';
     const balanceLimit = roomState.balance > 0 ? roomState.balance * 0.9 : 0;
-    const maxStake = roomState.maxStake > 0 ? roomState.maxStake : Number.POSITIVE_INFINITY;
-    const stakeLimit = Math.min(maxStake, balanceLimit);
+    const stakeLimit = balanceLimit;
     if (connected && stakeLimit > 0) stakeInput.max = String(stakeLimit);
     else stakeInput.removeAttribute('max');
 
@@ -1212,10 +1210,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         return;
       }
       if (requested > stakeLimit) {
-        stakeHint.textContent = `Final bet: ${fmtMoney(stakeLimit, roomState.currency)} (capped from ${fmtMoney(requested, roomState.currency)} by the account limit).`;
+        stakeHint.textContent = `Final bet: ${fmtMoney(stakeLimit, roomState.currency)} (capped from ${fmtMoney(requested, roomState.currency)} by the 90% balance safeguard).`;
         return;
       }
-      stakeHint.textContent = `Starting stake: ${fmtMoney(requested, roomState.currency)}. Recovery may raise it up to ${fmtMoney(stakeLimit, roomState.currency)}; select a cow to see the final bet.`;
+      stakeHint.textContent = `Starting stake: ${fmtMoney(requested, roomState.currency)}. Recovery may raise it based on current debt and the selected target, up to ${fmtMoney(stakeLimit, roomState.currency)}.`;
     };
     stakeInput.oninput = updateStakeHint;
     updateStakeHint();

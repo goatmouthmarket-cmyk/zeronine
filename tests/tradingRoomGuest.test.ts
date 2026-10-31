@@ -56,3 +56,31 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   context.testDefeat({ contract: { market: 'Test', symbol: 'TEST', kind: 'OVER', barrier: 1 }, tradeIntent: { accountId: 'OTHER_ACCOUNT', stake: 2, contract: { market: 'Test', symbol: 'TEST', kind: 'OVER', barrier: 1 } } });
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, 1, 'switching accounts after aiming never submits a trade');
 });
+
+test('pasture recovery sizes from the entered base stake without the bot max stake', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const plannerStart = script.indexOf('function plannedCowStake(');
+  const plannerEnd = script.indexOf('function moveToward(', plannerStart);
+  assert.ok(plannerStart >= 0 && plannerEnd > plannerStart, 'the pasture stake planner exists');
+  const planner = script.slice(plannerStart, plannerEnd).trim();
+  const context = runInNewContext(`
+    let sessionRecovery = { amount: 0, planDebt: 0, winsApplied: 0 };
+    ${planner}
+    ({
+      planCowStake: plannedCowStake,
+      setRecovery: (amount, planDebt, winsApplied) => { sessionRecovery = { amount, planDebt, winsApplied }; },
+    })
+  `) as {
+    planCowStake: (base: number, contract: Record<string, number | string>, state: { balance: number }) => { stake: number } | null;
+    setRecovery: (amount: number, planDebt: number, winsApplied: number) => void;
+  };
+  const target = { kind: 'OVER', barrier: 1, payout: 2 };
+  const account = { balance: 100 };
+
+  assert.equal(context.planCowStake(4, target, account)?.stake, 4);
+  context.setRecovery(10, 10, 0);
+  assert.equal(context.planCowStake(4, target, account)?.stake, 4, 'recovery does not reduce the entered base stake');
+  assert.equal(context.planCowStake(1, target, account)?.stake, 3.33, 'debt recovery raises a smaller base stake');
+});

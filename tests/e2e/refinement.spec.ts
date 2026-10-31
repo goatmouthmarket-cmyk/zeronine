@@ -42,7 +42,7 @@ test('bottom navigation announces the current page and updates after navigation'
   await expect(nav.getByRole('button', { name: 'Bot', exact: true })).not.toHaveAttribute('aria-current', 'page');
 });
 
-test('pasture shows when the requested stake is capped by the account limit', async ({ page }) => {
+test('pasture uses the entered base stake and only caps at the balance safeguard', async ({ page }) => {
   await page.route('**/api/state', (route) => route.fulfill({ json: {
     owner: true,
     public_dashboard: true,
@@ -61,12 +61,13 @@ test('pasture shows when the requested stake is capped by the account limit', as
   await game.locator('.target-menu summary').click();
   const stake = game.locator('#cowStake');
   await expect(stake).toBeVisible();
-  await expect(stake).toHaveAttribute('max', '2');
+  await expect(stake).toHaveAttribute('max', '90');
   await stake.fill('100');
-  await expect(game.locator('#stakeHint')).toContainText('Final bet: $2.00');
-  await expect(game.locator('#stakeHint')).toContainText('capped from $100.00');
-  await stake.fill('1');
-  await expect(game.locator('#stakeHint')).toContainText('Recovery may raise it up to $2.00');
+  await expect(game.locator('#stakeHint')).toContainText('Final bet: $90.00');
+  await expect(game.locator('#stakeHint')).toContainText('90% balance safeguard');
+  await stake.fill('4');
+  await expect(game.locator('#stakeHint')).toContainText('Starting stake: $4.00');
+  await expect(game.locator('#stakeHint')).toContainText('Recovery may raise it based on current debt');
 });
 
 test('Lab keeps the selected research view after reload', async ({ page }) => {
