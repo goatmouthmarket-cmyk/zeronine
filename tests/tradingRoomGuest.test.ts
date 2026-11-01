@@ -404,6 +404,9 @@ test('ranger auto controls open from a visible Play launcher outside the player 
   assert.match(html, /id="rangerAutoStyle">/);
   assert.match(html, /id="rangerAutoActivity" hidden/);
   assert.match(html, /id="rangerAutoStart" type="button" aria-label="Start Ranger Auto"/);
+  assert.match(html, /#rangerAutoActivity\{position:fixed;z-index:23/);
+  assert.match(html, /#rangerAutoActivity\{position:fixed;z-index:23;top:268px;left:12px;width:min\(260px,calc\(100vw - 24px\)\);padding:0;border:0;border-radius:0;background:transparent/);
+  assert.match(html, /toggle\.querySelector\('svg path'\).*rangerAutoActive\?'M8 5v14M16 5v14'/);
   assert.match(html, /#guestBanner\{top:56px!important;left:50%!important/);
   assert.match(html, /@media\(max-width:999\.98px\)\{#rangerAutoToggle\{top:110px;left:8px\}#rangerAutoHud\{top:158px;left:8px/);
 });
@@ -436,15 +439,112 @@ test('ranger auto activity only includes its five newest tracked trades', () => 
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
-  const start = script.indexOf('function rangerAutoRecentTrades(');
-  const end = script.indexOf('function renderRangerAutoActivity(', start);
+  const start = script.indexOf('function rangerAutoTrackedTrades(');
+  const end = script.indexOf('function rangerAutoRecentTrades(', start);
   assert.ok(start >= 0 && end > start, 'the Ranger Auto trade filter exists');
-  const recentTrades = runInNewContext(`${script.slice(start, end)}; rangerAutoRecentTrades`) as (
+  const trackedTrades = runInNewContext(`${script.slice(start, end)}; rangerAutoTrackedTrades`) as (
+    trades: Array<{ id: number }>,
+    ids: Set<number>,
+  ) => Array<{ id: number }>;
+  const recentStart = start;
+  const recentEnd = script.indexOf('function rangerPatrolPoint(', recentStart);
+  const recentTrades = runInNewContext(`${script.slice(recentStart, recentEnd)}; rangerAutoRecentTrades`) as (
     trades: Array<{ id: number }>,
     ids: Set<number>,
   ) => Array<{ id: number }>;
   const trades = Array.from({ length: 8 }, (_, index) => ({ id: 8 - index }));
 
+  assert.equal(trackedTrades(trades, new Set([1, 2, 3, 4, 5, 6, 7])).length, 7, 'session P&L can include every Ranger trade');
   assert.deepEqual([...recentTrades(trades, new Set([1, 2, 3, 4, 5, 6, 7])).map((trade) => trade.id)], [7, 6, 5, 4, 3]);
   assert.deepEqual([...recentTrades(trades, new Set([8])).map((trade) => trade.id)], [8]);
+});
+
+test('ranger patrol moves toward live cows while waiting and stays inside the pasture', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function rangerPatrolPoint(');
+  const end = script.indexOf('function rangerDamageForEdge(', start);
+  assert.ok(start >= 0 && end > start, 'the autonomous patrol waypoint helper exists');
+  const patrolPoint = runInNewContext(`${script.slice(start, end)}; rangerPatrolPoint`) as (
+    player: { x: number; y: number },
+    cows: Array<{ x: number; y: number; alive: boolean }>,
+    world: { w: number; h: number },
+    exclude: object | null,
+  ) => { x: number; y: number };
+  const nearest = { x: 120, y: 180, alive: true };
+  const distant = { x: 700, y: 700, alive: true };
+  const ghost = { x: 110, y: 170, alive: true };
+  const point = patrolPoint({ x: 100, y: 150 }, [distant, nearest, ghost], { w: 800, h: 800 }, ghost);
+
+  assert.deepEqual({ ...point }, { x: 65, y: 250 }, 'the ranger patrols beside the nearest live cow without leaving the bounds');
+  assert.deepEqual(
+    { ...patrolPoint({ x: 10, y: 10 }, [{ x: 0, y: 0, alive: true }], { w: 800, h: 800 }, null) },
+    { x: 105, y: 110 },
+    'waypoints stay within the pasture bounds',
+  );
+});
+
+test('high positive-edge ranger hits defeat a cow in one guaranteed shot', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function rangerDamageForEdge(');
+  const end = script.indexOf('function renderRangerAutoActivity(', start);
+  assert.ok(start >= 0 && end > start, 'the edge-based damage helper exists');
+  const damageForEdge = runInNewContext(`${script.slice(start, end)}; rangerDamageForEdge`) as (edge: number, hp: number, level: number) => number;
+
+  assert.equal(damageForEdge(0.06, 3, 1), 3, '6% edge is an instant kill');
+  assert.equal(damageForEdge(0.1, 5, 1), 5, '10% edge instantly defeats a higher-health cow');
+  assert.equal(damageForEdge(0.059, 3, 1), 1, 'normal edge keeps the existing level-based damage');
+});
+test('ranger auto selects top positive edge contract and patrols continuously without freezing', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+
+  // Candidate selection should choose positive edge without requiring 75% rise trend
+  const start = script.indexOf('function selectRangerAutoCandidate(');
+  const end = script.indexOf('function updateRangerAutoProgress(', start);
+  const selectCandidate = runInNewContext(`${script.slice(start, end)}; selectRangerAutoCandidate`) as (
+    items: Array<Record<string, unknown>>,
+  ) => Record<string, unknown> | null;
+
+  const normalTrendCandidate = {
+    fresh: true,
+    edge: 0.03,
+    score: 0.05,
+    p: 0.72,
+    digitSamples: 40,
+    riseSamples: 20,
+    alignedRise: 0.52,
+    alignedRate: 0.54,
+    hitSignal: false,
+    payout: 1.4,
+    symbol: 'EDGE-COW',
+  };
+
+  assert.equal(
+    selectCandidate([normalTrendCandidate])?.symbol,
+    'EDGE-COW',
+    'the top positive edge candidate is eligible even when quote trend is balanced',
+  );
+
+  // Automation loop is evaluated in frame() so the ranger does not freeze
+  assert.match(html, /if\(rangerAutoActive\)updateRangerAutomation\(\);/);
+
+  // Patrol waypoint selects another cow when player reaches the current cow
+  const patrolStart = script.indexOf('function rangerPatrolPoint(');
+  const patrolEnd = script.indexOf('function rangerDamageForEdge(', patrolStart);
+  const patrolPoint = runInNewContext(`${script.slice(patrolStart, patrolEnd)}; rangerPatrolPoint`) as (
+    player: { x: number; y: number },
+    cows: Array<{ x: number; y: number; alive: boolean }>,
+    world: { w: number; h: number },
+    exclude: object | null,
+  ) => { x: number; y: number };
+
+  const cowA = { x: 120, y: 180, alive: true };
+  const cowB = { x: 500, y: 400, alive: true };
+  const nextPoint = patrolPoint({ x: 65, y: 250 }, [cowA, cowB], { w: 800, h: 800 }, cowA);
+  assert.deepEqual({ ...nextPoint }, { x: 395, y: 470 }, 'ranger patrols toward cow B when cow A is excluded');
 });
