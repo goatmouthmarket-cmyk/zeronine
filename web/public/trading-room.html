@@ -306,9 +306,54 @@ c.fillStyle='#fff3c5';c.font='bold 12px system-ui';c.textAlign='center';c.fillTe
   }
 }moveToward(player,player.tx,player.ty,175,dt)}for(let i=shots.length-1;i>=0;i--){let s=shots[i];s.x+=s.vx*dt;s.y+=s.vy*dt;if(!s.target.alive||Math.hypot(s.x-s.target.x,s.y-s.target.y)<18){shots.splice(i,1);if(!s.target.alive)continue;aimLastProgressAt=now;const highEdge=Number(s.edge)>=.06,accuracy=highEdge?1:.94;if(Math.random()>accuracy){fx.push({x:s.target.x,y:s.target.y-38,life:.55,text:'MISS'});continue}const damage=rangerDamageForEdge(s.edge,s.target.hp,levelNow);s.target.hp-=damage;fx.push({x:s.target.x,y:s.target.y-38,life:.65,text:highEdge?'KILL':String(damage)});if(s.target.hp<=0){s.target.alive=false;s.target.respawn=now+2600;target=null;applySavedKill(now<lockUntil);persistKill(now<lockUntil);onCowDefeated(s.target);$('kills').textContent=kills;$('xptext').textContent=xp;$('nextLevelXp').textContent=150-(xp%150);const lv=1+Math.floor(xp/150);$('lvl').textContent=lv;$('xpbar').style.width=`${xp%150/150*100}%`}}else if(s.x<0||s.x>world.w||s.y<0||s.y>world.h)shots.splice(i,1)}advanceFloatingEffects(now,dt);if(ghostPaperState?.openContract&&ghostCow?.alive){moveToward(ghost,ghostCow.x-96,ghostCow.y+9,240,dt);const seq=marketTickSequences.get(ghostPaperState.openContract.market)||0;if(seq>ghostLastTickSeq){ghostLastTickSeq=seq;const dx=ghostCow.x-ghost.x,dy=ghostCow.y-ghost.y,d=Math.hypot(dx,dy)||1;ghostArrows.push({x:ghost.x,y:ghost.y-8,vx:dx/d*360,vy:dy/d*360,target:ghostCow})}}if(!ghostPaperState?.openContract&&now>ghostPaperResultUntil)ghostCow=null;for(let i=ghostArrows.length-1;i>=0;i--){const arrow=ghostArrows[i];arrow.x+=arrow.vx*dt;arrow.y+=arrow.vy*dt;if(!arrow.target.alive||Math.hypot(arrow.x-arrow.target.x,arrow.y-arrow.target.y)<20){ghostArrows.splice(i,1);if(arrow.target.alive)fx.push({x:arrow.target.x,y:arrow.target.y-42,life:.48,size:9,text:'PAPER'})}else if(arrow.x<0||arrow.x>world.w||arrow.y<0||arrow.y>world.h)ghostArrows.splice(i,1)} separatePastureActors();updateRangerAnimation(now,dt);const rem=Math.max(0,Math.ceil((lockUntil-now)/1000));$('cooldown').textContent=rem?`${rem}s ${cooldownReason}`:'READY';const timerWasVisible=$('breakTimer').classList.contains('visible');$('breakTimer').classList.toggle('visible',rem>0);if(rem&&!timerWasVisible)restoreHud();$('breakSeconds').textContent=`${Math.floor(rem/60)}:${String(rem%60).padStart(2,'0')}`;draw(now)}requestAnimationFrame(frame);function selectedCowStake(){const raw=$('cowStake').value;const amount=Number(raw);return typeof raw==='string'&&raw.trim()!==''&&Number.isFinite(amount)&&amount>0?amount:null}
 function marketCooldownSeconds(probability){const p=Number.isFinite(probability)?Math.max(0,Math.min(1,probability)):.5;return Math.round(Math.max(10,Math.min(45,10+(.8-p)*50)))}
-function startTradeCooldown(){const p=rangerBet?.hitProbability??.5,seconds=marketCooldownSeconds(p);cooldownReason=p>=.75?'HIGH':p<.55?'LOW':'MARKET';lockUntil=Math.max(lockUntil,performance.now()+seconds*1000)}
+function startTradeCooldown(){
+  // Automated trades only pause after three consecutive settled losses.
+  // Preserve the existing submission cooldown for manual trades.
+  if(rangerBet?.rangerAutomation)return;
+  const p=rangerBet?.hitProbability??.5;
+  const seconds=marketCooldownSeconds(p);
+  cooldownReason=p>=.75?'HIGH':p<.55?'LOW':'MARKET';
+  lockUntil=Math.max(lockUntil,performance.now()+seconds*1000);
+}
 function noteCooldownAttempt(){if(cooldownAttemptRegistered)return;if(lossCooldownStreak>0)attemptsSinceLoss++;cooldownAttemptRegistered=true}
-function settleCooldown(trade){if(!['won','lost'].includes(trade.status)||cooldownTradeId===trade.id)return;cooldownTradeId=trade.id;if(trade.status==='won'){lossCooldownStreak=0;attemptsSinceLoss=6;cooldownReason='MARKET';return}lossCooldownStreak=lossCooldownStreak>0&&attemptsSinceLoss>=1&&attemptsSinceLoss<=5?lossCooldownStreak+1:1;attemptsSinceLoss=0;const seconds=marketCooldownSeconds(rangerBet?.hitProbability)+15*lossCooldownStreak;cooldownReason='LOSS ?'+lossCooldownStreak;lockUntil=Math.max(lockUntil,performance.now()+seconds*1000)}
+function settleCooldown(trade){
+  if(!['won','lost'].includes(trade.status)||cooldownTradeId===trade.id)return;
+  cooldownTradeId=trade.id;
+
+  // Automation: count consecutive settled losses, never starting a timer
+  // for a win or either of the first two consecutive losses.
+  const automated=rangerAutoTradeIds.has(trade.id)||rangerBet?.rangerAutomation===true;
+  if(automated){
+    if(trade.status==='won'){
+      lossCooldownStreak=0;
+      attemptsSinceLoss=6;
+      cooldownReason='MARKET';
+      return;
+    }
+    lossCooldownStreak+=1;
+    attemptsSinceLoss=0;
+    if(lossCooldownStreak>=3){
+      const seconds=marketCooldownSeconds(rangerBet?.hitProbability)+15*lossCooldownStreak;
+      cooldownReason='3 CONSECUTIVE LOSSES';
+      lockUntil=Math.max(lockUntil,performance.now()+seconds*1000);
+      lossCooldownStreak=0;
+    }
+    return;
+  }
+
+  // Keep the original manual-trading cooldown behavior.
+  if(trade.status==='won'){
+    lossCooldownStreak=0;
+    attemptsSinceLoss=6;
+    cooldownReason='MARKET';
+    return;
+  }
+  lossCooldownStreak=lossCooldownStreak>0&&attemptsSinceLoss>=1&&attemptsSinceLoss<=5?lossCooldownStreak+1:1;
+  attemptsSinceLoss=0;
+  const seconds=marketCooldownSeconds(rangerBet?.hitProbability)+15*lossCooldownStreak;
+  cooldownReason='LOSS '+lossCooldownStreak;
+  lockUntil=Math.max(lockUntil,performance.now()+seconds*1000);
+}
 function submitContract(contract,stakeOverride,styleOverride=cowBetStyle,rangerAutomation=false){rangerBetSerial++;cooldownAttemptRegistered=false;$('rangerBet').classList.remove('fade-out');const stake=stakeOverride===undefined?selectedCowStake():stakeOverride;rangerBubbleDismissed=false;rangerBet={phase:stake===null?'rejected':'submitting',market:contract?.market,symbol:contract?.symbol,direction:contract?.kind,barrier:contract?.barrier,stake,betStyle:styleOverride,hitProbability:contract?.p,edge:contract?.edge,recoveryWins:estimateRecoveryWins(contract)};trackedTradeId=null;renderRangerBet();if(stake===null){pending=null;notify('Enter a stake greater than zero in Markets. No trade placed.');const serial=rangerBetSerial;setTimeout(()=>{if(serial===rangerBetSerial&&rangerBet?.phase==='rejected'){rangerBet=null;renderRangerBet()}},10000);return;}if(!contract?.symbol){pending=null;rangerBet={...rangerBet,phase:'rejected'};renderRangerBet();notify('No live market symbol - no bet was placed. You can keep playing.');return;}const quote=quoteFreshness(contract.symbol);if(!quote.fresh){pending=null;rangerBet={...rangerBet,phase:'rejected',stale:true,edge:contract.edge};renderRangerBet();notify('Quote stale - no bet placed. Select the cow again after a fresh tick.');const serial=rangerBetSerial;setTimeout(()=>{if(serial===rangerBetSerial&&rangerBet?.phase==='rejected'){rangerBet=null;renderRangerBet()}},10000);return;}const pendingNode=$('pendingBet'),meta=$('pendingMeta');if(pendingNode)pendingNode.textContent=`${contract.kind} ${contract.barrier} - ${contract.market}`;if(meta)meta.textContent='Submitting trade request';document.querySelector('.bet-state')?.classList.add('pending');parent.postMessage({type:'zeronine:room-select-market',payload:{market:contract.symbol}},location.origin);parent.postMessage({type:'zeronine:room-trade',payload:{direction:contract.kind==='OVER'?'over':'under',barrier:contract.barrier,stake,market:contract.symbol,rangerAutomation}},location.origin);}function onCowDefeated(v){if(!connectedAccount){rangerBubbleDismissed=false;rangerBet={phase:'practice',market:v.contract.market,direction:v.contract.kind,barrier:v.contract.barrier};renderRangerBet();notify('Guest play: no bet placed. Connect Deriv to trade.');return}if(pending||performance.now()<lockUntil){if(rangerBet?.phase==='aiming'){rangerBet={phase:'rejected',market:v.contract.market,direction:v.contract.kind,barrier:v.contract.barrier,stake:v.tradeIntent?.stake};renderRangerBet()}notify(pending?'Trade already sending - no additional bet placed.':'Cooldown active - cow defeated, no bet placed.');return}const intent=v.tradeIntent;if(!intent||intent.accountId!==activeAccountId){pending=null;rangerBet={...rangerBet,phase:'rejected'};renderRangerBet();notify('Account changed or target not selected. No trade placed.');return;}pending={...intent.contract};submitContract(pending,intent.stake,intent.style,intent.rangerAutomation===true);}
 function clearPending(){pending=null;$('confirm').classList.remove('active')}
 $('skipDemo').onclick=()=>{clearPending();notify('Trade skipped; keep playing')};
@@ -330,6 +375,7 @@ window.addEventListener('blur',()=>{heldKeys.clear();resetMove()});canvas.addEve
 </script><script>
 (()=>{const menu=document.querySelector('#inspector .target-menu');if(!menu)return;const close=()=>{if(menu.open)menu.open=false};document.addEventListener('pointerdown',event=>{if(menu.open&&!event.target.closest('#inspector'))close()});document.addEventListener('keydown',event=>{if(event.key==='Escape')close()})})();
 </script><script id="market-hud-mirror">(()=>{const pairs=[["lvl","marketHudLevel"],["missionTitle","marketHudMission"],["missionProgress","marketHudProgress"]];const sync=()=>{for(const [from,to] of pairs){const a=document.getElementById(from),b=document.getElementById(to);if(a&&b)b.textContent=a.textContent.trim()}};const observer=new MutationObserver(sync);for(const [from] of pairs){const el=document.getElementById(from);if(el)observer.observe(el,{childList:true,subtree:true,characterData:true})}sync()})();</script></body></html>
+
 
 
 
