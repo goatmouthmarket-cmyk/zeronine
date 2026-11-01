@@ -1,103 +1,394 @@
-# Over/Under Digit Sniper
+# DERIV COWS
 
-Deriv synthetic-indices bot that watches every market carrying Over/Under digit contracts, bets the strongest one, and uses quote-driven **intelligent money recovery** (barrier escalation, martingale fallback) to claw back losses in a single trade.
+<div align="center">
 
-Runs on **Node 24** (native TypeScript type-stripping, built-in `node:sqlite`) — no build step, no external DB.
+<img src="web/public/deriv-cows-favicon.ico" alt="Deriv Cows Game Icon" width="90">
 
-## Strategy
+### AIM. SHOOT. TRADE.
 
-- Streams **all** synthetic indices that support `DIGITOVER`/`DIGITUNDER` (currently 8: `1HZ10V` … `1HZ100V`).
-- Per trade it picks the market + direction/barrier with the best edge (`estimated win rate − breakeven`).
-- **Base bet**: the configured preference (default `over 1`, ~80% win) at `base_stake`.
-- On a loss, **recovery mode** scans live quotes and escalates the barrier (e.g. `over 1 → 3 → 5 → 7`) at the lowest stake that wins back everything in one trade — win, and it reverts to base. Martingale (doubling) is the fallback if no good quote is found.
-- Risk gates: max stake, balance floor, peak drawdown, single open contract, minimum trade gap, consecutive-loss pause.
+**A strategy-driven archery trading game built around discipline, market selection, and time management.**
 
-## Quickstart (local)
+[PLAY DERIV COWS](https://derivcows.up.railway.app/) | [ENTER THE ARCHERY ROOM](https://derivcows.up.railway.app/trading-room.html)
 
-```powershell
-# Node 24+ on PATH (this repo ships a portable copy in node-v24.18.0-win-x64/)
-npm install          # registry mirror pinned in .npmrc (npmmirror)
-Copy-Item .env.example .env
-# fill in your Deriv demo API token (app.deriv.com -> API token)
-npm run build:web    # build dashboard into web/dist
-npm run dev          # API on :8010, serves dashboard at http://localhost:8010
+</div>
+
+---
+
+## ABOUT DERIV COWS
+
+<div align="center">
+
+<img src="web/public/deriv-cows-logo.png" alt="Deriv Cows Full Logo" width="480">
+
+</div>
+
+**Deriv Cows** is an interactive, browser-based archery game that combines cow-hunting gameplay with Deriv synthetic indices trading.
+
+The project was created to address three common challenges faced by traders: **overtrading, poor time management, and inconsistent trading discipline.**
+
+Instead of continuously watching charts or entering trades impulsively, players enter a virtual pasture where they control a ranger, aim at cows, and participate in a structured trading experience.
+
+Unlike conventional automated trading systems, Deriv Cows encourages players to develop their own strategies by choosing the appropriate market, identifying suitable trading times, and recognizing when it is better not to trade.
+
+The result is a game that combines entertainment, strategic decision-making, and trading functionality in a single interactive environment.
+
+---
+
+## THE GAME EXPERIENCE
+
+### Enter the Pasture
+
+<div align="center">
+
+<img src="web/public/pasture-login-reference.png" alt="Deriv Cows Pasture Login Design" width="650">
+
+</div>
+
+Deriv Cows introduces players to a pasture-themed environment designed to make the trading experience more interactive and engaging.
+
+Players can enter the game, explore the pasture, and practise archery without connecting a trading account.
+
+Connecting an authorized Deriv account provides access to eligible trading functionality, subject to the application's configuration and risk-management controls.
+
+### Archery Gameplay
+
+Players take control of a ranger equipped with a bow and arrow.
+
+The gameplay experience includes:
+
+- Ranger movement and positioning.
+- Interactive cow targets.
+- Bow-and-arrow shooting mechanics.
+- Experience points and progression indicators.
+- Desktop and mobile-friendly controls.
+- Adjustable game view and zoom.
+- Trading and gameplay status feedback.
+
+The archery environment provides the main interaction, while the trading system manages eligible contract requests and execution.
+
+---
+
+## CORE FEATURES
+
+### 1. Overtrading Prevention
+
+One of the main objectives of Deriv Cows is to discourage excessive and impulsive trading.
+
+The application incorporates trading cooldowns and execution controls that introduce structured pauses between eligible trading opportunities.
+
+These mechanisms are intended to help players:
+
+- Reduce repetitive trading decisions.
+- Avoid immediately entering another trade after a loss.
+- Become more selective about trading opportunities.
+- Exercise patience between trades.
+- Maintain greater awareness of their trading activity.
+
+Deriv Cows promotes the principle that **more trades do not necessarily mean better trading.**
+
+### 2. Time Management
+
+Deriv Cows is designed to encourage better management of the time and attention players dedicate to trading.
+
+Traditional trading interfaces can encourage prolonged chart-watching and frequent trade entry. Deriv Cows introduces a gameplay environment that changes how players interact with the market.
+
+Rather than continuously searching for another trade, players can engage with the archery environment while observing the application's trading rules and cooldowns.
+
+The goal is to promote a more balanced and structured trading experience.
+
+### 3. Player-Developed Trading Strategies
+
+Strategy development is a central part of Deriv Cows.
+
+Players are encouraged to make informed decisions about **which market to trade, when to trade, and when to remain inactive.**
+
+The game allows players to approach trading strategically instead of treating every available opportunity as a reason to enter a position.
+
+Key strategic considerations include:
+
+**Market Selection**
+
+Choose a synthetic index that aligns with the player's preferred trading approach.
+
+**Trade Timing**
+
+Identify suitable trading periods based on observed market behaviour and personal strategy.
+
+**Strategy Development**
+
+Experiment with market choices, trading approaches, and timing to refine individual strategies.
+
+**Risk Awareness**
+
+Consider trading conditions, potential losses, and cooldown restrictions before participating.
+
+**Performance Evaluation**
+
+Review trading results and use previous outcomes to assess trading decisions.
+
+**Knowing When Not to Trade**
+
+Recognize unsuitable conditions and avoid unnecessary trades.
+
+The objective is to help players develop a more deliberate approach to market participation.
+
+---
+
+## HOW DERIV COWS WORKS
+
+**Step 1 — Enter the Game**
+
+Launch Deriv Cows and access the interactive pasture.
+
+**Step 2 — Select a Market**
+
+Choose the Deriv synthetic index that aligns with your intended trading strategy.
+
+**Step 3 — Evaluate the Timing**
+
+Observe the market and decide whether the current conditions are suitable for your approach.
+
+**Step 4 — Aim and Shoot**
+
+Control your ranger, aim at a cow, and fire an arrow.
+
+**Step 5 — Trading Integration**
+
+When trading is enabled, eligible gameplay actions may initiate a Deriv digit-contract request, subject to authorization, configured rules, and risk checks.
+
+**Step 6 — Observe Cooldowns**
+
+Follow the application's trading cooldowns and execution restrictions before taking another eligible trade.
+
+**Step 7 — Review and Refine**
+
+Monitor recent trade performance and use the results to evaluate your strategy.
+
+---
+
+## USER INTERFACE AND VISUAL DESIGN
+
+<div align="center">
+
+<img src="web/public/cow-ui-assets.png" alt="Deriv Cows Game Interface Assets" width="650">
+
+</div>
+
+Deriv Cows features a custom interface built around its pasture and archery theme.
+
+The visual design aims to keep gameplay as the central focus while making trading information accessible.
+
+Interface elements include:
+
+- Ranger status and experience indicators.
+- Game movement and shooting controls.
+- Market selection and trading information.
+- Deriv connection status.
+- Trading cooldown feedback.
+- Trade execution notifications.
+- Recent trade performance.
+- Responsive desktop and mobile layouts.
+
+### Branding
+
+**Primary Game Icon**
+
+<div align="center">
+
+<img src="web/public/deriv-cows-favicon.ico" alt="Deriv Cows Primary Brand Icon" width="80">
+
+</div>
+
+The favicon represents the compact identity of Deriv Cows and is used for browser and application recognition.
+
+**Detailed Game Logo**
+
+<div align="center">
+
+<img src="web/public/deriv-cows-logo.png" alt="Deriv Cows Detailed Branding" width="420">
+
+</div>
+
+The detailed logo expands on the primary icon and serves as the main visual branding for the project.
+
+---
+
+## TRADING INTEGRATION
+
+Deriv Cows integrates with the Deriv API to provide account connectivity and synthetic indices trading functionality.
+
+The trading infrastructure supports:
+
+- Deriv account authentication.
+- Synthetic indices market connectivity.
+- Digit Over/Under contracts.
+- Trading configuration and market selection.
+- Trade execution and status reporting.
+- Cooldown and risk-management controls.
+- Recent trade history and profit/loss monitoring.
+
+Players may participate in archery gameplay without connecting a trading account.
+
+Trading operations require appropriate authorization and remain subject to application safeguards and market availability.
+
+---
+
+## TECHNOLOGY STACK
+
+| Component | Technology |
+|---|---|
+| Frontend | Preact, TypeScript, Vite |
+| Styling | Tailwind CSS, CSS |
+| Game Interface | HTML, CSS, JavaScript |
+| Backend | Node.js, Fastify, TypeScript |
+| Real-Time Communication | WebSockets |
+| Trading Integration | Deriv API |
+| Database | SQLite |
+| Hosting | Railway |
+| Version Control | GitHub |
+
+The repository also contains additional trading infrastructure, including market analysis, strategy services, simulation tools, and a separate Gold trading module.
+
+---
+
+## PROJECT STRUCTURE
+
+```text
+zeronine/
+|
+|-- web/
+|   |-- public/
+|   |   |-- trading-room.html
+|   |   |-- deriv-cows-favicon.ico
+|   |   |-- deriv-cows-logo.png
+|   |   |-- pasture-login-reference.png
+|   |   |-- cow-ui-assets.png
+|   |
+|   |-- src/
+|       |-- App.tsx
+|       |-- realCowConsent.ts
+|
+|-- src/
+|   |-- api/
+|   |-- deriv/
+|   |-- strategy/
+|   |-- gold/
+|
+|-- tests/
+|-- package.json
+|-- railway.toml
+|-- README.md
 ```
 
-Development with hot-reload UI:
+### Game Assets
 
-```powershell
-npm run dev          # terminal 1: API on :8010
-npm run web:dev      # terminal 2: Vite on :5173 (proxies /api and /ws to :8010)
+| File | Purpose |
+|---|---|
+| `web/public/deriv-cows-favicon.ico` | Primary game icon |
+| `web/public/deriv-cows-logo.png` | Detailed game logo |
+| `web/public/pasture-login-reference.png` | Login-screen design reference |
+| `web/public/cow-ui-assets.png` | Game interface artwork |
+| `web/public/trading-room.html` | Interactive archery game |
+
+---
+
+## LOCAL DEVELOPMENT
+
+### Requirements
+
+- Node.js 24 or later
+- npm
+- Git
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/goatmouthmarket-cmyk/zeronine.git
+cd zeronine
 ```
 
-## Connect & trade
+### Install Dependencies
 
-1. Create a **demo** API token at `app.deriv.com → API token`.
-2. Open the dashboard → **Trade → Connect** and paste it.
-   - Sessions use the OTP socket flow on `api.derivws.com` (`GET /accounts`, `POST /accounts/{id}/otp`) — it works even where `ws.deriv.com` is unreachable.
-3. **Manual trade**: choose `Trade now` to review the live proposal, account impact, and risk checks before confirming; or arm `Wait for model` / `Wait for pattern` for a three-minute validated entry window. Live five-contract baskets are disabled and remain research-only.
-4. **Auto Sniper**: *START* to run the strongest-market loop. On a **real** account you must *ARM 10min* first (recovery requires a 10-minute arm, demo does not).
-5. *Settings*: stake caps, drawdown limits, martingale depth, edge thresholds.
-
-## Gold Module
-
-The **Gold** tab is a separate price-market domain with its own deterministic
-research model, virtual paper engine, and OHLC backtest engine. It does not
-reuse digit statistics, recovery staking, or Deriv account balances.
-
-Gold broker execution is not enabled in this repository build. The cTrader
-foundation is OAuth-only and demo-first; it reports non-secret readiness while
-the provider adapter, PostgreSQL ownership store, idempotency, and broker
-reconciliation are deployed. Keep `GOLD_LIVE_ENABLED=0`.
-
-See [Gold cTrader and Railway deployment](docs/gold-ctrader-railway.md) for
-the required PostgreSQL schema, cTrader registration, Railway topology, and
-demo-soak requirements before any broker-connected release.
-
-## Endpoints
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/health` | liveness (feed connected, market count, automation state) |
-| GET | `/api/state` | one-shot dashboard snapshot |
-| GET | `/api/markets` | persisted market list + live snapshots |
-| GET | `/api/history?limit=` | recent trades |
-| GET/PUT | `/api/settings` | read/update strategy settings |
-| POST | `/api/auth/pat` | connect a PAT (creates OTP session, stores encrypted) |
-| POST | `/api/auth/logout` | disconnect + clear session |
-| POST | `/api/trade/manual/preview` | owner-only live quote and risk review; never purchases |
-| POST | `/api/trade/manual/confirm` | confirm a reviewed quote with an idempotency key |
-| POST | `/api/trade/manual` | place one authorized timed/manual instruction with server risk and idempotency guards |
-| POST | `/api/trade/manual-basket` | disabled (`410`); concurrent account-funded baskets are not supported |
-| POST | `/api/automation/start` · `/stop` · `/arm` | automation controls |
-| WS | `/ws` | live events: tick, signal, decision, trade, contract, recovery, status |
-
-## Deploy (Railway)
-
-- `railway.toml` builds `npm ci` + `web/dist`, starts `node src/main.ts`, health-checks `/health`, and mounts a persistent volume at `/data` (`DATA_DIR=/data` keeps trades/digits across redeploys).
-- Set env in Railway: `DERIV_PAT` (or OAuth vars `DERIV_OAUTH_CLIENT_ID`/`SECRET`/`REDIRECT_URI`), `SESSION_SECRET`, stake/risk overrides. `PORT` is provided automatically.
-- To run a public read-only dashboard, set a strong `DASHBOARD_ADMIN_TOKEN`. Visitors can inspect the live market feed plus global backtest, paper, pattern, calibration, and decision-evidence data, while the connected Deriv account, its history, recovery state, and all trade controls require the owner token.
-- Real-account automation still requires a 10-minute arm per session.
-
-## Verify
-
-```powershell
-npm run typecheck   # tsc --noEmit (server)
-npm test            # node --test "tests/*.test.ts"
-npm run build:web   # vite build web
+```bash
+npm install
 ```
 
-## Layout
+### Configure the Environment
 
+```bash
+cp .env.example .env
 ```
-src/
-  main.ts               server wiring, static dashboard, tick persistence
-  config.ts             env-driven config
-  db/                   node:sqlite (markets, digits, trades, recovery, settings, sessions) + AES-GCM token encryption
-  deriv/                public tick feed (api.derivws.com) + private client (OTP socket, quotes, buys, settlement)
-  core/                 digit math, market registry (60-tick windows), protocol message builders
-  strategy/             signal picker, quote-driven recovery planner, risk gates, automation loop
-  api/                  Fastify routes, hub event bus, browser websocket
-web/                    Preact + Tailwind mobile dashboard (Vite)
-tests/                  unit + HTTP tests
+
+Configure the required application settings and credentials.
+
+Do not commit API credentials, authentication tokens, or other secrets.
+
+### Build the Frontend
+
+```bash
+npm run build:web
 ```
+
+### Start the Application
+
+```bash
+npm run dev
+```
+
+Open the dashboard:
+
+`http://localhost:8010`
+
+Open the archery game:
+
+`http://localhost:8010/trading-room.html`
+
+### Run Verification
+
+```bash
+npm run verify
+```
+
+---
+
+## DEPLOYMENT
+
+Deriv Cows is hosted on Railway.
+
+**Live Application:** https://derivcows.up.railway.app/
+
+**GitHub Repository:** https://github.com/goatmouthmarket-cmyk/zeronine
+
+The project includes Railway deployment configuration for application startup and health monitoring.
+
+Production credentials should be managed through environment variables rather than stored in the repository.
+
+---
+
+## TRADING RISK AND DISCLAIMER
+
+Deriv Cows is designed to encourage disciplined trading behaviour through gameplay, strategic market selection, and structured trading cooldowns.
+
+However, these features do not guarantee that users will avoid overtrading or financial losses.
+
+Trading synthetic-index contracts carries financial risk. Successful archery gameplay does not guarantee profitable trading outcomes.
+
+Players should understand the associated risks and consider practising with a demo account before using real funds.
+
+Deriv Cows is an independently developed application integrating Deriv services and is not presented as an official Deriv product.
+
+---
+
+<div align="center">
+
+<img src="web/public/deriv-cows-favicon.ico" alt="Deriv Cows Icon" width="70">
+
+### DERIV COWS
+
+**AIM. SHOOT. TRADE.**
+
+*Trade with discipline. Choose your market. Manage your time.*
+
+[PLAY DERIV COWS](https://derivcows.up.railway.app/)
+
+</div>
