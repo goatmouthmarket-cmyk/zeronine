@@ -59,7 +59,7 @@ export function riskCheck(params: {
   const { stake, settings, balance, context, lastTradeAt, tradeGapMs } = params;
 
   if (!Number.isFinite(stake) || stake <= 0) return { ok: false, reason: 'invalid stake' };
-  if (balance > 0 && stake > balance * 0.9) return { ok: false, reason: 'insufficient balance' };
+  if (balance > 0 && stake > balance * 0.3) return { ok: false, reason: 'insufficient balance' };
 
   const lock = params.profitLock;
   if (lock && lock.peakRunProfit >= lock.triggerProfit) {
