@@ -459,6 +459,79 @@ test('ranger auto activity only includes its five newest tracked trades', () => 
   assert.deepEqual([...recentTrades(trades, new Set([8])).map((trade) => trade.id)], [8]);
 });
 
+test('ranger auto activity skips rebuilding unchanged display data', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function rangerAutoTrackedTrades(');
+  const end = script.indexOf('function stopRangerAuto(', start);
+  assert.ok(start >= 0 && end > start, 'the activity renderer is available');
+
+  const elements: Record<string, object> = {};
+  const createElement = (tag: string) => ({
+    tag,
+    dataset: {},
+    children: [] as unknown[],
+    append(...children: unknown[]) {
+      this.children.push(...children);
+    },
+  });
+  const activity = Object.assign(createElement('section'), {
+    hidden: true,
+    offsetHeight: 60,
+    style: {} as Record<string, string>,
+    getBoundingClientRect: () => ({ left: 12, bottom: 80 }),
+  });
+  const pnl = Object.assign(createElement('strong'), { textContent: '' });
+  const list = createElement('ol') as ReturnType<typeof createElement> & {
+    replacements: number;
+    replaceChildren: () => void;
+  };
+  list.replacements = 0;
+  list.replaceChildren = () => {
+    list.replacements += 1;
+    list.children = [];
+  };
+  elements.rangerAutoActivity = activity;
+  elements.rangerAutoPnl = pnl;
+  elements.rangerAutoRecent = list;
+  elements.rangerAutoToggle = { getBoundingClientRect: () => ({ left: 12, bottom: 80 }) };
+  const trackedIds = new Set([1, 2]);
+  const render = runInNewContext(`${script.slice(start, end)}; renderRangerAutoActivity`, {
+    $: (id: string) => elements[id],
+    document: { createElement },
+    rangerAutoActive: true,
+    rangerAutoTradeIds: trackedIds,
+    rangerAutoMenuOpen: false,
+    innerHeight: 800,
+  }) as (state: { trades: Array<Record<string, unknown>>; currency: string }) => void;
+  const state = {
+    currency: 'USD',
+    trades: [
+      { id: 2, status: 'won', profit: 2, market: 'Volatility 50', direction: 'over', barrier: 3 },
+      { id: 1, status: 'pending', profit: 0, market: 'Volatility 10', direction: 'under', barrier: 7 },
+    ],
+  };
+
+  render(state);
+  render(state);
+  assert.equal(list.replacements, 1, 'identical displayed data does not rebuild the activity list');
+
+  state.trades[0].profit = 3;
+  render(state);
+  assert.equal(list.replacements, 2, 'a displayed P&L change rebuilds the activity list');
+
+  state.currency = 'EUR';
+  render(state);
+  assert.equal(list.replacements, 3, 'a currency change rebuilds the activity list');
+
+  trackedIds.clear();
+  render(state);
+  assert.equal(list.replacements, 4, 'an empty-state change rebuilds the activity list');
+  assert.equal(list.children.length, 1);
+  assert.equal((list.children[0] as { textContent: string }).textContent, 'No Ranger trades yet');
+});
+
 test('ranger patrol moves toward live cows while waiting and stays inside the pasture', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
@@ -497,6 +570,29 @@ test('high positive-edge ranger hits defeat a cow in one guaranteed shot', () =>
   assert.equal(damageForEdge(0.06, 3, 1), 3, '6% edge is an instant kill');
   assert.equal(damageForEdge(0.1, 5, 1), 5, '10% edge instantly defeats a higher-health cow');
   assert.equal(damageForEdge(0.059, 3, 1), 1, 'normal edge keeps the existing level-based damage');
+});
+
+test('practice shots do not wait for live ticks while connected shots still require them', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function rangerShotReady(');
+  const end = script.indexOf('function renderRangerAutoActivity(', start);
+  assert.ok(start >= 0 && end > start, 'the shot readiness helper exists');
+  const shotReady = runInNewContext(`${script.slice(start, end)}; rangerShotReady`) as (
+    connected: boolean,
+    tickSequence: number,
+    lastShotTickSeq: number,
+    now: number,
+    lastShot: number,
+  ) => boolean;
+
+  assert.equal(shotReady(false, 0, 0, 850, 0), true, 'practice fires after its shot interval without a market tick');
+  assert.equal(shotReady(false, 0, 0, 849, 0), false, 'practice shots retain the shot interval');
+  assert.equal(shotReady(true, 0, 0, 850, 0), false, 'connected trading still waits for a new market tick');
+  assert.equal(shotReady(true, 1, 0, 850, 0), true, 'connected trading fires on a new market tick');
+  assert.match(script, /if\(!candidate&&!connectedAccount\)\{const aliveCows=/, 'offline practice still selects its local cow candidate');
+  assert.match(script, /rangerShotReady\(!\!connectedAccount,tickSequence,target\.lastShotTickSeq,now,lastShot\)/, 'the frame loop uses practice-aware shot readiness');
 });
 test('ranger auto selects top positive edge contract and patrols continuously without freezing', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
