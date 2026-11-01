@@ -33,7 +33,7 @@ export interface AccountCoordinatorState {
 
 const DEFAULT_POLICY: AccountExecutionPolicy = {
   maxOpenContracts: 6,
-  maxReservedExposure: 100,
+  maxReservedExposure: 10000,
   maxOpenPerProduct: { digits: 3, momentum: 2, gold: 2 },
   maxConcurrentSettlements: 3,
 };
