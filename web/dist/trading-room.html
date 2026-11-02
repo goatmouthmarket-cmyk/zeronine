@@ -381,9 +381,8 @@ window.addEventListener('blur',()=>{heldKeys.clear();resetMove()});canvas.addEve
 </script><script>
 (()=>{const menu=document.querySelector('#inspector .target-menu');if(!menu)return;const close=()=>{if(menu.open)menu.open=false};document.addEventListener('pointerdown',event=>{if(menu.open&&!event.target.closest('#inspector'))close()});document.addEventListener('keydown',event=>{if(event.key==='Escape')close()})})();
 </script><script id="market-hud-mirror">(()=>{const pairs=[["lvl","marketHudLevel"],["missionTitle","marketHudMission"],["missionProgress","marketHudProgress"]];const sync=()=>{for(const [from,to] of pairs){const a=document.getElementById(from),b=document.getElementById(to);if(a&&b)b.textContent=a.textContent.trim()}};const observer=new MutationObserver(sync);for(const [from] of pairs){const el=document.getElementById(from);if(el)observer.observe(el,{childList:true,subtree:true,characterData:true})}sync()})();</script><script id="ranger-auto-touch-toggle">
-(()=>{const toggle=document.getElementById('rangerAutoToggle');if(!toggle)return;let dispatchingTouchClick=false,suppressNativeClickUntil=0;toggle.addEventListener('touchend',event=>{if(event.changedTouches.length!==1)return;event.preventDefault();suppressNativeClickUntil=performance.now()+700;dispatchingTouchClick=true;toggle.click();dispatchingTouchClick=false},{passive:false});toggle.addEventListener('click',event=>{if(dispatchingTouchClick||performance.now()>=suppressNativeClickUntil)return;event.preventDefault();event.stopImmediatePropagation()},true)})();
+(()=>{const toggle=document.getElementById('rangerAutoToggle');if(!toggle)return;let dispatchingPointerClick=false,suppressNativeClickUntil=0;toggle.addEventListener('pointerdown',event=>{if(event.isPrimary===false||event.button!==0)return;event.preventDefault();suppressNativeClickUntil=performance.now()+700;dispatchingPointerClick=true;toggle.click();dispatchingPointerClick=false},{capture:true});toggle.addEventListener('click',event=>{if(dispatchingPointerClick||performance.now()>=suppressNativeClickUntil)return;event.preventDefault();event.stopImmediatePropagation()},true)})();
 </script></body></html>
-
 
 
 
