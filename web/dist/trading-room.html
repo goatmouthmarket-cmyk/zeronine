@@ -159,7 +159,8 @@
 @media(max-width:999.98px){#rangerAutoToggle{top:110px;left:8px}#rangerAutoHud{top:158px;left:8px;width:min(220px,calc(100vw - 16px))}#rangerAutoActivity{left:8px;width:min(220px,calc(100vw - 16px))}#playerHud{top:108px!important;left:8px!important;width:min(240px,calc(100vw - 16px))!important}}
 @media(max-width:400px){#rangerAutoHud{width:min(220px,calc(100vw - 16px))}#playerHud{width:min(220px,calc(100vw - 16px))!important}}
 @media(max-width:999.98px){
-  #rangerAutoToggle{z-index:80!important;pointer-events:auto!important;touch-action:manipulation}
+  #rangerAutoToggle{z-index:80!important;width:56px!important;height:56px!important;pointer-events:auto!important;touch-action:manipulation}
+  #rangerAutoToggle svg{pointer-events:none}
   #rangerAutoHud:not([hidden]){position:fixed!important;z-index:90!important;display:grid!important;top:auto!important;bottom:max(84px,calc(env(safe-area-inset-bottom) + 72px))!important;left:8px!important;right:8px!important;width:min(320px,calc(100vw - 16px))!important;max-width:calc(100vw - 16px)!important;max-height:min(65dvh,480px)!important;overflow-y:auto!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;box-sizing:border-box;pointer-events:auto!important}
   #rangerAutoHud[hidden]{display:none!important}
   #rangerAutoHud input,#rangerAutoHud select,#rangerAutoHud button{min-height:42px;touch-action:manipulation}
@@ -383,7 +384,6 @@ window.addEventListener('blur',()=>{heldKeys.clear();resetMove()});canvas.addEve
 </script><script id="market-hud-mirror">(()=>{const pairs=[["lvl","marketHudLevel"],["missionTitle","marketHudMission"],["missionProgress","marketHudProgress"]];const sync=()=>{for(const [from,to] of pairs){const a=document.getElementById(from),b=document.getElementById(to);if(a&&b)b.textContent=a.textContent.trim()}};const observer=new MutationObserver(sync);for(const [from] of pairs){const el=document.getElementById(from);if(el)observer.observe(el,{childList:true,subtree:true,characterData:true})}sync()})();</script><script id="ranger-auto-touch-toggle">
 (()=>{const toggle=document.getElementById('rangerAutoToggle');if(!toggle)return;let dispatchingPointerClick=false,suppressNativeClickUntil=0;toggle.addEventListener('pointerdown',event=>{if(event.isPrimary===false||event.button!==0)return;event.preventDefault();suppressNativeClickUntil=performance.now()+700;dispatchingPointerClick=true;toggle.click();dispatchingPointerClick=false},{capture:true});toggle.addEventListener('click',event=>{if(dispatchingPointerClick||performance.now()>=suppressNativeClickUntil)return;event.preventDefault();event.stopImmediatePropagation()},true)})();
 </script></body></html>
-
 
 
 

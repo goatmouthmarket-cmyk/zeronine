@@ -6637,6 +6637,7 @@ button.activity-row {
   .pasture-nav .nav-item.bot .nav-bot-circle { width: 23px; height: 23px; margin: 0; background: transparent; box-shadow: none; }
   .app[data-page="home"] .view-home .header { padding: max(4px,env(safe-area-inset-top)) 8px 0; }
   .app[data-page="home"] .view-home .header .cow-logo { width: 135px; height: 54px; flex-basis: 135px; background-size: 360px auto; }
+  .app[data-page="home"] .view-home .header-top .brand { pointer-events: none; }
 }
 .pasture-review-actions { display: flex; gap: 8px; }
 .pasture-review-actions button { flex: 1; min-height: 44px; padding: 8px; border: 0; border-radius: 9px; color: white; background: #46596b; font-weight: 800; cursor: pointer; }
