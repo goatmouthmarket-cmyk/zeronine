@@ -312,26 +312,29 @@ body:has(.view-how-to-play) {
 }
 
 .how-to-open {
-    display: inline-flex;
-    align-items: center;
-    min-height: 32px;
-    margin-top: 8px;
-    padding: 5px 10px;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    margin: 0;
+    padding: 0;
     border: 1px solid rgba(233, 189, 118, .42);
-    border-radius: 8px;
+    border-radius: 50%;
     color: #fff4cf;
     background: rgba(27, 55, 37, .82);
-    font-size: 11px;
-    font-weight: 800;
     cursor: pointer;
 }
 
 .app[data-page="home"] .view-home .header .how-to-open {
-    position: relative;
+    position: fixed;
+    top: max(84px, calc(env(safe-area-inset-top) + 72px));
+    right: max(8px, env(safe-area-inset-right));
     z-index: 21;
     pointer-events: auto;
 }
 
+.how-to-open svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .how-to-open:hover { border-color: #e9bd76; background: #24482f; }
 
 @keyframes tutorial-target-pulse {
