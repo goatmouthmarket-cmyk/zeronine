@@ -33,38 +33,173 @@
 }
 
 #rangerAutoToggle {
-  top: 220px !important;
+  top: auto !important;
+  bottom: 66px !important;
   right: 16px !important;
   left: auto !important;
   display: flex !important;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 144px !important;
-  height: 40px !important;
-  padding: 7px 10px !important;
-  border-radius: 10px !important;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 160px !important;
+  height: 42px !important;
+  padding: 6px 9px !important;
+  border: 2px solid #382263 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(180deg, #a54bea, #7133ba) !important;
+  box-shadow: 0 4px 0 #442477, 0 6px 12px #0006, inset 0 1px #ffffff70 !important;
 }
 
 #rangerAutoToggle::after {
-  content: "Ranger Auto";
-  font: 750 11px system-ui, sans-serif;
+  content: "RANGER AUTO";
+  color: #fff;
+  font: 950 10px system-ui, sans-serif;
+  letter-spacing: 0.3px;
+  text-shadow: 0 2px 0 #4a2673, 0 1px 3px #0008;
   white-space: nowrap;
 }
 
-#rangerAutoToggle svg { width: 18px !important; height: 18px !important; }
+#rangerAutoToggle svg {
+  flex: 0 0 22px;
+  width: 22px !important;
+  height: 22px !important;
+  filter: drop-shadow(0 1px 1px #0008);
+}
+
+#healthDock {
+  position: fixed !important;
+  top: auto !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  left: auto !important;
+  z-index: 60 !important;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 160px;
+  height: 42px;
+  padding: 4px 8px;
+  border: 2px solid #1b344c;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #344c65, #1d2c40);
+  box-shadow: 0 4px 0 #13253a, 0 6px 12px #0006, inset 0 1px #ffffff55;
+}
+
+#healthButton {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #fff !important;
+  font: 950 9px system-ui, sans-serif !important;
+  letter-spacing: 0.2px;
+  text-shadow: 0 2px 0 #17283a, 0 1px 3px #0008;
+  white-space: nowrap;
+}
+
+#healthButton::after { content: "HEALTH CHECK"; }
+#healthButton svg {
+  flex: 0 0 22px;
+  width: 22px !important;
+  height: 22px !important;
+  filter: drop-shadow(0 1px 1px #0008);
+}
+
+#derivPing {
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 3px 4px;
+  border: 1px solid #ffffff45;
+  border-radius: 7px;
+  background: #10251f88;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+#inspector:not(:has(.target-menu[open])) {
+  position: fixed !important;
+  top: auto !important;
+  right: 16px !important;
+  bottom: 116px !important;
+  left: auto !important;
+  z-index: 20 !important;
+  box-sizing: border-box;
+  display: grid !important;
+  align-items: center !important;
+  width: 160px !important;
+  height: 42px !important;
+  min-height: 42px !important;
+  max-width: 160px !important;
+  padding: 3px !important;
+  overflow: hidden !important;
+  border: 2px solid #145184 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(180deg, #27a8f3, #1674c4) !important;
+  box-shadow: 0 4px 0 #145184, 0 6px 12px #0006, inset 0 1px #ffffff80 !important;
+}
+
+#inspector:not(:has(.target-menu[open])) .hud-drag-handle,
+#inspector:not(:has(.target-menu[open])) > .bet-state {
+  display: none !important;
+}
+
+#inspector:not(:has(.target-menu[open])) .target-menu,
+#inspector:not(:has(.target-menu[open])) .target-menu summary {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 34px !important;
+  min-height: 34px !important;
+}
+
+#inspector:not(:has(.target-menu[open])) .target-menu summary {
+  grid-template-columns: 24px minmax(0, 1fr) !important;
+  gap: 8px !important;
+  padding: 3px 8px !important;
+  border-radius: 7px !important;
+}
+
+#inspector:not(:has(.target-menu[open])) .target-icon {
+  width: 22px !important;
+  height: 22px !important;
+  font-size: 16px !important;
+}
+
+#inspector:not(:has(.target-menu[open])) .menu-title {
+  display: block !important;
+  color: #fff !important;
+  font: 950 11px system-ui, sans-serif !important;
+  letter-spacing: 0.3px;
+  text-shadow: 0 2px 0 #145184, 0 1px 3px #0008;
+  white-space: nowrap;
+}
+
+#inspector:not(:has(.target-menu[open])) .menu-title small,
+#inspector:not(:has(.target-menu[open])) .market-hud-quick,
+#inspector:not(:has(.target-menu[open])) .menu-chevron {
+  display: none !important;
+}
 
 #rangerAutoHud {
-  top: 268px !important;
+  top: auto !important;
+  bottom: 116px !important;
   right: 16px !important;
   left: auto !important;
   width: min(280px, calc(100vw - 32px)) !important;
 }
 
 #rangerAutoActivity:not([hidden]) {
-  top: 264px !important;
+  top: auto !important;
   right: 16px !important;
-  bottom: auto !important;
+  bottom: 166px !important;
   left: auto !important;
   width: 144px !important;
   padding: 0 !important;
@@ -77,6 +212,14 @@
 
 #healthPanel {
   right: 16px !important;
+  left: auto !important;
+  bottom: 66px !important;
+}
+
+#inspector:has(.target-menu[open]) {
+  top: auto !important;
+  right: 16px !important;
+  bottom: 166px !important;
   left: auto !important;
 }
 
@@ -121,13 +264,15 @@ body:has(#healthPanel:not([hidden])) #rangerAutoActivity {
 
 @media (max-width: 999.98px) {
   #rangerAutoToggle {
-    top: max(116px, calc(env(safe-area-inset-top) + 104px)) !important;
+    top: auto !important;
+    bottom: calc(50px + max(8px, env(safe-area-inset-bottom))) !important;
     right: max(8px, env(safe-area-inset-right)) !important;
-    width: 132px !important;
+    width: min(160px, calc(100vw - 16px)) !important;
   }
 
   #rangerAutoHud {
-    top: max(164px, calc(env(safe-area-inset-top) + 152px)) !important;
+    top: auto !important;
+    bottom: calc(150px + max(8px, env(safe-area-inset-bottom))) !important;
     right: max(8px, env(safe-area-inset-right)) !important;
     width: min(280px, calc(100vw - 16px)) !important;
     max-height: calc(100dvh - 174px);
@@ -135,9 +280,10 @@ body:has(#healthPanel:not([hidden])) #rangerAutoActivity {
   }
 
   #rangerAutoActivity:not([hidden]) {
-    top: max(160px, calc(env(safe-area-inset-top) + 146px)) !important;
+    top: auto !important;
     right: max(8px, env(safe-area-inset-right)) !important;
-    width: 132px !important;
+    bottom: calc(144px + max(8px, env(safe-area-inset-bottom))) !important;
+    width: min(144px, calc(100vw - 16px)) !important;
   }
 
   #breakTimer.visible {
@@ -193,38 +339,10 @@ body:has(#healthPanel:not([hidden])) #rangerAutoActivity {
   }
 
   #inspector:not(:has(.target-menu[open])) {
-    left: auto !important;
+    top: auto !important;
     right: max(8px, env(safe-area-inset-right)) !important;
-    bottom: max(8px, env(safe-area-inset-bottom)) !important;
-    top: max(240px, calc(env(safe-area-inset-top) + 232px)) !important;
-    width: 58px !important;
-    height: 54px !important;
-    min-height: 54px !important;
-    padding: 3px !important;
-    overflow: hidden !important;
-    border-radius: 14px !important;
-    display: grid !important;
-    align-items: center !important;
-  }
-
-  #inspector:not(:has(.target-menu[open])) .target-menu,
-  #inspector:not(:has(.target-menu[open])) .target-menu summary {
-    width: 100% !important;
-    min-width: 0 !important;
-    height: 48px !important;
-    min-height: 48px !important;
-  }
-
-  #inspector:not(:has(.target-menu[open])) .target-menu summary {
-    grid-template-columns: 34px minmax(0, 1fr) !important;
-    gap: 4px !important;
-    padding: 3px !important;
-  }
-
-  #inspector:not(:has(.target-menu[open])) .target-icon {
-    width: 32px !important;
-    height: 32px !important;
-    font-size: 18px !important;
+    bottom: calc(100px + max(8px, env(safe-area-inset-bottom))) !important;
+    width: min(160px, calc(100vw - 16px)) !important;
   }
 
   .market-hud-quick { min-width: 0; }
@@ -233,42 +351,17 @@ body:has(#healthPanel:not([hidden])) #rangerAutoActivity {
   .market-hud-quick > small strong { font-size: 7px; }
 
   #healthDock {
-    left: auto !important;
+    top: auto !important;
     right: max(8px, env(safe-area-inset-right)) !important;
     bottom: max(8px, env(safe-area-inset-bottom)) !important;
-    top: auto !important;
-    z-index: 60 !important;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    width: min(158px, calc(50vw - 50px));
-    height: 54px;
-    padding: 4px 7px;
-    border: 1px solid #c6a15c88;
-    border-radius: 14px;
-    background: #10251fe8;
-    box-shadow: 0 3px 10px #0005;
-  }
-
-  #healthButton { flex: 0 0 28px; }
-  #derivPing {
-    min-width: 0;
-    padding: 4px 6px;
-    border: 1px solid #ffffff24;
-    border-radius: 8px;
-    background: #ffffff10;
-    color: #fff9e9;
-    font-size: 9px;
-    font-variant-numeric: tabular-nums;
+    width: min(160px, calc(100vw - 16px));
   }
 
   #healthPanel {
     position: fixed !important;
     left: auto !important;
     right: max(8px, env(safe-area-inset-right)) !important;
-    bottom: calc(66px + max(8px, env(safe-area-inset-bottom))) !important;
+    bottom: calc(50px + max(8px, env(safe-area-inset-bottom))) !important;
     z-index: 61 !important;
     width: min(270px, calc(100vw - 16px)) !important;
   }
@@ -277,19 +370,19 @@ body:has(#healthPanel:not([hidden])) #rangerAutoActivity {
     top: auto !important;
     left: auto !important;
     right: max(8px, env(safe-area-inset-right)) !important;
-    bottom: calc(66px + max(8px, env(safe-area-inset-bottom))) !important;
+    bottom: calc(150px + max(8px, env(safe-area-inset-bottom))) !important;
     width: auto !important;
     max-height: min(58dvh, 480px) !important;
     border-radius: 14px !important;
   }
 
   #rangerAutoActivity:not([hidden]) {
-    top: max(160px, calc(env(safe-area-inset-top) + 146px)) !important;
+    top: auto !important;
     left: auto !important;
     right: max(8px, env(safe-area-inset-right)) !important;
-    bottom: auto !important;
+    bottom: calc(150px + max(8px, env(safe-area-inset-bottom))) !important;
     z-index: 24 !important;
-    width: 132px !important;
+    width: min(160px, calc(100vw - 16px)) !important;
     max-height: min(28dvh, 116px);
     overflow: hidden;
   }
@@ -311,15 +404,6 @@ body:has(#healthPanel:not([hidden])) #rangerAutoActivity {
   #guestBanner { gap: 3px; padding-left: 6px !important; }
   #guestBanner > span { font-size: 9px; }
   #guestBanner #connectDeriv { padding-inline: 5px; font-size: 9px; }
-
-  #inspector:not(:has(.target-menu[open])) {
-    width: 54px !important;
-  }
-
-  #healthDock {
-    width: min(136px, calc(50vw - 50px));
-    padding-inline: 3px;
-  }
 }
 
 @media (max-height: 500px) and (max-width: 999.98px) {
