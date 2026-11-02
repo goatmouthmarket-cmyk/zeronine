@@ -6351,6 +6351,8 @@ button.activity-row {
   border: 0; box-shadow: none; pointer-events: none;
 }
 .app[data-page="home"] .view-home .header-top > * { pointer-events: auto; }
+.app[data-page="home"] .view-home .header-top > .brand,
+.app[data-page="home"] .view-home .header-top > .brand * { pointer-events: none; }
 .app[data-page="home"] .view-home .subtitle { display: none; }
 .app[data-page="home"] .desktop-nav .nav-link { width: 44px; min-width: 44px; padding: 0; display: inline-grid; place-items: center; transition: transform .18s ease, filter .18s ease; }
 .app[data-page="home"] .desktop-nav .nav-link:hover { transform: translateY(-2px); filter: brightness(1.12); }
