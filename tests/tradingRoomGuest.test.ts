@@ -389,6 +389,160 @@ test('ranger auto requires three distinct fresh ticks for one contract', () => {
   assert.equal(progress.confirmations, 1, 'a changed contract starts a fresh confirmation sequence');
 });
 
+test('Ranger Auto recovery styles only cool down after two consecutive losses', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function settleCooldown(trade)');
+  const end = script.indexOf('function submitContract(', start);
+  assert.ok(start >= 0 && end > start, 'the cooldown settlement handler exists');
+
+  for (const style of ['boosted', 'martingale']) {
+    const settle = runInNewContext(`
+      let cooldownTradeId = null;
+      let lossCooldownStreak = 1;
+      let attemptsSinceLoss = 3;
+      let cooldownReason = 'MARKET';
+      let lockUntil = 0;
+      let rangerAutoLossStreak = 0;
+      let rangerAutoLossLimit = 2;
+      let rangerAutoCooldownSeconds = 45;
+      const rangerAutoTradeIds = new Set([1, 2]);
+      const rangerBet = { rangerAutomation: true, betStyle: '${style}', hitProbability: 0.7 };
+      const performance = { now: () => 100 };
+      ${script.slice(start, end)}
+      ({ settleCooldown, getState: () => ({ rangerAutoLossStreak, lossCooldownStreak, cooldownReason, lockUntil }) })
+    `) as {
+      settleCooldown: (trade: { id: number; status: string }) => void;
+      getState: () => { rangerAutoLossStreak: number; lossCooldownStreak: number; cooldownReason: string; lockUntil: number };
+    };
+
+    settle.settleCooldown({ id: 1, status: 'lost' });
+    assert.deepEqual({ ...settle.getState() }, { rangerAutoLossStreak: 1, lossCooldownStreak: 1, cooldownReason: 'MARKET', lockUntil: 0 }, `${style} has no timer after one loss and leaves manual loss state untouched`);
+    settle.settleCooldown({ id: 2, status: 'lost' });
+    assert.deepEqual({ ...settle.getState() }, { rangerAutoLossStreak: 0, lossCooldownStreak: 1, cooldownReason: '2 CONSECUTIVE LOSSES', lockUntil: 45100 }, `${style} cools down after back-to-back losses`);
+  }
+});
+
+test('Ranger Auto uses its configured loss threshold and cooldown duration', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function settleCooldown(trade)');
+  const end = script.indexOf('function submitContract(', start);
+  assert.ok(start >= 0 && end > start, 'the cooldown settlement handler exists');
+  const settle = runInNewContext(`
+    let cooldownTradeId = null;
+    let lossCooldownStreak = 0;
+    let attemptsSinceLoss = 0;
+    let cooldownReason = 'MARKET';
+    let lockUntil = 0;
+    let rangerAutoLossStreak = 0;
+    let rangerAutoLossLimit = 3;
+    let rangerAutoCooldownSeconds = 120;
+    const rangerAutoTradeIds = new Set([1, 2, 3]);
+    const rangerBet = { rangerAutomation: true, betStyle: 'chase', hitProbability: 0.7 };
+    const performance = { now: () => 100 };
+    ${script.slice(start, end)}
+    ({ settleCooldown, getState: () => ({ rangerAutoLossStreak, lockCooldownStreak: lossCooldownStreak, lockUntil }) })
+  `) as {
+    settleCooldown: (trade: { id: number; status: string }) => void;
+    getState: () => { rangerAutoLossStreak: number; lockCooldownStreak: number; lockUntil: number };
+  };
+
+  settle.settleCooldown({ id: 1, status: 'lost' });
+  settle.settleCooldown({ id: 2, status: 'lost' });
+  assert.deepEqual({ ...settle.getState() }, { rangerAutoLossStreak: 2, lockCooldownStreak: 0, lockUntil: 0 }, 'the configured threshold delays cooldown until the third loss');
+  settle.settleCooldown({ id: 3, status: 'lost' });
+  assert.deepEqual({ ...settle.getState() }, { rangerAutoLossStreak: 0, lockCooldownStreak: 0, lockUntil: 120100 }, 'the configured duration controls the cooldown');
+});
+
+test('Ranger Auto validates the adjustable cooldown and take-profit settings', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function rangerAutoSettingsFromInputs()');
+  const end = script.indexOf('function saveRangerAutoSettings()', start);
+  assert.ok(start >= 0 && end > start, 'the automation setting validator exists');
+  const settings = runInNewContext(
+    `${script.slice(start, end)}; rangerAutoSettingsFromInputs`,
+    { $: (id: string) => ({ value: ({ rangerAutoLossLimit: '3', rangerAutoCooldownSeconds: '120', rangerAutoTakeProfit: '25.5' } as Record<string, string>)[id] }) },
+  ) as () => { error: string; lossLimit?: number; cooldownSeconds?: number; takeProfit?: number };
+
+  assert.deepEqual({ ...settings() }, { lossLimit: 3, cooldownSeconds: 120, takeProfit: 25.5, error: '' });
+});
+
+test('Ranger Auto identity and run ID survive contract submission', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function submitContract(');
+  const end = script.indexOf('function clearPending()', start);
+  assert.ok(start >= 0 && end > start, 'the contract submission handler exists');
+  const submitted = runInNewContext(`
+    let rangerAutoRunId = 8;
+    let rangerBet = { rangerAutoRunId: 7 };
+    let rangerBetSerial = 0;
+    let cooldownAttemptRegistered = false;
+    let rangerBubbleDismissed = false;
+    let pending = null;
+    ${script.slice(start, end)}
+    submitContract({ market: 'R_100', symbol: '', kind: 'OVER', barrier: 1 }, 1, 'boosted', true);
+    rangerBet
+  `, {
+    $: () => ({ classList: { remove() {} } }),
+    renderRangerBet() {},
+    estimateRecoveryWins: () => 0,
+    notify() {},
+    setTimeout() {},
+  }) as { rangerAutomation: boolean; rangerAutoRunId: number };
+
+  assert.equal(submitted.rangerAutomation, true, 'automation classification survives the submit handler');
+  assert.equal(submitted.rangerAutoRunId, 7, 'settlements remain attributed to the run that placed the contract');
+  assert.ok(script.includes('if(rangerBet.rangerAutoRunId===rangerAutoRunId)rangerAutoRunTradeIds.add(t.id)'), 'previous-run settlements do not count toward the new run target');
+});
+
+test('Ranger Auto take profit uses realized P&L from the current run only', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const trackedStart = script.indexOf('function rangerAutoTrackedTrades(');
+  const trackedEnd = script.indexOf('function rangerAutoRecentTrades(', trackedStart);
+  const profitStart = script.indexOf('function rangerAutoRunProfit(', trackedStart);
+  const profitEnd = script.indexOf('function rangerAutoTakeProfitReached(', profitStart);
+  const takeProfitEnd = script.indexOf('function rangerAutoRecentTrades(', profitEnd);
+  assert.ok(trackedStart >= 0 && trackedEnd > trackedStart && profitStart >= 0 && profitEnd > profitStart && takeProfitEnd > profitEnd);
+  const helpers = runInNewContext(`
+    const rangerAutoRunTradeIds = new Set([1, 2, 3]);
+    const rangerAutoRunSettledTrades = new Map();
+    let rangerAutoRunProfitTotal = 0;
+    ${script.slice(trackedStart, trackedEnd)}
+    ${script.slice(profitStart, takeProfitEnd)}
+    ({ rangerAutoRunProfit, rangerAutoTakeProfitReached })
+  `) as {
+    rangerAutoRunProfit: (state: { trades: Array<Record<string, unknown>> }) => number;
+    rangerAutoTakeProfitReached: (profit: number, target: number) => boolean;
+  };
+  const state = {
+    trades: [
+      { id: 1, status: 'won', profit: 2.5 },
+      { id: 2, status: 'lost', profit: -1 },
+      { id: 3, status: 'open', profit: 7 },
+      { id: 4, status: 'won', profit: 100 },
+    ],
+  };
+  const profit = helpers.rangerAutoRunProfit(state);
+
+  assert.equal(profit, 1.5, 'only settled trades tracked for this run contribute');
+  assert.equal(helpers.rangerAutoRunProfit(state), 1.5, 'repeated account snapshots do not double count P&L');
+  state.trades[0].profit = 3;
+  assert.equal(helpers.rangerAutoRunProfit(state), 2, 'a corrected settlement updates run P&L by its difference');
+  assert.equal(helpers.rangerAutoTakeProfitReached(profit, 1.5), true);
+  assert.equal(helpers.rangerAutoTakeProfitReached(profit, 0), false, 'zero disables take profit');
+  assert.ok(script.includes("if(!pending&&!['submitting','open','waiting'].includes(rangerBet?.phase)){const runProfit=rangerAutoRunProfit"), 'take profit waits for any active contract to settle');
+  assert.match(script, /rangerAutoRunTradeIds\.clear\(\)/, 'starting automation resets run P&L');
+});
+
 test('ranger auto controls open from a visible Play launcher outside the player HUD', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const hudStart = html.indexOf('<div id="playerHud">');
@@ -401,6 +555,9 @@ test('ranger auto controls open from a visible Play launcher outside the player 
   assert.match(html, /#rangerAutoHud\{top:268px;left:12px/);
   assert.match(html, /id="rangerAutoArm" type="button" hidden>ARM REAL 10 MIN/);
   assert.match(html, /id="rangerAutoStake" type="number"/);
+  assert.match(html, /id="rangerAutoLossLimit" type="number"[^>]*value="2"/);
+  assert.match(html, /id="rangerAutoCooldownSeconds" type="number"[^>]*value="45"/);
+  assert.match(html, /id="rangerAutoTakeProfit" type="number"[^>]*value="0"/);
   assert.match(html, /id="rangerAutoStyle">/);
   assert.match(html, /id="rangerAutoActivity" hidden/);
   assert.match(html, /id="rangerAutoStart" type="button" aria-label="Start Ranger Auto"/);
@@ -421,7 +578,7 @@ test('ranger auto start allows demo accounts and explains real-account requireme
   const blockerSource = script.slice(start, end);
   const getBlocker = (connectedAccount: boolean, lastRoomState: Record<string, unknown> | null, armedUntil = 0, stakeValue = '1'): string => {
     const readBlocker = runInNewContext(
-      `let connectedAccount=${JSON.stringify(connectedAccount)};let lastRoomState=${JSON.stringify(lastRoomState)};let rangerAutoArmedUntil=${armedUntil};const $=()=>({value:${JSON.stringify(stakeValue)}});${blockerSource};rangerAutoStartBlocker`,
+      `let connectedAccount=${JSON.stringify(connectedAccount)};let lastRoomState=${JSON.stringify(lastRoomState)};let rangerAutoArmedUntil=${armedUntil};const $=()=>({value:${JSON.stringify(stakeValue)}});function rangerAutoSettingsFromInputs(){return{error:''}};${blockerSource};rangerAutoStartBlocker`,
     ) as () => string;
     return readBlocker();
   };
@@ -502,6 +659,9 @@ test('ranger auto activity skips rebuilding unchanged display data', () => {
     document: { createElement },
     rangerAutoActive: true,
     rangerAutoTradeIds: trackedIds,
+    rangerAutoRunTradeIds: new Set([1, 2]),
+    rangerAutoRunSettledTrades: new Map(),
+    rangerAutoRunProfitTotal: 0,
     rangerAutoMenuOpen: false,
     innerHeight: 800,
   }) as (state: { trades: Array<Record<string, unknown>>; currency: string }) => void;
