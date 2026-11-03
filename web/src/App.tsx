@@ -17,6 +17,7 @@ import {
   oauthStart,
   logout,
   arm,
+  disarmRangerAutomation,
   startAutomation,
   stopAutomation,
   selectMarket,
@@ -1327,6 +1328,21 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         }
         void arm().then((armedUntil) => respond(true, armedUntil)).catch((error) => {
           respond(false, undefined, error instanceof Error ? error.message : String(error));
+        });
+        return;
+      }
+      if (message.type === 'zeronine:room-auto-disarm') {
+        void disarmRangerAutomation().then(() => {
+          roomFrameRef.current?.contentWindow?.postMessage({
+            type: 'zeronine:room-auto-disarm-result',
+            ok: true,
+          }, window.location.origin);
+        }).catch((error) => {
+          roomFrameRef.current?.contentWindow?.postMessage({
+            type: 'zeronine:room-auto-disarm-result',
+            ok: false,
+            message: error instanceof Error ? error.message : String(error),
+          }, window.location.origin);
         });
         return;
       }

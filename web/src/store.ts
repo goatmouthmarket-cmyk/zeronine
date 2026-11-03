@@ -1876,9 +1876,13 @@ export async function unlockDashboard(token: string): Promise<void> {
 export async function arm(): Promise<number> {
   const res = await api<{ armed_until: number }>('/api/automation/arm', { method: 'POST' });
   if (!Number.isFinite(res.armed_until) || res.armed_until <= Date.now()) {
-    throw new Error('The server did not confirm a valid automation arm window.');
+    throw new Error('The server did not confirm owner approval for Ranger Auto.');
   }
   return res.armed_until;
+}
+
+export async function disarmRangerAutomation(): Promise<void> {
+  await api('/api/automation/disarm', { method: 'POST' });
 }
 
 export async function loadDerivAccounts(): Promise<DerivAccountInfo[]> {

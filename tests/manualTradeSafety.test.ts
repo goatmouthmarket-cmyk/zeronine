@@ -157,6 +157,12 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
     token_cipher: cryptoMod.encryptToken('test-token'), created_at: Date.now(), updated_at: Date.now(),
   });
   client.connectedAccountId = 'CR_RANGER_REAL';
+  const armed = await app.inject({ method: 'POST', url: '/api/automation/arm' });
+  assert.equal(armed.statusCode, 200);
+  assert.equal(armed.json().armed_until, Number.MAX_SAFE_INTEGER, 'owner approval does not expire on a timer');
+  const disarmed = await app.inject({ method: 'POST', url: '/api/automation/disarm' });
+  assert.equal(disarmed.statusCode, 200);
+  assert.equal(store.getAutomation().armed_until, 0, 'owner can explicitly revoke approval');
   store.setAutomation({ armed_until: 0 });
   const unarmedRanger = await app.inject({
     method: 'POST', url: '/api/trade/manual/preview',
@@ -172,14 +178,14 @@ test('manual preview enforces risk and confirmation is idempotent', async () => 
     payload: { market: 'R_10', direction: 'over', barrier: 1, stake: 1, entryMode: 'instant', rangerAutomation: true },
   });
   assert.equal(armedRanger.statusCode, 200);
-  store.setAutomation({ armed_until: Date.now() - 1 });
-  const expiredArmConfirm = await app.inject({
+  store.setAutomation({ armed_until: 0 });
+  const revokedArmConfirm = await app.inject({
     method: 'POST', url: '/api/trade/manual/confirm',
-    payload: { previewId: armedRanger.json().previewId, idempotencyKey: 'expired-ranger-arm' },
+    payload: { previewId: armedRanger.json().previewId, idempotencyKey: 'revoked-ranger-arm' },
   });
-  assert.equal(expiredArmConfirm.statusCode, 403);
-  assert.match(expiredArmConfirm.json().error, /approval expired/i);
-  assert.equal(buyCalls, 2, 'arm expiry between quote and confirmation prevents real purchase');
+  assert.equal(revokedArmConfirm.statusCode, 403);
+  assert.match(revokedArmConfirm.json().error, /not armed/i);
+  assert.equal(buyCalls, 2, 'revoking approval between quote and confirmation prevents real purchase');
 
   automation.dispose();
   await app.close();

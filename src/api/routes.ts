@@ -191,7 +191,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const assertManualPreflight = (order: ManualOrderInput, session: NonNullable<ReturnType<typeof getSession>>): void => {
     if (order.companionDemo && session.mode !== 'demo') throw new ManualRequestError(403, 'companion-confirmed trades are available on demo accounts only');
     if (order.rangerAutomation && session.mode === 'real' && storeGetAutomation().armed_until <= Date.now()) {
-      throw new ManualRequestError(403, 'Real-money ranger automation is not armed or its 10-minute approval expired. Arm it again; no bet was placed.');
+      throw new ManualRequestError(403, 'Real-money ranger automation is not armed. Owner approval is required; no bet was placed.');
     }
     if (automation.isRunning()) throw new ManualRequestError(409, 'stop the bot before placing a manual trade');
     const snapshot = registry.snapshot(order.market);
@@ -2398,8 +2398,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(401);
       return { error: 'not connected' };
     }
-    storeSetAutomation({ armed_until: Date.now() + 10 * 60 * 1000 });
+    storeSetAutomation({ armed_until: Number.MAX_SAFE_INTEGER });
     return { ok: true, armed_until: storeGetAutomation().armed_until };
+  });
+
+  app.post('/api/automation/disarm', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    storeSetAutomation({ armed_until: 0 });
+    return { ok: true };
   });
 
   app.post('/api/automation/stop', async (req, reply) => {
