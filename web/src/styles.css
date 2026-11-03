@@ -6673,3 +6673,20 @@ button.activity-row {
   .app[data-page="home"] .header-nav-toggle svg,
   .app[data-page="home"] .desktop-nav { transition: none; }
 }
+.room-header-action { display: none; }
+@media (min-width: 1000px) {
+  .app[data-page="home"] .room-header-action {
+    display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px;
+    margin: 0; padding: 0; border: 1px solid #d5bd79; border-radius: 12px;
+    color: #fff0bd; background: #10251eea; box-shadow: 0 3px 12px #0005;
+    cursor: pointer; transition: transform .2s ease, filter .2s ease, color .2s ease;
+  }
+  .app[data-page="home"] .room-header-play { margin-left: auto; }
+  .app[data-page="home"] .header-nav-toggle { margin-left: 0; }
+  .app[data-page="home"] .room-header-action:hover { transform: translateY(-2px); filter: brightness(1.12); }
+  .app[data-page="home"] .room-header-play.is-open { color: #9dffbd; border-color: #74e9a1; }
+  .app[data-page="home"] .room-header-action:focus-visible { outline: 3px solid #fff0d1; outline-offset: 3px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app[data-page="home"] .room-header-action { transition: none; }
+}

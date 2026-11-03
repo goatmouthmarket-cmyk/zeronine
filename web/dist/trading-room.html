@@ -389,9 +389,59 @@ window.addEventListener('blur',()=>{heldKeys.clear();resetMove()});canvas.addEve
 (()=>{const toggle=document.getElementById('rangerAutoToggle');if(!toggle)return;let dispatchingPointerClick=false,suppressNativeClickUntil=0;toggle.addEventListener('pointerdown',event=>{if(event.isPrimary===false||event.button!==0)return;event.preventDefault();suppressNativeClickUntil=performance.now()+700;dispatchingPointerClick=true;toggle.click();dispatchingPointerClick=false},{capture:true});toggle.addEventListener('click',event=>{if(dispatchingPointerClick||performance.now()>=suppressNativeClickUntil)return;event.preventDefault();event.stopImmediatePropagation()},true)})();
 </script><script id="ranger-auto-style-buttons">
 (()=>{const select=document.getElementById('rangerAutoStyle'),manual=document.getElementById('cowBetStyle');if(!select)return;select.hidden=true;select.setAttribute('aria-hidden','true');select.tabIndex=-1;select.setAttribute('aria-labelledby','rangerAutoStyleLabel');const choices=[['rangerAutoStyleBase','base'],['rangerAutoStyleMartingale','martingale'],['rangerAutoStyleBoosted','boosted'],['rangerAutoStyleChase','chase']],sync=()=>{for(const [id,value] of choices){const button=document.getElementById(id);if(button)button.setAttribute('aria-checked',String(select.value===value))}};for(const [id,value] of choices){const button=document.getElementById(id);if(button)button.addEventListener('click',()=>{select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}))})}select.addEventListener('change',sync);manual?.addEventListener('change',sync);sync()})();
-</script></body></html>
-
-
+</script>
+<style id="room-header-control-layout">
+#playerHud{transition:opacity .2s ease,transform .2s ease,visibility 0s linear}
+body.ranger-auto-menu-open #playerHud{opacity:0;transform:translateY(-7px);visibility:hidden;pointer-events:none;transition:opacity .18s ease,transform .18s ease,visibility 0s linear .18s}
+#rangerAutoHud:not([hidden]){z-index:90!important;max-width:calc(100vw - 16px);overflow-y:auto;overscroll-behavior:contain;animation:rangerAutoMenuEnter .18s ease-out both}
+@keyframes rangerAutoMenuEnter{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:translateY(0)}}
+@media(min-width:1000px){body.room-header-controls #rangerAutoToggle{display:none!important}}
+#healthDock{gap:0}
+#healthButton{display:inline-flex!important;align-items:center;justify-content:center;gap:5px;width:auto!important;min-width:30px;min-height:30px;padding:4px 8px;border:0!important;border-radius:0;background:transparent!important;box-shadow:none!important}
+#healthButton svg{flex:none;width:21px;height:21px}
+#derivPing{padding:0!important;border:0;border-radius:0;background:transparent!important;color:inherit;font-size:9px}
+@media(max-width:999.98px){#rangerAutoHud:not([hidden]){right:auto!important;bottom:auto!important;width:min(320px,calc(100vw - 16px))!important}}
+@media(prefers-reduced-motion:reduce){#playerHud,#rangerAutoHud:not([hidden]){transition:none!important;animation:none!important}}
+</style>
+<script id="room-header-control-bridge">
+(()=>{
+  const toggle=document.getElementById('rangerAutoToggle'),panel=document.getElementById('rangerAutoHud'),playerHud=document.getElementById('playerHud'),ping=document.getElementById('derivPing'),healthButton=document.getElementById('healthButton');
+  let headerControls=false,menuOpen=false;
+  const syncControlClass=()=>document.body.classList.toggle('room-header-controls',(headerControls||parent!==window)&&matchMedia('(min-width: 1000px)').matches);
+  const placePanel=()=>{
+    if(!menuOpen||!playerHud||!panel)return;
+    const rect=playerHud.getBoundingClientRect(),width=Math.min(320,innerWidth-16),left=Math.max(8,Math.min(innerWidth-width-8,rect.right-width)),top=Math.max(8,rect.top);
+    panel.style.setProperty('top',top+'px','important');
+    panel.style.setProperty('left',left+'px','important');
+    panel.style.setProperty('right','auto','important');
+    panel.style.setProperty('bottom','auto','important');
+    panel.style.setProperty('width',width+'px','important');
+    panel.style.setProperty('max-height',Math.max(160,innerHeight-top-16)+'px','important');
+  };
+  if(ping&&healthButton&&!healthButton.contains(ping))healthButton.append(ping);
+  if(ping){
+    const observer=new MutationObserver(()=>{if(ping.textContent?.startsWith('D '))ping.textContent=ping.textContent.slice(2)});
+    observer.observe(ping,{childList:true,characterData:true,subtree:true});
+    if(ping.textContent?.startsWith('D '))ping.textContent=ping.textContent.slice(2);
+  }
+  const updatePlacement=()=>{syncControlClass();placePanel()};
+  window.addEventListener('message',event=>{
+    if(event.origin!==location.origin||event.source!==parent)return;
+    const message=event.data||{};
+    if(message.type!=='zeronine:room-auto-menu'||typeof message.open!=='boolean')return;
+    headerControls=message.controls===true;
+    syncControlClass();
+    const nextOpen=message.open;
+    if(nextOpen)placePanel();
+    if(toggle&&(toggle.getAttribute('aria-expanded')==='true')!==nextOpen)toggle.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,cancelable:true,isPrimary:true,button:0,pointerType:'mouse'}));
+    menuOpen=nextOpen;
+    document.body.classList.toggle('ranger-auto-menu-open',menuOpen);
+    placePanel();
+  });
+  window.addEventListener('resize',updatePlacement);
+})();
+</script>
+</body></html>
 
 
 

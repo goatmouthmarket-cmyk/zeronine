@@ -303,6 +303,12 @@ const ICON_PATHS: Record<string, JSX.Element> = {
   arrowDown: <path d="M12 5v14m0 0 5.5-5.5M12 19 6.5 13.5" />,
   dots: <path d="M6 12h.01M12 12h.01M18 12h.01" />,
   menu: <path d="M4 6.5h16M4 12h16M4 17.5h16" />,
+  bookOpen: (
+    <>
+      <path d="M12 7c-2.2-1.6-5.3-2-8-1v13c2.7-1 5.8-.6 8 1 2.2-1.6 5.3-2 8-1V6c-2.7-1-5.8-.6-8 1Z" />
+      <path d="M12 7v13" />
+    </>
+  ),
   x: <path d="M6 6l12 12M18 6 6 18" />,
   crosshair: (
     <>
@@ -674,6 +680,7 @@ function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { pre
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const s = useStore();
   const [headerNavOpen, setHeaderNavOpen] = useState(false);
+  const [rangerAutoMenuOpen, setRangerAutoMenuOpen] = useState(false);
   const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
@@ -1217,6 +1224,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const postRoomState = useCallback(() => {
     const frame = roomFrameRef.current;
     frame?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
+    if (window.matchMedia('(min-width: 1000px)').matches) {
+      frame?.contentWindow?.postMessage({
+        type: 'zeronine:room-auto-menu',
+        open: rangerAutoMenuOpen,
+        controls: true,
+      }, window.location.origin);
+    }
     const stakeInput = frame?.contentDocument?.getElementById('cowStake') as HTMLInputElement | null;
     const stakeHint = frame?.contentDocument?.getElementById('stakeHint');
     if (!stakeInput || !stakeHint) return;
@@ -1253,11 +1267,15 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       }
     };
     updateStakeHint();
-  }, [roomState]);
+  }, [rangerAutoMenuOpen, roomState]);
 
   useEffect(() => {
     if (active && !marketChooserOpen) postRoomState();
   }, [active, marketChooserOpen, postRoomState]);
+
+  useEffect(() => {
+    if (!active || marketChooserOpen) setRangerAutoMenuOpen(false);
+  }, [active, marketChooserOpen]);
 
   useEffect(() => {
     const receiveRoomAction = (event: MessageEvent): void => {
@@ -1352,12 +1370,20 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
                 aria-label={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account', howToPlay: 'How to play' }[destination]}
                 title={{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account', howToPlay: 'How to play' }[destination]}
                 class={`nav-link${destination === 'gold' ? ' gold' : ''}${destination === 'history' || destination === 'account' ? ' icon-only' : ''}${page === destination ? ' active' : ''}`}
-                onClick={() => { onNavigate(destination); setHeaderNavOpen(false); }}>
+                onClick={() => { onNavigate(destination); setRangerAutoMenuOpen(false); setHeaderNavOpen(false); }}>
                 <Icon name={{ home: 'home', backtest: 'stats', bot: 'crosshair', gold: 'flame', history: 'history', account: 'account', howToPlay: 'play' }[destination]} size={19} />
                 <span class="sr-only">{{ home: 'Home', backtest: 'Research lab', bot: 'Bot settings', gold: 'Gold', history: 'History', account: 'Account', howToPlay: 'How to play' }[destination]}</span>
               </button>
             ))}
           </nav>
+          {active && !marketChooserOpen && <button
+            type="button"
+            class={`room-header-action room-header-play${rangerAutoMenuOpen ? ' is-open' : ''}`}
+            aria-label={rangerAutoMenuOpen ? 'Hide Ranger Auto controls' : 'Show Ranger Auto controls'}
+            aria-expanded={rangerAutoMenuOpen}
+            title={rangerAutoMenuOpen ? 'Hide Ranger Auto controls' : 'Ranger Auto'}
+            onClick={() => setRangerAutoMenuOpen((open) => !open)}
+          ><Icon name={rangerAutoMenuOpen ? 'square' : 'play'} size={19} strokeWidth={2} /></button>}
           <button
             type="button"
             class={`header-nav-toggle${headerNavOpen ? ' is-open' : ''}`}
@@ -1367,10 +1393,16 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             title={headerNavOpen ? 'Collapse navigation' : 'Show navigation'}
             onClick={() => setHeaderNavOpen((open) => !open)}
           ><Icon name={headerNavOpen ? 'x' : 'menu'} size={21} strokeWidth={2.2} /></button>
+          {active && <button
+            type="button"
+            class="room-header-action room-header-how-to"
+            aria-label="How to play"
+            title="How to play"
+            onClick={() => { setRangerAutoMenuOpen(false); onNavigate('howToPlay'); }}
+          ><Icon name="bookOpen" size={19} strokeWidth={1.9} /></button>}
           <QuickAccountMenu session={s.session} onNavigate={onNavigate} />
         </div>
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
-        <button type="button" class="how-to-open" onClick={() => onNavigate('howToPlay')}>How to play</button>
       </header>
 
       {active && rememberedReal && showRealCowNotice && <div class="real-cow-mode" role="status"><span>Real-money cow trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); window.dispatchEvent(new Event('real-cow-preference')); }}>Turn confirmation on</button></div>}
