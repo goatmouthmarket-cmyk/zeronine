@@ -6683,18 +6683,19 @@ button.activity-row {
   cursor: pointer; transition: transform .2s ease, filter .2s ease, color .2s ease;
 }
 .app[data-page="home"] .view-home .header-top .brand {
-  display: flex; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 4px;
+  position: relative; z-index: 26;
+  display: flex; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 3px;
 }
 .app[data-page="home"] .view-home .header-top .brand .cow-logo { flex-basis: 71px; }
 .app[data-page="home"] .room-header-how-to {
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-  width: 100%; min-height: 27px; padding: 3px 8px; border: 1px solid #d5bd79;
-  border-radius: 9px; color: #fff0bd; background: linear-gradient(#244b35, #10251e);
-  box-shadow: inset 0 1px #ffffff20, 0 2px #071a12, 0 4px 10px #0004;
-  font-size: 10px; font-weight: 850; line-height: 1; white-space: nowrap;
-  cursor: pointer; transition: transform .2s ease, filter .2s ease;
+  position: relative; z-index: 27; pointer-events: auto;
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 24px; padding: 3px 8px; border: 1px solid #a66b42;
+  border-radius: 6px; color: #294434; background: #f6ddb9;
+  box-shadow: none; font-size: 10px; font-weight: 800; line-height: 1; white-space: nowrap;
+  cursor: pointer; transition: background-color .16s ease, color .16s ease;
 }
-.app[data-page="home"] .room-header-how-to:hover { transform: translateY(-1px); filter: brightness(1.12); }
+.app[data-page="home"] .room-header-how-to:hover { background: #fff0d1; color: #173322; }
 .app[data-page="home"] .room-header-how-to:focus-visible { outline: 3px solid #fff0d1; outline-offset: 2px; }
 .app[data-page="home"] .room-header-play { margin-left: auto; }
 .app[data-page="home"] .header-nav-toggle { margin-left: 0; }
@@ -6707,6 +6708,7 @@ button.activity-row {
 @media (max-width: 999.98px) {
   .app[data-page="home"] .view-home .header-top { gap: 5px; }
   .app[data-page="home"] .view-home .header-top .brand { align-items: center; pointer-events: auto; }
+  .app[data-page="home"] .view-home .header .cow-logo { pointer-events: none; }
   .app[data-page="home"] .view-home .header .cow-logo {
     width: clamp(100px, 34vw, 135px); height: 54px; flex: 0 0 54px;
     background-size: 270% auto;

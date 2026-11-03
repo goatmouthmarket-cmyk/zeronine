@@ -1365,7 +1365,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
               type="button"
               class="room-header-how-to"
               onClick={() => { setRangerAutoMenuOpen(false); onNavigate('howToPlay'); }}
-            ><Icon name="bookOpen" size={15} strokeWidth={1.9} />How to play</button>}
+            >How to play</button>}
           </div>
           <nav id="home-header-navigation" class={`desktop-nav${headerNavOpen ? ' is-expanded' : ''}`} aria-label="Main navigation" aria-hidden={!headerNavOpen}>
             {(['home', 'backtest', 'bot', 'gold', 'history', 'account', 'howToPlay'] as const).map((destination) => (

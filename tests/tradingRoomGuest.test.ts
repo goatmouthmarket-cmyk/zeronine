@@ -8,7 +8,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
   const messages: Array<{ type: string; payload?: { stake?: number; market?: string; barrier?: number } }> = [];
-  const listeners = new Map<string, Map<string, () => void>>();
+  const listeners = new Map<string, Map<string, (...args: any[]) => void>>();
   const savedStyles = new Map<string, string>();
   const elements = new Map<string, any>();
   const element = (id: string): any => {
@@ -16,7 +16,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
       style: {},
       dataset: {},
       classList: { add() {}, remove() {}, toggle() {} },
-      addEventListener: (type: string, listener: () => void) => {
+      addEventListener: (type: string, listener: (...args: any[]) => void) => {
         if (!listeners.has(id)) listeners.set(id, new Map());
         listeners.get(id)!.set(type, listener);
       },
@@ -25,12 +25,14 @@ test('guest cow defeat is practice and does not send a trade request', () => {
       removeAttribute() {},
       replaceChildren() {},
       appendChild() {},
+      append() {},
+      remove() {},
       getContext: () => ({ setTransform() {} }),
     });
     return elements.get(id);
   };
   const context: Record<string, any> = {
-    document: { querySelector: () => element('canvas'), getElementById: element, createElement: () => element('child'), addEventListener() {} },
+    document: { querySelector: () => element('canvas'), getElementById: element, createElement: () => element('child'), body: { appendChild() {} }, addEventListener() {} },
     parent: { postMessage: (message: { type: string; payload?: { stake?: number; market?: string; barrier?: number } }) => messages.push(message) },
     location: { origin: 'https://example.test' },
     window: { addEventListener() {} }, addEventListener() {}, requestAnimationFrame() {},
@@ -45,7 +47,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
       setItem: (key: string, value: string) => savedStyles.set(key, value),
     },
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: Date.now() / 1000 }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; };})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; const epoch = Date.now() / 1000; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: epoch, lastQuote: 100.1, lastDigit: 1, recentTicks: [{ epoch, quote: 100.1, digit: 1 }] }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; }; globalThis.testManualPaper = { trades: manualPaperTrades, cow: cows[0], setTarget: (symbol) => { cows[0].contract = { market: "Selected market", symbol, kind: "OVER", barrier: 2 }; cows[0].x = 320; cows[0].y = 240; cows[0].alive = true; cows[0].hp = 3; }, point: (cow) => { const cam = camera(); return { clientX: (cow.x - cam.x) * zoom, clientY: (cow.y - cam.y) * zoom }; } };})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   const rangerPanel = elements.get('rangerAutoHud');
@@ -77,6 +79,22 @@ test('guest cow defeat is practice and does not send a trade request', () => {
     assert.ok(Math.hypot(cow.x - spacing.spot.x, cow.y - spacing.spot.y) >= 125, 'ghost cow spawns in an open spot');
   }
   context.testConnect('REAL_A');
+  context.testManualPaper.setTarget('SELECTED');
+  const paperTarget = context.testManualPaper.cow;
+  const paperPoint = context.testManualPaper.point(paperTarget);
+  const contextMenu = listeners.get('canvas')?.get('contextmenu');
+  assert.ok(contextMenu, 'right-click is handled on the game canvas');
+  let contextMenuPrevented = false;
+  const tradesBeforePaper = messages.filter((message) => message.type === 'zeronine:room-trade').length;
+  contextMenu({ ...paperPoint, preventDefault: () => { contextMenuPrevented = true; } });
+  assert.equal(contextMenuPrevented, true);
+  assert.equal(context.testManualPaper.trades[0].status, 'open');
+  assert.equal(context.testManualPaper.trades[0].entryDigit, 1);
+  contextMenu({ ...paperPoint, preventDefault() {} });
+  assert.equal(context.testManualPaper.trades.length, 2, 'repeated right-click paper entries remain independent');
+  assert.equal(paperTarget.alive, true, 'paper shots never kill or mutate the live cow');
+  assert.equal(paperTarget.hp, 3);
+  assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'paper entries never request a real/demo account trade');
   element('cowStake').value = '2.50';
   context.testDefeat({ contract: { market: 'Changed', symbol: 'CHANGED', kind: 'UNDER', barrier: 8 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
   const trade = messages.find((message) => message.type === 'zeronine:room-trade');
@@ -279,6 +297,43 @@ test('paper scout shows the matching market, ticket details, and virtual outcome
   });
   assert.equal(element('paperMiniStatus').textContent, 'WON | R_100 | OVER 2');
   assert.equal(element('paperMiniStats').textContent, 'Volatility 100 Index | ENTRY 1 > EXIT 3 | +$1.80 VIRTUAL');
+});
+
+test('manual paper trades enter on a live tick and settle on the next same-market tick', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function paperTickKey(');
+  const end = script.indexOf('function latestManualPaperTrade(', start);
+  assert.ok(start >= 0 && end > start, 'manual paper entry and settlement helpers exist');
+  const helpers = runInNewContext(`
+    ${script.slice(start, end)}
+    ({ createManualPaperEntry, manualPaperDigitWins, settleManualPaperTrades })
+  `) as {
+    createManualPaperEntry: (contract: Record<string, unknown>, tick: Record<string, number>, id: string) => Record<string, any> | null;
+    manualPaperDigitWins: (direction: string, barrier: number, digit: number) => boolean;
+    settleManualPaperTrades: (trades: Array<Record<string, any>>, markets: Array<Record<string, any>>) => Array<Record<string, any>>;
+  };
+  const contract = { symbol: 'R_100', market: 'Volatility 100 Index', kind: 'OVER', barrier: 2 };
+  const entryTick = { epoch: 100, quote: 100.11, digit: 1 };
+  const trade = helpers.createManualPaperEntry(contract, entryTick, 'paper-1');
+
+  assert.ok(trade);
+  assert.equal(trade.status, 'open');
+  assert.equal(trade.entryDigit, 1);
+  assert.equal('stake' in trade, false, 'paper entries never reserve or represent account money');
+  assert.equal(helpers.manualPaperDigitWins('over', 2, 3), true);
+  assert.equal(helpers.manualPaperDigitWins('under', 7, 6), true);
+  assert.equal(helpers.manualPaperDigitWins('over', 2, 2), false);
+  const settled = helpers.settleManualPaperTrades([trade], [{
+    symbol: 'R_100',
+    recentTicks: [entryTick, { epoch: 101, quote: 100.15, digit: 5 }, { epoch: 102, quote: 100.17, digit: 7 }],
+  }]);
+  assert.equal(settled.length, 1, 'settlement uses the first subsequent live tick');
+  assert.equal(settled[0].status, 'won');
+  assert.equal(settled[0].exitDigit, 5, 'settlement does not use a later result');
+  assert.equal(helpers.settleManualPaperTrades([trade], [{ symbol: 'R_100', recentTicks: [entryTick, { epoch: 101, quote: 100.15, digit: 5 }] }]).length, 0, 'settled entries do not settle twice');
+  assert.equal(helpers.createManualPaperEntry(contract, { ...entryTick, digit: 10 }, 'invalid'), null);
 });
 
 test('paper ghost shows its result without a floating popup', () => {

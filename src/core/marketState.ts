@@ -8,7 +8,7 @@ export interface MarketSnapshot {
   ticksPerMin: number;
   recentDigits: number[];
   recentQuotes: number[];
-  recentTicks: Array<{ epoch: number; quote: number }>;
+  recentTicks: Array<{ epoch: number; quote: number; digit: number }>;
   dist: number[];
 }
 
@@ -73,7 +73,7 @@ export class MarketRegistry {
       ticksPerMin: recentWindow.length,
       recentDigits: buf.slice(-60).map((t) => t.digit),
       recentQuotes: buf.slice(-40).map((t) => t.quote),
-      recentTicks: buf.slice(-60).map((t) => ({ epoch: t.epoch, quote: t.quote })),
+      recentTicks: buf.slice(-60).map((t) => ({ epoch: t.epoch, quote: t.quote, digit: t.digit })),
       dist,
     };
   }

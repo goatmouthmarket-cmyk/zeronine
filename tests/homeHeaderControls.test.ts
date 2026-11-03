@@ -33,6 +33,12 @@ test('pasture header controls bracket navigation on desktop and mobile', () => {
   assert.match(room, /<span><strong>Guest play<\/strong><\/span><button type="button" id="connectDeriv">Connect Deriv<\/button>/);
   assert.doesNotMatch(room, /No bets are placed/);
   assert.match(room, /#guestHowToPlay\{border:1px solid #e7c778;background:linear-gradient\(#a92c3f,#681c2b\);color:#fff0bd/);
+  assert.match(room, /canvas\.addEventListener\('contextmenu', \(event\) =>/);
+  assert.match(room, /event\.pointerType !== 'touch'/);
+  assert.match(room, /Waiting for the next live tick; no money used/);
+  assert.match(room, /REAL MARKET TICK · NO MONEY USED/);
+  assert.match(room, /paper-ghost-killed/);
+  assert.doesNotMatch(room.slice(room.indexOf('function beginManualPaperTrade'), room.indexOf('function findCowAtClientPoint')), /room-trade|parent\.postMessage/);
 
   const styles = readFileSync(new URL('../web/src/styles.css', import.meta.url), 'utf8');
   assert.match(styles, /@media \(max-width: 999\.98px\) \{[\s\S]*?\.app\[data-page="home"\] \.room-header-action \{ flex-basis: 36px/);
@@ -40,9 +46,10 @@ test('pasture header controls bracket navigation on desktop and mobile', () => {
   assert.match(styles, /\.app\[data-page="home"\] \.room-header-play \{\s*position: fixed; z-index: 51; right: calc\(max\(10px, env\(safe-area-inset-right\)\) \+ 60px\)/);
   assert.match(styles, /\.header \.brand:not\(\.connect-brand\) \.cow-logo::before,[\s\S]*?\.cow-logo::after \{ content: none; \}/);
   assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header \.cow-logo \{\s*width: clamp\(100px, 34vw, 135px\); height: 54px; flex: 0 0 54px;\s*background-size: 270% auto/);
-  assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \{\s*display: flex; flex: 0 0 auto; flex-direction: column; align-items: center/);
+  assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \{\s*position: relative; z-index: 26;\s*display: flex; flex: 0 0 auto; flex-direction: column; align-items: center/);
   assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \.cow-logo \{ flex-basis: 71px; \}/);
   assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \.cow-logo \{ flex-basis: 54px; \}/);
-  assert.match(styles, /\.app\[data-page="home"\] \.room-header-how-to \{[\s\S]*?width: 100%; min-height: 27px[\s\S]*?background: linear-gradient\(#244b35, #10251e\)/);
+  assert.match(styles, /\.app\[data-page="home"\] \.room-header-how-to \{[\s\S]*?z-index: 27; pointer-events: auto;[\s\S]*?width: 100%; min-height: 24px[\s\S]*?background: #f6ddb9;[\s\S]*?box-shadow: none/);
+  assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header \.cow-logo \{ pointer-events: none; \}/);
   assert.match(styles, /\.app\[data-page="home"\] \.desktop-nav\.is-expanded \{ display: grid/);
 });

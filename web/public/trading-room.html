@@ -251,6 +251,267 @@ function updateRangerAnimation(now, dt) {
   rangerAnim.previousX = player.x;
   rangerAnim.previousY = player.y;
 }
+const manualPaperTrades = [];
+const manualPaperVisuals = [];
+let manualPaperTradeSerial = 0;
+let manualPaperNoticeId = null;
+let manualPaperNoticeUntil = 0;
+const paperVisualRoot = document.createElement('div');
+paperVisualRoot.className = 'paper-visual-root';
+paperVisualRoot.setAttribute('aria-hidden', 'true');
+document.body.appendChild(paperVisualRoot);
+const paperRangerBet = document.createElement('div');
+paperRangerBet.className = 'paper-ranger-bet';
+paperRangerBet.setAttribute('aria-live', 'polite');
+paperRangerBet.setAttribute('aria-atomic', 'true');
+paperRangerBet.hidden = true;
+document.body.appendChild(paperRangerBet);
+
+function paperTickKey(tick) {
+  return `${tick.epoch}|${tick.quote}`;
+}
+
+function createManualPaperEntry(contract, tick, id) {
+  const direction = String(contract?.kind || '').toLowerCase();
+  if (!contract?.symbol || !['over', 'under'].includes(direction) ||
+      !Number.isInteger(contract.barrier) || contract.barrier < 0 || contract.barrier > 9 ||
+      !Number.isFinite(tick?.epoch) || !Number.isFinite(tick?.quote) ||
+      !Number.isInteger(tick?.digit) || tick.digit < 0 || tick.digit > 9) return null;
+  return {
+    id,
+    market: contract.market || contract.symbol,
+    symbol: contract.symbol,
+    direction,
+    barrier: contract.barrier,
+    entryEpoch: tick.epoch,
+    entryQuote: tick.quote,
+    entryDigit: tick.digit,
+    entryTickKey: paperTickKey(tick),
+    status: 'open',
+    exitDigit: null,
+    exitEpoch: null,
+  };
+}
+
+function manualPaperDigitWins(direction, barrier, digit) {
+  return direction === 'over' ? digit > barrier : direction === 'under' ? digit < barrier : false;
+}
+
+function settleManualPaperTrades(trades, markets) {
+  const settled = [];
+  for (const trade of trades) {
+    if (trade.status !== 'open') continue;
+    const market = markets.find((item) => item.symbol === trade.symbol);
+    const ticks = Array.isArray(market?.recentTicks) ? market.recentTicks : [];
+    let entryIndex = -1;
+    for (let index = ticks.length - 1; index >= 0; index--) {
+      if (paperTickKey(ticks[index]) === trade.entryTickKey) {
+        entryIndex = index;
+        break;
+      }
+    }
+    const nextTick = entryIndex >= 0
+      ? ticks[entryIndex + 1]
+      : ticks.find((tick) => tick.epoch > trade.entryEpoch);
+    if (!Number.isInteger(nextTick?.digit) || nextTick.digit < 0 || nextTick.digit > 9) continue;
+    trade.exitDigit = nextTick.digit;
+    trade.exitEpoch = nextTick.epoch;
+    trade.status = manualPaperDigitWins(trade.direction, trade.barrier, nextTick.digit) ? 'won' : 'lost';
+    settled.push(trade);
+  }
+  return settled;
+}
+
+function latestManualPaperTrade() {
+  return manualPaperTrades[manualPaperTrades.length - 1] || null;
+}
+
+function renderManualPaperNotice(trade) {
+  if (!trade) {
+    paperRangerBet.hidden = true;
+    return;
+  }
+  const result = trade.status === 'open' ? 'OPEN' : trade.status.toUpperCase();
+  const heading = document.createElement('strong');
+  heading.textContent = `PAPER ${result}`;
+  const target = document.createElement('span');
+  target.textContent = `${trade.symbol} · ${trade.direction.toUpperCase()} ${trade.barrier}`;
+  const digits = document.createElement('span');
+  digits.textContent = trade.status === 'open'
+    ? `ENTRY ${trade.entryDigit} · waiting for next live tick`
+    : `ENTRY ${trade.entryDigit} → EXIT ${trade.exitDigit}`;
+  const note = document.createElement('small');
+  note.textContent = 'REAL MARKET TICK · NO MONEY USED';
+  paperRangerBet.replaceChildren(heading, target, digits, note);
+  paperRangerBet.dataset.phase = trade.status;
+  paperRangerBet.hidden = false;
+}
+
+function paperFreshEntryTick(symbol) {
+  const market = liveMarkets.find((item) => item.symbol === symbol);
+  const age = Number.isFinite(market?.lastEpoch) ? Date.now() / 1000 - market.lastEpoch : Infinity;
+  if (!market || market.fresh !== true || age < 0 || age >= 15) return null;
+  const ticks = Array.isArray(market.recentTicks) ? market.recentTicks : [];
+  const last = ticks[ticks.length - 1];
+  if (last && last.epoch === market.lastEpoch && last.quote === market.lastQuote &&
+      Number.isInteger(last.digit) && last.digit >= 0 && last.digit <= 9) return last;
+  if (Number.isInteger(market.lastDigit) && market.lastDigit >= 0 && market.lastDigit <= 9) {
+    return { epoch: market.lastEpoch, quote: market.lastQuote, digit: market.lastDigit };
+  }
+  return null;
+}
+
+function beginManualPaperTrade(cowTarget) {
+  const contract = cowTarget?.contract;
+  const tick = paperFreshEntryTick(contract?.symbol);
+  if (!tick) {
+    notify(`Paper trade unavailable: no fresh live tick for ${contract?.symbol || 'this market'}. No entry recorded.`);
+    return false;
+  }
+  const trade = createManualPaperEntry(contract, tick, `manual-paper-${++manualPaperTradeSerial}`);
+  if (!trade) {
+    notify('Paper trade unavailable: this cow has no valid live digit target. No entry recorded.');
+    return false;
+  }
+  if (manualPaperTrades.length >= 100) {
+    const settledIndex = manualPaperTrades.findIndex((entry) => entry.status !== 'open');
+    if (settledIndex < 0) {
+      notify('Paper trade limit reached. Wait for a live result before starting another.');
+      return false;
+    }
+    manualPaperTrades.splice(settledIndex, 1);
+  }
+  trade.targetX = cowTarget.x;
+  trade.targetY = cowTarget.y;
+  manualPaperTrades.push(trade);
+  manualPaperNoticeId = trade.id;
+  manualPaperNoticeUntil = 0;
+  const ghost = document.createElement('span');
+  ghost.className = 'paper-ghost-cow';
+  ghost.textContent = '🐄';
+  const arrow = document.createElement('span');
+  arrow.className = 'paper-ghost-arrow';
+  paperVisualRoot.append(arrow, ghost);
+  manualPaperVisuals.push({ trade, ghost, arrow, startedAt: performance.now(), hit: false });
+  renderManualPaperNotice(trade);
+  notify(`Paper entry opened: ${trade.symbol} ${trade.direction.toUpperCase()} ${trade.barrier}. Waiting for the next live tick; no money used.`);
+  return true;
+}
+
+function findCowAtClientPoint(clientX, clientY) {
+  const cam = camera();
+  const x = clientX / zoom + cam.x;
+  const y = clientY / zoom + cam.y;
+  return cows.filter((cow) => cow.alive && Math.hypot(x - cow.x, y - cow.y) < 55)
+    .sort((a, b) => Math.hypot(x - a.x, y - a.y) - Math.hypot(x - b.x, y - b.y))[0] || null;
+}
+
+canvas.addEventListener('contextmenu', (event) => {
+  const cowTarget = findCowAtClientPoint(event.clientX, event.clientY);
+  if (!cowTarget) return;
+  event.preventDefault();
+  beginManualPaperTrade(cowTarget);
+});
+
+let paperLongPress = null;
+const cancelPaperLongPress = () => {
+  if (!paperLongPress) return;
+  clearTimeout(paperLongPress.timer);
+  paperLongPress = null;
+};
+canvas.addEventListener('pointerdown', (event) => {
+  if (event.pointerType !== 'touch') return;
+  cancelPaperLongPress();
+  const cowTarget = findCowAtClientPoint(event.clientX, event.clientY);
+  if (!cowTarget) return;
+  paperLongPress = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    timer: setTimeout(() => {
+      if (!paperLongPress || !cowTarget.alive) return;
+      paperLongPress = null;
+      suppressCanvasClickUntil = performance.now() + 850;
+      beginManualPaperTrade(cowTarget);
+    }, 650),
+  };
+});
+canvas.addEventListener('pointermove', (event) => {
+  if (!paperLongPress || event.pointerId !== paperLongPress.pointerId) return;
+  if (Math.hypot(event.clientX - paperLongPress.x, event.clientY - paperLongPress.y) > 14) cancelPaperLongPress();
+});
+for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+  canvas.addEventListener(eventName, cancelPaperLongPress);
+}
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== location.origin || event.source !== parent || event.data?.type !== 'zeronine:room-state') return;
+  const state = event.data.state || {};
+  const settled = settleManualPaperTrades(manualPaperTrades, state.markets || []);
+  if (!settled.length) return;
+  const latest = latestManualPaperTrade();
+  if (latest && settled.some((trade) => trade.id === latest.id)) {
+    manualPaperNoticeId = latest.id;
+    manualPaperNoticeUntil = performance.now() + 4200;
+    renderManualPaperNotice(latest);
+  }
+  for (const trade of settled) {
+    notify(`Paper ${trade.status.toUpperCase()}: ${trade.symbol} ${trade.direction.toUpperCase()} ${trade.barrier}, entry ${trade.entryDigit} → exit ${trade.exitDigit}. No money used.`);
+  }
+});
+
+function renderManualPaperVisuals(now) {
+  const cam = camera();
+  const playerX = (player.x - cam.x) * zoom;
+  const playerY = (player.y - cam.y) * zoom;
+  for (let index = manualPaperVisuals.length - 1; index >= 0; index--) {
+    const visual = manualPaperVisuals[index];
+    const elapsed = now - visual.startedAt;
+    const cowX = (visual.trade.targetX - cam.x) * zoom;
+    const cowY = (visual.trade.targetY - cam.y) * zoom;
+    visual.ghost.style.left = `${cowX}px`;
+    visual.ghost.style.top = `${cowY}px`;
+    if (!visual.hit) {
+      const dx = cowX - playerX;
+      const dy = cowY - playerY;
+      visual.arrow.style.left = `${playerX}px`;
+      visual.arrow.style.top = `${playerY - 8}px`;
+      visual.arrow.style.width = `${Math.hypot(dx, dy)}px`;
+      visual.arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+      if (elapsed >= 360) {
+        visual.hit = true;
+        visual.arrow.remove();
+        visual.ghost.classList.add('paper-ghost-killed');
+      }
+    }
+    if (elapsed >= 1050) {
+      visual.ghost.remove();
+      visual.arrow.remove();
+      manualPaperVisuals.splice(index, 1);
+    }
+  }
+  const trade = manualPaperTrades.find((entry) => entry.id === manualPaperNoticeId);
+  if (trade?.status !== 'open' && trade && now >= manualPaperNoticeUntil) {
+    paperRangerBet.hidden = true;
+    const open = manualPaperTrades.slice().reverse().find((entry) => entry.status === 'open');
+    if (open) {
+      manualPaperNoticeId = open.id;
+      renderManualPaperNotice(open);
+    }
+  }
+  if (trade || manualPaperTrades.some((entry) => entry.status === 'open')) {
+    const visibleTrade = manualPaperTrades.find((entry) => entry.id === manualPaperNoticeId) || latestManualPaperTrade();
+    const half = paperRangerBet.offsetWidth / 2;
+    const anchorX = (player.x - cam.x) * zoom;
+    const anchorY = (player.y - 118 - cam.y) * zoom;
+    paperRangerBet.style.left = `${Math.max(half + 8, Math.min(W - half - 8, anchorX))}px`;
+    paperRangerBet.style.top = `${Math.max(paperRangerBet.offsetHeight + 8, anchorY)}px`;
+    if (visibleTrade?.status === 'open') paperRangerBet.hidden = false;
+  }
+  requestAnimationFrame(renderManualPaperVisuals);
+}
+requestAnimationFrame(renderManualPaperVisuals);
+
 function cow(v){if(!v.alive)return;const {x,y}=v;const bounce=Math.sin(performance.now()/850+x)*1.2;
 c.save();c.translate(x,y+bounce);if(v===hoverCow&&v!==ghostCow){c.save();c.strokeStyle='#fff1a8';c.lineWidth=3;c.shadowColor='#ffe879';c.shadowBlur=12;c.beginPath();c.ellipse(0,18,53,22,0,0,Math.PI*2);c.stroke();c.restore()}c.fillStyle='#1a36236b';c.beginPath();c.ellipse(2,23,43,13,0,0,Math.PI*2);c.fill();
 const bestEdgeContract=contracts.filter(t=>t.fresh===true&&Number.isFinite(t.edge)&&t.edge>0).sort((a,b)=>b.edge-a.edge)[0],bestEdgeCow=bestEdgeContract?cows.find(cow=>cow!==ghostCow&&cow.alive&&cow.contract===bestEdgeContract):null,edgeFeatured=v===bestEdgeCow,signalFeatured=v!==ghostCow&&v.contract?.hitSignal===true,bestScoreContract=contracts.filter(t=>Number.isFinite(t.score)&&Number.isFinite(t.payout)).sort((a,b)=>b.score-a.score||b.p-a.p)[0],bestScoreCow=bestScoreContract?cows.find(cow=>cow!==ghostCow&&cow.alive&&cow.contract===bestScoreContract):null,confidenceFeatured=v===bestScoreCow,recoveryPick=v!==ghostCow&&!!recoveryRecommendation&&v.contract.symbol===recoveryRecommendation.symbol;
@@ -446,6 +707,23 @@ body.room-header-controls #rangerAutoToggle{display:none!important}
   window.addEventListener('resize',updatePlacement);
 })();
 </script>
+<style id="manual-paper-trade">
+.paper-visual-root{position:fixed;inset:0;z-index:5;overflow:hidden;pointer-events:none}
+.paper-ghost-cow{position:absolute;z-index:1;font-size:42px;line-height:1;opacity:.72;filter:grayscale(1) brightness(1.35) sepia(1) hue-rotate(190deg) saturate(4) drop-shadow(0 0 8px #9a7bff);transform:translate(-50%,-55%);transition:opacity .32s ease,filter .32s ease,transform .32s ease}
+.paper-ghost-killed{opacity:0;filter:grayscale(1) brightness(2) drop-shadow(0 0 18px #bca9ff);transform:translate(-50%,-85%) scale(1.5)}
+.paper-ghost-arrow{position:absolute;z-index:1;height:0;border-top:3px dashed #c4b5fd;transform-origin:left center;filter:drop-shadow(0 0 4px #9275ff);animation:paperArrowPulse .14s linear infinite alternate}
+.paper-ranger-bet{position:fixed;z-index:16;left:50%;top:30%;transform:translate(-50%,-100%);display:grid;gap:3px;min-width:190px;max-width:min(280px,calc(100vw - 24px));padding:8px 11px;border:1px solid #a69bd8;border-radius:8px;background:#1f2332f2;color:#f5f0ff;box-shadow:0 5px 16px #10101d88;text-align:center;font:700 10px system-ui;pointer-events:none}
+.paper-ranger-bet[hidden]{display:none}
+.paper-ranger-bet strong{color:#d8ccff;font-size:11px;letter-spacing:.06em}
+.paper-ranger-bet span{color:#f5f0ff}
+.paper-ranger-bet small{color:#b9aecf;font-size:8px;letter-spacing:.08em}
+.paper-ranger-bet[data-phase="won"]{border-color:#85cfad;background:#1b332ef2}
+.paper-ranger-bet[data-phase="won"] strong{color:#a7f3c9}
+.paper-ranger-bet[data-phase="lost"]{border-color:#d3959d;background:#38242df2}
+.paper-ranger-bet[data-phase="lost"] strong{color:#ffbbc5}
+@keyframes paperArrowPulse{to{border-color:#f0abfc;opacity:.55}}
+@media(prefers-reduced-motion:reduce){.paper-ghost-cow,.paper-ghost-arrow{animation:none!important;transition:none!important}}
+</style>
 <style id="guest-how-to-controls">
 #guestHowToPlay{border:1px solid #e7c778;background:linear-gradient(#a92c3f,#681c2b);color:#fff0bd;box-shadow:inset 0 1px #ffffff28,0 2px #431522}
 #guestHowToPlay:hover{filter:brightness(1.1)}
@@ -471,9 +749,6 @@ body.room-header-controls #rangerAutoToggle{display:none!important}
 })();
 </script>
 </body></html>
-
-
-
 
 
 

@@ -36,7 +36,7 @@ test('market snapshots retain a bounded recent quote series for the dashboard ch
   assert.equal(snapshot.recentQuotes[0], 105);
   assert.equal(snapshot.recentQuotes.at(-1), 144);
   assert.equal(snapshot.recentTicks.length, 45);
-  assert.deepEqual(snapshot.recentTicks.at(-1), { epoch: epoch + 44, quote: 144 });
+  assert.deepEqual(snapshot.recentTicks.at(-1), { epoch: epoch + 44, quote: 144, digit: 4 });
 });
 
 test('historical ticks can seed a market snapshot in one bounded update', () => {
@@ -47,7 +47,7 @@ test('historical ticks can seed a market snapshot in one bounded update', () => 
   const snapshot = registry.snapshot('frxXAUUSD');
   assert.equal(updates, 1);
   assert.equal(snapshot.recentTicks.length, 60);
-  assert.deepEqual(snapshot.recentTicks[0], { epoch: 1020, quote: 2302 });
+  assert.deepEqual(snapshot.recentTicks[0], { epoch: 1020, quote: 2302, digit: 0 });
 });
 
 test('pickSignal holds (WAIT) when no market has a credible edge', () => {
