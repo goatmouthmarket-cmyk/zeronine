@@ -1224,13 +1224,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const postRoomState = useCallback(() => {
     const frame = roomFrameRef.current;
     frame?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
-    if (window.matchMedia('(min-width: 1000px)').matches) {
-      frame?.contentWindow?.postMessage({
-        type: 'zeronine:room-auto-menu',
-        open: rangerAutoMenuOpen,
-        controls: true,
-      }, window.location.origin);
-    }
+    frame?.contentWindow?.postMessage({
+      type: 'zeronine:room-auto-menu',
+      open: rangerAutoMenuOpen,
+      controls: true,
+    }, window.location.origin);
     const stakeInput = frame?.contentDocument?.getElementById('cowStake') as HTMLInputElement | null;
     const stakeHint = frame?.contentDocument?.getElementById('stakeHint');
     if (!stakeInput || !stakeHint) return;
@@ -1310,7 +1308,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         if (s.markets.some((item) => item.symbol === message.payload?.market)) selectMarket(message.payload.market);
         return;
       }
-      if (message.type === 'zeronine:room-navigate' && message.page && ['history', 'account'].includes(message.page)) {
+      if (message.type === 'zeronine:room-navigate' && message.page && ['history', 'account', 'howToPlay'].includes(message.page)) {
         onNavigate(message.page);
         return;
       }
@@ -1362,7 +1360,12 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       <header class="header">
         <div class="header-top">
           <div class="brand">
-          <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
+            <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
+            {active && !guest && <button
+              type="button"
+              class="room-header-how-to"
+              onClick={() => { setRangerAutoMenuOpen(false); onNavigate('howToPlay'); }}
+            ><Icon name="bookOpen" size={15} strokeWidth={1.9} />How to play</button>}
           </div>
           <nav id="home-header-navigation" class={`desktop-nav${headerNavOpen ? ' is-expanded' : ''}`} aria-label="Main navigation" aria-hidden={!headerNavOpen}>
             {(['home', 'backtest', 'bot', 'gold', 'history', 'account', 'howToPlay'] as const).map((destination) => (
@@ -1393,13 +1396,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             title={headerNavOpen ? 'Collapse navigation' : 'Show navigation'}
             onClick={() => setHeaderNavOpen((open) => !open)}
           ><Icon name={headerNavOpen ? 'x' : 'menu'} size={21} strokeWidth={2.2} /></button>
-          {active && <button
-            type="button"
-            class="room-header-action room-header-how-to"
-            aria-label="How to play"
-            title="How to play"
-            onClick={() => { setRangerAutoMenuOpen(false); onNavigate('howToPlay'); }}
-          ><Icon name="bookOpen" size={19} strokeWidth={1.9} /></button>}
           <QuickAccountMenu session={s.session} onNavigate={onNavigate} />
         </div>
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>

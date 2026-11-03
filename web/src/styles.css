@@ -75,6 +75,8 @@
     background: url('/cow-ui-assets.png') left top / 480px auto no-repeat;
     border-radius: 10px;
 }
+.header .brand:not(.connect-brand) .cow-logo::before,
+.header .brand:not(.connect-brand) .cow-logo::after { content: none; }
 .cow-logo img { opacity: 0; }
 .desktop-nav .nav-link {
     margin-inline: 3px; border: 2px solid var(--pasture-outline); border-radius: 12px;
@@ -6647,18 +6649,18 @@ button.activity-row {
 
 /* Header links tuck behind a pasture-style menu toggle beside the balance. */
 .header-nav-toggle { display: none; }
+.app[data-page="home"] .header-nav-toggle {
+  display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px;
+  margin-left: auto; padding: 0; border: 2px solid #ff7183; border-radius: 12px;
+  color: #fff; background: linear-gradient(#ff4964,#df1237);
+  box-shadow: inset 0 2px #ffffff40, 0 4px #87172c, 0 7px 16px #0004;
+  cursor: pointer; transition: transform .22s ease, filter .22s ease, background .22s ease;
+}
+.app[data-page="home"] .header-nav-toggle:hover { transform: translateY(-2px); filter: brightness(1.1); }
+.app[data-page="home"] .header-nav-toggle:focus-visible { outline: 3px solid #fff0d1; outline-offset: 3px; }
+.app[data-page="home"] .header-nav-toggle svg { transition: transform .24s ease; }
+.app[data-page="home"] .header-nav-toggle.is-open svg { transform: rotate(90deg); }
 @media (min-width: 1000px) {
-  .app[data-page="home"] .header-nav-toggle {
-    display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px;
-    margin-left: auto; padding: 0; border: 2px solid #ff7183; border-radius: 12px;
-    color: #fff; background: linear-gradient(#ff4964,#df1237);
-    box-shadow: inset 0 2px #ffffff40, 0 4px #87172c, 0 7px 16px #0004;
-    cursor: pointer; transition: transform .22s ease, filter .22s ease, background .22s ease;
-  }
-  .app[data-page="home"] .header-nav-toggle:hover { transform: translateY(-2px); filter: brightness(1.1); }
-  .app[data-page="home"] .header-nav-toggle:focus-visible { outline: 3px solid #fff0d1; outline-offset: 3px; }
-  .app[data-page="home"] .header-nav-toggle svg { transition: transform .24s ease; }
-  .app[data-page="home"] .header-nav-toggle.is-open svg { transform: rotate(90deg); }
   .app[data-page="home"] .desktop-nav {
     flex: 0 1 auto; max-width: 0; gap: 0; overflow: hidden; opacity: 0;
     transform: translateX(10px); pointer-events: none;
@@ -6674,19 +6676,66 @@ button.activity-row {
   .app[data-page="home"] .desktop-nav { transition: none; }
 }
 .room-header-action { display: none; }
-@media (min-width: 1000px) {
-  .app[data-page="home"] .room-header-action {
-    display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px;
-    margin: 0; padding: 0; border: 1px solid #d5bd79; border-radius: 12px;
-    color: #fff0bd; background: #10251eea; box-shadow: 0 3px 12px #0005;
-    cursor: pointer; transition: transform .2s ease, filter .2s ease, color .2s ease;
-  }
-  .app[data-page="home"] .room-header-play { margin-left: auto; }
-  .app[data-page="home"] .header-nav-toggle { margin-left: 0; }
-  .app[data-page="home"] .room-header-action:hover { transform: translateY(-2px); filter: brightness(1.12); }
-  .app[data-page="home"] .room-header-play.is-open { color: #9dffbd; border-color: #74e9a1; }
-  .app[data-page="home"] .room-header-action:focus-visible { outline: 3px solid #fff0d1; outline-offset: 3px; }
+.app[data-page="home"] .room-header-action {
+  display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px;
+  margin: 0; padding: 0; border: 1px solid #d5bd79; border-radius: 12px;
+  color: #fff0bd; background: #10251eea; box-shadow: 0 3px 12px #0005;
+  cursor: pointer; transition: transform .2s ease, filter .2s ease, color .2s ease;
 }
+.app[data-page="home"] .view-home .header-top .brand {
+  display: flex; flex: 0 0 auto; flex-direction: column; align-items: center; gap: 4px;
+}
+.app[data-page="home"] .view-home .header-top .brand .cow-logo { flex-basis: 71px; }
+.app[data-page="home"] .room-header-how-to {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  width: 100%; min-height: 27px; padding: 3px 8px; border: 1px solid #d5bd79;
+  border-radius: 9px; color: #fff0bd; background: linear-gradient(#244b35, #10251e);
+  box-shadow: inset 0 1px #ffffff20, 0 2px #071a12, 0 4px 10px #0004;
+  font-size: 10px; font-weight: 850; line-height: 1; white-space: nowrap;
+  cursor: pointer; transition: transform .2s ease, filter .2s ease;
+}
+.app[data-page="home"] .room-header-how-to:hover { transform: translateY(-1px); filter: brightness(1.12); }
+.app[data-page="home"] .room-header-how-to:focus-visible { outline: 3px solid #fff0d1; outline-offset: 2px; }
+.app[data-page="home"] .room-header-play { margin-left: auto; }
+.app[data-page="home"] .header-nav-toggle { margin-left: 0; }
+.app[data-page="home"] .room-header-action:hover { transform: translateY(-2px); filter: brightness(1.12); }
+.app[data-page="home"] .room-header-play.is-open { color: #9dffbd; border-color: #74e9a1; }
+.app[data-page="home"] .room-header-action:focus-visible { outline: 3px solid #fff0d1; outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
   .app[data-page="home"] .room-header-action { transition: none; }
+}
+@media (max-width: 999.98px) {
+  .app[data-page="home"] .view-home .header-top { gap: 5px; }
+  .app[data-page="home"] .view-home .header-top .brand { align-items: center; pointer-events: auto; }
+  .app[data-page="home"] .view-home .header .cow-logo {
+    width: clamp(100px, 34vw, 135px); height: 54px; flex: 0 0 54px;
+    background-size: 270% auto;
+  }
+  .app[data-page="home"] .view-home .header-top .brand .cow-logo { flex-basis: 54px; }
+  .app[data-page="home"] .room-header-action { flex-basis: 36px; width: 36px; height: 36px; border-radius: 10px; }
+  .app[data-page="home"] .header-nav-toggle { display: none; }
+  .app[data-page="home"] .room-header-play {
+    position: fixed; z-index: 51; right: calc(max(10px, env(safe-area-inset-right)) + 60px);
+    bottom: max(12px, env(safe-area-inset-bottom)); width: 52px; height: 52px;
+    flex-basis: 52px; margin: 0; border: 2px solid #d5bd79; border-radius: 15px;
+    background: linear-gradient(#183a2a,#10251e); box-shadow: 0 4px #071a12,0 6px 16px #0005;
+  }
+  .app[data-page="home"] .desktop-nav {
+    position: absolute; z-index: 25; top: calc(100% + 6px); right: 8px;
+    display: none; width: min(260px, calc(100vw - 16px)); max-width: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; padding: 8px;
+    border: 1px solid #d5bd79; border-radius: 13px; background: #10251ef5;
+    box-shadow: 0 6px 20px #0007;
+  }
+  .app[data-page="home"] .desktop-nav.is-expanded { display: grid; opacity: 1; transform: none; pointer-events: auto; }
+  .app[data-page="home"] .desktop-nav .nav-link { width: 100%; min-width: 0; min-height: 42px; }
+}
+@media (max-width: 360px) {
+  .app[data-page="home"] .view-home .header-top { gap: 3px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app[data-page="home"] .room-header-action,
+  .app[data-page="home"] .header-nav-toggle,
+  .app[data-page="home"] .header-nav-toggle svg,
+  .app[data-page="home"] .room-header-how-to { transition: none; }
 }

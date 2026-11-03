@@ -2,21 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-test('pasture header controls bracket navigation and reach the iframe safely', () => {
+test('pasture header controls bracket navigation on desktop and mobile', () => {
   const app = readFileSync(new URL('../web/src/App.tsx', import.meta.url), 'utf8');
   const playButton = app.indexOf('class={`room-header-action room-header-play');
   const hamburger = app.indexOf('class={`header-nav-toggle');
-  const howToPlayButton = app.indexOf('class="room-header-action room-header-how-to"');
+  const howToPlayButton = app.indexOf('class="room-header-how-to"');
 
-  assert.ok(playButton >= 0 && playButton < hamburger && hamburger < howToPlayButton);
-  assert.match(app, /if \(window\.matchMedia\('\(min-width: 1000px\)'\)\.matches\)/);
+  assert.ok(playButton >= 0 && howToPlayButton >= 0 && hamburger > playButton);
+  assert.ok(app.indexOf('class="logo cow-logo"') < howToPlayButton && howToPlayButton < app.indexOf('id="home-header-navigation"'));
+  assert.match(app, /active && !guest && <button[\s\S]*?class="room-header-how-to"/);
+  assert.doesNotMatch(app, /room-header-how-to-mobile/);
+  assert.match(app, /\['history', 'account', 'howToPlay'\]\.includes\(message\.page\)/);
   assert.match(app, /type: 'zeronine:room-auto-menu',\s*open: rangerAutoMenuOpen,\s*controls: true/);
 
   const room = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   assert.match(room, /event\.origin!==location\.origin\|\|event\.source!==parent/);
   assert.match(room, /dispatchEvent\(new PointerEvent\('pointerdown'/);
   assert.match(room, /body\.ranger-auto-menu-open #playerHud/);
-  assert.match(room, /body\.room-header-controls #rangerAutoToggle/);
+  assert.match(room, /body\.room-header-controls #rangerAutoToggle\{display:none!important\}/);
+  assert.ok(room.includes('body.ranger-auto-menu-open #marketHudQuick{visibility:hidden}'), 'mobile swaps the compact level and mission HUD for Ranger Auto');
+  assert.ok(room.includes('bottom:max(84px,calc(env(safe-area-inset-bottom) + 72px))'), 'the mobile Ranger menu stays above the bottom controls');
+  assert.ok(room.includes('@media(max-width:999.98px){.mobileZoom{display:none!important}}'), 'mobile zoom and HUD adjustment controls are removed');
+  assert.match(room, /if\(matchMedia\('\(max-width: 999\.98px\)'\)\.matches\)/);
   assert.match(room, /healthButton\.append\(ping\)/);
   assert.match(room, /ping\.textContent\.slice\(2\)/);
+  assert.match(room, /guestHowToPlay/);
+  assert.match(room, /mode==='demo'\|\|mode==='real'/);
+  assert.match(room, /page:'howToPlay'/);
+  assert.match(room, /event\.origin!==location\.origin\|\|event\.source!==parent/);
+  assert.match(room, /<span><strong>Guest play<\/strong><\/span><button type="button" id="connectDeriv">Connect Deriv<\/button>/);
+  assert.doesNotMatch(room, /No bets are placed/);
+  assert.match(room, /#guestHowToPlay\{border:1px solid #e7c778;background:linear-gradient\(#a92c3f,#681c2b\);color:#fff0bd/);
+
+  const styles = readFileSync(new URL('../web/src/styles.css', import.meta.url), 'utf8');
+  assert.match(styles, /@media \(max-width: 999\.98px\) \{[\s\S]*?\.app\[data-page="home"\] \.room-header-action \{ flex-basis: 36px/);
+  assert.match(styles, /\.app\[data-page="home"\] \.header-nav-toggle \{ display: none; \}/);
+  assert.match(styles, /\.app\[data-page="home"\] \.room-header-play \{\s*position: fixed; z-index: 51; right: calc\(max\(10px, env\(safe-area-inset-right\)\) \+ 60px\)/);
+  assert.match(styles, /\.header \.brand:not\(\.connect-brand\) \.cow-logo::before,[\s\S]*?\.cow-logo::after \{ content: none; \}/);
+  assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header \.cow-logo \{\s*width: clamp\(100px, 34vw, 135px\); height: 54px; flex: 0 0 54px;\s*background-size: 270% auto/);
+  assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \{\s*display: flex; flex: 0 0 auto; flex-direction: column; align-items: center/);
+  assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \.cow-logo \{ flex-basis: 71px; \}/);
+  assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \.cow-logo \{ flex-basis: 54px; \}/);
+  assert.match(styles, /\.app\[data-page="home"\] \.room-header-how-to \{[\s\S]*?width: 100%; min-height: 27px[\s\S]*?background: linear-gradient\(#244b35, #10251e\)/);
+  assert.match(styles, /\.app\[data-page="home"\] \.desktop-nav\.is-expanded \{ display: grid/);
 });
