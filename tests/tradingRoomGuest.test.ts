@@ -338,6 +338,29 @@ test('cooldown timer is centered in the header across viewport sizes', () => {
   assert.match(html, /#breakTimer\.visible\{top:12px!important;font-size:10px!important\}/);
 });
 
+test('Heartbeat menu actions use accessible icon buttons and preserve their handlers', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const panelStart = html.indexOf('<section id="healthPanel"');
+  const panelEnd = html.indexOf('</section>', panelStart);
+  assert.ok(panelStart >= 0 && panelEnd > panelStart, 'the Heartbeat menu exists');
+  const panel = html.slice(panelStart, panelEnd);
+
+  for (const [id, label] of [
+    ['resetStuckAim', 'Reset aim'],
+    ['refreshHealth', 'Refresh'],
+    ['reconnectDeriv', 'Reconnect'],
+    ['reloadPasture', 'Reload'],
+  ]) {
+    assert.match(panel, new RegExp(`<button id="${id}"[^>]*aria-label="[^"]+"[^>]*><svg[^>]*aria-hidden="true"`));
+    assert.ok(panel.includes(`<span>${label}</span>`), `${id} has a visible label`);
+  }
+  assert.match(html, /\.health-actions button svg\{display:block;width:17px;height:17px/);
+  assert.match(html, /\$\('resetStuckAim'\)\.addEventListener\('click'/);
+  assert.match(html, /\$\('refreshHealth'\)\.addEventListener\('click'/);
+  assert.match(html, /\$\('reconnectDeriv'\)\.addEventListener\('click'/);
+  assert.match(html, /\$\('reloadPasture'\)\.addEventListener\('click'/);
+});
+
 test('ranger auto chooses only fresh positive-edge highlighted contracts', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
