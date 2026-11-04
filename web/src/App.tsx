@@ -1453,7 +1453,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           class="trading-room-frame"
           src="/trading-room.html"
           title="Deriv Cows interactive trading pasture"
-          allow="geolocation"
           onLoad={() => { postRoomState(); syncDetailHud(); }}
         />
       </section>}
