@@ -93,6 +93,8 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
   useEffect(() => {
     if (step !== 8) setPaper(false);
     if (step !== 6 && step !== 7) { setAiming(false); setAimDone(false); }
+    if (step === 11 || step === 12) { setMarketsOpen(false); setAutoOpen(true); }
+    if (step === 13 || step === 14) { setMarketsOpen(false); setAutoOpen(false); }
   }, [step]);
   useEffect(() => {
     if (!aiming) return;
@@ -163,8 +165,20 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
         {Array.from({ length: 15 }, (_, index) => <path key={index} d={`M${index * 65 + 20} 20v32 M${index * 65 + 20} 450v32`} stroke="#775336" stroke-width="8" />)}
         {Array.from({ length: 65 }, (_, index) => <circle key={index} cx={(index * 139 + 55) % 900} cy={(index * 79 + 70) % 360 + 55} r={index % 3 === 0 ? 2 : 1} fill={index % 4 === 0 ? '#f5e6bb' : '#93ad65'} />)}
         <path d="M775 32h125v430H750q-18-100 12-215t13-215" fill="#c9ad78" opacity=".72" />
+        {step === 1 && <g class="guide-svg-highlight" pointer-events="none">
+          <circle cx={player.x} cy={player.y - 5} r="48" />
+          <path d={`M${player.x + 50} ${player.y + 15}l35 15`} />
+          <circle cx={player.x + 98} cy={player.y + 35} r="12" />
+          <text x={player.x + 60} y={player.y + 58}>TAP GRASS</text>
+        </g>}
         {step === 5 && <ellipse cx={secondCow.x} cy={secondCow.y + 20} rx="65" ry="31" fill="none" stroke="#ff4057" stroke-width="4" />}
+        {step === 5 && <g class="guide-svg-highlight" pointer-events="none"><ellipse cx={secondCow.x} cy={secondCow.y + 20} rx="73" ry="39" /><text x={secondCow.x - 42} y={secondCow.y + 70}>RED SIGNAL</text></g>}
         <Cow point={secondCow} /><Cow point={cow} highlight />
+        {[2, 5, 6, 8].includes(step) && <g class="guide-svg-highlight" pointer-events="none">
+          <ellipse cx={cow.x} cy={cow.y + 4} rx={step === 5 ? 72 : 66} ry={step === 5 ? 43 : 52} />
+          <text x={cow.x - 46} y={cow.y + 67}>{step === 5 ? 'RINGS' : step === 8 ? 'PAPER TARGET' : 'COW'}</text>
+        </g>}
+        {step === 6 && !aiming && <g pointer-events="none"><rect x={cow.x - 25} y={cow.y - 48} width="50" height="5" fill="#382c27" /><rect x={cow.x - 24} y={cow.y - 47} width="48" height="3" fill="#76cb78" /></g>}
         {aiming && !aimDone && <g><path class="guide-aim-line" d={`M${player.x + 15} ${player.y - 8} L${cow.x} ${cow.y}`} stroke="#f4d17f" stroke-width="3" stroke-dasharray="8 5" /><rect x={cow.x - 25} y={cow.y - 48} width="50" height="5" fill="#382c27" /><rect x={cow.x - 24} y={cow.y - 47} width="32" height="3" fill="#76cb78" /></g>}
         {paper && <g class="guide-paper-ghost"><path d={`M${player.x + 15} ${player.y - 8} L${cow.x} ${cow.y}`} stroke="#f4d17f" stroke-width="3" /><g opacity=".5"><Cow point={cow} /></g></g>}
         <Ranger point={player} />
@@ -182,22 +196,26 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
           <rect x="8" y="40" width="68" height="17" rx="4" fill="#165331" />
           <text x="12" y="52" fill="#8cf0a7" font-size="9" font-weight="900">▲ +4% EDGE</text>
           <text x="101" y="52" fill="#e8eddf" font-size="8" font-weight="800">L 24 · H 26</text>
+          {step === 3 && <g class="guide-svg-highlight" pointer-events="none"><rect x="3" y="3" width="164" height="62" rx="6" /><text x="7" y="-7">COW BUBBLE</text></g>}
+          {step === 4 && <g class="guide-svg-highlight" pointer-events="none"><rect x="5" y="37" width="74" height="23" rx="5" /><text x="5" y="-7">EDGE</text></g>}
         </g>
         {(step === 7 || paper || aiming) && <g transform={`translate(${player.x - 92} ${player.y - 103})`} aria-label="Example ranger trade bubble">
           <rect width="184" height="56" rx="8" fill="#fff0d6" stroke="#a46437" stroke-width="2" />
           <text x="9" y="15" fill="#71533d" font-size="9" font-weight="900">{paper ? 'PAPER · NO MONEY' : aiming ? (aimDone ? 'PRACTICE COMPLETE' : 'AIMING') : 'WON  +0.19 USD · EXAMPLE'}</text>
           <text x="9" y="30" fill="#4e3826" font-size="9" font-weight="800">{paper ? 'Volatility 50 / OVER 2' : 'Volatility 50 / OVER 2 / 1.00 USD'}</text>
           <text x="9" y="45" fill="#27734a" font-size="9" font-weight="800">{paper ? 'ENTRY 1 → EXIT 5 · EXAMPLE' : '▲ +4% EDGE · QUOTE FRESH'}</text>
+          {step === 7 && <g class="guide-svg-highlight" pointer-events="none"><rect x="-4" y="-4" width="192" height="64" rx="10" /><text x="3" y="-10">RANGER BUBBLE</text></g>}
         </g>}
       </svg>
       <div class="guide-game-controls">
-        <button type="button" class={marketsOpen ? 'is-active' : ''} onClick={() => { setMarketsOpen(!marketsOpen); setAutoOpen(false); if (lesson.exercise === 'markets') complete('markets'); }} aria-expanded={marketsOpen}>◎ <span>Markets</span></button>
-        <button type="button" class={autoOpen ? 'is-active' : ''} onClick={() => { setAutoOpen(!autoOpen); setMarketsOpen(false); if (lesson.exercise === 'auto') complete('auto'); }} aria-expanded={autoOpen}>{autoRunning ? '❚❚' : '▶'} <span>{autoRunning ? 'Running' : 'Auto'}</span></button>
+        <button type="button" class={`${marketsOpen ? 'is-active ' : ''}${step === 9 ? 'guide-spot' : ''}`} onClick={() => { setMarketsOpen(!marketsOpen); setAutoOpen(false); if (lesson.exercise === 'markets') complete('markets'); }} aria-expanded={marketsOpen}>◎ <span>Markets</span></button>
+        <button type="button" class={`${autoOpen ? 'is-active ' : ''}${step === 10 ? 'guide-spot' : ''}`} onClick={() => { setAutoOpen(!autoOpen); setMarketsOpen(false); if (lesson.exercise === 'auto') complete('auto'); }} aria-expanded={autoOpen}>{autoRunning ? '❚❚' : '▶'} <span>{autoRunning ? 'Running' : 'Auto'}</span></button>
       </div>
-      {marketsOpen && <aside class="guide-demo-panel" aria-label="Example markets panel"><div><strong>Markets</strong><button onClick={() => setMarketsOpen(false)} aria-label="Close markets">×</button></div><p>Stake <b>1.00 USD</b> · Style <b>Base</b></p><p>Live targets · recent bets · balance</p><small>Example controls only</small></aside>}
-      {autoOpen && <aside class="guide-demo-panel guide-auto-panel" aria-label="Example automation controls"><div><strong>RANGER AUTO</strong><button onClick={() => setAutoOpen(false)} aria-label="Close automation">×</button></div><p>{autoRunning ? 'ACTIVE · Looking for a fresh signal' : 'OFF · Ready to practise'}</p><div class="guide-demo-settings"><span>Stake <b>1.00</b></span><span>Style <b>Base</b></span><span>Losses <b>2</b></span><span>Cooldown <b>45s</b></span><span>Take profit <b>Off</b></span></div><button class="guide-demo-start" onClick={() => { setAutoRunning(!autoRunning); if (lesson.exercise === 'start') complete('start'); }}>{autoRunning ? '❚❚  Pause practice' : '▶  Start practice'}</button><small>Simulation only · no trades</small></aside>}
+      {marketsOpen && <aside class={`guide-demo-panel${step === 9 ? ' guide-spot' : ''}`} aria-label="Example markets panel"><div><strong>Markets</strong><button onClick={() => setMarketsOpen(false)} aria-label="Close markets">×</button></div><p>Stake <b>1.00 USD</b> · Style <b>Base</b></p><p>Live targets · recent bets · balance</p><small>Example controls only</small></aside>}
+      {autoOpen && <aside class="guide-demo-panel guide-auto-panel" aria-label="Example automation controls"><div><strong>RANGER AUTO</strong><button onClick={() => setAutoOpen(false)} aria-label="Close automation">×</button></div><p>{autoRunning ? 'ACTIVE · Looking for a fresh signal' : 'OFF · Ready to practise'}</p><div class={`guide-demo-settings${step === 11 ? ' guide-spot' : ''}`}><span>Stake <b>1.00</b></span><span>Style <b>Base</b></span><span>Losses <b>2</b></span><span>Cooldown <b>45s</b></span><span>Take profit <b>Off</b></span></div><button class={`guide-demo-start${step === 12 ? ' guide-spot' : ''}`} onClick={() => { setAutoRunning(!autoRunning); if (lesson.exercise === 'start') complete('start'); }}>{autoRunning ? '❚❚  Pause practice' : '▶  Start practice'}</button><small>Simulation only · no trades</small></aside>}
       {step === 8 && <button class="guide-paper-accessible" type="button" onClick={paperShot}>Try paper shot</button>}
-      {autoRunning && <div class="guide-run-status"><b>Current run P&amp;L · 0.00</b><span>Example automatic trades</span></div>}
+      {(autoRunning || step === 13) && <div class={`guide-run-status${step === 13 ? ' guide-spot' : ''}`}><b>Current run P&amp;L · 0.00</b><span>Example automatic trades</span>{step === 13 && <span>Ghost scout · paper only</span>}</div>}
+      {step === 14 && <div class="guide-landmarks guide-spot" aria-label="Example pasture tools"><span>🎯 Level &amp; missions</span><span>♡ Connection health</span><span>◆ Gold mine</span><small>Example tools in the pasture</small></div>}
     </div>
     <section class="guide-lesson" key={step} aria-live="polite">
       <div class="guide-progress"><span>LESSON {step + 1} OF {LESSONS.length}</span><div><i style={{ width: `${((step + 1) / LESSONS.length) * 100}%` }} /></div></div>
