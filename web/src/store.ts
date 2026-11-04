@@ -1599,7 +1599,6 @@ export async function bootstrap(): Promise<void> {
   }
   void loadAutoBacktestStatus();
   void loadAutoPaperStatus();
-  void loadGoldState();
   connectWs();
 }
 

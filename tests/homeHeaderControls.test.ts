@@ -10,12 +10,18 @@ test('pasture header controls bracket navigation on desktop and mobile', () => {
 
   assert.ok(playButton >= 0 && howToPlayButton >= 0 && hamburger > playButton);
   assert.ok(app.indexOf('class="logo cow-logo"') < howToPlayButton && howToPlayButton < app.indexOf('id="home-header-navigation"'));
+  const navigation = app.slice(app.indexOf('id="home-header-navigation"'), app.indexOf('</nav>', app.indexOf('id="home-header-navigation"')));
+  assert.doesNotMatch(navigation, /'bot'|'gold'|'howToPlay'/);
+  assert.doesNotMatch(app, /<BotPage\s*\/>|<GoldPage\s*\/>/);
+  assert.match(app, /<CowConfirmationSettings session=\{session\} \/>/);
+  assert.match(app, /Stop legacy bot/);
   assert.match(app, /active && !guest && <button[\s\S]*?class="room-header-how-to"/);
   assert.doesNotMatch(app, /room-header-how-to-mobile/);
   assert.match(app, /\['history', 'account', 'howToPlay'\]\.includes\(message\.page\)/);
   assert.match(app, /type: 'zeronine:room-auto-menu',\s*open: rangerAutoMenuOpen,\s*controls: true/);
 
   const room = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  assert.doesNotMatch(room, /GOLD MINE|page:'gold'/);
   assert.match(room, /event\.origin!==location\.origin\|\|event\.source!==parent/);
   assert.match(room, /dispatchEvent\(new PointerEvent\('pointerdown'/);
   assert.match(room, /body\.ranger-auto-menu-open #playerHud/);
