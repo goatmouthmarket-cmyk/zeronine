@@ -443,24 +443,19 @@ function createPaperTradeDetails(trade) {
   const heading = document.createElement('strong');
   heading.className = 'paper-trade-heading';
   heading.textContent = trade.status === 'open' ? 'PAPER TRADE OPEN' : trade.status === 'won' ? 'PAPER WIN' : 'PAPER LOSS';
-  details.append(heading);
-  const addRow = (label, value) => {
-    const name = document.createElement('span');
-    name.className = 'paper-trade-label';
-    name.textContent = label;
-    const text = document.createElement('span');
-    text.className = 'paper-trade-value';
-    text.textContent = value;
-    details.append(name, text);
-  };
-  addRow('Market', marketName(trade.symbol, lastRoomState));
-  addRow('Prediction', `${trade.direction.toUpperCase()} ${trade.barrier}`);
-  addRow('Entry digit', String(trade.entryDigit));
-  addRow('Result', trade.status === 'open' ? 'Waiting for next tick' : `Exit digit ${trade.exitDigit}`);
+  const market = document.createElement('span');
+  market.className = 'paper-trade-market';
+  market.textContent = marketName(trade.symbol, lastRoomState);
+  const prediction = document.createElement('span');
+  prediction.className = 'paper-trade-prediction';
+  prediction.textContent = `${trade.direction.toUpperCase()} ${trade.barrier}`;
+  const digits = document.createElement('span');
+  digits.className = 'paper-trade-digits';
+  digits.textContent = trade.status === 'open' ? `Entry ${trade.entryDigit} · waiting for next tick` : `Entry ${trade.entryDigit} → exit ${trade.exitDigit}`;
   const note = document.createElement('small');
   note.className = 'paper-trade-note';
   note.textContent = 'REAL MARKET TICK · NO MONEY USED';
-  details.append(note);
+  details.append(heading, market, prediction, digits, note);
   return details;
 }
 
@@ -469,7 +464,14 @@ function renderManualPaperNotice(trade) {
     paperRangerBet.hidden = true;
     return;
   }
-  paperRangerBet.replaceChildren(createPaperTradeDetails(trade));
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 32 32');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', trade.status === 'open' ? 'M10 4h12M10 28h12M12 5c0 5 2 7 4 9 2-2 4-4 4-9M12 27c0-5 2-7 4-9 2 2 4 4 4 9' : trade.status === 'won' ? 'M5 16l7 7L27 8' : 'M8 8l16 16M24 8 8 24');
+  svg.append(path);
+  paperRangerBet.replaceChildren(svg);
+  paperRangerBet.setAttribute('aria-label', trade.status === 'open' ? 'Paper trade waiting for result' : trade.status === 'won' ? 'Paper trade won' : 'Paper trade lost');
   paperRangerBet.dataset.phase = trade.status;
   paperRangerBet.hidden = false;
 }
@@ -919,26 +921,24 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
 .paper-ghost-killed{opacity:0;filter:sepia(.3) brightness(1.6) drop-shadow(0 0 12px #f7edbc);transform:translate(-48.33%,-63%) scale(1.12)}
 .paper-ghost-arrow{position:absolute;z-index:1;height:3px;border-radius:3px;background:linear-gradient(90deg,#f5dfaa44,#f4d17f 70%,#fff1c5);transform-origin:left center;box-shadow:0 0 5px #e4c778a6;transition:opacity .4s ease}
 .paper-arrow-hit{opacity:0}
-.paper-ranger-bet{position:fixed;z-index:16;left:50%;top:30%;transform:translate(-50%,-100%);display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:2px;min-width:150px;max-width:min(230px,calc(100vw - 24px));padding:6px 8px;border:1px solid #b88c61;border-radius:8px;background:#fff0d6f2;box-shadow:0 2px 0 #77513a,0 4px 12px #17351f33;color:#4e3826;text-align:left;font:700 9px/1.2 system-ui;pointer-events:none}
-/* Shared, labeled rows keep the trade details aligned in both notices. */
-.paper-trade-details{display:grid;grid-template-columns:max-content minmax(0,1fr);column-gap:10px;row-gap:3px;min-width:0;align-items:start;line-height:1.3}
-.paper-trade-heading,.paper-trade-note{grid-column:1/-1}
-.paper-trade-heading{color:#276c48;font-size:10px;letter-spacing:.04em}
-[data-phase="lost"] .paper-trade-heading{color:#a83e3e}
-.paper-trade-label{color:#80684e;font-size:9px;font-weight:600}
-.paper-trade-value{min-width:0;color:#4e3826;font-size:10px;overflow-wrap:break-word}
-.paper-trade-note{margin-top:2px;color:#80684e;font-size:8px;font-weight:700;letter-spacing:.02em}
-#toast.paper-toast{width:min(280px,calc(100vw - 20px))!important;align-items:start}
-#toast.paper-toast .paper-trade-details{flex:1}
-.paper-ranger-bet{box-sizing:border-box;width:min(220px,calc(100vw - 24px));max-width:calc(100vw - 24px)}
+.paper-ranger-bet{position:fixed;z-index:16;left:50%;top:30%;transform:translate(-50%,-100%);width:32px;height:32px;pointer-events:none;color:#95ffc0;filter:drop-shadow(0 2px 2px #17351f) drop-shadow(0 0 6px #63e99b);animation:paperResultPop .45s cubic-bezier(.2,1.5,.4,1) both}
 .paper-ranger-bet[hidden]{display:none}
-.paper-ranger-bet strong{color:#276c48;font-size:9px;letter-spacing:.04em;white-space:nowrap}
-.paper-ranger-bet span{min-width:0;overflow-wrap:anywhere}
-.paper-ranger-bet small{grid-column:1/-1;color:#866d50;font-size:7px;letter-spacing:.04em}
-.paper-ranger-bet[data-phase="won"]{border-color:#62a679}.paper-ranger-bet[data-phase="won"] strong{color:#167344}
-.paper-ranger-bet[data-phase="lost"]{border-color:#c88779}.paper-ranger-bet[data-phase="lost"] strong{color:#a83e3e}
+.paper-ranger-bet svg{display:block;width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round}
+.paper-ranger-bet[data-phase="lost"]{color:#ff8386;filter:drop-shadow(0 2px 2px #54252a) drop-shadow(0 0 6px #f45b66)}
+.paper-ranger-bet[data-phase="open"]{width:24px;height:24px;color:#ffe19a;filter:drop-shadow(0 2px 2px #5e4325);animation:paperWaiting 1.3s ease-in-out infinite}
+@keyframes paperResultPop{from{opacity:0;transform:translate(-50%,-75%) scale(.45) rotate(-12deg)}70%{opacity:1;transform:translate(-50%,-105%) scale(1.12) rotate(3deg)}to{opacity:1;transform:translate(-50%,-100%) scale(1)}}
+@keyframes paperWaiting{0%,100%{opacity:.65;transform:translate(-50%,-100%) scale(.9)}50%{opacity:1;transform:translate(-50%,-105%) scale(1)}}
+.paper-trade-details{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 8px;min-width:0;align-items:baseline;line-height:1.25}
+.paper-trade-heading{grid-column:1/-1;color:#276c48;font-size:10px;letter-spacing:.04em}
+[data-phase="lost"] .paper-trade-heading{color:#a83e3e}
+.paper-trade-market{grid-column:1/-1;min-width:0;color:#4e3826;font-size:10px;overflow-wrap:break-word}
+.paper-trade-prediction{color:#276c48;font-size:9px;white-space:nowrap}
+.paper-trade-digits{min-width:0;color:#5c5140;font-size:9px;overflow-wrap:break-word}
+.paper-trade-note{grid-column:1/-1;color:#80684e;font-size:8px;font-weight:700;letter-spacing:.02em}
+#toast.paper-toast{width:min(240px,calc(100vw - 20px))!important;align-items:start}
+#toast.paper-toast .paper-trade-details{flex:1}
 @keyframes paperCowAppear{from{opacity:0;filter:brightness(1.5) drop-shadow(0 0 12px #f6ebc3)}to{opacity:.76;filter:sepia(.18) saturate(.65) brightness(1.18) drop-shadow(0 0 5px #e6f5c9)}}
-@media(prefers-reduced-motion:reduce){.paper-ghost-cow,.paper-ghost-arrow{animation:none!important;transition:none!important}}
+@media(prefers-reduced-motion:reduce){.paper-ghost-cow,.paper-ghost-arrow,.paper-ranger-bet{animation:none!important;transition:none!important}}
 </style>
 <style id="guest-how-to-controls">
 #guestHowToPlay{border:1px solid #e7c778;background:linear-gradient(#a92c3f,#681c2b);color:#fff0bd;box-shadow:inset 0 1px #ffffff28,0 2px #431522}

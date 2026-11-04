@@ -32,7 +32,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
     return elements.get(id);
   };
   const context: Record<string, any> = {
-    document: { querySelector: () => element('canvas'), getElementById: element, createElement: () => element('child'), body: { appendChild() {} }, addEventListener() {} },
+    document: { querySelector: () => element('canvas'), getElementById: element, createElement: () => element('child'), createElementNS: () => element('svg-child'), body: { appendChild() {} }, addEventListener() {} },
     parent: { postMessage: (message: { type: string; payload?: { stake?: number; market?: string; barrier?: number } }) => messages.push(message) },
     location: { origin: 'https://example.test' },
     window: { addEventListener() {} }, addEventListener() {}, requestAnimationFrame() {},
