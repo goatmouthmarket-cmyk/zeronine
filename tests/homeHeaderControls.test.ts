@@ -55,7 +55,7 @@ test('pasture header controls bracket navigation on desktop and mobile', () => {
   assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \{\s*position: relative; z-index: 26;\s*display: flex; flex: 0 0 auto; flex-direction: column; align-items: center/);
   assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \.cow-logo \{ flex-basis: 71px; \}/);
   assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header-top \.brand \.cow-logo \{ flex-basis: 54px; \}/);
-  assert.match(styles, /\.app\[data-page="home"\] \.room-header-how-to \{[\s\S]*?z-index: 27; pointer-events: auto;[\s\S]*?width: 100%; min-height: 24px[\s\S]*?background: #f6ddb9;[\s\S]*?box-shadow: none/);
+  assert.match(styles, /\.app\[data-page="home"\] \.room-header-how-to \{[\s\S]*?z-index: 27; pointer-events: auto;[\s\S]*?width: 100%; min-height: 24px[\s\S]*?background: #f7ead5;[\s\S]*?box-shadow: 0 3px/);
   assert.match(styles, /\.app\[data-page="home"\] \.view-home \.header \.cow-logo \{ pointer-events: auto; \}/);
   assert.match(styles, /\.app\[data-page="home"\] \.desktop-nav\.is-expanded \{ display: grid/);
 });
