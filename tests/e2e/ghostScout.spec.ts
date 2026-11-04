@@ -48,8 +48,5 @@ test('Ranger Auto exposes separate entry timing, ring and paper research control
   await game.locator('#manualMinEdge').fill('2.5');
   await game.locator('#manualMinEdge').blur();
   await expect(game.locator('#manualMinEdge')).toHaveValue('2.5');
-  await expect(game.getByLabel('Skip if signal changes')).toBeChecked();
-  await game.getByLabel('Skip if signal changes').uncheck();
-  await expect(game.getByLabel('Skip if signal changes')).not.toBeChecked();
   await expect(game.locator('.hud-avatar svg')).toHaveCount(1);
 });

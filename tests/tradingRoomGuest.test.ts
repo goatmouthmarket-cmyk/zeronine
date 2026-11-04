@@ -24,7 +24,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
-  const messages: Array<{ type: string; payload?: { stake?: number; market?: string; barrier?: number } }> = [];
+  const messages: Array<{ type: string; payload?: { stake?: number; market?: string; barrier?: number; direction?: string; minEdge?: number | null } }> = [];
   const listeners = new Map<string, Map<string, (...args: any[]) => void>>();
   const savedStyles = new Map<string, string>();
   const elements = new Map<string, any>();
@@ -50,7 +50,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   };
   const context: Record<string, any> = {
     document: { querySelector: () => element('canvas'), getElementById: element, createElement: () => element('child'), createElementNS: () => element('svg-child'), body: { appendChild() {} }, addEventListener() {} },
-    parent: { postMessage: (message: { type: string; payload?: { stake?: number; market?: string; barrier?: number } }) => messages.push(message) },
+    parent: { postMessage: (message: { type: string; payload?: { stake?: number; market?: string; barrier?: number; direction?: string; minEdge?: number | null } }) => messages.push(message) },
     location: { origin: 'https://example.test' },
     window: { addEventListener() {} }, addEventListener() {}, requestAnimationFrame() {},
     setInterval: () => 1, clearInterval() {},
@@ -64,7 +64,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
       setItem: (key: string, value: string) => savedStyles.set(key, value),
     },
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; const epoch = Date.now() / 1000; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: epoch, lastQuote: 100.1, lastDigit: 1, recentTicks: [{ epoch, quote: 100.1, digit: 1 }] }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; }; globalThis.testGhostPanel = { overlap: () => { ghost.x = cows[0].x; ghost.y = cows[0].y + 8; } }; globalThis.testManualPaper = { trades: manualPaperTrades, cow: cows[0], setTarget: (symbol) => { cows[0].contract = { market: "Selected market", symbol, kind: "OVER", barrier: 2 }; cows[0].x = 320; cows[0].y = 240; cows[0].alive = true; cows[0].hp = 3; }, point: (cow) => { const cam = camera(); return { clientX: (cow.x - cam.x) * zoom, clientY: (cow.y - cam.y) * zoom }; } };})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; lastRoomState = { feedConnected: true }; const epoch = Date.now() / 1000; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: epoch, lastQuote: 100.1, lastDigit: 1, recentTicks: [{ epoch, quote: 100.1, digit: 1 }] }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; }; globalThis.testGhostPanel = { overlap: () => { ghost.x = cows[0].x; ghost.y = cows[0].y + 8; } }; globalThis.testManualPaper = { trades: manualPaperTrades, cow: cows[0], setTarget: (symbol) => { cows[0].contract = { market: "Selected market", symbol, kind: "OVER", barrier: 2 }; cows[0].x = 320; cows[0].y = 240; cows[0].alive = true; cows[0].hp = 3; }, point: (cow) => { const cam = camera(); return { clientX: (cow.x - cam.x) * zoom, clientY: (cow.y - cam.y) * zoom }; } };})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   const rangerPanel = elements.get('rangerAutoHud');
@@ -117,13 +117,15 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   assert.equal(context.testManualPaper.trades.length, 2, 'opening the scout details never creates a paper entry');
   assert.equal(paperTarget.hp, 3);
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'paper entries never request a real/demo account trade');
-  context.testDefeat({ contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 }, tradeIntent: { accountId: 'REAL_A', stake: 1, signalProtection: true, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
-  assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'protected manual entry does not submit without a fresh matching feed');
+  context.testDefeat({ contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1, edge: .01 }, tradeIntent: { accountId: 'REAL_A', stake: 1, minEdge: .02, contract: { symbol: 'SELECTED' } } });
+  assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'edge below the minimum at impact does not submit');
   element('cowStake').value = '2.50';
-  context.testDefeat({ contract: { market: 'Changed', symbol: 'CHANGED', kind: 'UNDER', barrier: 8 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
+  context.testDefeat({ contract: { market: 'Selected', symbol: 'SELECTED', kind: 'UNDER', barrier: 8, edge: .04 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, minEdge: .02, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
   const trade = messages.find((message) => message.type === 'zeronine:room-trade');
   assert.equal(trade?.payload?.stake, 1.75, 'the amount selected when targeting is used');
-  assert.equal(trade?.payload?.market, 'SELECTED', 'the contract selected when targeting is preserved');
+  assert.equal(trade?.payload?.market, 'SELECTED', 'the hit market is preserved');
+  assert.equal(trade?.payload?.direction, 'under', 'the setup at impact is locked even when it changed while aiming');
+  assert.equal(trade?.payload?.minEdge, null, 'the impact threshold is not recalculated after the hit');
   element('cowStake').value = '0';
   context.testSubmit({ market: 'Test', symbol: 'TEST', kind: 'OVER', barrier: 1 });
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, 1, 'an invalid stake never submits a trade');
@@ -134,22 +136,6 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   listeners.get('cowBetStyle')?.get('change')?.();
   assert.equal(context.testStyle(), 'chase', 'the pasture selector changes the active recovery plan');
   assert.equal(savedStyles.get('pasture-manual-bet-style'), 'chase', 'the selected style is persisted');
-});
-
-test('manual signal protection checks the selected setup without requiring Auto ranking', () => {
-  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
-  const start = html.indexOf('function manualSignalChanged(');
-  const end = html.indexOf('function onCowDefeated(', start);
-  assert.ok(start >= 0 && end > start);
-  const changed = runInNewContext(`${html.slice(start, end)}; manualSignalChanged`) as (selected: unknown, current: unknown, fresh: boolean, feed: boolean) => boolean;
-  const selected = { symbol: 'R_50', kind: 'OVER', barrier: 2, edge: .04, hitSignal: true };
-  assert.equal(changed(selected, { ...selected, edge: .01 }, true, true), false);
-  assert.equal(changed(selected, { ...selected, barrier: 1 }, true, true), true);
-  assert.equal(changed(selected, { ...selected, edge: -.01 }, true, true), true);
-  assert.equal(changed(selected, { ...selected, hitSignal: false }, true, true), true);
-  assert.equal(changed(selected, selected, false, true), true);
-  assert.equal(changed(selected, selected, true, false), true);
-  assert.equal(changed({ ...selected, edge: -.01, hitSignal: false }, { ...selected, edge: -.02, hitSignal: false }, true, true), false);
 });
 
 test('pasture base and martingale styles calculate from the entered stake', () => {
