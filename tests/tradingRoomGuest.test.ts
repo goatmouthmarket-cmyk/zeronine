@@ -536,10 +536,9 @@ test('fresh paper entry signals show a red bet-now marker without replacing othe
   assert.match(script, /v===ghostCow&&tag\.symbol\?marketName\(tag\.symbol,lastRoomState\)/);
 });
 
-test('cooldown timer stays centered below the header and guest banner', () => {
+test('cooldown timer stays centered inside the header', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
-  assert.match(html, /#breakTimer\.visible\{display:flex;align-items:center;top:76px!important;left:50%!important/);
-  assert.match(html, /body:has\(#guestBanner:not\(\[hidden\]\)\) #breakTimer\.visible\{top:122px!important\}/);
+  assert.match(html, /#breakTimer\.visible\{display:flex;align-items:center;top:12px!important;left:50%!important/);
 });
 test('Heartbeat menu actions use accessible icon buttons and preserve their handlers', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
