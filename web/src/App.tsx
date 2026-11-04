@@ -1393,7 +1393,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       <header class="header">
         <div class="header-top">
           <div class="brand">
-            <div class="logo cow-logo"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></div>
+            <button type="button" class="logo cow-logo" aria-label="Return to the pasture" onClick={() => { setMarketChooserOpen(false); setRangerAutoMenuOpen(false); setHeaderNavOpen(false); onNavigate('home'); }}><img src="/deriv-cows-logo.png" alt="" /></button>
             {active && !guest && <button
               type="button"
               class="room-header-how-to"

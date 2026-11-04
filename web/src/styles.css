@@ -78,6 +78,8 @@
 .header .brand:not(.connect-brand) .cow-logo::before,
 .header .brand:not(.connect-brand) .cow-logo::after { content: none; }
 .cow-logo img { opacity: 0; }
+.header button.cow-logo { cursor: pointer; }
+.header button.cow-logo:focus-visible { outline: 3px solid #fff0d1; outline-offset: 3px; }
 .desktop-nav .nav-link {
     margin-inline: 3px; border: 2px solid var(--pasture-outline); border-radius: 12px;
     background: linear-gradient(var(--pasture-panel-raised), var(--pasture-panel)); color: var(--pasture-cream);
@@ -6708,7 +6710,7 @@ button.activity-row {
 @media (max-width: 999.98px) {
   .app[data-page="home"] .view-home .header-top { gap: 5px; }
   .app[data-page="home"] .view-home .header-top .brand { align-items: center; pointer-events: auto; }
-  .app[data-page="home"] .view-home .header .cow-logo { pointer-events: none; }
+  .app[data-page="home"] .view-home .header .cow-logo { pointer-events: auto; }
   .app[data-page="home"] .view-home .header .cow-logo {
     width: clamp(100px, 34vw, 135px); height: 54px; flex: 0 0 54px;
     background-size: 270% auto;
