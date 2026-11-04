@@ -12,12 +12,16 @@ html:has(.view-how-to-play), body:has(.view-how-to-play) { height: 100%; overflo
 .guide-scene { position: absolute; inset: 0 0 0 0; overflow: hidden; background: #53894b; }
 .guide-pasture { display: block; width: 100%; height: 100%; touch-action: manipulation; }
 .guide-pasture:focus-visible, .guide-cow-target:focus-visible, .guide-market-card:focus-visible { outline: 3px solid #ffe49e; outline-offset: -4px; }
-.guide-cow-target, .guide-market-card { cursor: pointer; }.guide-paper-ghost { animation: guide-ghost 1.2s ease-out both; pointer-events: none; }
+.guide-cow-target, .guide-market-card { cursor: pointer; }.guide-paper-ghost { pointer-events: none; }
+.guide-paper-cow { opacity: 0; transform-origin: center; filter: sepia(.18) saturate(.65) brightness(1.2) drop-shadow(0 0 5px #e6f5c9); animation: guide-paper-cow 1.2s ease-out both; }
+.guide-paper-line { stroke-dasharray: 1; animation: guide-paper-line 1.2s ease-out both; }
+.guide-cow-impact { animation: guide-impact .32s ease-out; }
 .guide-svg-highlight { fill: none; stroke: #fff3bc; stroke-width: 3; stroke-dasharray: 6 4; filter: drop-shadow(0 0 4px #593b1a); animation: guide-highlight 1.5s ease-in-out infinite; }
 .guide-svg-highlight text { fill: #fff9df; stroke: #315139; stroke-width: 2.5px; paint-order: stroke; font: 900 10px system-ui; letter-spacing: .05em; }
 .guide-spot { outline: 3px solid #fff0a4; outline-offset: 3px; animation: guide-highlight 1.5s ease-in-out infinite; }
 .guide-ranger { transition: transform .45s ease-in-out; }
 .guide-aim-line { animation: guide-arrow .5s linear infinite; }
+.guide-arrow-flight { offset-rotate: auto; animation: guide-flight .55s linear 3 both; }
 .guide-game-controls { position: absolute; z-index: 3; right: max(14px,env(safe-area-inset-right)); top: 76px; display: flex; gap: 6px; }
 .guide-game-controls button { display: grid; min-width: 49px; min-height: 44px; place-items: center; padding: 3px 7px; border: 2px solid #ab754a; border-radius: 9px; background: #f5d9ac; color: #31543b; font: 900 15px system-ui; cursor: pointer; box-shadow: 0 3px #765039; }
 .guide-game-controls button span { font-size: 8px; }.guide-game-controls .is-active { background: #d7edce; border-color: #518655; }
@@ -37,8 +41,11 @@ html:has(.view-how-to-play), body:has(.view-how-to-play) { height: 100%; overflo
 .guide-navigation { display: flex; justify-content: space-between; gap: 10px; margin-top: 10px; }.guide-navigation button { min-height: 35px; padding: 6px 12px; border: 1px solid #b99472; border-radius: 8px; color: #65472e; background: #fff8ea; font: 800 11px system-ui; cursor: pointer; }.guide-navigation button:disabled { opacity: .4; cursor: default; }.guide-navigation .guide-next { margin-left: auto; border-color: #285e3d; color: #fff7de; background: #2d794c; }
 .guide-navigation button:focus-visible,.guide-exit:focus-visible,.guide-game-controls button:focus-visible,.guide-demo-panel button:focus-visible,.guide-paper-accessible:focus-visible { outline: 3px solid #f5cd6e; outline-offset: 2px; }
 @keyframes guide-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes guide-ghost { 0% { opacity: 0; } 25%, 60% { opacity: 1; } 100% { opacity: .4; } }
+@keyframes guide-paper-cow { 0% { opacity: 0; transform: translateY(4px); } 25% { opacity: .78; transform: translateY(0); } 45% { opacity: .78; } 100% { opacity: 0; transform: translateY(-15px); } }
+@keyframes guide-paper-line { 0% { stroke-dashoffset: 1; opacity: 0; } 20% { opacity: 1; } 40% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes guide-impact { 50% { filter: brightness(1.5) drop-shadow(0 0 6px #ffe7a1); } }
 @keyframes guide-arrow { to { stroke-dashoffset: -26; } }
+@keyframes guide-flight { from { offset-distance: 0%; } to { offset-distance: 100%; } }
 @keyframes guide-highlight { 50% { opacity: .7; } }
 @media (max-width: 600px) {
   .guide-top { top: max(8px,env(safe-area-inset-top)); left: 8px; right: 8px; gap: 7px; }
@@ -49,4 +56,4 @@ html:has(.view-how-to-play), body:has(.view-how-to-play) { height: 100%; overflo
   .guide-lesson { bottom: max(8px,env(safe-area-inset-bottom)); left: 8px; width: calc(100% - 16px); max-height: min(43dvh,270px); padding: 10px 12px; }
   .guide-lesson h1 { font-size: 16px; margin: 5px 0 3px; }.guide-lesson p { font-size: 11px; line-height: 1.3; }.guide-lesson .guide-tip { margin-top: 5px; font-size: 10px; }.guide-navigation { margin-top: 7px; }
 }
-@media (prefers-reduced-motion: reduce) { .guide-lesson,.guide-paper-ghost,.guide-aim-line,.guide-svg-highlight,.guide-spot { animation: none; }.guide-progress i,.guide-ranger { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .guide-lesson,.guide-paper-cow,.guide-paper-line,.guide-cow-impact,.guide-aim-line,.guide-arrow-flight,.guide-svg-highlight,.guide-spot { animation: none; }.guide-paper-cow { opacity: .55; }.guide-progress i,.guide-ranger { transition: none; } }

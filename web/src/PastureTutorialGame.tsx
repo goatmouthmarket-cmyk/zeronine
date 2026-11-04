@@ -13,7 +13,7 @@ const LESSONS: Lesson[] = [
   { title: 'Move your ranger', body: 'Click or tap an open patch of grass to walk there. On a keyboard, use WASD or the arrow keys.', tip: 'On desktop, scroll to zoom. On touchscreens, pinch to zoom.', exercise: 'move' },
   { title: 'Meet the markets', body: 'Each cow shows a market, such as Volatility 50. A market has its own changing stream of prices and final digits.', tip: 'Volatility 50 (1s) and Volatility 50 are different markets. Tap a cow to inspect its example.', exercise: 'cow' },
   { title: 'Read the cow’s bubble', body: 'OVER 2 means the final digit must be greater than 2. UNDER 7 means it must be less than 7. The barrier itself loses.', tip: 'Confidence is an estimate. L and H count recent low digits (0–4) and high digits (5–9).' },
-  { title: 'Understand edge', body: 'Edge compares the estimated chance of winning with the chance needed to break even at the estimated payout.', tip: 'Positive edge is a model estimate, not a promise of profit. Estimates and quotes can change.' },
+  { title: 'Understand edge', body: 'Edge compares the estimated chance of winning with the chance needed to break even at the estimated payout.', tip: 'Compare the green positive edge with the weaker red negative example. Both are estimates, not promises, and can change.' },
   { title: 'What the rings mean', body: 'Green marks the strongest fresh positive edge. Gold marks the highest confidence-weighted return estimate.', tip: 'A red ring marks a fresh entry signal. A cow can have more than one highlight; none guarantees a win.' },
   { title: 'Aim at a cow', body: 'Left-click or tap a cow. The ranger moves into position and shoots automatically; the health bar shows progress.', tip: 'In guest play this is practice. When connected, defeating a cow can submit the selected contract, subject to account and risk checks.', exercise: 'aim' },
   { title: 'Read the ranger’s bubble', body: 'The bubble shows status, market, direction, barrier, stake and style, plus the quote freshness and estimated edge when available.', tip: 'After settlement, the digit and WON or LOST result appear with profit or loss and any remaining session loss. Tap the bubble to dismiss it.' },
@@ -70,10 +70,17 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
   const [autoOpen, setAutoOpen] = useState(false);
   const [autoRunning, setAutoRunning] = useState(false);
   const [paper, setPaper] = useState(false);
+  const [paperSequence, setPaperSequence] = useState(0);
+  const [paperSettled, setPaperSettled] = useState(false);
   const [aiming, setAiming] = useState(false);
   const [aimDone, setAimDone] = useState(false);
+  const [hits, setHits] = useState(0);
+  const [shotSequence, setShotSequence] = useState(0);
+  const [autoSequence, setAutoSequence] = useState(0);
+  const [autoPhase, setAutoPhase] = useState<'idle' | 'moving' | 'aiming' | 'result'>('idle');
   const [selected, setSelected] = useState(false);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 600px)').matches);
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const pressTimer = useRef<number | null>(null);
   const suppressClick = useRef(false);
   const lesson = LESSONS[step];
@@ -91,16 +98,40 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
     return () => media.removeEventListener('change', update);
   }, []);
   useEffect(() => {
-    if (step !== 8) setPaper(false);
-    if (step !== 6 && step !== 7) { setAiming(false); setAimDone(false); }
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = (): void => setReducedMotion(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (step !== 8) { setPaper(false); setPaperSettled(false); }
+    if (step !== 6 && step !== 7) { setAiming(false); setAimDone(false); setHits(0); }
     if (step === 11 || step === 12) { setMarketsOpen(false); setAutoOpen(true); }
     if (step === 13 || step === 14) { setMarketsOpen(false); setAutoOpen(false); }
   }, [step]);
   useEffect(() => {
     if (!aiming) return;
-    const timer = window.setTimeout(() => setAimDone(true), 1800);
+    const timers = [1, 2, 3].map((hit) => window.setTimeout(() => setHits(hit), 450 + hit * 500));
+    timers.push(window.setTimeout(() => setAimDone(true), 2200));
+    return () => timers.forEach(window.clearTimeout);
+  }, [aiming, shotSequence]);
+  useEffect(() => {
+    if (!paper || paperSequence === 0) return;
+    const timer = window.setTimeout(() => setPaperSettled(true), 1100);
     return () => window.clearTimeout(timer);
-  }, [aiming]);
+  }, [paper, paperSequence]);
+  useEffect(() => {
+    if (!autoRunning || !autoSequence) { setAutoPhase('idle'); return; }
+    setAutoPhase('moving');
+    setHits(0);
+    setPlayer({ x: cow.x - 135, y: cow.y + 85 });
+    const timers = [
+      window.setTimeout(() => setAutoPhase('aiming'), 650),
+      ...[1, 2, 3].map((hit) => window.setTimeout(() => setHits(hit), 650 + hit * 500)),
+      window.setTimeout(() => setAutoPhase('result'), 2400),
+    ];
+    return () => timers.forEach(window.clearTimeout);
+  }, [autoRunning, autoSequence]);
 
   const complete = (exercise: NonNullable<Lesson['exercise']>): void => setDone((previous) => ({ ...previous, [exercise]: true }));
   const next = (): void => setStep((value) => Math.min(LESSONS.length - 1, value + 1));
@@ -123,11 +154,13 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
     if (suppressClick.current) { suppressClick.current = false; return; }
     setSelected(true);
     if (lesson.exercise === 'cow') complete('cow');
-    if (lesson.exercise === 'aim') { setAimDone(false); setAiming(true); complete('aim'); }
+    if (lesson.exercise === 'aim') {
+      setAimDone(false); setHits(0); setPlayer({ x: cow.x - 135, y: cow.y + 85 }); setAiming(true); setShotSequence((value) => value + 1); complete('aim');
+    }
   };
   const paperShot = (): void => {
     if (lesson.exercise !== 'paper') return;
-    setPaper(true);
+    setPaper(true); setPaperSettled(false); setPaperSequence((value) => value + 1);
     complete('paper');
   };
   const onGrass = (event: MouseEvent): void => {
@@ -150,6 +183,8 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
     if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
     pressTimer.current = null;
   };
+  const shooting = (aiming && !aimDone) || (autoRunning && autoPhase === 'aiming');
+  const arrowPath = `M${player.x + 15} ${player.y - 8} L${cow.x} ${cow.y}`;
 
   return <section class="pasture-guide" aria-label="Interactive practice pasture">
     <header class="guide-top">
@@ -171,16 +206,22 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
           <circle cx={player.x + 98} cy={player.y + 35} r="12" />
           <text x={player.x + 60} y={player.y + 58}>TAP GRASS</text>
         </g>}
-        {step === 5 && <ellipse cx={secondCow.x} cy={secondCow.y + 20} rx="65" ry="31" fill="none" stroke="#ff4057" stroke-width="4" />}
-        {step === 5 && <g class="guide-svg-highlight" pointer-events="none"><ellipse cx={secondCow.x} cy={secondCow.y + 20} rx="73" ry="39" /><text x={secondCow.x - 42} y={secondCow.y + 70}>RED SIGNAL</text></g>}
-        <Cow point={secondCow} /><Cow point={cow} highlight />
+        {step === 5 && <ellipse cx={cow.x} cy={cow.y + 20} rx="65" ry="31" fill="none" stroke="#ff4057" stroke-width="4" />}
+        <Cow point={secondCow} /><g key={`hit-${hits}-${autoPhase}`} class={hits > 0 && !aimDone || autoPhase === 'result' ? 'guide-cow-impact' : ''}><Cow point={cow} highlight /></g>
         {[2, 5, 6, 8].includes(step) && <g class="guide-svg-highlight" pointer-events="none">
           <ellipse cx={cow.x} cy={cow.y + 4} rx={step === 5 ? 72 : 66} ry={step === 5 ? 43 : 52} />
           <text x={cow.x - 46} y={cow.y + 67}>{step === 5 ? 'RINGS' : step === 8 ? 'PAPER TARGET' : 'COW'}</text>
         </g>}
         {step === 6 && !aiming && <g pointer-events="none"><rect x={cow.x - 25} y={cow.y - 48} width="50" height="5" fill="#382c27" /><rect x={cow.x - 24} y={cow.y - 47} width="48" height="3" fill="#76cb78" /></g>}
-        {aiming && !aimDone && <g><path class="guide-aim-line" d={`M${player.x + 15} ${player.y - 8} L${cow.x} ${cow.y}`} stroke="#f4d17f" stroke-width="3" stroke-dasharray="8 5" /><rect x={cow.x - 25} y={cow.y - 48} width="50" height="5" fill="#382c27" /><rect x={cow.x - 24} y={cow.y - 47} width="32" height="3" fill="#76cb78" /></g>}
-        {paper && <g class="guide-paper-ghost"><path d={`M${player.x + 15} ${player.y - 8} L${cow.x} ${cow.y}`} stroke="#f4d17f" stroke-width="3" /><g opacity=".5"><Cow point={cow} /></g></g>}
+        {shooting && <g pointer-events="none" key={`shoot-${shotSequence}-${autoSequence}`}>
+          <path class="guide-aim-line" d={arrowPath} stroke="#f4d17f" stroke-width="2" stroke-dasharray="8 5" />
+          <rect x={cow.x - 25} y={cow.y - 48} width="50" height="5" fill="#382c27" /><rect x={cow.x - 24} y={cow.y - 47} width={48 * (3 - hits) / 3} height="3" fill="#76cb78" />
+          {!reducedMotion && <g class="guide-arrow-flight" style={{ offsetPath: `path("${arrowPath}")` }}><path d="M-12 0H7M2-4 8 0 2 4" fill="none" stroke="#fff4cf" stroke-width="3" stroke-linecap="round" /></g>}
+        </g>}
+        {paper && <g key={paperSequence} class="guide-paper-ghost" pointer-events="none">
+          <path class="guide-paper-line" d={arrowPath} pathLength="1" stroke="#f4d17f" stroke-width="3" />
+          <g transform={`translate(${cow.x} ${cow.y})`}><g class="guide-paper-cow"><Cow point={{ x: 0, y: 0 }} /></g></g>
+        </g>}
         <Ranger point={player} />
         <g class="guide-cow-target" role="button" tabIndex={0} aria-label="Practice cow: Volatility 50, over 2" onClick={(event) => { event.stopPropagation(); selectCow(); }}
           onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectCow(); } }}
@@ -199,11 +240,21 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
           {step === 3 && <g class="guide-svg-highlight" pointer-events="none"><rect x="3" y="3" width="164" height="62" rx="6" /><text x="7" y="-7">COW BUBBLE</text></g>}
           {step === 4 && <g class="guide-svg-highlight" pointer-events="none"><rect x="5" y="37" width="74" height="23" rx="5" /><text x="5" y="-7">EDGE</text></g>}
         </g>
-        {(step === 7 || paper || aiming) && <g transform={`translate(${player.x - 92} ${player.y - 103})`} aria-label="Example ranger trade bubble">
+        <g class="guide-weak-card" transform={`translate(${Math.max(compact ? 255 : 0, secondCow.x - 85)} 118)`} aria-label="Weaker example: Volatility 10, 51 percent confidence and negative 4 percent edge">
+          <rect width="170" height="61" rx="8" fill="#10271e" stroke="#b47d70" stroke-width="1" />
+          <text x="9" y="15" fill="#fff4cf" font-size="10" font-weight="800">Volatility 10</text>
+          <text x="9" y="31" fill="#f3c5b6" font-size="10" font-weight="900">↓ UNDER 7</text>
+          <text x="105" y="31" fill="#e9efe3" font-size="8" font-weight="800">51% CONF</text>
+          <rect x="8" y="38" width="68" height="16" rx="4" fill="#742d35" />
+          <text x="12" y="50" fill="#ffb9b0" font-size="9" font-weight="900">▼ -4% EDGE</text>
+          <text x="96" y="50" fill="#e8eddf" font-size="8" font-weight="800">EXAMPLE</text>
+          {step === 4 && <g class="guide-svg-highlight" pointer-events="none"><rect x="5" y="35" width="74" height="22" rx="5" /><text x="5" y="-7">WEAKER EDGE</text></g>}
+        </g>
+        {(step === 7 || paper || aiming || autoRunning) && <g transform={`translate(${player.x - 92} ${player.y - 103})`} aria-label="Example ranger trade bubble">
           <rect width="184" height="56" rx="8" fill="#fff0d6" stroke="#a46437" stroke-width="2" />
-          <text x="9" y="15" fill="#71533d" font-size="9" font-weight="900">{paper ? 'PAPER · NO MONEY' : aiming ? (aimDone ? 'PRACTICE COMPLETE' : 'AIMING') : 'WON  +0.19 USD · EXAMPLE'}</text>
+          <text x="9" y="15" fill="#71533d" font-size="9" font-weight="900">{paper ? (paperSettled ? 'PAPER WON · EXAMPLE' : 'PAPER OPEN · NO MONEY') : aiming ? (aimDone ? 'PRACTICE COMPLETE' : 'AIMING') : autoRunning ? (autoPhase === 'result' ? 'AUTO WON · EXAMPLE' : 'AUTO · EXAMPLE') : 'WON  +0.19 USD · EXAMPLE'}</text>
           <text x="9" y="30" fill="#4e3826" font-size="9" font-weight="800">{paper ? 'Volatility 50 / OVER 2' : 'Volatility 50 / OVER 2 / 1.00 USD'}</text>
-          <text x="9" y="45" fill="#27734a" font-size="9" font-weight="800">{paper ? 'ENTRY 1 → EXIT 5 · EXAMPLE' : '▲ +4% EDGE · QUOTE FRESH'}</text>
+          <text x="9" y="45" fill="#27734a" font-size="9" font-weight="800">{paper ? (paperSettled ? 'ENTRY 1 → EXIT 5 · EXAMPLE' : 'ENTRY 1 · WAITING FOR NEXT TICK') : '▲ +4% EDGE · QUOTE FRESH'}</text>
           {step === 7 && <g class="guide-svg-highlight" pointer-events="none"><rect x="-4" y="-4" width="192" height="64" rx="10" /><text x="3" y="-10">RANGER BUBBLE</text></g>}
         </g>}
       </svg>
@@ -212,9 +263,9 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
         <button type="button" class={`${autoOpen ? 'is-active ' : ''}${step === 10 ? 'guide-spot' : ''}`} onClick={() => { setAutoOpen(!autoOpen); setMarketsOpen(false); if (lesson.exercise === 'auto') complete('auto'); }} aria-expanded={autoOpen}>{autoRunning ? '❚❚' : '▶'} <span>{autoRunning ? 'Running' : 'Auto'}</span></button>
       </div>
       {marketsOpen && <aside class={`guide-demo-panel${step === 9 ? ' guide-spot' : ''}`} aria-label="Example markets panel"><div><strong>Markets</strong><button onClick={() => setMarketsOpen(false)} aria-label="Close markets">×</button></div><p>Stake <b>1.00 USD</b> · Style <b>Base</b></p><p>Live targets · recent bets · balance</p><small>Example controls only</small></aside>}
-      {autoOpen && <aside class="guide-demo-panel guide-auto-panel" aria-label="Example automation controls"><div><strong>RANGER AUTO</strong><button onClick={() => setAutoOpen(false)} aria-label="Close automation">×</button></div><p>{autoRunning ? 'ACTIVE · Looking for a fresh signal' : 'OFF · Ready to practise'}</p><div class={`guide-demo-settings${step === 11 ? ' guide-spot' : ''}`}><span>Stake <b>1.00</b></span><span>Style <b>Base</b></span><span>Losses <b>2</b></span><span>Cooldown <b>45s</b></span><span>Take profit <b>Off</b></span></div><button class={`guide-demo-start${step === 12 ? ' guide-spot' : ''}`} onClick={() => { setAutoRunning(!autoRunning); if (lesson.exercise === 'start') complete('start'); }}>{autoRunning ? '❚❚  Pause practice' : '▶  Start practice'}</button><small>Simulation only · no trades</small></aside>}
+      {autoOpen && <aside class="guide-demo-panel guide-auto-panel" aria-label="Example automation controls"><div><strong>RANGER AUTO</strong><button onClick={() => setAutoOpen(false)} aria-label="Close automation">×</button></div><p>{autoRunning ? 'ACTIVE · Looking for a fresh signal' : 'OFF · Ready to practise'}</p><div class={`guide-demo-settings${step === 11 ? ' guide-spot' : ''}`}><span>Stake <b>1.00</b></span><span>Style <b>Base</b></span><span>Losses <b>2</b></span><span>Cooldown <b>45s</b></span><span>Take profit <b>Off</b></span></div><button class={`guide-demo-start${step === 12 ? ' guide-spot' : ''}`} onClick={() => { if (!autoRunning) { setAutoSequence((value) => value + 1); setAutoOpen(false); } setAutoRunning(!autoRunning); if (lesson.exercise === 'start') complete('start'); }}>{autoRunning ? '❚❚  Pause practice' : '▶  Start practice'}</button><small>Simulation only · no trades</small></aside>}
       {step === 8 && <button class="guide-paper-accessible" type="button" onClick={paperShot}>Try paper shot</button>}
-      {(autoRunning || step === 13) && <div class={`guide-run-status${step === 13 ? ' guide-spot' : ''}`}><b>Current run P&amp;L · 0.00</b><span>Example automatic trades</span>{step === 13 && <span>Ghost scout · paper only</span>}</div>}
+      {(autoRunning || step === 13) && <div class={`guide-run-status${step === 13 || (step === 12 && autoRunning && !autoOpen) ? ' guide-spot' : ''}`}><b>Current run P&amp;L · {autoRunning && autoPhase === 'result' ? '+0.19' : '0.00'} EXAMPLE</b><span>{autoRunning && autoPhase === 'moving' ? 'Ranger moves to a signal' : autoRunning && autoPhase === 'aiming' ? 'Ranger shoots the example cow' : autoRunning && autoPhase === 'result' ? 'Example trade · WON +0.19' : 'Example automatic trades'}</span>{step === 13 && <span>Ghost scout · paper only</span>}</div>}
       {step === 14 && <div class="guide-landmarks guide-spot" aria-label="Example pasture tools"><span>🎯 Level &amp; missions</span><span>♡ Connection health</span><span>◆ Gold mine</span><small>Example tools in the pasture</small></div>}
     </div>
     <section class="guide-lesson" key={step} aria-live="polite">
