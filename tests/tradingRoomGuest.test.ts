@@ -64,7 +64,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
       setItem: (key: string, value: string) => savedStyles.set(key, value),
     },
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; lastRoomState = { feedConnected: true }; const epoch = Date.now() / 1000; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: epoch, lastQuote: 100.1, lastDigit: 1, recentTicks: [{ epoch, quote: 100.1, digit: 1 }] }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; }; globalThis.testGhostPanel = { overlap: () => { ghost.x = cows[0].x; ghost.y = cows[0].y + 8; } }; globalThis.testManualPaper = { trades: manualPaperTrades, cow: cows[0], setTarget: (symbol) => { cows[0].contract = { market: "Selected market", symbol, kind: "OVER", barrier: 2 }; cows[0].x = 320; cows[0].y = 240; cows[0].alive = true; cows[0].hp = 3; }, point: (cow) => { const cam = camera(); return { clientX: (cow.x - cam.x) * zoom, clientY: (cow.y - cam.y) * zoom }; } };})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testLock = lockManualFirstTick; globalThis.testObserve = observeMarketFreshness; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; lastRoomState = { feedConnected: true }; const epoch = Date.now() / 1000; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: epoch, lastQuote: 100.1, lastDigit: 1, recentTicks: [{ epoch, quote: 100.1, digit: 1 }] }]; observeMarketFreshness(liveMarkets); }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; }; globalThis.testGhostPanel = { overlap: () => { ghost.x = cows[0].x; ghost.y = cows[0].y + 8; } }; globalThis.testManualPaper = { trades: manualPaperTrades, cow: cows[0], setTarget: (symbol) => { cows[0].contract = { market: "Selected market", symbol, kind: "OVER", barrier: 2 }; cows[0].x = 320; cows[0].y = 240; cows[0].alive = true; cows[0].hp = 3; }, point: (cow) => { const cam = camera(); return { clientX: (cow.x - cam.x) * zoom, clientY: (cow.y - cam.y) * zoom }; } };})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   const rangerPanel = elements.get('rangerAutoHud');
@@ -117,15 +117,19 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   assert.equal(context.testManualPaper.trades.length, 2, 'opening the scout details never creates a paper entry');
   assert.equal(paperTarget.hp, 3);
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'paper entries never request a real/demo account trade');
-  context.testDefeat({ contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1, edge: .01 }, tradeIntent: { accountId: 'REAL_A', stake: 1, minEdge: .02, contract: { symbol: 'SELECTED' } } });
-  assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'edge below the minimum at impact does not submit');
+  const weakCow = { contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1, edge: .01 }, tradeIntent: { accountId: 'REAL_A', stake: 1, minEdge: .02, contract: { symbol: 'SELECTED' } } };
+  assert.match(context.testLock(weakCow), /below your manual minimum/, 'edge is checked on the first shooting tick');
   element('cowStake').value = '2.50';
-  context.testDefeat({ contract: { market: 'Selected', symbol: 'SELECTED', kind: 'UNDER', barrier: 8, edge: .04 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, minEdge: .02, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
+  const lockedCow = { contract: { market: 'Selected', symbol: 'SELECTED', kind: 'UNDER', barrier: 8, edge: .04 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, minEdge: .02, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } };
+  assert.equal(context.testLock(lockedCow), '');
+  lockedCow.contract.edge = -.01;
+  lockedCow.contract.kind = 'OVER';
+  context.testDefeat(lockedCow);
   const trade = messages.find((message) => message.type === 'zeronine:room-trade');
   assert.equal(trade?.payload?.stake, 1.75, 'the amount selected when targeting is used');
-  assert.equal(trade?.payload?.market, 'SELECTED', 'the hit market is preserved');
-  assert.equal(trade?.payload?.direction, 'under', 'the setup at impact is locked even when it changed while aiming');
-  assert.equal(trade?.payload?.minEdge, null, 'the impact threshold is not recalculated after the hit');
+  assert.equal(trade?.payload?.market, 'SELECTED', 'the locked market is preserved');
+  assert.equal(trade?.payload?.direction, 'under', 'later changes do not replace the first tick setup');
+  assert.equal(trade?.payload?.minEdge, null, 'the threshold is not recalculated after the first tick');
   element('cowStake').value = '0';
   context.testSubmit({ market: 'Test', symbol: 'TEST', kind: 'OVER', barrier: 1 });
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, 1, 'an invalid stake never submits a trade');
@@ -1070,4 +1074,29 @@ test('ranger auto selects top positive edge contract and patrols continuously wi
   const cowB = { x: 500, y: 400, alive: true };
   const nextPoint = patrolPoint({ x: 65, y: 250 }, [cowA, cowB], { w: 800, h: 800 }, cowA);
   assert.deepEqual({ ...nextPoint }, { x: 395, y: 470 }, 'ranger patrols toward cow B when cow A is excluded');
+});
+
+
+test('feed freshness uses received tick progression instead of the device wall clock', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const observeStart = html.indexOf('const marketFreshnessObserved=new Map()');
+  const observeEnd = html.indexOf('function applyMarkets(', observeStart);
+  const freshStart = html.indexOf('function quoteFreshness(');
+  const freshEnd = html.indexOf('function refreshBetIndicator(', freshStart);
+  const ctx = runInNewContext(`
+    let now = 1000;
+    const performance = { now: () => now };
+    let liveMarkets = [{ symbol: 'R_50', lastEpoch: 100, fresh: true }];
+    ${html.slice(observeStart, observeEnd)}
+    ${html.slice(freshStart, freshEnd)}
+    ({ observe: () => observeMarketFreshness(liveMarkets), fresh: () => quoteFreshness('R_50').fresh,
+       advance: ms => now += ms, tick: epoch => { liveMarkets[0].lastEpoch = epoch; } })
+  `) as { observe: () => void; fresh: () => boolean; advance: (ms: number) => void; tick: (epoch: number) => void };
+  ctx.observe();
+  assert.equal(ctx.fresh(), true);
+  ctx.advance(16000);
+  ctx.observe();
+  assert.equal(ctx.fresh(), false, 'repeated snapshots do not renew an old tick');
+  ctx.tick(101); ctx.observe();
+  assert.equal(ctx.fresh(), true, 'a new tick restores freshness');
 });
