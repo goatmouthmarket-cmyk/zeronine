@@ -19,3 +19,27 @@ test('ghost scout offers paper results and historical research in the pasture', 
   await game.getByRole('button', { name: 'More research' }).click();
   await expect(page).toHaveURL('/lab');
 });
+
+test('Ranger Auto exposes separate entry timing, ring and paper research controls', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ json: {
+    owner: false, public_dashboard: true, markets: [], trades: [], session: null,
+    settings: null, recovery: null, automation: null, runs: [], entries: [],
+  } }));
+  await page.routeWebSocket('**/ws', () => {});
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Show Ranger Auto controls' }).click();
+  const game = page.frameLocator('iframe[title="Deriv Cows interactive trading pasture"]');
+  await game.getByText('Entry and paper research').click();
+  await expect(game.getByLabel('Manual shots / ticks')).toHaveValue('3');
+  await expect(game.getByLabel('Auto shots / ticks')).toHaveValue('3');
+  await expect(game.getByLabel('Minimum edge (%)')).toHaveValue('0');
+  await expect(game.getByLabel('Red', { exact: true })).toBeChecked();
+  await expect(game.getByLabel('Paper test', { exact: true })).not.toBeChecked();
+  await game.getByLabel('Minimum edge (%)').fill('2');
+  await game.getByLabel('Minimum edge (%)').blur();
+  await expect(game.getByLabel('Minimum edge (%)')).toHaveValue('2');
+  await game.getByLabel('Paper test', { exact: true }).check();
+  await expect(game.getByLabel('Paper test', { exact: true })).toBeChecked();
+  await expect(game.getByText(/Paper results are research only/)).toBeVisible();
+});

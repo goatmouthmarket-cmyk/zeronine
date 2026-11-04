@@ -569,7 +569,7 @@ test('ranger auto chooses only fresh positive-edge highlighted contracts', () =>
   const start = script.indexOf('function selectRangerAutoCandidate(');
   const end = script.indexOf('function updateRangerAutoProgress(', start);
   assert.ok(start >= 0 && end > start, 'the ranger candidate selector exists');
-  const selectCandidate = runInNewContext(`${script.slice(start, end)}; selectRangerAutoCandidate`) as (items: Array<Record<string, unknown>>) => Record<string, unknown> | null;
+  const selectCandidate = runInNewContext(`${script.slice(start, end)}; selectRangerAutoCandidate`) as (items: Array<Record<string, unknown>>, rules?: { minEdge: number; green: boolean; gold: boolean; red: boolean }) => Record<string, unknown> | null;
   const valid = {
     fresh: true, edge: 0.02, score: 0.08, p: 0.72, digitSamples: 35, riseSamples: 14,
     alignedRise: 0.8, alignedRate: 0.65, hitSignal: false, payout: 1.5,
@@ -587,6 +587,10 @@ test('ranger auto chooses only fresh positive-edge highlighted contracts', () =>
     { ...valid, symbol: 'NOT-HIGHLIGHTED', edge: 0.03, score: 0.1 },
   ]), null, 'an eligible but unhighlighted cow is not selected');
   assert.equal(selectCandidate([{ ...valid, symbol: 'BET-NOW', hitSignal: true }])?.symbol, 'BET-NOW');
+  const red = { ...valid, symbol: 'RED', edge: .03, score: .09, hitSignal: true };
+  assert.equal(selectCandidate([bestEdge, bestConfidence, red], { minEdge: .025, green: false, gold: false, red: true })?.symbol, 'RED');
+  assert.equal(selectCandidate([bestEdge, bestConfidence, red], { minEdge: .04, green: false, gold: false, red: true }), null);
+  assert.equal(selectCandidate([bestEdge, bestConfidence, red], { minEdge: 0, green: true, gold: false, red: false })?.symbol, 'GREEN');
 });
 
 test('ranger auto requires three distinct fresh ticks for one contract', () => {
@@ -693,7 +697,7 @@ test('Ranger Auto validates the adjustable cooldown and take-profit settings', (
     { $: (id: string) => ({ value: ({ rangerAutoLossLimit: '3', rangerAutoCooldownSeconds: '120', rangerAutoTakeProfit: '25.5' } as Record<string, string>)[id] }) },
   ) as () => { error: string; lossLimit?: number; cooldownSeconds?: number; takeProfit?: number };
 
-  assert.deepEqual({ ...settings() }, { lossLimit: 3, cooldownSeconds: 120, takeProfit: 25.5, error: '' });
+  assert.deepEqual({ ...settings() }, { lossLimit: 3, cooldownSeconds: 120, takeProfit: 25.5, minEdge: 0, manualShots: 3, autoShots: 3, paperCount: 20, paperWinTarget: 55, green: true, gold: true, red: true, paperEnabled: false, error: '' });
 });
 
 test('Ranger Auto identity and run ID survive contract submission', () => {
@@ -922,7 +926,7 @@ test('ranger patrol moves toward live cows while waiting and stays inside the pa
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
   const start = script.indexOf('function rangerPatrolPoint(');
-  const end = script.indexOf('function rangerDamageForEdge(', start);
+  const end = script.indexOf('function rangerDamageForShots(', start);
   assert.ok(start >= 0 && end > start, 'the autonomous patrol waypoint helper exists');
   const patrolPoint = runInNewContext(`${script.slice(start, end)}; rangerPatrolPoint`) as (
     player: { x: number; y: number },
@@ -943,18 +947,49 @@ test('ranger patrol moves toward live cows while waiting and stays inside the pa
   );
 });
 
-test('high positive-edge ranger hits defeat a cow in one guaranteed shot', () => {
+test('configured shots determine entry timing independently of level or edge', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
-  const script = html.split('<script>')[1]?.split('</script>')[0];
-  assert.ok(script);
-  const start = script.indexOf('function rangerDamageForEdge(');
-  const end = script.indexOf('function renderRangerAutoActivity(', start);
-  assert.ok(start >= 0 && end > start, 'the edge-based damage helper exists');
-  const damageForEdge = runInNewContext(`${script.slice(start, end)}; rangerDamageForEdge`) as (edge: number, hp: number, level: number) => number;
+  const start = html.indexOf('function rangerDamageForShots(');
+  const end = html.indexOf('function renderRangerAutoActivity(', start);
+  assert.ok(start >= 0 && end > start);
+  const damage = runInNewContext(`${html.slice(start, end)}; rangerDamageForShots`) as (hp: number, max: number, shots: number) => number;
+  assert.equal(damage(3, 3, 1), 3);
+  assert.equal(damage(3, 3, 3), 1);
+  assert.equal(damage(1, 3, 3), 1);
+});
 
-  assert.equal(damageForEdge(0.06, 3, 1), 3, '6% edge is an instant kill');
-  assert.equal(damageForEdge(0.1, 5, 1), 5, '10% edge instantly defeats a higher-health cow');
-  assert.equal(damageForEdge(0.059, 3, 1), 1, 'normal edge keeps the existing level-based damage');
+test('automatic paper research records next-tick outcomes without account orders', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const helpersStart = html.indexOf('function paperTickKey(');
+  const helpersEnd = html.indexOf('function latestManualPaperTrade()', helpersStart);
+  const studyStart = html.indexOf('function updateAutoPaperResearch(');
+  const studyEnd = html.indexOf("window.addEventListener('message', (event)", studyStart);
+  assert.ok(helpersStart >= 0 && helpersEnd > helpersStart && studyStart >= 0 && studyEnd > studyStart);
+  const result = runInNewContext(`
+    const autoPaperStudies = new Map();
+    const rangerAutoActive = true, rangerPaperEnabled = true, rangerAutoMinEdge = 0;
+    const rangerPaperCount = 2, rangerPaperWinTarget = 50;
+    const contracts = [{ symbol: 'R_50', market: 'Volatility 50', kind: 'OVER', barrier: 2, fresh: true, edge: .05, p: .75 }];
+    const status = { textContent: '' };
+    const $ = id => id === 'rangerPaperResearch' ? status : null;
+    const Date = { now: () => 100000 };
+    ${html.slice(helpersStart, helpersEnd)}
+    ${html.slice(studyStart, studyEnd)}
+    const market = ticks => ({ symbol: 'R_50', fresh: true, lastEpoch: ticks[ticks.length-1].epoch, lastQuote: ticks[ticks.length-1].quote, recentTicks: ticks });
+    const ticks = [{ epoch: 98, quote: 1.1, digit: 1 }];
+    updateAutoPaperResearch({ markets: [market(ticks)] });
+    updateAutoPaperResearch({ markets: [market(ticks)] });
+    ticks.push({ epoch: 99, quote: 1.5, digit: 5 });
+    updateAutoPaperResearch({ markets: [market(ticks)] });
+    ticks.push({ epoch: 100, quote: 1.1, digit: 1 });
+    updateAutoPaperResearch({ markets: [market(ticks)] });
+    ({ trades: [...autoPaperStudies.values()][0].trades, summary: status.textContent });
+  `) as { trades: Array<{ status: string }>; summary: string };
+  assert.equal(result.trades.length, 2);
+  assert.equal(result.trades[0]?.status, 'won');
+  assert.equal(result.trades[1]?.status, 'lost');
+  assert.match(result.summary, /2 settled/);
+  assert.match(result.summary, /Research only/);
 });
 
 test('practice shots do not wait for live ticks while connected shots still require them', () => {
@@ -1016,7 +1051,7 @@ test('ranger auto selects top positive edge contract and patrols continuously wi
 
   // Patrol waypoint selects another cow when player reaches the current cow
   const patrolStart = script.indexOf('function rangerPatrolPoint(');
-  const patrolEnd = script.indexOf('function rangerDamageForEdge(', patrolStart);
+  const patrolEnd = script.indexOf('function rangerDamageForShots(', patrolStart);
   const patrolPoint = runInNewContext(`${script.slice(patrolStart, patrolEnd)}; rangerPatrolPoint`) as (
     player: { x: number; y: number },
     cows: Array<{ x: number; y: number; alive: boolean }>,
