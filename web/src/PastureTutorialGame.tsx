@@ -1,669 +1,212 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 
-type TutorialPhase = 'choose' | 'move' | 'aim' | 'shoot' | 'settling' | 'complete';
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface GrassBlade extends Point {
-  height: number;
-}
-
-interface TutorialWorld {
-  width: number;
-  scale: number;
-}
-
-interface TutorialMarket {
-  symbol: string;
-  name: string;
-  direction: 'OVER' | 'UNDER';
-  barrier: number;
-  baseQuote: number;
-  payoutMultiplier: number;
-}
-
-interface MarketTick {
-  quote: number;
-  digit: number;
-  change: number;
-}
-
-interface PracticeTrade {
-  won: boolean;
-  market: string;
-  contract: string;
-  digit: number;
-  stake: number;
-  payout: number;
-  profit: number;
-}
-
-interface Arrow extends Point {
-  startX: number;
-  startY: number;
-  progress: number;
-  hit: boolean;
-}
-
-const WIDTH = 960;
-const HEIGHT = 520;
-const START: Point = { x: 220 / WIDTH, y: 335 };
-const COW_HEALTH = 3;
-const PRACTICE_STAKE = 1;
-const STARTING_BALANCE = 100;
-const TUTORIAL_COWS = [
-  { point: { x: .34, y: 320 }, marketIndex: 0, rank: 2, confidence: 54 },
-  { point: { x: .77, y: 320 }, marketIndex: 3, rank: 1, confidence: 78 },
-] as const;
-const TUTORIAL_MARKETS: TutorialMarket[] = [
-  { symbol: 'R_10', name: 'Volatility 10', direction: 'OVER', barrier: 1, baseQuote: 100.12, payoutMultiplier: 1.22 },
-  { symbol: 'R_25', name: 'Volatility 25', direction: 'UNDER', barrier: 8, baseQuote: 250.34, payoutMultiplier: 1.25 },
-  { symbol: 'R_50', name: 'Volatility 50', direction: 'OVER', barrier: 2, baseQuote: 500.56, payoutMultiplier: 1.32 },
-  { symbol: 'R_75', name: 'Volatility 75', direction: 'UNDER', barrier: 7, baseQuote: 750.78, payoutMultiplier: 1.38 },
-];
-
-const getLastDigit = (quote: number): number =>
-  Number(quote.toFixed(2).replace('.', '').slice(-1));
-
-const createInitialMarketTicks = (): MarketTick[] => TUTORIAL_MARKETS.map((market) => ({
-  quote: market.baseQuote,
-  digit: getLastDigit(market.baseQuote),
-  change: 0,
-}));
-
-const pointForCow = (cowIndex: number, worldWidth: number): Point | null => {
-  const cow = TUTORIAL_COWS[cowIndex];
-  if (!cow) return null;
-  if (worldWidth < 500) {
-    return { x: worldWidth / 2, y: cowIndex === 0 ? 245 : 390 };
-  }
-  return { x: cow.point.x * worldWidth, y: cow.point.y };
+type Lesson = {
+  title: string;
+  body: string;
+  tip?: string;
+  exercise?: 'move' | 'cow' | 'aim' | 'paper' | 'markets' | 'auto' | 'start';
 };
 
-const startForWorld = (worldWidth: number): Point => worldWidth < 500
-  ? { x: worldWidth / 2, y: 455 }
-  : { x: START.x * worldWidth, y: START.y };
+const LESSONS: Lesson[] = [
+  { title: 'Welcome to the pasture', body: 'Each cow represents a possible digit trade. Let’s learn the controls in a safe practice pasture.', tip: 'Everything here is simulated. No account, live ticks, or money are used.' },
+  { title: 'Move your ranger', body: 'Click or tap an open patch of grass to walk there. On a keyboard, use WASD or the arrow keys.', tip: 'On desktop, scroll to zoom. On touchscreens, pinch to zoom.', exercise: 'move' },
+  { title: 'Meet the markets', body: 'Each cow shows a market, such as Volatility 50. A market has its own changing stream of prices and final digits.', tip: 'Volatility 50 (1s) and Volatility 50 are different markets. Tap a cow to inspect its example.', exercise: 'cow' },
+  { title: 'Read the cow’s bubble', body: 'OVER 2 means the final digit must be greater than 2. UNDER 7 means it must be less than 7. The barrier itself loses.', tip: 'Confidence is an estimate. L and H count recent low digits (0–4) and high digits (5–9).' },
+  { title: 'Understand edge', body: 'Edge compares the estimated chance of winning with the chance needed to break even at the estimated payout.', tip: 'Positive edge is a model estimate, not a promise of profit. Estimates and quotes can change.' },
+  { title: 'What the rings mean', body: 'Green marks the strongest fresh positive edge. Gold marks the highest confidence-weighted return estimate.', tip: 'A red ring marks a fresh entry signal. A cow can have more than one highlight; none guarantees a win.' },
+  { title: 'Aim at a cow', body: 'Left-click or tap a cow. The ranger moves into position and shoots automatically; the health bar shows progress.', tip: 'In guest play this is practice. When connected, defeating a cow can submit the selected contract, subject to account and risk checks.', exercise: 'aim' },
+  { title: 'Read the ranger’s bubble', body: 'The bubble shows status, market, direction, barrier, stake and style, plus the quote freshness and estimated edge when available.', tip: 'After settlement, the digit and WON or LOST result appear with profit or loss and any remaining session loss. Tap the bubble to dismiss it.' },
+  { title: 'Try a paper shot', body: 'Right-click a cow, or press and hold it on touch, to make a paper trade. Try it on the highlighted cow.', tip: 'In the game, a fresh live market tick is needed; the result uses the next tick. No account money is used.', exercise: 'paper' },
+  { title: 'Set your trade', body: 'Open Markets to choose your stake and bet style, see live targets and recent bets, and review the account balance.', tip: 'Base keeps the stake flat. Recovery styles can increase the next stake after losses and carry additional risk.', exercise: 'markets' },
+  { title: 'Meet Ranger Auto', body: 'Use the play icon to open automation controls. The icon shows pause and “Running” when Auto is active; opening it does not pause trading.', tip: 'Ranger Auto selects eligible highlighted cows after three fresh confirming ticks. Signals can disappear or change.', exercise: 'auto' },
+  { title: 'Set limits first', body: 'Choose your stake, bet style, losses before cooldown, cooldown duration and optional take-profit target.', tip: 'Take profit stops new trades after the current contract settles. It is a target, not a guaranteed maximum or profit.' },
+  { title: 'Start and pause Auto', body: 'Try the start control in this simulation. In the game the same control pauses the running ranger.', tip: 'Real-account automation requires owner authorization and arming. Account, risk, quote and single-open-contract safeguards still apply.', exercise: 'start' },
+  { title: 'Follow the run', body: 'While Auto runs, current-run P&L and its latest automatic trades appear in the pasture.', tip: 'The ghost scout and paper results are virtual research. They do not change your Deriv balance or account P&L.' },
+  { title: 'Explore the pasture', body: 'Use the level and mission panel to see progress, and the heart icon to check connection health or recover a stuck view.', tip: 'The gold mine opens Gold research and demo trading. Cooldowns give you a break between eligible trades.' },
+  { title: 'You’re ready', body: 'Take your time, check the market and stake, and use paper practice when you want to explore.', tip: 'You can return to this guide from How to play whenever you need it.' },
+];
+
+interface Point { x: number; y: number }
+const START: Point = { x: 355, y: 390 };
+
+function Cow({ point, highlight = false }: { point: Point; highlight?: boolean }): JSX.Element {
+  return <g transform={`translate(${point.x} ${point.y})`} aria-hidden="true">
+    <ellipse cx="2" cy="23" rx="43" ry="13" fill="#1a3623" opacity=".4" />
+    {highlight && <><ellipse cx="0" cy="20" rx="57" ry="25" fill="none" stroke="#38ed86" stroke-width="4" opacity=".9" /><ellipse cx="0" cy="20" rx="51" ry="19" fill="none" stroke="#ffe37b" stroke-width="3" opacity=".9" /></>}
+    <path d="M-38 -4 Q-54 -10 -47 12" fill="none" stroke="#cbb99b" stroke-width="3" />
+    <path d="M-30 5h9v34h-9zM18 5h10v34H18z" fill="#b9ac97" />
+    <path d="M-30 35h11v5h-11zM17 35h12v5H17z" fill="#645044" />
+    <ellipse cx="-2" cy="-4" rx="38" ry="23" fill="#f0e4ce" />
+    <path d="M-30-15-16-25-3-19-6-4-20 5-33-3z" fill="#765140" />
+    <path d="M8-24 30-16 26 3 15 8 4-7z" fill="#654638" />
+    <ellipse cx="36" cy="-8" rx="19" ry="18" fill="#e9ddc6" />
+    <path d="M25-21 16-27 19-12zM43-20 53-27 52-10z" fill="#b9a187" />
+    <ellipse cx="45" cy="0" rx="13" ry="9" fill="#d9aaa2" />
+    <circle cx="40" cy="0" r="1.7" fill="#775b55" /><circle cx="48" cy="0" r="1.7" fill="#775b55" />
+    <circle cx="38" cy="-14" r="2" fill="#2a2823" /><circle cx="47" cy="-14" r="2" fill="#2a2823" />
+  </g>;
+}
+
+function Ranger({ point }: { point: Point }): JSX.Element {
+  return <g class="guide-ranger" style={{ transform: `translate(${point.x}px, ${point.y}px)` }} aria-hidden="true">
+    <ellipse cx="2" cy="21" rx="18" ry="7" fill="#143625" opacity=".45" />
+    <path d="M-10 20h7v18h-7zM3 20h7v18H3z" fill="#393a3d" />
+    <path d="M-13-9H11L13 22H-12z" fill="#326db1" stroke="#224470" /><path d="M-12 17h25v5h-25z" fill="#866338" />
+    <path d="M-15-15-21-27-14-36-7-25z" fill="#7c4934" />
+    <circle cx="0" cy="-20" r="11" fill="#cba17d" />
+    <path d="M-11-23-9-31 2-35 11-30 11-23 4-28-5-24z" fill="#4d3729" />
+    <circle cx="2" cy="-20" r="1.3" fill="#271f1d" /><circle cx="7" cy="-20" r="1.3" fill="#271f1d" />
+    <path d="M-16-3h6v20h-6zM11-3h6v18h-6z" fill="#c69b75" />
+    <path d="M15-24 Q39-5 15 14" fill="none" stroke="#bb874e" stroke-width="3" /><path d="M15-24v38" stroke="#f5e8c8" />
+  </g>;
+}
 
 export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const speechBubbleRef = useRef<HTMLDivElement>(null);
-  const worldRef = useRef<TutorialWorld>({ width: WIDTH, scale: 1 });
-  const phaseRef = useRef<TutorialPhase>('choose');
-  const playerRef = useRef<Point>({ x: START.x * WIDTH, y: START.y });
-  const moveGoalRef = useRef<Point | null>(null);
-  const arrowsRef = useRef<Arrow[]>([]);
-  const selectedCowRef = useRef<number | null>(null);
-  const hpRef = useRef(COW_HEALTH);
-  const lastShotRef = useRef(0);
-  const selectedMarketRef = useRef(0);
-  const roundRef = useRef(0);
-  const marketTicksRef = useRef(createInitialMarketTicks());
-  const speechRef = useRef('Choose rank #1.');
-  const [phase, setPhase] = useState<TutorialPhase>('choose');
-  const [worldWidth, setWorldWidth] = useState(WIDTH);
-  const [marketTicks, setMarketTicks] = useState(marketTicksRef.current);
-  const [demoBalance, setDemoBalance] = useState(STARTING_BALANCE);
-  const [netProfit, setNetProfit] = useState(0);
-  const [lastTrade, setLastTrade] = useState<PracticeTrade | null>(null);
-  const [speech, setSpeech] = useState('Choose rank #1.');
+  const [step, setStep] = useState(0);
+  const [player, setPlayer] = useState<Point>(START);
+  const [done, setDone] = useState<Record<string, boolean>>({});
+  const [marketsOpen, setMarketsOpen] = useState(false);
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [paper, setPaper] = useState(false);
+  const [aiming, setAiming] = useState(false);
+  const [aimDone, setAimDone] = useState(false);
+  const [selected, setSelected] = useState(false);
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 600px)').matches);
+  const pressTimer = useRef<number | null>(null);
+  const suppressClick = useRef(false);
+  const lesson = LESSONS[step];
+  const cow = compact ? { x: 585, y: 295 } : { x: 670, y: 295 };
+  const secondCow = compact ? { x: 320, y: 235 } : { x: 250, y: 235 };
+  const completed = !lesson.exercise || !!done[lesson.exercise];
 
-  const changePhase = (next: TutorialPhase): void => {
-    phaseRef.current = next;
-    setPhase(next);
-  };
-
-  const speak = (message: string): void => {
-    speechRef.current = message;
-    setSpeech(message);
-  };
-
-  const reset = (): void => {
-    playerRef.current = startForWorld(worldRef.current.width);
-    moveGoalRef.current = null;
-    arrowsRef.current = [];
-    selectedCowRef.current = null;
-    hpRef.current = COW_HEALTH;
-    lastShotRef.current = 0;
-    roundRef.current += 1;
-    setLastTrade(null);
-    selectedMarketRef.current = 0;
-    selectedCowRef.current = null;
-    speak('Choose the rank #1 cow.');
-    changePhase('choose');
-  };
-
-  const selectMarket = (marketIndex: number): void => {
-    if (!TUTORIAL_MARKETS[marketIndex]) return;
-    selectedMarketRef.current = marketIndex;
-  };
-
-  const chooseCow = (cowIndex: number): void => {
-    if (phaseRef.current !== 'choose') return;
-    const cow = TUTORIAL_COWS[cowIndex];
-    if (!cow) return;
-    if (cow.rank !== 1) {
-      speak('Rank #2 is lower. Choose rank #1.');
-      return;
-    }
-    selectedCowRef.current = cowIndex;
-    selectMarket(cow.marketIndex);
-    speak('Step 2 · Tap the grass inside the marked range.');
-    changePhase('move');
-    canvasRef.current?.focus();
-  };
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext('2d');
-    if (!canvas || !context) return;
-
-    let raf = 0;
-    let previousAt = performance.now();
-    let lastDamageAt = 0;
-    let tickPhase = 0;
-    const marketTimer = window.setInterval(() => {
-      tickPhase += 1;
-      const nextTicks = TUTORIAL_MARKETS.map((market, index) => {
-        const previous = marketTicksRef.current[index];
-        const wave = Math.sin(tickPhase * .91 + index * 1.7) * .17
-          + Math.cos(tickPhase * .37 + index) * .08;
-        const quote = Number((market.baseQuote + wave).toFixed(2));
-        return {
-          quote,
-          digit: getLastDigit(quote),
-          change: Number((quote - previous.quote).toFixed(2)),
-        };
-      });
-      marketTicksRef.current = nextTicks;
-      setMarketTicks(nextTicks);
-    }, 900);
-    let grass: GrassBlade[] = [];
-    const makeGrass = (worldWidth: number): GrassBlade[] => Array.from({ length: 76 }, (_, index) => ({
-      x: (index * 157 + 39) % worldWidth,
-      y: (index * 83 + 47) % HEIGHT,
-      height: 5 + (index % 4),
-    }));
-    const resizeCanvas = (): void => {
-      const bounds = canvas.getBoundingClientRect();
-      if (bounds.width === 0 || bounds.height === 0) return;
-      const scale = bounds.height / HEIGHT;
-      const width = bounds.width / scale;
-      const previousWidth = worldRef.current.width;
-      const widthRatio = width / previousWidth;
-      if (phaseRef.current === 'choose' && selectedCowRef.current === null) {
-        playerRef.current = startForWorld(width);
-      } else {
-        playerRef.current.x *= widthRatio;
-        if (moveGoalRef.current) moveGoalRef.current.x *= widthRatio;
-        for (const arrow of arrowsRef.current) {
-          arrow.x *= widthRatio;
-          arrow.startX *= widthRatio;
-        }
-      }
-      worldRef.current = { width, scale };
-      setWorldWidth(width);
-      const pixelRatio = window.devicePixelRatio || 1;
-      const backingWidth = Math.round(bounds.width * pixelRatio);
-      const backingHeight = Math.round(bounds.height * pixelRatio);
-      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
-        canvas.width = backingWidth;
-        canvas.height = backingHeight;
-      }
-      context.setTransform(pixelRatio * scale, 0, 0, pixelRatio * scale, 0, 0);
-      grass = makeGrass(width);
-    };
-    const resizeObserver = new ResizeObserver(resizeCanvas);
-    resizeObserver.observe(canvas);
-    resizeCanvas();
-
-    const pointFromEvent = (event: PointerEvent): Point => {
-      const bounds = canvas.getBoundingClientRect();
-      const worldWidth = worldRef.current.width;
-      return {
-        x: ((event.clientX - bounds.left) / bounds.width) * worldWidth,
-        y: ((event.clientY - bounds.top) / bounds.height) * HEIGHT,
-      };
-    };
-
-    const onPointerDown = (event: PointerEvent): void => {
-      const point = pointFromEvent(event);
-      const currentPhase = phaseRef.current;
-
-      if (currentPhase === 'choose') {
-        const cowIndex = TUTORIAL_COWS.findIndex((cow, index) => {
-          const target = pointForCow(index, worldRef.current.width);
-          return target !== null && Math.hypot(point.x - target.x, point.y - target.y) < 82;
-        });
-        if (cowIndex !== -1) chooseCow(cowIndex);
-        canvas.focus();
-        return;
-      }
-
-      if (currentPhase === 'move') {
-        const target = selectedCowRef.current === null ? null : pointForCow(selectedCowRef.current, worldRef.current.width);
-        const moveRange = worldRef.current.width * (250 / WIDTH);
-        if (!target || Math.hypot(point.x - target.x, point.y - target.y) > moveRange) {
-          speak('Tap inside the circle around the rank #1 cow.');
-          return;
-        }
-            const destination = {
-              x: Math.max(50, Math.min(worldRef.current.width - 50, point.x)),
-              y: Math.max(100, Math.min(HEIGHT - 55, point.y)),
-            };
-            const selectedCowIndex = selectedCowRef.current;
-            const selectedCowPoint = selectedCowIndex === null ? null : pointForCow(selectedCowIndex, worldRef.current.width);
-            if (selectedCowPoint && Math.hypot(destination.x - selectedCowPoint.x, destination.y - selectedCowPoint.y) < worldRef.current.width * (74 / WIDTH)) {
-          speak('Choose a clear spot near the cow.');
-          return;
-        }
-        moveGoalRef.current = destination;
-        speak('Moving to the marked spot.');
-        canvas.focus();
-        return;
-      }
-
-      const selectedCowPoint = selectedCowRef.current === null ? null : pointForCow(selectedCowRef.current, worldRef.current.width);
-      if (currentPhase === 'aim' && selectedCowPoint && Math.hypot(point.x - selectedCowPoint.x, point.y - (selectedCowPoint.y - 7)) < 82) {
-        lastShotRef.current = performance.now();
-        speak('Step 4 · Arrows fire automatically.');
-        changePhase('shoot');
-        canvas.focus();
-        return;
-      }
-      if (currentPhase === 'aim') speak('Tap the rank #1 cow to aim.');
-    };
-
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (phaseRef.current !== 'move') return;
-      const deltas: Record<string, Point> = {
-        arrowup: { x: 0, y: -70 }, w: { x: 0, y: -70 },
-        arrowdown: { x: 0, y: 70 }, s: { x: 0, y: 70 },
-        arrowleft: { x: -70, y: 0 }, a: { x: -70, y: 0 },
-        arrowright: { x: 70, y: 0 }, d: { x: 70, y: 0 },
-      };
-      const delta = deltas[event.key.toLowerCase()];
-      if (!delta) return;
-      event.preventDefault();
-      const player = playerRef.current;
-      const worldWidth = worldRef.current.width;
-      moveGoalRef.current = {
-        x: Math.max(50, Math.min(worldWidth - 50, player.x + delta.x)),
-        y: Math.max(100, Math.min(HEIGHT - 55, player.y + delta.y)),
-      };
-    };
-
-    const drawCow = (cow: Point, damaged: boolean): void => {
-      const x = cow.x;
-      const y = cow.y;
-      context.fillStyle = 'rgba(5, 17, 10, .35)';
-      context.beginPath();
-      context.ellipse(x, y + 22, 43, 12, 0, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#f0e5c7';
-      context.beginPath();
-      context.ellipse(x - 5, y - 4, 39, 27, 0, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#705340';
-      context.beginPath();
-      context.ellipse(x - 16, y - 8, 12, 16, -.25, 0, Math.PI * 2);
-      context.ellipse(x + 13, y + 1, 13, 12, .25, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#f0e5c7';
-      context.beginPath();
-      context.ellipse(x + 32, y - 19, 18, 19, 0, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#d99b93';
-      context.beginPath();
-      context.ellipse(x + 41, y - 13, 12, 8, 0, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#30271f';
-      context.beginPath();
-      context.arc(x + 35, y - 22, 2.2, 0, Math.PI * 2);
-      context.fill();
-      context.strokeStyle = '#594631';
-      context.lineWidth = 6;
-      for (const legX of [x - 24, x + 12]) {
-        context.beginPath();
-        context.moveTo(legX, y + 13);
-        context.lineTo(legX - 2, y + 34);
-        context.stroke();
-      }
-      if (damaged) {
-        context.strokeStyle = '#ffdb8d';
-        context.lineWidth = 3;
-        context.beginPath();
-        context.arc(x, y - 1, 53, 0, Math.PI * 2);
-        context.stroke();
-      }
-    };
-
-    const drawRanger = (player: Point): void => {
-      context.fillStyle = 'rgba(5, 17, 10, .38)';
-      context.beginPath();
-      context.ellipse(player.x, player.y + 16, 22, 8, 0, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#343b38';
-      context.fillRect(player.x - 12, player.y - 6, 9, 24);
-      context.fillRect(player.x + 4, player.y - 6, 9, 24);
-      context.fillStyle = '#54789b';
-      context.beginPath();
-      context.ellipse(player.x, player.y - 25, 17, 23, 0, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#d6aa81';
-      context.beginPath();
-      context.arc(player.x, player.y - 53, 13, 0, Math.PI * 2);
-      context.fill();
-      context.fillStyle = '#46362b';
-      context.beginPath();
-      context.ellipse(player.x, player.y - 61, 15, 5, 0, Math.PI, Math.PI * 2);
-      context.fill();
-      context.strokeStyle = '#bd925e';
-      context.lineWidth = 4;
-      context.beginPath();
-      context.arc(player.x + 16, player.y - 28, 12, -Math.PI / 2, Math.PI / 2);
-      context.stroke();
-    };
-
-    const render = (now: number): void => {
-      const dt = Math.min(.05, (now - previousAt) / 1000);
-      previousAt = now;
-      const { width: worldWidth, scale } = worldRef.current;
-      const pixelRatio = window.devicePixelRatio || 1;
-      context.setTransform(pixelRatio * scale, 0, 0, pixelRatio * scale, 0, 0);
-      const player = playerRef.current;
-      const goal = moveGoalRef.current;
-      const currentPhase = phaseRef.current;
-
-      if (goal && currentPhase === 'move') {
-        const dx = goal.x - player.x;
-        const dy = goal.y - player.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance > 4) {
-          const step = Math.min(distance, 155 * dt);
-          player.x += (dx / distance) * step;
-          player.y += (dy / distance) * step;
-        } else {
-          moveGoalRef.current = null;
-          const target = selectedCowRef.current === null ? null : pointForCow(selectedCowRef.current, worldWidth);
-          if (target && Math.hypot(player.x - target.x, player.y - target.y) <= worldWidth * (250 / WIDTH)) {
-            speak('Step 3 · Tap the rank #1 cow to aim.');
-            changePhase('aim');
-          }
-        }
-      }
-
-      const target = selectedCowRef.current === null ? null : pointForCow(selectedCowRef.current, worldWidth);
-      if (currentPhase === 'shoot' && target && now - lastShotRef.current >= 820) {
-        lastShotRef.current = now;
-        arrowsRef.current.push({
-          startX: player.x + 12,
-          startY: player.y - 29,
-          x: player.x + 12,
-          y: player.y - 29,
-          progress: 0,
-          hit: Math.random() < .94,
-        });
-      }
-
-      context.clearRect(0, 0, worldWidth, HEIGHT);
-      context.fillStyle = '#56894d';
-      context.fillRect(0, 0, worldWidth, HEIGHT);
-      context.fillStyle = 'rgba(34, 83, 44, .23)';
-      for (let row = 0; row < 10; row += 1) {
-        context.fillRect(0, row * 60 + 15, worldWidth, 2);
-      }
-      for (const blade of grass) {
-        context.strokeStyle = '#3f7444';
-        context.lineWidth = 2;
-        context.beginPath();
-        context.moveTo(blade.x, blade.y + 4);
-        context.lineTo(blade.x - 2, blade.y - blade.height);
-        context.lineTo(blade.x + 4, blade.y + 2);
-        context.stroke();
-      }
-
-      context.fillStyle = '#856343';
-      for (let x = 26; x < worldWidth; x += 62) {
-        context.fillRect(x, 38, 6, 26);
-        context.fillRect(x, HEIGHT - 48, 6, 26);
-      }
-      context.fillStyle = '#b28a5d';
-      context.fillRect(25, 45, worldWidth - 50, 5);
-      context.fillRect(25, HEIGHT - 37, worldWidth - 50, 5);
-
-      for (let index = 0; index < TUTORIAL_COWS.length; index += 1) {
-        const cow = TUTORIAL_COWS[index];
-        const cowPosition = pointForCow(index, worldWidth);
-        if (!cowPosition) continue;
-        const selected = selectedCowRef.current === index;
-        const active = selected && currentPhase !== 'complete';
-        const hp = active ? hpRef.current : COW_HEALTH;
-        context.strokeStyle = selected ? '#ffe091' : index === 1 ? '#92d99a' : 'rgba(255,255,255,.44)';
-        context.lineWidth = selected ? 3 : 2;
-        context.setLineDash(selected ? [] : [6, 6]);
-        context.beginPath();
-        context.ellipse(cowPosition.x, cowPosition.y - 2, 57, 38, 0, 0, Math.PI * 2);
-        context.stroke();
-        context.setLineDash([]);
-        drawCow(cowPosition, active && hp < COW_HEALTH);
-
-        if (selected) {
-          if (currentPhase === 'move') {
-            context.strokeStyle = 'rgba(255, 244, 207, .74)';
-            context.lineWidth = 2;
-            context.setLineDash([10, 8]);
-            context.beginPath();
-            context.arc(cowPosition.x, cowPosition.y, worldWidth * (250 / WIDTH), 0, Math.PI * 2);
-            context.stroke();
-            context.setLineDash([]);
-          }
-          context.fillStyle = '#382c27';
-          context.fillRect(cowPosition.x - 31, cowPosition.y - 58, 62, 7);
-          context.fillStyle = '#8ed47d';
-          context.fillRect(cowPosition.x - 31, cowPosition.y - 58, 62 * Math.max(0, hp) / COW_HEALTH, 7);
-        }
-      }
-
-      if (goal && currentPhase === 'move') {
-        context.strokeStyle = 'rgba(255,255,255,.55)';
-        context.lineWidth = 2;
-        context.beginPath();
-        context.arc(goal.x, goal.y, 10 + Math.sin(now / 130) * 2, 0, Math.PI * 2);
-        context.stroke();
-      }
-      drawRanger(player);
-      const speechBubble = speechBubbleRef.current;
-      if (speechBubble) {
-        const bounds = canvas.getBoundingClientRect();
-        const bubbleHeight = speechBubble.offsetHeight;
-        const anchorX = (player.x / worldWidth) * bounds.width;
-        const anchorY = (player.y / HEIGHT) * bounds.height;
-        const above = anchorY > bubbleHeight + 72;
-        speechBubble.style.left = `${Math.max(8 + speechBubble.offsetWidth / 2, Math.min(bounds.width - 8 - speechBubble.offsetWidth / 2, anchorX))}px`;
-        speechBubble.style.top = `${above ? anchorY - 72 : anchorY + 12}px`;
-        speechBubble.dataset.placement = above ? 'above' : 'below';
-      }
-
-      const arrows = arrowsRef.current;
-      for (let index = arrows.length - 1; index >= 0; index -= 1) {
-        const arrow = arrows[index];
-        arrow.progress = Math.min(1, arrow.progress + dt * 1.75);
-        const arrowTarget = selectedCowRef.current === null ? null : pointForCow(selectedCowRef.current, worldWidth);
-        if (!arrowTarget) continue;
-        const endX = arrowTarget.x - 45;
-        const endY = arrowTarget.y - 16;
-        arrow.x = arrow.startX + (endX - arrow.startX) * arrow.progress;
-        arrow.y = arrow.startY + (endY - arrow.startY) * arrow.progress;
-        context.save();
-        context.translate(arrow.x, arrow.y);
-        context.rotate(Math.atan2(endY - arrow.startY, endX - arrow.startX));
-        context.strokeStyle = '#f5e1a5';
-        context.lineWidth = 3;
-        context.beginPath();
-        context.moveTo(-12, 0);
-        context.lineTo(9, 0);
-        context.stroke();
-        context.fillStyle = '#fff5db';
-        context.beginPath();
-        context.moveTo(10, 0);
-        context.lineTo(3, -4);
-        context.lineTo(3, 4);
-        context.fill();
-        context.restore();
-
-        if (arrow.progress < 1) continue;
-        arrows.splice(index, 1);
-        if (!arrow.hit || hpRef.current <= 0 || phaseRef.current !== 'shoot') {
-          if (!arrow.hit && phaseRef.current === 'shoot') speak('Missed. Keep aiming, ranger.');
-          continue;
-        }
-        hpRef.current -= 1;
-        lastDamageAt = now;
-        if (hpRef.current <= 0) {
-          changePhase('settling');
-          speak('Step 5 · Settling the $1 practice contract.');
-          const round = roundRef.current;
-          window.setTimeout(() => {
-            if (round !== roundRef.current || phaseRef.current !== 'settling') return;
-            const market = TUTORIAL_MARKETS[selectedMarketRef.current] ?? TUTORIAL_MARKETS[0];
-            const digit = marketTicksRef.current[selectedMarketRef.current]?.digit ?? getLastDigit(market.baseQuote);
-            const won = market.direction === 'OVER' ? digit > market.barrier : digit < market.barrier;
-            const payout = won ? Number((PRACTICE_STAKE * market.payoutMultiplier).toFixed(2)) : 0;
-            const profit = won ? Number((payout - PRACTICE_STAKE).toFixed(2)) : -PRACTICE_STAKE;
-            const result: PracticeTrade = {
-              won,
-              market: market.name,
-              contract: `${market.direction} ${market.barrier}`,
-              digit,
-              stake: PRACTICE_STAKE,
-              payout,
-              profit,
-            };
-            setLastTrade(result);
-            setDemoBalance((balance) => Number((balance + profit).toFixed(2)));
-            setNetProfit((profitTotal) => Number((profitTotal + profit).toFixed(2)));
-            speak(`${won ? 'WIN' : 'LOSS'} · payout $${payout.toFixed(2)} · profit ${profit >= 0 ? '+' : '−'}$${Math.abs(profit).toFixed(2)}`);
-            changePhase('complete');
-          }, 1000);
-        }
-      }
-
-      if (now - lastDamageAt < 200) {
-        context.fillStyle = '#fff0bd';
-        context.font = '900 17px system-ui';
-        if (target) context.fillText('HIT!', target.x, target.y - 88);
-      }
-
-      raf = requestAnimationFrame(render);
-    };
-
-    canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('keydown', onKeyDown);
-    raf = requestAnimationFrame(render);
-    return () => {
-      roundRef.current += 1;
-      window.clearInterval(marketTimer);
-      resizeObserver.disconnect();
-      cancelAnimationFrame(raf);
-      canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('keydown', onKeyDown);
-    };
+  useEffect(() => () => {
+    if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
   }, []);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 600px)');
+    const update = (): void => setCompact(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (step !== 8) setPaper(false);
+    if (step !== 6 && step !== 7) { setAiming(false); setAimDone(false); }
+  }, [step]);
+  useEffect(() => {
+    if (!aiming) return;
+    const timer = window.setTimeout(() => setAimDone(true), 1800);
+    return () => window.clearTimeout(timer);
+  }, [aiming]);
 
-  const currentStep = phase === 'choose' ? 1
-    : phase === 'move' ? 2
-      : phase === 'aim' ? 3
-        : phase === 'shoot' ? 4
-          : 5;
-  const stepInstruction = phase === 'choose' ? 'Choose rank #1'
-    : phase === 'move' ? 'Move inside the ring'
-      : phase === 'aim' ? 'Tap the cow to aim'
-        : phase === 'shoot' ? 'Watch the arrows'
-          : 'See the contract result';
+  const complete = (exercise: NonNullable<Lesson['exercise']>): void => setDone((previous) => ({ ...previous, [exercise]: true }));
+  const next = (): void => setStep((value) => Math.min(LESSONS.length - 1, value + 1));
+  const previous = (): void => setStep((value) => Math.max(0, value - 1));
+  const move = (point: Point): void => {
+    if (lesson.exercise !== 'move') return;
+    const next = { x: Math.max(compact ? 285 : 70, Math.min(compact ? 630 : 830, point.x)), y: Math.max(150, Math.min(435, point.y)) };
+    for (const animal of [cow, secondCow]) {
+      const dx = next.x - animal.x, dy = next.y - animal.y, distance = Math.hypot(dx, dy);
+      if (distance < 75) {
+        const angle = distance > 0 ? Math.atan2(dy, dx) : Math.PI / 2;
+        next.x = animal.x + Math.cos(angle) * 75;
+        next.y = animal.y + Math.sin(angle) * 75;
+      }
+    }
+    setPlayer(next);
+    complete('move');
+  };
+  const selectCow = (): void => {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    setSelected(true);
+    if (lesson.exercise === 'cow') complete('cow');
+    if (lesson.exercise === 'aim') { setAimDone(false); setAiming(true); complete('aim'); }
+  };
+  const paperShot = (): void => {
+    if (lesson.exercise !== 'paper') return;
+    setPaper(true);
+    complete('paper');
+  };
+  const onGrass = (event: MouseEvent): void => {
+    const svg = event.currentTarget as SVGSVGElement;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX; point.y = event.clientY;
+    const matrix = svg.getScreenCTM();
+    if (matrix) move(point.matrixTransform(matrix.inverse()));
+  };
+  const onKey = (event: KeyboardEvent): void => {
+    const keys: Record<string, Point> = { arrowleft: { x: -35, y: 0 }, a: { x: -35, y: 0 }, arrowright: { x: 35, y: 0 }, d: { x: 35, y: 0 }, arrowup: { x: 0, y: -35 }, w: { x: 0, y: -35 }, arrowdown: { x: 0, y: 35 }, s: { x: 0, y: 35 } };
+    const delta = keys[event.key.toLowerCase()];
+    if (delta && lesson.exercise === 'move') { event.preventDefault(); move({ x: player.x + delta.x, y: player.y + delta.y }); }
+  };
+  const startLongPress = (event: PointerEvent): void => {
+    if (event.pointerType !== 'touch' || lesson.exercise !== 'paper') return;
+    pressTimer.current = window.setTimeout(() => { suppressClick.current = true; paperShot(); pressTimer.current = null; }, 650);
+  };
+  const cancelLongPress = (): void => {
+    if (pressTimer.current !== null) window.clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+  };
 
-  return (
-    <section class="how-to-simulator" aria-label="Guided pasture tutorial">
-      <div class="tutorial-game">
-        <canvas
-          ref={canvasRef}
-          class="tutorial-game-canvas"
-          width={WIDTH}
-          height={HEIGHT}
-          tabIndex={0}
-          aria-label={`Step ${currentStep} of 5: ${stepInstruction}.`}
-        />
-        <div class="tutorial-hud">
-          <button type="button" class="how-to-back" onClick={onExit} aria-label="Exit tutorial">←</button>
-          <div class="tutorial-step-guide" role="status" aria-live="polite">
-            <span>STEP {currentStep} / 5</span>
-            <strong>{stepInstruction}</strong>
-            <div class="tutorial-step-track" aria-hidden="true">
-              <span style={{ width: `${(currentStep / 5) * 100}%` }} />
-            </div>
-          </div>
-          <div class="tutorial-money" aria-label={`Practice balance $${demoBalance.toFixed(2)}, net profit ${netProfit.toFixed(2)}`}>
-            <small>PRACTICE</small>
-            <strong>${demoBalance.toFixed(2)}</strong>
-            <span>{netProfit < 0 ? '−' : '+'}${Math.abs(netProfit).toFixed(2)}</span>
-          </div>
-        </div>
-        <div ref={speechBubbleRef} class="tutorial-ranger-speech" data-placement="above" aria-hidden="true">
-          {speech}
-        </div>
-        <div class="tutorial-market-bubbles" role="group" aria-label="Cow market rankings">
-          {TUTORIAL_COWS.map((cow, index) => {
-            const market = TUTORIAL_MARKETS[cow.marketIndex];
-            const cowPosition = pointForCow(index, worldWidth);
-            const selected = selectedCowRef.current === index;
-            const tick = marketTicks[cow.marketIndex] ?? marketTicksRef.current[cow.marketIndex];
-            const edge = (cow.confidence / 100) - (1 / market.payoutMultiplier);
-            const tickDirection = tick.change > 0 ? 'up' : tick.change < 0 ? 'down' : 'flat';
-            const tickArrow = tick.change > 0 ? '↑' : tick.change < 0 ? '↓' : '→';
-            return (
-              <button
-                type="button"
-                key={market.symbol}
-                class={`tutorial-market-bubble${cow.rank === 1 ? ' top-rank' : ' lower-rank'}${selected ? ' selected' : ''}${phase === 'choose' && cow.rank === 1 ? ' guide-target' : ''}`}
-                style={{
-                  left: `${((cowPosition?.x ?? 0) / worldWidth) * 100}%`,
-                  top: `${(Math.max(4, (cowPosition?.y ?? 0) - 178) / HEIGHT) * 100}%`,
-                }}
-                aria-label={`${cow.rank === 1 ? 'High rank one' : 'Low rank two'}, ${market.name}, ${market.direction} ${market.barrier}, ${cow.confidence} percent confidence, ${edge >= 0 ? 'positive' : 'negative'} ${Math.abs(edge * 100).toFixed(1)} percent edge, quote ${tick.quote.toFixed(2)} ${tick.change > 0 ? 'up' : tick.change < 0 ? 'down' : 'unchanged'}. Select cow.`}
-                aria-pressed={selected}
-                disabled={phase !== 'choose'}
-                onClick={() => chooseCow(index)}
-              >
-                <span class="tutorial-bubble-top">
-                  <b>{cow.rank === 1 ? 'RANK #1' : 'RANK #2'}</b>
-                  <strong>{cow.confidence}%</strong>
-                </span>
-                <span class={`tutorial-bubble-edge ${edge >= 0 ? 'positive' : 'negative'}`}>
-                  {edge >= 0 ? '▲' : '▼'} {edge >= 0 ? '+' : '−'}{Math.abs(edge * 100).toFixed(1)}% EDGE
-                </span>
-                <span class="tutorial-bubble-contract">{market.name} · {market.direction} {market.barrier}</span>
-                <span class="tutorial-bubble-quote">
-                  <small>{market.symbol} · {tick.quote.toFixed(2)}</small>
-                  <strong class={`tutorial-tick ${tickDirection}`} aria-label={`Quote ${tickDirection}`}>
-                    {tickArrow} {tick.change === 0 ? '—' : `${tick.change > 0 ? '+' : '−'}${Math.abs(tick.change).toFixed(2)}`}
-                  </strong>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {phase === 'complete' && lastTrade && (
-          <div class={`tutorial-result ${lastTrade.won ? 'won' : 'lost'}`} role="status" aria-live="polite">
-            <strong>{lastTrade.won ? 'WIN' : 'LOSS'}</strong>
-            <span>PAYOUT ${lastTrade.payout.toFixed(2)} · PROFIT {lastTrade.profit < 0 ? '−' : '+'}${Math.abs(lastTrade.profit).toFixed(2)}</span>
-            <button type="button" onClick={reset}>AGAIN</button>
-          </div>
-        )}
+  return <section class="pasture-guide" aria-label="Interactive practice pasture">
+    <header class="guide-top">
+      <button class="guide-exit" type="button" onClick={onExit} aria-label="Exit tutorial">← <span>Pasture</span></button>
+      <div class="guide-brand"><strong>HOW TO PLAY</strong><span>Practice pasture · no money used</span></div>
+      <span class="guide-count">{step + 1} / {LESSONS.length}</span>
+    </header>
+    <div class="guide-scene">
+      <svg class="guide-pasture" viewBox={compact ? '250 60 420 420' : '0 0 900 500'} preserveAspectRatio="xMidYMid meet" role="application" tabIndex={0}
+        aria-label="Practice pasture. Use arrow keys to move during the movement lesson." onClick={onGrass} onKeyDown={onKey}>
+        <rect width="900" height="500" fill="#53894b" />
+        <path d="M0 33h900M0 465h900" stroke="#795c3e" stroke-width="8" />
+        {Array.from({ length: 15 }, (_, index) => <path key={index} d={`M${index * 65 + 20} 20v32 M${index * 65 + 20} 450v32`} stroke="#775336" stroke-width="8" />)}
+        {Array.from({ length: 65 }, (_, index) => <circle key={index} cx={(index * 139 + 55) % 900} cy={(index * 79 + 70) % 360 + 55} r={index % 3 === 0 ? 2 : 1} fill={index % 4 === 0 ? '#f5e6bb' : '#93ad65'} />)}
+        <path d="M775 32h125v430H750q-18-100 12-215t13-215" fill="#c9ad78" opacity=".72" />
+        {step === 5 && <ellipse cx={secondCow.x} cy={secondCow.y + 20} rx="65" ry="31" fill="none" stroke="#ff4057" stroke-width="4" />}
+        <Cow point={secondCow} /><Cow point={cow} highlight />
+        {aiming && !aimDone && <g><path class="guide-aim-line" d={`M${player.x + 15} ${player.y - 8} L${cow.x} ${cow.y}`} stroke="#f4d17f" stroke-width="3" stroke-dasharray="8 5" /><rect x={cow.x - 25} y={cow.y - 48} width="50" height="5" fill="#382c27" /><rect x={cow.x - 24} y={cow.y - 47} width="32" height="3" fill="#76cb78" /></g>}
+        {paper && <g class="guide-paper-ghost"><path d={`M${player.x + 15} ${player.y - 8} L${cow.x} ${cow.y}`} stroke="#f4d17f" stroke-width="3" /><g opacity=".5"><Cow point={cow} /></g></g>}
+        <Ranger point={player} />
+        <g class="guide-cow-target" role="button" tabIndex={0} aria-label="Practice cow: Volatility 50, over 2" onClick={(event) => { event.stopPropagation(); selectCow(); }}
+          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectCow(); } }}
+          onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); cancelLongPress(); paperShot(); }}
+          onPointerDown={startLongPress} onPointerUp={cancelLongPress} onPointerCancel={cancelLongPress} onPointerLeave={cancelLongPress}>
+          <rect x={cow.x - 56} y={cow.y - 40} width="125" height="90" fill="transparent" />
+        </g>
+        <g class="guide-market-card" transform={`translate(${cow.x - 85} 174)`} role="button" tabIndex={0} aria-label="Inspect Volatility 50 market bubble" onClick={(event) => { event.stopPropagation(); selectCow(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectCow(); } }}>
+          <rect width="170" height="68" rx="8" fill="#10271e" stroke={selected ? '#ffe37b' : '#38ed86'} stroke-width="2" />
+          <text x="9" y="16" fill="#fff4cf" font-size="10" font-weight="800">Volatility 50 (1s)</text>
+          <text x="9" y="33" fill="#90ed9e" font-size="11" font-weight="900">↑ OVER 2</text>
+          <text x="105" y="33" fill="#e9efe3" font-size="8" font-weight="800">76% CONF</text>
+          <rect x="8" y="40" width="68" height="17" rx="4" fill="#165331" />
+          <text x="12" y="52" fill="#8cf0a7" font-size="9" font-weight="900">▲ +4% EDGE</text>
+          <text x="101" y="52" fill="#e8eddf" font-size="8" font-weight="800">L 24 · H 26</text>
+        </g>
+        {(step === 7 || paper || aiming) && <g transform={`translate(${player.x - 92} ${player.y - 103})`} aria-label="Example ranger trade bubble">
+          <rect width="184" height="56" rx="8" fill="#fff0d6" stroke="#a46437" stroke-width="2" />
+          <text x="9" y="15" fill="#71533d" font-size="9" font-weight="900">{paper ? 'PAPER · NO MONEY' : aiming ? (aimDone ? 'PRACTICE COMPLETE' : 'AIMING') : 'WON  +0.19 USD · EXAMPLE'}</text>
+          <text x="9" y="30" fill="#4e3826" font-size="9" font-weight="800">{paper ? 'Volatility 50 / OVER 2' : 'Volatility 50 / OVER 2 / 1.00 USD'}</text>
+          <text x="9" y="45" fill="#27734a" font-size="9" font-weight="800">{paper ? 'ENTRY 1 → EXIT 5 · EXAMPLE' : '▲ +4% EDGE · QUOTE FRESH'}</text>
+        </g>}
+      </svg>
+      <div class="guide-game-controls">
+        <button type="button" class={marketsOpen ? 'is-active' : ''} onClick={() => { setMarketsOpen(!marketsOpen); setAutoOpen(false); if (lesson.exercise === 'markets') complete('markets'); }} aria-expanded={marketsOpen}>◎ <span>Markets</span></button>
+        <button type="button" class={autoOpen ? 'is-active' : ''} onClick={() => { setAutoOpen(!autoOpen); setMarketsOpen(false); if (lesson.exercise === 'auto') complete('auto'); }} aria-expanded={autoOpen}>{autoRunning ? '❚❚' : '▶'} <span>{autoRunning ? 'Running' : 'Auto'}</span></button>
       </div>
-      <span class="tutorial-speech-live" aria-live="polite">{speech}</span>
+      {marketsOpen && <aside class="guide-demo-panel" aria-label="Example markets panel"><div><strong>Markets</strong><button onClick={() => setMarketsOpen(false)} aria-label="Close markets">×</button></div><p>Stake <b>1.00 USD</b> · Style <b>Base</b></p><p>Live targets · recent bets · balance</p><small>Example controls only</small></aside>}
+      {autoOpen && <aside class="guide-demo-panel guide-auto-panel" aria-label="Example automation controls"><div><strong>RANGER AUTO</strong><button onClick={() => setAutoOpen(false)} aria-label="Close automation">×</button></div><p>{autoRunning ? 'ACTIVE · Looking for a fresh signal' : 'OFF · Ready to practise'}</p><div class="guide-demo-settings"><span>Stake <b>1.00</b></span><span>Style <b>Base</b></span><span>Losses <b>2</b></span><span>Cooldown <b>45s</b></span><span>Take profit <b>Off</b></span></div><button class="guide-demo-start" onClick={() => { setAutoRunning(!autoRunning); if (lesson.exercise === 'start') complete('start'); }}>{autoRunning ? '❚❚  Pause practice' : '▶  Start practice'}</button><small>Simulation only · no trades</small></aside>}
+      {step === 8 && <button class="guide-paper-accessible" type="button" onClick={paperShot}>Try paper shot</button>}
+      {autoRunning && <div class="guide-run-status"><b>Current run P&amp;L · 0.00</b><span>Example automatic trades</span></div>}
+    </div>
+    <section class="guide-lesson" key={step} aria-live="polite">
+      <div class="guide-progress"><span>LESSON {step + 1} OF {LESSONS.length}</span><div><i style={{ width: `${((step + 1) / LESSONS.length) * 100}%` }} /></div></div>
+      <h1>{lesson.title}</h1><p>{lesson.body}</p>{lesson.tip && <p class="guide-tip">{lesson.tip}</p>}
+      {lesson.exercise && <span class="guide-exercise">{completed ? '✓ Practice complete' : 'Try it in the pasture'}</span>}
+      <div class="guide-navigation">
+        <button type="button" onClick={previous} disabled={step === 0}>Back</button>
+        {step < LESSONS.length - 1 ? <button type="button" class="guide-next" onClick={next}>{completed ? 'Next' : 'Skip for now'} →</button> : <button type="button" class="guide-next" onClick={onExit}>Enter the pasture →</button>}
+      </div>
     </section>
-  );
+  </section>;
 }
