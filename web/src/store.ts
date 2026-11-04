@@ -2064,6 +2064,13 @@ export async function refreshTrades(limit = 50): Promise<void> {
   return refresh;
 }
 
+/** Fetch one account-scoped page without changing the live trade store. */
+export async function fetchTradeHistoryPage(beforeId?: number): Promise<TradeRow[]> {
+  const suffix = beforeId === undefined ? '' : `&beforeId=${beforeId}`;
+  const result = await api<{ trades: TradeRow[] }>(`/api/history?limit=50${suffix}`);
+  return Array.isArray(result.trades) ? result.trades : [];
+}
+
 /** Owner-only audit history. The API scopes account rows to the active login. */
 export async function loadLedgerEntries(limit = 200): Promise<void> {
   try {

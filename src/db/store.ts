@@ -1518,10 +1518,10 @@ export function markTradePurchaseOutcomeUnknown(id: number, accountId = currentA
     .run(`${before.reason} | ${marker}`, id, accountId);
 }
 
-export function listTrades(limit = 50, accountId = currentAccountId()): TradeRow[] {
-  return getDb()
-    .prepare('SELECT * FROM trades WHERE account_id = ? ORDER BY id DESC LIMIT ?')
-    .all(accountId, limit) as unknown as TradeRow[];
+export function listTrades(limit = 50, accountId = currentAccountId(), beforeId?: number): TradeRow[] {
+  return beforeId === undefined
+    ? getDb().prepare('SELECT * FROM trades WHERE account_id = ? ORDER BY id DESC LIMIT ?').all(accountId, limit) as unknown as TradeRow[]
+    : getDb().prepare('SELECT * FROM trades WHERE account_id = ? AND id < ? ORDER BY id DESC LIMIT ?').all(accountId, beforeId, limit) as unknown as TradeRow[];
 }
 
 /** Historical digit loss remaining after later digit profits, for display only. */

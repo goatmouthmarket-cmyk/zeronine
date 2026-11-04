@@ -55,6 +55,10 @@ test('financial history, performance, pending trades, and recovery are isolated 
   assert.equal(store.getDigitRemainingLoss().amount, 2);
   for (let i = 0; i < 35; i++) add('won', 0.01, `b-small-win-${i}`);
   assert.equal(store.getDigitRemainingLoss().amount, 1.65, 'wins beyond the recent display window reduce the earlier loss');
+  const firstPage = store.listTrades(10);
+  const secondPage = store.listTrades(10, undefined, firstPage.at(-1)?.id);
+  assert.equal(secondPage.length, 10);
+  assert.ok(secondPage.every(row => row.id < firstPage.at(-1)!.id && row.account_id === firstPage[0].account_id), 'older pages remain ordered and account-scoped');
   add('won', 2, 'b-clear');
   assert.equal(store.getDigitRemainingLoss().amount, 0, 'the remaining loss never becomes negative');
   const latestLoss = add('lost', -3, 'b-new-loss');

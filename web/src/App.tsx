@@ -1,7 +1,7 @@
 import { memo } from 'preact/compat';
 import { useDialogFocus } from './useDialogFocus';
 import { maySkipCowReview } from './realCowConsent';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, SessionInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct, ManualTradePreview, ManualTradeResult } from './store';
 import { MomentumPriceChart } from './MomentumPriceChart';
@@ -30,6 +30,7 @@ import {
   runTestBacktest,
   runPatternScan,
   refreshTrades,
+  fetchTradeHistoryPage,
   clearStuckTrade,
   syncCoreState,
   loadLedgerEntries,
@@ -403,17 +404,19 @@ export function App(): JSX.Element {
   return (
     <>
       <a class="skip-link" href="#main-content">Skip to main content</a>
-      <main class="app" id="main-content" data-page={page} tabIndex={-1}>
+      <main class="app" id="main-content" data-page={page === 'history' || page === 'account' ? 'home' : page} tabIndex={-1}>
         <div class="view view-home">
-          <HomePage page={page} active={page === 'home'} onNavigate={navigate} />
+          <HomePage page={page} active={page === 'home' || page === 'history' || page === 'account'} onNavigate={navigate} />
         </div>
         <div class="desk-side">
-          {page === 'history' && <div class="view view-history"><HistoryPage /></div>}
           {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
-          {page === 'account' && <div class="view view-account"><AccountPage onConnected={enterPasture} /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
           {page === 'howToPlay' && <div class="view view-how-to-play"><HowToPlayPage onBack={() => navigate('home')} onConnect={() => navigate('account')} /></div>}
         </div>
+        {(page === 'history' || page === 'account') && <aside class="pasture-detail-panel" aria-label={page === 'history' ? 'Trade history' : 'Account'}>
+          <header class="pasture-detail-heading"><div><small>DERIV COWS</small><h2>{page === 'history' ? 'Trade history' : 'Account'}</h2></div><button type="button" aria-label="Close details" onClick={() => navigate('home')}><Icon name="x" size={19} /></button></header>
+          <div class="pasture-detail-content">{page === 'history' ? <PastureHistory /> : <AccountPage onConnected={enterPasture} />}</div>
+        </aside>}
         {!legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       </main>
       <BottomNav page={page} setPage={navigate} />
@@ -710,6 +713,15 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, [active, rememberedReal, s.session?.loginid]);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const roomFrameRef = useRef<HTMLIFrameElement>(null);
+  const syncDetailHud = useCallback(() => {
+    const doc = roomFrameRef.current?.contentDocument;
+    const hud = doc?.getElementById('playerHud');
+    const quick = doc?.getElementById('marketHudQuick');
+    const open = page === 'history' || page === 'account';
+    if (open) { hud?.style.setProperty('display', 'none', 'important'); quick?.style.setProperty('visibility', 'hidden', 'important'); }
+    else { hud?.style.removeProperty('display'); quick?.style.removeProperty('visibility'); }
+  }, [page]);
+  useLayoutEffect(() => { syncDetailHud(); }, [syncDetailHud]);
   const scoutReplayBusy = useRef(false);
   const timedManualExecuting = useRef(false);
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
@@ -1441,7 +1453,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           class="trading-room-frame"
           src="/trading-room.html"
           title="Deriv Cows interactive trading pasture"
-          onLoad={postRoomState}
+          onLoad={() => { postRoomState(); syncDetailHud(); }}
         />
       </section>}
 
@@ -3162,6 +3174,46 @@ function CowConfirmationSettings({ session }: { session: SessionInfo }): JSX.Ele
 /* ---------------- history ---------------- */
 
 type Filter = 'all' | 'wins' | 'losses' | 'over' | 'under' | 'multipliers';
+
+function PastureHistory(): JSX.Element {
+  const s = useStore();
+  const [trades, setTrades] = useState<TradeRow[]>([]);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const generation = useRef(0);
+  useEffect(() => {
+    const token = ++generation.current;
+    setTrades([]); setMore(false); setError('');
+    if (!s.owner || !s.session) { setBusy(false); return; }
+    setBusy(true);
+    void fetchTradeHistoryPage().then(rows => { if (token === generation.current) { setTrades(rows); setMore(rows.length === 50); } }).catch(() => { if (token === generation.current) setError('Could not load history. Try reopening this panel.'); }).finally(() => { if (token === generation.current) setBusy(false); });
+    return () => { generation.current++; };
+  }, [s.owner, s.session?.loginid]);
+  const loadMore = async () => {
+    if (busy || !trades.length) return;
+    const token = generation.current;
+    setBusy(true); setError('');
+    try {
+      const rows = await fetchTradeHistoryPage(trades[trades.length - 1].id);
+      if (token === generation.current) { setTrades(current => [...current, ...rows]); setMore(rows.length === 50); }
+    } catch { if (token === generation.current) setError('Could not load older trades. Please try again.'); }
+    finally { if (token === generation.current) setBusy(false); }
+  };
+  if (!s.owner) return <p class="pasture-detail-empty">Unlock the dashboard to view your trade history.</p>;
+  if (!s.session) return <p class="pasture-detail-empty">Connect Deriv to see your account trade history.</p>;
+  return <section class="pasture-history" aria-label="Account trades">
+    <p class="pasture-detail-intro">Account trades for <strong>{s.session.loginid}</strong></p>
+    <div class="pasture-history-list">{trades.map(trade => <article class="pasture-history-row" key={trade.id}>
+      <div><strong>{shortMarketName(s.markets.find(market => market.symbol === trade.market)?.display ?? trade.market)}</strong><small>{tradeContractLabel(trade)} ? {new Date(trade.ts).toLocaleString()}</small></div>
+      <div><b class={trade.status === 'won' ? 'win' : trade.status === 'lost' ? 'loss' : ''}>{trade.status.toUpperCase()}</b><small>{trade.profit == null ? 'Pending' : fmtSigned(trade.profit, s.session?.currency ?? '')}</small></div>
+    </article>)}</div>
+    {!trades.length && !busy && !error && <p class="pasture-detail-empty">No account trades yet.</p>}
+    {error && <p role="alert">{error}</p>}
+    {more && <button class="pasture-detail-action" type="button" onClick={() => void loadMore()} disabled={busy}>{busy ? 'Loading?' : 'Load older trades'}</button>}
+    {busy && !trades.length && <p class="pasture-detail-empty">Loading history?</p>}
+  </section>;
+}
 
 function HistoryPage(): JSX.Element {
   const s = useStore();
@@ -5610,9 +5662,10 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
   const [open, setOpen] = useState(false);
   useEffect(() => { setOpen(false); }, [page]);
 
+  const inPasture = page === 'home' || page === 'history' || page === 'account';
   return (
-    <div class={`bottom-nav-wrap${page === 'home' ? ' pasture-nav' : ''}${open ? ' is-open' : ''}`}>
-      {page === 'home' && <button type="button" class="pasture-nav-toggle" aria-label={open ? 'Close game menu' : 'Open game menu'} aria-expanded={open} aria-controls="mobile-game-navigation" onClick={() => setOpen((value) => !value)}><Icon name={open ? 'x' : 'dots'} size={22} /></button>}
+    <div class={`bottom-nav-wrap${inPasture ? ' pasture-nav' : ''}${open ? ' is-open' : ''}`}>
+      {inPasture && <button type="button" class="pasture-nav-toggle" aria-label={open ? 'Close game menu' : 'Open game menu'} aria-expanded={open} aria-controls="mobile-game-navigation" onClick={() => setOpen((value) => !value)}><Icon name={open ? 'x' : 'dots'} size={22} /></button>}
       <nav id="mobile-game-navigation" class="bottom-nav" aria-label="Main navigation">
         <button class={`nav-item${page === 'home' ? ' active' : ''}`} aria-current={page === 'home' ? 'page' : undefined} onClick={() => setPage('home')}>
           <Icon name="home" size={20} />

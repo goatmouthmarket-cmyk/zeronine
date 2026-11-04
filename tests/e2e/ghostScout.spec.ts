@@ -50,3 +50,28 @@ test('Ranger Auto exposes separate entry timing, ring and paper research control
   await expect(game.locator('#manualMinEdge')).toHaveValue('2.5');
   await expect(game.locator('.hud-avatar svg')).toHaveCount(1);
 });
+
+
+test('account and history open in the pasture and restore its progress HUD', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ json: {
+    owner: false, public_dashboard: true, markets: [], trades: [], session: null,
+    settings: null, recovery: null, automation: null, runs: [], entries: [],
+  } }));
+  await page.routeWebSocket('**/ws', () => {});
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const game = page.frameLocator('iframe[title="Deriv Cows interactive trading pasture"]');
+  await page.getByRole('button', { name: 'Open game menu' }).click();
+  await page.locator('.bottom-nav').getByRole('button', { name: 'History', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: 'Trade history' })).toBeVisible();
+  await expect(game.locator('#marketHudQuick')).toBeHidden();
+  await page.getByRole('button', { name: 'Close details' }).click();
+  await expect(game.locator('#marketHudQuick')).toBeVisible();
+  await page.getByRole('button', { name: 'Open game menu' }).click();
+  await page.locator('.bottom-nav').getByRole('button', { name: 'Account', exact: true }).click();
+  await expect(page.getByRole('complementary', { name: 'Account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue with Deriv' })).toBeVisible();
+  await expect(game.locator('#marketHudQuick')).toBeHidden();
+  await page.getByRole('button', { name: 'Close details' }).click();
+  await expect(game.locator('#marketHudQuick')).toBeVisible();
+});
