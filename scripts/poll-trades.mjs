@@ -1,4 +1,4 @@
-import { getDb } from './src/db/store.ts';
+import { getDb } from '../src/db/store.ts';
 const db = getDb();
 const poll = async (n) => {
   const rows = db.prepare('SELECT id, ts, contract_id, status, profit, reason FROM trades ORDER BY id DESC LIMIT 4').all();

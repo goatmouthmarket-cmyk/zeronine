@@ -5,4 +5,6 @@ data
 server.log
 server.err.log
 __pycache__
-.venv
+.venv.build-node
+node-v24.18.0-win-x64
+test-results

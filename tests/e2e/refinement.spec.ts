@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 test('guest screens fit the supported viewport widths', async ({ page }) => {
   for (const width of [320, 375, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const path of ['/', '/account', '/history', '/bot', '/lab', '/momentum', '/gold', '/privacy']) {
+    for (const path of ['/', '/account', '/history', '/lab', '/privacy']) {
       await page.goto(path, { waitUntil: 'domcontentloaded' });
       await expect(page.locator('#main-content')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${path} at ${width}px`).toBe(true);
@@ -34,12 +34,12 @@ test('connection fields have visible labels and legal links clear the home ticke
 
 test('bottom navigation announces the current page and updates after navigation', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto('/bot', { waitUntil: 'domcontentloaded' });
+  await page.goto('/account', { waitUntil: 'domcontentloaded' });
   const nav = page.locator('.bottom-nav');
-  await expect(nav.getByRole('button', { name: 'Bot', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('button', { name: 'Account', exact: true })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('button', { name: 'History', exact: true }).click();
   await expect(nav.getByRole('button', { name: 'History', exact: true })).toHaveAttribute('aria-current', 'page');
-  await expect(nav.getByRole('button', { name: 'Bot', exact: true })).not.toHaveAttribute('aria-current', 'page');
+  await expect(nav.getByRole('button', { name: 'Account', exact: true })).not.toHaveAttribute('aria-current', 'page');
 });
 
 test('pasture uses the entered base stake and only caps at the balance safeguard', async ({ page }) => {

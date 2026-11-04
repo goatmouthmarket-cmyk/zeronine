@@ -14,6 +14,16 @@
 
 ---
 
+## Developer guide
+
+- `web/public/trading-room.html` contains the pasture game; `web/src/` contains the dashboard and tutorial.
+- `src/` contains the API, market feeds, trading safeguards, and research engines; `tests/` contains automated checks.
+- `docs/` contains technical and historical notes. Gold server code remains for existing contract and account safety, although the Gold page was removed.
+- `scripts/poll-trades.mjs` is an optional local database diagnostic. It reads the configured SQLite data directory; do not commit its output.
+- Run `npm run verify` to typecheck, test, and rebuild the committed frontend bundle. Use Node 24 or later.
+
+---
+
 ## ABOUT DERIV COWS
 
 <div align="center">
@@ -275,6 +285,9 @@ zeronine/
 |   |-- gold/
 |
 |-- tests/
+|-- docs/
+|-- scripts/
+|   |-- poll-trades.mjs
 |-- package.json
 |-- railway.toml
 |-- README.md

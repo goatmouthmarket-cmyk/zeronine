@@ -1,3 +1,5 @@
+> Historical design notes. Some screens and navigation described below have since changed.
+
 # ZeroNine UI refinement
 
 The existing navigation, brand palette, trading charts, dashboard sections, and execution workflows are preserved.
