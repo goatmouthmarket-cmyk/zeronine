@@ -354,6 +354,24 @@ function updateRangerAnimation(now, dt) {
   rangerAnim.previousY = player.y;
 }
 const manualPaperTrades = [];
+const paperTelemetrySession = crypto.randomUUID();
+const paperTelemetryQueue = [];
+let paperTelemetryTimer = null, paperTelemetrySending = false;
+function flushPaperTelemetry() {
+  paperTelemetryTimer = null;
+  if (paperTelemetrySending || !paperTelemetryQueue.length || typeof fetch !== 'function') return;
+  const events = paperTelemetryQueue.splice(0, 40);
+  paperTelemetrySending = true;
+  try {
+    Promise.resolve(fetch('/api/telemetry/paper', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ events }) }))
+      .catch(() => {}).finally(() => { paperTelemetrySending = false; if (paperTelemetryQueue.length && paperTelemetryTimer === null) paperTelemetryTimer = setTimeout(flushPaperTelemetry, 1000); });
+  } catch { paperTelemetrySending = false; }
+}
+function sendPaperTelemetry(trade, source) {
+  if (paperTelemetryQueue.length >= 200) return;
+  paperTelemetryQueue.push({ eventId: `${paperTelemetrySession}:${trade.id}`, source, market: trade.symbol, direction: trade.direction, barrier: trade.barrier, status: trade.status, entryDigit: trade.entryDigit, exitDigit: trade.exitDigit, entryEpoch: trade.entryEpoch, entryQuote: trade.entryQuote, estWin: trade.estWin, edge: trade.edge, exitEpoch: trade.exitEpoch });
+  if (paperTelemetryTimer === null) paperTelemetryTimer = setTimeout(flushPaperTelemetry, 1000);
+}
 const autoPaperStudies = new Map();
 const manualPaperVisuals = [];
 let manualPaperTradeSerial = 0;
@@ -388,6 +406,8 @@ function createManualPaperEntry(contract, tick, id) {
     barrier: contract.barrier,
     entryEpoch: tick.epoch,
     entryQuote: tick.quote,
+    estWin: Number.isFinite(contract.p) && contract.p >= 0 && contract.p <= 1 ? contract.p : null,
+    edge: Number.isFinite(contract.edge) ? contract.edge : null,
     entryDigit: tick.digit,
     entryTickKey: paperTickKey(tick),
     status: 'open',
@@ -535,6 +555,7 @@ function beginManualPaperTrade(cowTarget) {
   rangerAnim.lookY = paperLook.y;
   rangerAnim.headFacing = rangerHeadFacing(rangerAnim.headFacing, paperLook.x);
   manualPaperTrades.push(trade);
+  sendPaperTelemetry(trade, 'manual_paper');
   manualPaperNoticeId = trade.id;
   manualPaperNoticeUntil = 0;
   spawnPaperGhostVisual(trade, cowTarget, 'player');
@@ -593,7 +614,9 @@ for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
 
 function updateAutoPaperResearch(state) {
   const markets = Array.isArray(state.markets) ? state.markets : [];
-  for (const study of autoPaperStudies.values()) settleManualPaperTrades(study.trades, markets);
+  for (const study of autoPaperStudies.values()) {
+    for (const trade of settleManualPaperTrades(study.trades, markets)) if (typeof sendPaperTelemetry === 'function') sendPaperTelemetry(trade, 'auto_paper');
+  }
   if (rangerAutoActive && rangerPaperEnabled) {
     for (const contract of contracts) {
       if (!contract?.fresh || !Number.isFinite(contract.edge) || contract.edge <= 0 || contract.edge < rangerAutoMinEdge / 100 || Number(contract.p) < .70) continue;
@@ -615,6 +638,7 @@ function updateAutoPaperResearch(state) {
       const trade = createManualPaperEntry(contract, tick, `auto-research-${key}-${tickKey}`);
       if (!trade) continue;
       study.trades.push(trade);
+      if (typeof sendPaperTelemetry === 'function') sendPaperTelemetry(trade, 'auto_paper');
       study.lastTickKey = tickKey;
     }
   }
@@ -660,6 +684,7 @@ window.addEventListener('message', (event) => {
     renderManualPaperNotice(latest);
   }
   for (const trade of settled) {
+    sendPaperTelemetry(trade, 'manual_paper');
     notify(`Paper ${trade.status === 'won' ? 'WIN' : 'LOSS'} · ${marketName(trade.symbol, lastRoomState)} ${trade.direction.toUpperCase()} ${trade.barrier} · ${trade.entryDigit} → ${trade.exitDigit}. No money used.`, trade);
   }
 });

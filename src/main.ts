@@ -50,6 +50,7 @@ import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
 import { winDigits } from './core/digitMath.ts';
 import { EntryResearchRuntime } from './testlab/entryRuntime.ts';
 import type { EntryMethodId, EntryProduct } from './testlab/entry.ts';
+import { TelemetryService } from './telemetry/service.ts';
 
 function paperSignalFromHubEvent(
   event: Record<string, unknown>,
@@ -134,6 +135,8 @@ async function main(): Promise<void> {
   await app.register(fastifyCookie, { secret: config.sessionSecret });
 
   const hub = new Hub();
+  const telemetry = new TelemetryService(path.join(config.dataDir, 'telemetry.db'), config.telemetryRetentionDays, config.telemetryEnabled);
+  hub.on((event) => telemetry.record(event));
   let lastProvenDigitsMode = '';
   let entrySnapshot: ReturnType<EntryResearchRuntime['state']> | null = null;
   let entrySnapshotQueued = false;
@@ -424,7 +427,7 @@ async function main(): Promise<void> {
     }
   }, 500);
   entryResearchTimer.unref();
-  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, gold, entryResearch });
+  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, gold, entryResearch, telemetry });
   await registerWs(app, hub, registry);
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');
@@ -576,6 +579,7 @@ async function main(): Promise<void> {
     goldFeed.stop();
     flushDigitQueue();
     await app.close();
+    await telemetry.close();
     process.exit(0);
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));

@@ -8,7 +8,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'overunder-public-d
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
 
 test('public dashboard exposes global market data but protects the connected account', async () => {
-  const [{ default: Fastify }, { default: cookie }, hubMod, marketMod, feedMod, clientMod, autoMod, paperMod, routesMod, store, cfg] =
+  const [{ default: Fastify }, { default: cookie }, hubMod, marketMod, feedMod, clientMod, autoMod, paperMod, routesMod, store, cfg, telemetryMod] =
     await Promise.all([
       import('fastify'),
       import('@fastify/cookie'),
@@ -21,6 +21,7 @@ test('public dashboard exposes global market data but protects the connected acc
       import('../src/api/routes.ts'),
       import('../src/db/store.ts'),
       import('../src/config.ts'),
+      import('../src/telemetry/service.ts'),
     ]);
   const previousToken = cfg.config.dashboardAdminToken;
   cfg.config.dashboardAdminToken = 'owner-test-token';
@@ -33,7 +34,8 @@ test('public dashboard exposes global market data but protects the connected acc
   const client = new clientMod.DerivPrivateClient();
   const automation = new autoMod.Automation(registry, client, hub);
   const paperSimulator = new paperMod.PaperSimulator();
-  routesMod.registerApi(app, { registry, feed, client, hub, automation, paperSimulator });
+  const telemetry = new telemetryMod.TelemetryService(path.join(cfg.config.dataDir, 'test-telemetry.db'), 30);
+  routesMod.registerApi(app, { registry, feed, client, hub, automation, paperSimulator, telemetry });
 
   store.setSession({
     id: 'public-test-session', loginid: 'CR123', balance: 123.45, currency: 'USD', mode: 'demo', auth_kind: 'pat',
@@ -59,6 +61,8 @@ test('public dashboard exposes global market data but protects the connected acc
   assert.deepEqual(guestLedger.json().entries, []);
   const guestPaper = await app.inject({ method: 'POST', url: '/api/paper/start' });
   assert.equal(guestPaper.statusCode, 403);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/telemetry/events' })).statusCode, 403);
+  assert.equal((await app.inject({ method: 'POST', url: '/api/telemetry/paper', payload: {} })).statusCode, 403);
 
   const unlock = await app.inject({ method: 'POST', url: '/api/auth/owner', payload: { token: 'owner-test-token' } });
   assert.equal(unlock.statusCode, 200);
@@ -69,6 +73,18 @@ test('public dashboard exposes global market data but protects the connected acc
   const ownerLedger = await app.inject({ method: 'GET', url: '/api/ledger', headers: { cookie: cookieHeader } });
   assert.equal(ownerLedger.json().entries.length, 1);
   assert.equal(ownerLedger.json().entries[0].book, 'account');
+  const paperEvent = { eventId: 'session:trade-1', source: 'manual_paper', market: 'R_10', direction: 'over', barrier: 2, status: 'won', entryDigit: 1, exitDigit: 5, entryEpoch: 100, entryQuote: 100.1, estWin: .75, edge: .03, exitEpoch: 101, token: 'must-not-be-recorded' };
+  assert.equal((await app.inject({ method: 'POST', url: '/api/telemetry/paper', headers: { cookie: cookieHeader }, payload: paperEvent })).statusCode, 200);
+  assert.equal((await app.inject({ method: 'POST', url: '/api/telemetry/paper', headers: { cookie: cookieHeader }, payload: { ...paperEvent, exitDigit: 15 } })).statusCode, 400);
+  const batch = await app.inject({ method: 'POST', url: '/api/telemetry/paper', headers: { cookie: cookieHeader }, payload: { events: [paperEvent, { ...paperEvent, eventId: 'session:trade-2' }] } });
+  assert.equal(batch.statusCode, 200);
+  assert.equal(batch.json().accepted, 2);
+  const deadline = Date.now() + 5000;
+  while (telemetry.status().written < 3 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20));
+  const exported = await app.inject({ method: 'GET', url: '/api/telemetry/events?limit=1', headers: { cookie: cookieHeader } });
+  assert.equal(exported.statusCode, 200);
+  assert.equal(exported.json().events[0].source, 'manual_paper');
+  assert.doesNotMatch(exported.body, /must-not-be-recorded/);
 
   const invalidOver = await app.inject({
     method: 'POST', url: '/api/trade/manual', headers: { cookie: cookieHeader },
@@ -91,6 +107,7 @@ test('public dashboard exposes global market data but protects the connected acc
   assert.equal(oldSweep.statusCode, 410);
 
   automation.dispose();
+  await telemetry.close();
   await app.close();
   cfg.config.dashboardAdminToken = previousToken;
 });

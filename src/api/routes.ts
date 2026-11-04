@@ -12,6 +12,7 @@ import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import type { Automation } from '../strategy/automation.ts';
 import type { PaperSimulator } from '../simulation/paperSimulator.ts';
+import type { TelemetryService } from '../telemetry/service.ts';
 import type { MomentumObserver } from '../momentum/observer.ts';
 import { momentumEntryGuard } from '../momentum/observer.ts';
 import { encryptToken } from '../db/crypto.ts';
@@ -85,6 +86,7 @@ export interface ApiDeps {
   gold?: GoldRuntime;
   /** Virtual-only continuous entry research. It never authorizes an order. */
   entryResearch?: EntryResearchRuntime;
+  telemetry?: TelemetryService;
   /** Shared command lane for account-funded Deriv operations. */
   accountCoordinator?: AccountCoordinator;
 }
@@ -1684,6 +1686,64 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const q = req.query as { limit?: string };
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
     return { entries: listPaperLedgerEntries(limit) };
+  });
+
+  app.get('/api/telemetry/status', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    return { telemetry: deps.telemetry?.status() ?? { state: 'disabled', queued: 0, written: 0, dropped: 0, failures: 0 }, retentionDays: config.telemetryRetentionDays };
+  });
+
+  let paperTelemetryWindow = 0;
+  let paperTelemetryCount = 0;
+  app.post('/api/telemetry/paper', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    if (!deps.telemetry) return reply.code(503).send({ error: 'Telemetry unavailable' });
+    const input = req.body as Record<string, unknown> | undefined;
+    const events = Array.isArray(input?.events) ? input.events : [input];
+    const now = Date.now();
+    if (now - paperTelemetryWindow >= 1000) { paperTelemetryWindow = now; paperTelemetryCount = 0; }
+    if (!events.length || events.length > 40) return reply.code(400).send({ error: 'Invalid paper telemetry batch' });
+    if (paperTelemetryCount + events.length > 60) return reply.code(429).send({ error: 'Telemetry rate limit' });
+    const digit = (value: unknown): value is number => Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 9;
+    for (const raw of events) {
+      const body = raw as Record<string, unknown> | undefined;
+      if (!body || !['manual_paper', 'auto_paper'].includes(String(body.source)) || !['open', 'won', 'lost'].includes(String(body.status))
+        || typeof body.eventId !== 'string' || !/^[\w|.:-]{1,180}$/.test(body.eventId)
+        || typeof body.market !== 'string' || !/^[\w.-]{1,48}$/.test(body.market)
+        || !['over', 'under'].includes(String(body.direction)) || !digit(body.barrier) || !digit(body.entryDigit)
+        || (body.status !== 'open' && !digit(body.exitDigit))
+        || typeof body.entryEpoch !== 'number' || !Number.isFinite(body.entryEpoch)
+        || typeof body.entryQuote !== 'number' || !Number.isFinite(body.entryQuote)
+        || (body.estWin !== null && (typeof body.estWin !== 'number' || !Number.isFinite(body.estWin) || body.estWin < 0 || body.estWin > 1))
+        || (body.edge !== null && (typeof body.edge !== 'number' || !Number.isFinite(body.edge)))
+        || (body.status !== 'open' && (typeof body.exitEpoch !== 'number' || !Number.isFinite(body.exitEpoch)))) {
+        return reply.code(400).send({ error: 'Invalid paper telemetry' });
+      }
+    }
+    paperTelemetryCount += events.length;
+    for (const raw of events) {
+      const body = raw as Record<string, unknown>;
+      deps.telemetry.recordResearch({ observedAt: now, type: 'browser_paper', source: String(body.source), market: String(body.market),
+        data: { eventId: String(body.eventId), status: String(body.status), direction: String(body.direction), barrier: Number(body.barrier),
+          entryDigit: Number(body.entryDigit), exitDigit: body.status === 'open' ? null : Number(body.exitDigit), entryEpoch: Number(body.entryEpoch), entryQuote: Number(body.entryQuote),
+          estWin: body.estWin as number | null, edge: body.edge as number | null,
+          exitEpoch: body.status === 'open' ? null : Number(body.exitEpoch) } });
+    }
+    return { ok: true, accepted: events.length };
+  });
+
+  app.get('/api/telemetry/events', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    if (!deps.telemetry) return reply.code(503).send({ error: 'Telemetry unavailable' });
+    const q = req.query as { after?: string; limit?: string };
+    const after = Math.max(0, Math.floor(Number(q.after) || 0));
+    const limit = Math.min(1000, Math.max(1, Math.floor(Number(q.limit) || 200)));
+    try {
+      const events = await deps.telemetry.query(after, limit);
+      return { events, nextAfter: events.length ? (events[events.length - 1] as { id: number }).id : after };
+    } catch {
+      return reply.code(503).send({ error: 'Telemetry unavailable' });
+    }
   });
 
   // A logical virtual contract can have purchased + settled/cancelled audit

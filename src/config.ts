@@ -6,6 +6,8 @@ export interface AppConfig {
   nodeEnv: string;
   dataDir: string;
   dbPath: string;
+  telemetryEnabled: boolean;
+  telemetryRetentionDays: number;
   derivPublicUrl: string;
   derivAuthUrl: string;
   derivAppId: string;
@@ -97,6 +99,8 @@ export function loadConfig(): AppConfig {
     nodeEnv: process.env.NODE_ENV || 'development',
     dataDir,
     dbPath: path.join(dataDir, 'overunder.db'),
+    telemetryEnabled: process.env.TELEMETRY_ENABLED !== '0',
+    telemetryRetentionDays: Math.max(0, Math.min(3650, Math.floor(num('TELEMETRY_RETENTION_DAYS', 30)))),
     derivPublicUrl: process.env.DERIV_PUBLIC_URL || 'wss://api.derivws.com/trading/v1/options/ws/public',
     derivAuthUrl: process.env.DERIV_AUTH_URL || 'wss://ws.deriv.com/websockets/v3',
     derivAppId: process.env.DERIV_APP_ID || '1089',
