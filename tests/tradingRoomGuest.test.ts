@@ -270,7 +270,7 @@ test('pasture win effects expire by elapsed time instead of frame count', () => 
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
   const start = script.indexOf('function advanceFloatingEffects(');
-  const end = script.indexOf('function draw(t)', start);
+  const end = script.indexOf('function pastureWeatherTargets(', start);
   assert.ok(start >= 0 && end > start, 'the floating-effect updater exists');
   const updateEffects = script.slice(start, end);
   const result = runInNewContext(`
@@ -1099,4 +1099,16 @@ test('feed freshness uses received tick progression instead of the device wall c
   assert.equal(ctx.fresh(), false, 'repeated snapshots do not renew an old tick');
   ctx.tick(101); ctx.observe();
   assert.equal(ctx.fresh(), true, 'a new tick restores freshness');
+});
+
+
+test('pasture atmosphere follows weather and independent day or night', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function pastureWeatherTargets(');
+  const end = html.indexOf('const pastureReducedMotion=', start);
+  const targets = runInNewContext(`${html.slice(start, end)}; pastureWeatherTargets`) as (day: number, code: number) => { night: number; rain: number };
+  assert.deepEqual({ ...targets(1, 0) }, { night: 0, rain: 0 });
+  assert.deepEqual({ ...targets(0, 0) }, { night: 1, rain: 0 });
+  assert.deepEqual({ ...targets(0, 61) }, { night: 1, rain: 1 });
+  assert.deepEqual({ ...targets(1, 80) }, { night: 0, rain: 1 });
 });
