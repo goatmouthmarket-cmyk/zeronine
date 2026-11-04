@@ -6779,3 +6779,5 @@ button.activity-row {
 .pasture-detail-content .connect-card .connect-title { font-size:19px; }
 .pasture-detail-content .connect-card .connect-input,.pasture-detail-content .connect-card .connect-btn { min-height:42px; }
 .pasture-detail-content .connect-card-heading { margin-bottom:8px; }
+
+@media(max-width:999.98px){.pasture-nav.bottom-nav-wrap{border:0!important;box-shadow:none!important}.pasture-nav .pasture-nav-toggle{cursor:pointer}.pasture-nav .pasture-nav-toggle svg{display:block;flex:none}}

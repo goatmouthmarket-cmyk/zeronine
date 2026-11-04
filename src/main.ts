@@ -121,9 +121,9 @@ async function main(): Promise<void> {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', isTradingRoom ? 'SAMEORIGIN' : 'DENY');
     reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self), payment=(), usb=()');
     reply.header('Content-Security-Policy', isTradingRoom
-      ? "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net"
+      ? "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'none'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net https://api.open-meteo.com"
       : "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; connect-src 'self' ws: wss:");
     if (req.url.startsWith('/api/') || req.url.startsWith('/health')) {
       reply.header('Cache-Control', 'private, no-store, max-age=0');

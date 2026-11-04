@@ -75,3 +75,20 @@ test('account and history open in the pasture and restore its progress HUD', asy
   await page.getByRole('button', { name: 'Close details' }).click();
   await expect(game.locator('#marketHudQuick')).toBeVisible();
 });
+
+
+test('weather uses opt-in location and mobile menu has no stray border', async ({ page, context }) => {
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 18, longitude: -76.8 });
+  await page.route('**/api/**', route => route.fulfill({ json: { owner: false, public_dashboard: true, markets: [], trades: [], session: null, settings: null, recovery: null, automation: null, runs: [], entries: [] } }));
+  await page.route('https://api.open-meteo.com/**', route => route.fulfill({ json: { current: { temperature_2m: 26, is_day: 1, weather_code: 61 } } }));
+  await page.routeWebSocket('**/ws', () => {});
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const game = page.frameLocator('iframe[title="Deriv Cows interactive trading pasture"]');
+  await game.getByRole('button', { name: /tap to enable local weather/i }).click();
+  await expect(game.getByRole('button', { name: /Rain, 26/i })).toBeVisible();
+  await expect(page.locator('.pasture-nav')).toHaveCSS('border-top-width', '0px');
+  await page.getByRole('button', { name: 'Open game menu' }).click();
+  await expect(page.locator('.bottom-nav')).toBeVisible();
+});

@@ -1453,6 +1453,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           class="trading-room-frame"
           src="/trading-room.html"
           title="Deriv Cows interactive trading pasture"
+          allow="geolocation"
           onLoad={() => { postRoomState(); syncDetailHud(); }}
         />
       </section>}
@@ -5665,7 +5666,7 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
   const inPasture = page === 'home' || page === 'history' || page === 'account';
   return (
     <div class={`bottom-nav-wrap${inPasture ? ' pasture-nav' : ''}${open ? ' is-open' : ''}`}>
-      {inPasture && <button type="button" class="pasture-nav-toggle" aria-label={open ? 'Close game menu' : 'Open game menu'} aria-expanded={open} aria-controls="mobile-game-navigation" onClick={() => setOpen((value) => !value)}><Icon name={open ? 'x' : 'dots'} size={22} /></button>}
+      {inPasture && <button type="button" class="pasture-nav-toggle" aria-label={open ? 'Close game menu' : 'Open game menu'} aria-expanded={open} aria-controls="mobile-game-navigation" onClick={() => setOpen((value) => !value)}><Icon name={open ? 'x' : 'menu'} size={22} strokeWidth={2.2} /></button>}
       <nav id="mobile-game-navigation" class="bottom-nav" aria-label="Main navigation">
         <button class={`nav-item${page === 'home' ? ' active' : ''}`} aria-current={page === 'home' ? 'page' : undefined} onClick={() => setPage('home')}>
           <Icon name="home" size={20} />
