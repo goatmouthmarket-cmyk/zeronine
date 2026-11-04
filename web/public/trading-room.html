@@ -615,6 +615,23 @@ window.addEventListener('message', (event) => {
   }
 });
 
+function paperResultPosition(anchorX, anchorY, width, height, bubble, viewWidth, viewHeight) {
+  const margin = 8, gap = 8;
+  const clampX = (x) => Math.max(margin, Math.min(viewWidth - width - margin, x));
+  const clampY = (y) => Math.max(margin, Math.min(viewHeight - height - margin, y));
+  let left = clampX(anchorX - width / 2);
+  let top = clampY(anchorY - height);
+  if (bubble && left < bubble.right + gap && left + width > bubble.left - gap && top < bubble.bottom + gap && top + height > bubble.top - gap) {
+    const right = bubble.right + gap;
+    const leftSide = bubble.left - gap - width;
+    if (right + width <= viewWidth - margin) left = right;
+    else if (leftSide >= margin) left = leftSide;
+    else if (bubble.top - gap - height >= margin) top = bubble.top - gap - height;
+    else top = clampY(bubble.bottom + gap);
+  }
+  return { left: left + width / 2, top: top + height };
+}
+
 function renderManualPaperVisuals(now) {
   const cam = camera();
   for (let index = manualPaperVisuals.length - 1; index >= 0; index--) {
@@ -662,11 +679,13 @@ function renderManualPaperVisuals(now) {
   }
   if (trade || manualPaperTrades.some((entry) => entry.status === 'open')) {
     const visibleTrade = manualPaperTrades.find((entry) => entry.id === manualPaperNoticeId) || latestManualPaperTrade();
-    const half = paperRangerBet.offsetWidth / 2;
     const anchorX = (player.x - cam.x) * zoom;
-    const anchorY = (player.y - 118 - cam.y) * zoom;
-    paperRangerBet.style.left = `${Math.max(half + 8, Math.min(W - half - 8, anchorX))}px`;
-    paperRangerBet.style.top = `${Math.max(paperRangerBet.offsetHeight + 8, anchorY)}px`;
+    const anchorY = (player.y - 52 - cam.y) * zoom;
+    const bubble = $('rangerBet');
+    const bubbleRect = bubble?.classList.contains('visible') ? bubble.getBoundingClientRect() : null;
+    const position = paperResultPosition(anchorX, anchorY, paperRangerBet.offsetWidth, paperRangerBet.offsetHeight, bubbleRect, W, H);
+    paperRangerBet.style.left = `${position.left}px`;
+    paperRangerBet.style.top = `${position.top}px`;
     if (visibleTrade?.status === 'open') paperRangerBet.hidden = false;
   }
   requestAnimationFrame(renderManualPaperVisuals);

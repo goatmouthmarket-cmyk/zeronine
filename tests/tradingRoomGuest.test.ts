@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 
+test('paper result stays close to the ranger and clear of the trade bubble', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function paperResultPosition(');
+  const end = html.indexOf('function renderManualPaperVisuals(', start);
+  assert.ok(start >= 0 && end > start);
+  const position = runInNewContext(`${html.slice(start, end)}; paperResultPosition`) as (x: number, y: number, w: number, h: number, bubble: { left: number; right: number; top: number; bottom: number } | null, vw: number, vh: number) => { left: number; top: number };
+  assert.deepEqual({ ...position(200, 180, 32, 32, null, 400, 300) }, { left: 200, top: 180 });
+  const bubble = { left: 100, right: 300, top: 100, bottom: 190 };
+  const side = position(200, 180, 32, 32, bubble, 400, 300);
+  assert.ok(side.left - 16 >= bubble.right + 8);
+  const edge = position(200, 180, 32, 32, bubble, 320, 300);
+  assert.ok(edge.left + 16 <= bubble.left - 8);
+  const wideBubble = { left: 8, right: 312, top: 80, bottom: 190 };
+  const above = position(160, 180, 32, 32, wideBubble, 320, 300);
+  assert.ok(above.top <= wideBubble.top - 8);
+});
+
 test('guest cow defeat is practice and does not send a trade request', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
