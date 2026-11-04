@@ -47,5 +47,16 @@ test('tutorial advances after practice and keeps reading steps manual', async ({
   await expect(page.getByRole('heading', { name: 'Read scout research' })).toBeVisible();
   await expect(page.getByLabel('Example ghost scout research')).toContainText('7 wins / 3 losses');
   await page.getByRole('button', { name: /Next/ }).click();
+  await expect(page.getByRole('heading', { name: 'Where the markets come from' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Learn about Deriv markets/ })).toHaveAttribute('href', 'https://deriv.com/markets/derived-indices');
+  await page.getByRole('button', { name: /Next/ }).click();
+  await expect(page.getByRole('heading', { name: 'Deriv Over / Under' })).toBeVisible();
+  await page.getByRole('button', { name: /Next/ }).click();
+  await expect(page.getByRole('link', { name: /Create a Deriv account/ })).toHaveAttribute('href', 'https://home.deriv.com/dashboard/signup');
+  await expect(page.getByRole('button', { name: 'Connect Deriv in the pasture' })).toBeVisible();
+  await page.getByRole('button', { name: /Next/ }).click();
   await expect(page.getByRole('heading', { name: 'You’re ready' })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Connect Deriv in the pasture' }).click();
+  await expect(page).toHaveURL('/account');
 });

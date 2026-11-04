@@ -31,7 +31,6 @@ test('Ranger Auto exposes separate entry timing, ring and paper research control
   await page.getByRole('button', { name: 'Show Ranger Auto controls' }).click();
   const game = page.frameLocator('iframe[title="Deriv Cows interactive trading pasture"]');
   await game.getByText('Entry and paper research').click();
-  await expect(game.getByLabel('Manual shots / ticks')).toHaveValue('3');
   await expect(game.getByLabel('Auto shots / ticks')).toHaveValue('3');
   await expect(game.getByLabel('Minimum edge (%)')).toHaveValue('0');
   await expect(game.getByLabel('Red', { exact: true })).toBeChecked();
@@ -42,4 +41,8 @@ test('Ranger Auto exposes separate entry timing, ring and paper research control
   await game.getByLabel('Paper test', { exact: true }).check();
   await expect(game.getByLabel('Paper test', { exact: true })).toBeChecked();
   await expect(game.getByText(/Paper results are research only/)).toBeVisible();
+  await page.getByRole('button', { name: 'Hide Ranger Auto controls' }).click();
+  await game.locator('.target-menu summary').click();
+  await expect(game.getByLabel('Manual shots / ticks')).toHaveValue('3');
+  await expect(game.locator('.hud-avatar svg')).toHaveCount(1);
 });

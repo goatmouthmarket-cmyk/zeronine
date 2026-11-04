@@ -5,6 +5,8 @@ type Lesson = {
   title: string;
   body: string;
   tip?: string;
+  links?: Array<{ label: string; href: string }>;
+  connect?: boolean;
   exercise?: 'move' | 'cow' | 'aim' | 'paper' | 'markets' | 'auto' | 'start' | 'ghost';
 };
 
@@ -18,7 +20,7 @@ const LESSONS: Lesson[] = [
   { title: 'Aim at a cow', body: 'Left-click or tap a cow. The ranger moves into position and shoots automatically; the health bar shows progress.', tip: 'In guest play this is practice. When connected, defeating a cow can submit the selected contract, subject to account and risk checks.', exercise: 'aim' },
   { title: 'Read the ranger’s bubble', body: 'The bubble shows status, market, direction, barrier, stake and style, plus the quote freshness and estimated edge when available.', tip: 'After settlement, the digit and WON or LOST result appear with profit or loss and any remaining session loss. Tap the bubble to dismiss it.' },
   { title: 'Try a paper shot', body: 'Right-click a cow, or press and hold it on touch, to make a paper trade. Try it on the highlighted cow.', tip: 'In the game, a fresh live market tick is needed; the result uses the next tick. No account money is used.', exercise: 'paper' },
-  { title: 'Set your trade', body: 'Open Markets to choose your stake and bet style, see live targets and recent bets, and review the account balance.', tip: 'Base keeps the stake flat. Recovery styles can increase the next stake after losses and carry additional risk.', exercise: 'markets' },
+  { title: 'Set your trade', body: 'Open Markets to choose your stake, bet style and manual shot count, see live targets and recent bets, and review the account balance.', tip: 'Base keeps the stake flat. Recovery styles can increase the next stake after losses and carry additional risk.', exercise: 'markets' },
   { title: 'Meet Ranger Auto', body: 'Use the play icon to open automation controls. The icon shows pause and “Running” when Auto is active; opening it does not pause trading.', tip: 'Ranger Auto selects eligible highlighted cows after three fresh confirming ticks. Signals can disappear or change.', exercise: 'auto' },
   { title: 'Set limits first', body: 'Choose your stake, bet style and limits. Entry settings also control minimum edge, ring colors, shot counts and optional paper tests.', tip: 'Auto checks three fresh ticks before shooting. Paper-test results are research only and do not change account trades.' },
   { title: 'Start and pause Auto', body: 'Try the start control in this simulation. In the game the same control pauses the running ranger.', tip: 'Real-account automation requires owner authorization and arming. Account, risk, quote and single-open-contract safeguards still apply.', exercise: 'start' },
@@ -27,6 +29,9 @@ const LESSONS: Lesson[] = [
   { title: 'Meet the ghost scout', body: 'Click or tap the ghost to open its research menu. It follows virtual paper trades and shows its recent wins and losses.', tip: 'The scout menu includes historical replay and deeper research. Paper results do not use account funds.', exercise: 'ghost' },
   { title: 'Watch the scout work', body: 'The scout watches a market signal and fires a ghost arrow at the matching cow. The ghostly cow shows a paper trade; the real cow stays in the pasture.', tip: 'The example opens on one tick and settles on the next. No account order is placed.' },
   { title: 'Read scout research', body: 'The scout menu shows wins, losses, win rate, recent virtual trades and the latest signal details. Historical replay uses past ticks.', tip: 'Auto paper tests, when enabled, show samples for each setup. Research is not a guarantee and does not decide account trades.' },
+  { title: 'Where the markets come from', body: 'Deriv is an online broker that offers markets and trading accounts. The Volatility markets in the pasture are Deriv derived indices; each cow represents a market and an example contract.', tip: 'Deriv supplies the quotes and executes account trades. Availability depends on your location and account.', links: [{ label: 'Learn about Deriv markets', href: 'https://deriv.com/markets/derived-indices' }] },
+  { title: 'Deriv Over / Under', body: 'On Deriv, Digit Over/Under contracts predict whether the final digit of the contract’s last tick will be above or below your chosen number.', tip: 'For OVER 2, digits 3–9 win; 2 and below lose. For UNDER 7, digits 0–6 win; 7 and above lose. Real-money trades can lose your stake.', links: [{ label: 'Learn about Over / Under', href: 'https://community.deriv.com/t/options-to-trade-in-deriv-digital-options-2nd-part/41248' }] },
+  { title: 'Connect your Deriv account', body: 'To place trades, create a Deriv account, then choose Connect Deriv here. Select “Continue with Deriv”, sign in with Deriv, and return to the pasture.', tip: 'Choose demo to practise with virtual funds or real to use real money. You can also explore as a guest without placing bets.', links: [{ label: 'Create a Deriv account', href: 'https://home.deriv.com/dashboard/signup' }, { label: 'Visit Deriv', href: 'https://deriv.com/' }], connect: true },
   { title: 'You’re ready', body: 'Take your time, check the market and stake, and use paper practice when you want to explore.', tip: 'You can return to this guide from How to play whenever you need it.' },
 ];
 
@@ -65,7 +70,7 @@ function Ranger({ point }: { point: Point }): JSX.Element {
   </g>;
 }
 
-export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Element {
+export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void; onConnect: () => void }): JSX.Element {
   const [step, setStep] = useState(0);
   const [player, setPlayer] = useState<Point>(START);
   const [done, setDone] = useState<Record<string, boolean>>({});
@@ -322,11 +327,12 @@ export function PastureTutorialGame({ onExit }: { onExit: () => void }): JSX.Ele
       {autoOpen && <aside class="guide-demo-panel guide-auto-panel" aria-label="Example automation controls"><div><strong>RANGER AUTO</strong><button onClick={() => setAutoOpen(false)} aria-label="Close automation">×</button></div><p>{autoRunning ? 'ACTIVE · Looking for a fresh signal' : 'OFF · Ready to practise'}</p><div class={`guide-demo-settings${step === 11 ? ' guide-spot' : ''}`}><span>Stake <b>1.00</b></span><span>Style <b>Base</b></span><span>Losses <b>2</b></span><span>Cooldown <b>45s</b></span><span>Take profit <b>Off</b></span></div><button class={`guide-demo-start${step === 12 ? ' guide-spot' : ''}`} onClick={() => { if (!autoRunning) { setAutoSequence((value) => value + 1); setAutoOpen(false); } setAutoRunning(!autoRunning); if (lesson.exercise === 'start' && !autoRunning) complete('start'); }}>{autoRunning ? '❚❚  Pause practice' : '▶  Start practice'}</button><small>Simulation only · no trades</small></aside>}
       {step === 8 && <button class="guide-paper-accessible" type="button" onClick={paperShot}>Try paper shot</button>}
       {(autoRunning || step === 13) && <div class={`guide-run-status${step === 13 || (step === 12 && autoRunning && !autoOpen) ? ' guide-spot' : ''}`}><b>Current run P&amp;L · {autoCompleted === 2 ? '+0.38' : autoCompleted === 1 ? '+0.19' : '0.00'} EXAMPLE</b><span>{autoRunning && autoPhase === 'moving' ? `Moving to cow ${autoTarget + 1}` : autoRunning && autoPhase === 'aiming' ? `Shooting cow ${autoTarget + 1}` : autoRunning && autoPhase === 'result' ? `Example trade ${autoCompleted} · WON +0.19` : 'Example automatic trades'}</span>{step === 13 && <span>Ghost scout · paper only</span>}</div>}
-      {step === 14 && <div class="guide-landmarks guide-spot" aria-label="Example pasture tools"><span>🎯 Level &amp; missions</span><span>♡ Connection health</span><span>Ghost scout research</span><small>Example tools in the pasture</small></div>}
+      {step === 14 && <div class="guide-landmarks guide-spot" aria-label="Example pasture tools"><span>🏅 Level &amp; missions</span><span>♡ Connection health</span><span>Ghost scout research</span><small>Example tools in the pasture</small></div>}
     </div>
     <section class="guide-lesson" key={step} aria-live="polite">
       <div class="guide-progress"><span>LESSON {step + 1} OF {LESSONS.length}</span><div><i style={{ width: `${((step + 1) / LESSONS.length) * 100}%` }} /></div></div>
       <h1>{lesson.title}</h1><p>{lesson.body}</p>{lesson.tip && <p class="guide-tip">{lesson.tip}</p>}
+      {(lesson.links || lesson.connect) && <div class="guide-links">{lesson.links?.map((link) => <a href={link.href} target="_blank" rel="noopener noreferrer" key={link.href}>{link.label} ↗</a>)}{lesson.connect && <button type="button" onClick={onConnect}>Connect Deriv in the pasture</button>}</div>}
       {lesson.exercise && <span class="guide-exercise">{completed ? '✓ Practice complete - continuing' : 'Try it in the pasture'}</span>}
       <div class="guide-navigation">
         <button type="button" onClick={previous} disabled={step === 0}>Back</button>

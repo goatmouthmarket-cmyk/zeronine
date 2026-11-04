@@ -412,7 +412,7 @@ export function App(): JSX.Element {
           {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
           {page === 'account' && <div class="view view-account"><AccountPage onConnected={enterPasture} /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
-          {page === 'howToPlay' && <div class="view view-how-to-play"><HowToPlayPage onBack={() => navigate('home')} /></div>}
+          {page === 'howToPlay' && <div class="view view-how-to-play"><HowToPlayPage onBack={() => navigate('home')} onConnect={() => navigate('account')} /></div>}
         </div>
         {!legalStripDismissed && <LegalQuickLinks onDismiss={dismissLegalStrip} />}
       </main>

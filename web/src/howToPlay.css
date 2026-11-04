@@ -64,4 +64,8 @@ html:has(.view-how-to-play), body:has(.view-how-to-play) { height: 100%; overflo
 .guide-paper-toast strong { color: #276c48; }
 .guide-paper-toast small { color: #80684e; font-size: 8px; }
 .guide-ghost-status { position: absolute; z-index: 3; left: 50%; top: 76px; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 6px 9px; border-radius: 8px; background: #163d2eea; color: #e4f5d6; font: 800 10px/1.3 system-ui; text-align: center; }
+.guide-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.guide-links a,.guide-links button { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 8px; border: 1px solid #a88563; border-radius: 7px; color: #27573a; background: #fff8ea; font: 800 10px/1.2 system-ui; text-decoration: none; cursor: pointer; }
+.guide-links a:hover,.guide-links button:hover { background: #e4f0d9; }
+.guide-links a:focus-visible,.guide-links button:focus-visible { outline: 3px solid #d69c3e; outline-offset: 2px; }
 @media (max-width: 600px) { .guide-ghost-status { top: 62px; } }
