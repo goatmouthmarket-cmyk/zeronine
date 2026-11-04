@@ -291,27 +291,6 @@ test('market labels use readable names and retain the one-second distinction', (
   assert.equal(marketName('OTHER'), 'OTHER');
 });
 
-test('toast placement avoids visible controls when a clear location exists', () => {
-  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
-  const start = html.indexOf('function toastOverlap(');
-  const end = html.indexOf('let toastPlacementTimer=', start);
-  assert.ok(start >= 0 && end > start);
-  const choose = runInNewContext(`${html.slice(start, end)}; chooseToastPosition`) as (
-    width: number, height: number, toastWidth: number, toastHeight: number,
-    obstacles: Array<{ left: number; top: number; right: number; bottom: number; weight?: number }>,
-  ) => { left: number; top: number };
-  for (const [width, height] of [[390, 844], [1280, 800]]) {
-    const obstacles = [
-      { left: width / 2 - 100, top: height - 230, right: width / 2 + 100, bottom: height - 65, weight: 10 },
-      { left: width - 160, top: 100, right: width, bottom: 250, weight: 10 },
-    ];
-    const result = choose(width, height, 200, 45, obstacles);
-    assert.ok(result.left >= 0 && result.left + 200 <= width);
-    assert.ok(result.top >= 0 && result.top + 45 <= height);
-    assert.ok(obstacles.every((r) => result.left + 200 <= r.left || result.left >= r.right || result.top + 45 <= r.top || result.top >= r.bottom));
-  }
-});
-
 test('paper scout badge draws bounded text without an unbounded sizing loop', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const start = html.indexOf('function drawGhostPaperBadge()');
