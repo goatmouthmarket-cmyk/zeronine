@@ -6351,7 +6351,7 @@ button.activity-row {
 }
 .app[data-page="home"] .view-home .header {
   position: fixed; z-index: 20; top: 0; left: 0; right: 0;
-  padding: 8px 16px; background: none; isolation: isolate;
+  padding: 8px 16px; background: transparent;
   border: 0; box-shadow: none; pointer-events: none;
 }
 .app[data-page="home"] .view-home .header-top > * { pointer-events: auto; }
@@ -6751,8 +6751,6 @@ button.activity-row {
 .app[data-page="home"] .room-auto-running { position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); padding: 2px 4px; border-radius: 4px; background: #ebf4dc; color: #235b37; font-size: 8px; font-weight: 900; line-height: 1; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; }
 @media (max-width: 999.98px) { .app[data-page="home"] .room-header-play, .app[data-page="home"] .room-header-play.is-open { position: fixed; border: 0; background: transparent; box-shadow: none; } .app[data-page="home"] .room-header-play .room-auto-icon { width: 30px; height: 30px; } .app[data-page="home"] .room-auto-running { bottom: 1px; } }
 
-/* Keep the header fade shallow while leaving the center timer unobscured. */
-.app[data-page="home"] .view-home .header::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg,#101b28c9,transparent); mask-image:linear-gradient(90deg,#000 30%,transparent 43%,transparent 57%,#000 70%); pointer-events:none; }
 .pasture-detail-panel { position:fixed; z-index:35; top:96px; right:12px; width:min(380px,calc(100vw - 24px)); max-height:calc(100dvh - 112px); display:grid; grid-template-rows:auto minmax(0,1fr); overflow:hidden; border:2px solid #a66b42; border-radius:15px; background:#f8e9d2; color:#4b3322; box-shadow:0 4px #765039,0 8px 22px #17351f4d; font:600 12px/1.4 system-ui,sans-serif; }
 .pasture-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; background:#e7d5b8; border-bottom:1px solid #c3a27e; }
 .pasture-detail-heading small { color:#8a694d; font-size:9px; font-weight:900; letter-spacing:.12em; }
