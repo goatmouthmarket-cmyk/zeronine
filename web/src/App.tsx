@@ -1210,6 +1210,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       netPnl: s.paperSimulation.netPnl,
       openContract: s.paperSimulation.openContract,
       lastSettled: s.paperSimulation.lastSettled,
+      recentTrades: s.paperSimulation.recentTrades ?? [],
       lastTick: s.paperSimulation.lastTick,
     } : null,
     trades: digitTrades.slice(0, 30).map((trade) => ({
@@ -1289,6 +1290,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       if (event.origin !== window.location.origin || event.source !== roomFrameRef.current?.contentWindow) return;
       const message = event.data as { type?: string; page?: Page; running?: boolean; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string; rangerAutomation?: boolean } } | null;
       if (!message?.type) return;
+      if (message.type === 'zeronine:room-auto-dismiss') {
+        setRangerAutoMenuOpen(false);
+        return;
+      }
       if (message.type === 'zeronine:room-auto-status' && typeof message.running === 'boolean') {
         setRangerAutoRunning(message.running);
         return;

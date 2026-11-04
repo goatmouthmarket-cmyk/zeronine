@@ -349,6 +349,7 @@ export interface EntryLabState {
 
 export interface PaperSimulationContract {
   id: number;
+  runId?: string;
   market: string;
   direction: 'over' | 'under';
   barrier: number;
@@ -359,6 +360,7 @@ export interface PaperSimulationContract {
   entryDigit: number;
   estWin?: number;
   edge?: number;
+  candidateReason?: string;
   status: 'open' | 'won' | 'lost' | 'cancelled';
   exitEpoch?: number;
   exitQuote?: number;
@@ -380,6 +382,7 @@ export interface PaperSimulationState {
   equity: number[];
   openContract: PaperSimulationContract | null;
   lastSettled: PaperSimulationContract | null;
+  recentTrades?: Array<Pick<PaperSimulationContract, 'id' | 'runId' | 'market' | 'direction' | 'barrier' | 'entryDigit' | 'exitDigit' | 'exitEpoch' | 'status' | 'profit'>>;
   lastTick: { market: string; quote: number; digit: number; epoch: number } | null;
 }
 

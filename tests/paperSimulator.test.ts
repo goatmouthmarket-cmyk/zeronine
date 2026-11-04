@@ -45,6 +45,25 @@ test('paper simulator uses the first subsequent tick from the contract market on
   assert.equal(simulator.state().balance, 90);
 });
 
+test('paper scout exposes the ten latest virtual results in order and clears them on reset', () => {
+  const simulator = new PaperSimulator({ initialBalance: 1_000, defaultStake: 1 });
+  simulator.start();
+  simulator.onTick(tick(1, 1));
+  for (let index = 0; index < 12; index += 1) {
+    simulator.offer({ market: 'R_50', direction: 'over', barrier: 4, evidence: { score: index } });
+    simulator.onTick(tick(index % 2 ? 8 : 2, index + 2));
+  }
+  const state = simulator.state();
+  assert.equal(state.wins, 6);
+  assert.equal(state.losses, 6);
+  assert.equal(state.recentTrades.length, 10);
+  assert.deepEqual(state.recentTrades.map((trade) => trade.id), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+  state.recentTrades[0].status = 'cancelled';
+  assert.equal(simulator.state().recentTrades[0].status, 'won', 'returned history is isolated');
+  simulator.reset();
+  assert.deepEqual(simulator.state().recentTrades, []);
+});
+
 test('paper simulator enforces one virtual contract and never opens before a public tick', () => {
   const simulator = new PaperSimulator({ initialBalance: 10, defaultStake: 2 });
   const skipped: string[] = [];

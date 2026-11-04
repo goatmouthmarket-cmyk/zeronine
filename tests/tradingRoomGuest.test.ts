@@ -47,7 +47,7 @@ test('guest cow defeat is practice and does not send a trade request', () => {
       setItem: (key: string, value: string) => savedStyles.set(key, value),
     },
   };
-  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; const epoch = Date.now() / 1000; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: epoch, lastQuote: 100.1, lastDigit: 1, recentTicks: [{ epoch, quote: 100.1, digit: 1 }] }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; }; globalThis.testManualPaper = { trades: manualPaperTrades, cow: cows[0], setTarget: (symbol) => { cows[0].contract = { market: "Selected market", symbol, kind: "OVER", barrier: 2 }; cows[0].x = 320; cows[0].y = 240; cows[0].alive = true; cows[0].hp = 3; }, point: (cow) => { const cam = camera(); return { clientX: (cow.x - cam.x) * zoom, clientY: (cow.y - cam.y) * zoom }; } };})();');
+  const instrumented = script.replace(/\}\)\(\);\s*$/, 'globalThis.testDefeat = onCowDefeated; globalThis.testMission = recordMission; globalThis.testSplit = splitDigits; globalThis.testSubmit = submitContract; globalThis.testConnect = (id) => { connectedAccount = true; activeAccountId = id; const epoch = Date.now() / 1000; liveMarkets = [{ symbol: "SELECTED", fresh: true, lastEpoch: epoch, lastQuote: 100.1, lastDigit: 1, recentTicks: [{ epoch, quote: 100.1, digit: 1 }] }]; }; globalThis.testStyle = () => cowBetStyle; globalThis.testSpacing = () => { for (const cow of cows) cow.alive = false; cows[0].alive = cows[1].alive = true; cows[0].x = cows[1].x = 400; cows[0].y = cows[1].y = 400; ghost.x = 600; ghost.y = 400; ghostCow = null; separatePastureActors(); return { cows: cows.slice(0, 2), ghost, spot: findGhostCowSpot(cows[0]) }; }; globalThis.testGhostPanel = { overlap: () => { ghost.x = cows[0].x; ghost.y = cows[0].y + 8; } }; globalThis.testManualPaper = { trades: manualPaperTrades, cow: cows[0], setTarget: (symbol) => { cows[0].contract = { market: "Selected market", symbol, kind: "OVER", barrier: 2 }; cows[0].x = 320; cows[0].y = 240; cows[0].alive = true; cows[0].hp = 3; }, point: (cow) => { const cam = camera(); return { clientX: (cow.x - cam.x) * zoom, clientY: (cow.y - cam.y) * zoom }; } };})();');
   assert.notEqual(instrumented, script);
   runInNewContext(instrumented, context);
   const rangerPanel = elements.get('rangerAutoHud');
@@ -93,6 +93,11 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   contextMenu({ ...paperPoint, preventDefault() {} });
   assert.equal(context.testManualPaper.trades.length, 2, 'repeated right-click paper entries remain independent');
   assert.equal(paperTarget.alive, true, 'paper shots never kill or mutate the live cow');
+  assert.equal(paperTarget.hp, 3);
+  context.testGhostPanel.overlap();
+  contextMenu({ ...paperPoint, preventDefault() {} });
+  assert.equal(element('ghostTraderPanel').hidden, false, 'right-click opens the scout details even when the live cow is underneath');
+  assert.equal(context.testManualPaper.trades.length, 2, 'opening the scout details never creates a paper entry');
   assert.equal(paperTarget.hp, 3);
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'paper entries never request a real/demo account trade');
   element('cowStake').value = '2.50';
@@ -290,7 +295,7 @@ test('toast placement avoids visible controls when a clear location exists', () 
   }
 });
 
-test('long paper scout labels finish drawing and are constrained to the badge', () => {
+test('paper scout badge draws bounded text without an unbounded sizing loop', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const start = html.indexOf('function drawGhostPaperBadge()');
   const end = html.indexOf('let pastureBackground=', start);
@@ -299,7 +304,7 @@ test('long paper scout labels finish drawing and are constrained to the badge', 
     let measurements = 0;
     let textMaxWidth = 0;
     const c = {
-      font: '', save() {}, restore() {}, beginPath() {}, roundRect() {}, fill() {},
+      font: '', save() {}, restore() {}, beginPath() {}, roundRect() {}, fill() {}, stroke() {},
       measureText() { measurements++; return { width: 250 }; },
       fillText(text, x, y, width) { if (width) textMaxWidth = width; },
     };
@@ -307,12 +312,49 @@ test('long paper scout labels finish drawing and are constrained to the badge', 
     const ghost = { x: 200, y: 200 };
     const lastRoomState = {};
     const marketName = () => 'A particularly long readable market name';
+    const ghostPaperStats = () => ({ wins: 10, losses: 5, rate: 67 });
     ${html.slice(start, end)}
     drawGhostPaperBadge();
     ({ measurements, textMaxWidth })
   `, {}, { timeout: 500 }) as { measurements: number; textMaxWidth: number };
   assert.ok(result.measurements <= 5, 'font fitting must always terminate');
-  assert.equal(result.textMaxWidth, 140);
+  assert.equal(result.textMaxWidth, 116);
+});
+
+test('ghost details show virtual win rate and at most ten recent results', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function ghostPaperStats(');
+  const end = html.indexOf('function positionGhostPanel(', start);
+  assert.ok(start >= 0 && end > start);
+  const nodes = new Map<string, any>();
+  const node = (id: string): any => {
+    if (!nodes.has(id)) nodes.set(id, {
+      hidden: id !== 'ghostTraderPanel',
+      textContent: '',
+      dataset: {},
+      children: [] as any[],
+      replaceChildren() { this.children = []; },
+      append(...items: unknown[]) { this.children.push(...items); },
+    });
+    return nodes.get(id);
+  };
+  const recent = Array.from({ length: 12 }, (_, index) => ({
+    id: index, market: 'R_50', direction: 'over', barrier: 2,
+    status: index % 2 ? 'lost' : 'won', entryDigit: 1, exitDigit: 5, profit: index % 2 ? -1 : 0.8,
+  }));
+  const render = runInNewContext(`${html.slice(start, end)}; renderGhostPanel`, {
+    $: node,
+    document: { createElement: () => ({ textContent: '', dataset: {}, children: [] as unknown[], append(...items: unknown[]) { this.children.push(...items); } }) },
+    ghostPaperState: { phase: 'running', wins: 3, losses: 1, netPnl: 1.4, openContract: null, lastSettled: recent[0], recentTrades: recent },
+    lastRoomState: { markets: [] },
+    marketName: () => 'Volatility 50',
+  }) as () => void;
+  render();
+  assert.equal(node('ghostPanelWins').textContent, '3');
+  assert.equal(node('ghostPanelLosses').textContent, '1');
+  assert.equal(node('ghostPanelRate').textContent, '75%');
+  assert.equal(node('ghostPanelTrades').children.length, 10);
+  assert.match(node('ghostPanelStatus').textContent, /virtual/i);
 });
 
 test('ranger gaze follows the target direction from the head', () => {
@@ -326,6 +368,28 @@ test('ranger gaze follows the target direction from the head', () => {
   assert.equal(look(ranger, { x: 0, y: 80 }).x, -1);
   assert.equal(look(ranger, { x: 100, y: 0 }).y, -1);
   assert.equal(look(ranger, null).x, 0);
+});
+
+test('ranger head can face either direction without changing the body direction', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function avatar(){');
+  const end = html.indexOf('function ghostAvatar()', start);
+  assert.ok(start >= 0 && end > start);
+  for (const body of [-1, 1]) for (const head of [-1, 1]) {
+    const scales: number[] = [];
+    const context = {
+      save() {}, restore() {}, translate() {}, scale(x: number) { scales.push(x); }, rotate() {},
+      beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, arc() {},
+    };
+    const draw = runInNewContext(`${html.slice(start, end)}; avatar`, {
+      c: context, player: { x: 100, y: 100 }, target: null,
+      rangerAnim: { state: 'idle', facing: body, headFacing: head, lookX: head, lookY: 0, idleStart: 0 },
+      performance: { now: () => 0 }, circle() {}, rect() {}, poly() {},
+    }) as () => void;
+    draw();
+    assert.equal(scales[0], body, 'body retains its own facing');
+    assert.equal(scales[0] * scales[1], head, 'head faces the requested world direction');
+  }
 });
 
 test('paper scout shows the matching market, ticket details, and virtual outcome', () => {
@@ -407,7 +471,7 @@ test('manual paper trades enter on a live tick and settle on the next same-marke
   assert.equal(helpers.createManualPaperEntry(contract, { ...entryTick, digit: 10 }, 'invalid'), null);
 });
 
-test('paper ghost shows its result without a floating popup', () => {
+test('paper scout targets the live cow visually without changing its health', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
   assert.ok(script);
@@ -416,34 +480,45 @@ test('paper ghost shows its result without a floating popup', () => {
   assert.ok(start >= 0 && end > start, 'the paper ghost synchronizer exists');
   const syncGhostPaper = runInNewContext(`
     let ghostPaperState = null;
+    let ghostPaperInitialized = false;
     let ghostPaperContractId = null;
     let ghostPaperResultId = null;
-    let ghostPaperResultUntil = 0;
     let ghostLastTickSeq = 0;
-    let ghostCow = { alive: false, hp: 1, contract: { symbol: 'R_100' } };
-    let ghost = { target: {} };
-    let ghostArrows = [{ x: 0, y: 0 }];
-    const fx = [];
-    const performance = { now: () => 100 };
+    let ghostTargetCow = null;
+    const liveCow = { x: 300, y: 250, alive: true, hp: 3, contract: { symbol: 'R_100' } };
+    let ghost = { x: 100, y: 200, target: null };
+    let ghostArrows = [];
+    const effects = [];
+    const marketTickSequences = new Map();
+    function renderGhostPanel() {}
+    function makeGhostPaperCow(contract) { return contract.market === 'R_100' ? liveCow : null; }
+    function spawnPaperGhostVisual(trade, cow, source) { effects.push({ trade, cow, source }); }
     function ghostContractKey(contract) { return String(contract.runId || '') + ':' + String(contract.id); }
     ${script.slice(start, end)}
-    ({ syncGhostPaper, getState: () => ({ ghostCow, fx }) })
+    ({ syncGhostPaper, getState: () => ({ liveCow, ghost, effects }) })
   `) as {
     syncGhostPaper: (state: Record<string, any>) => void;
-    getState: () => { ghostCow: { alive: boolean; hp: number }; fx: unknown[] };
+    getState: () => { liveCow: { alive: boolean; hp: number }; ghost: { target: unknown }; effects: Array<{ cow: unknown; source: string }> };
   };
 
-  syncGhostPaper.syncGhostPaper({
-    paperSimulation: {
-      phase: 'running',
-      openContract: null,
-      lastSettled: { id: 8, runId: 'run-1', market: 'R_100', status: 'won' },
-    },
-    markets: [],
-  });
-  assert.equal(syncGhostPaper.getState().ghostCow.alive, true);
-  assert.equal(syncGhostPaper.getState().ghostCow.hp, 0, 'a paper win stays visible on the ghost');
-  assert.equal(syncGhostPaper.getState().fx.length, 0, 'paper results never create a floating popup');
+  syncGhostPaper.syncGhostPaper({ paperSimulation: { phase: 'running', openContract: null, lastSettled: { id: 7, runId: 'run-1', market: 'R_100', status: 'won' } } });
+  assert.equal(syncGhostPaper.getState().effects.length, 0, 'initial history is not replayed as a fresh effect');
+  const contract = { id: 8, runId: 'run-1', market: 'R_100', status: 'open' };
+  syncGhostPaper.syncGhostPaper({ paperSimulation: { phase: 'running', openContract: contract, lastSettled: null } });
+  assert.equal(syncGhostPaper.getState().ghost.target, syncGhostPaper.getState().liveCow);
+  const settled = { ...contract, status: 'won' };
+  syncGhostPaper.syncGhostPaper({ paperSimulation: { phase: 'running', openContract: null, lastSettled: settled } });
+  syncGhostPaper.syncGhostPaper({ paperSimulation: { phase: 'running', openContract: null, lastSettled: settled } });
+  const state = syncGhostPaper.getState();
+  assert.equal(state.liveCow.alive, true);
+  assert.equal(state.liveCow.hp, 3, 'virtual outcomes do not damage the real cow');
+  assert.equal(state.effects.length, 1, 'duplicate state does not replay the ghost effect');
+  assert.equal(state.effects[0].cow, state.liveCow);
+  assert.equal(state.effects[0].source, 'scout');
+  const next = { ...contract, id: 9, status: 'won' };
+  syncGhostPaper.syncGhostPaper({ paperSimulation: { phase: 'running', openContract: null, lastSettled: next } });
+  assert.equal(syncGhostPaper.getState().effects.length, 2, 'a settled update still animates when its open update was batched away');
+  assert.equal(syncGhostPaper.getState().liveCow.hp, 3);
 });
 
 test('fresh paper entry signals show a red bet-now marker without replacing other highlights', () => {

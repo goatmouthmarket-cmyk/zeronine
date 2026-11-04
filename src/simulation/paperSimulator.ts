@@ -64,6 +64,10 @@ export interface PaperContract {
   profit?: number;
 }
 
+/** Bounded display-only research history; account trades never enter this list. */
+export type PaperRecentTrade = Pick<PaperContract,
+  'id' | 'runId' | 'market' | 'direction' | 'barrier' | 'entryDigit' | 'exitDigit' | 'exitEpoch' | 'status' | 'profit'>;
+
 export interface PaperSimulationState {
   phase: PaperSimulationPhase;
   reason: string | null;
@@ -78,6 +82,8 @@ export interface PaperSimulationState {
   equity: number[];
   openContract: PaperContract | null;
   lastSettled: PaperContract | null;
+  /** Most recent settled contracts in this virtual run, newest first. */
+  recentTrades: PaperRecentTrade[];
   lastTick: PaperTick | null;
 }
 
@@ -119,7 +125,7 @@ function cloneTick(tick: PaperTick | null): PaperTick | null {
 }
 
 function cloneContract(contract: PaperContract | null): PaperContract | null {
-  return contract ? { ...contract } : null;
+  return contract ? { ...contract, ...(contract.evidence ? { evidence: { ...contract.evidence } } : {}) } : null;
 }
 
 /**
@@ -144,6 +150,7 @@ export class PaperSimulator {
   private nextId = 1;
   private openContract: PaperContract | null = null;
   private lastSettled: PaperContract | null = null;
+  private recentTrades: PaperRecentTrade[] = [];
   private lastTick: PaperTick | null = null;
   private readonly ticks = new Map<string, { tick: PaperTick; sequence: number }>();
   private nextTickSequence = 1;
@@ -189,6 +196,7 @@ export class PaperSimulator {
       equity: [...this.equity],
       openContract: cloneContract(this.openContract),
       lastSettled: cloneContract(this.lastSettled),
+      recentTrades: this.recentTrades.map((contract) => ({ ...contract })),
       lastTick: cloneTick(this.lastTick),
     };
   }
@@ -233,6 +241,7 @@ export class PaperSimulator {
     this.runId = PaperSimulator.newRunId();
     this.openContract = null;
     this.lastSettled = null;
+    this.recentTrades = [];
     this.offeredSignalIds.clear();
     this.lastOfferByCandidate.clear();
     this.emit({ type: 'reset', state: this.state() });
@@ -332,6 +341,12 @@ export class PaperSimulator {
     };
     this.openContract = null;
     this.lastSettled = settled;
+    this.recentTrades.unshift({
+      id: settled.id, runId: settled.runId, market: settled.market, direction: settled.direction,
+      barrier: settled.barrier, entryDigit: settled.entryDigit, exitDigit: settled.exitDigit,
+      exitEpoch: settled.exitEpoch, status: settled.status, profit: settled.profit,
+    });
+    if (this.recentTrades.length > 10) this.recentTrades.pop();
     this.totalTrades += 1;
     if (won) this.wins += 1;
     else this.losses += 1;
