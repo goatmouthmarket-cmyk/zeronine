@@ -118,6 +118,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     entryMode: ManualEntryMode;
     companionDemo: boolean;
     rangerAutomation: boolean;
+    minEdge: number | null;
   };
   type ManualPreview = {
     id: string;
@@ -158,7 +159,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return (wins + theoretical * 20) / (digits.length + 20);
   };
   const normalizeManualOrder = (body: unknown): ManualOrderInput => {
-    const input = (body ?? {}) as { market?: unknown; direction?: unknown; barrier?: unknown; stake?: unknown; entryMode?: unknown; companionDemo?: unknown; rangerAutomation?: unknown };
+    const input = (body ?? {}) as { market?: unknown; direction?: unknown; barrier?: unknown; stake?: unknown; entryMode?: unknown; companionDemo?: unknown; rangerAutomation?: unknown; minEdge?: unknown };
     const market = typeof input.market === 'string' ? input.market : '';
     const direction = input.direction === 'over' || input.direction === 'under' ? input.direction : null;
     const barrier = Number(input.barrier);
@@ -179,6 +180,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       throw new ManualRequestError(400, direction === 'over' ? 'over barrier must be an integer from 0 to 8' : 'under barrier must be an integer from 1 to 9');
     }
     if (!(stake > 0)) throw new ManualRequestError(400, 'stake must be greater than zero');
+    const minEdge = input.minEdge == null ? null : input.minEdge;
+    if (minEdge !== null && (typeof minEdge !== 'number' || !Number.isFinite(minEdge) || minEdge < 0 || minEdge > 1)) throw new ManualRequestError(400, 'minimum edge must be between 0 and 100%');
     if (!registry.has(market)) throw new ManualRequestError(400, `unknown market ${market}`);
     return {
       market,
@@ -188,6 +191,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       entryMode,
       companionDemo: input.companionDemo === true,
       rangerAutomation: input.rangerAutomation === true,
+      minEdge,
     };
   };
   const assertManualPreflight = (order: ManualOrderInput, session: NonNullable<ReturnType<typeof getSession>>): void => {
@@ -2213,6 +2217,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const estimatedWin = manualModelWin(order);
       const breakeven = quote.payout > 0 ? quote.askPrice / quote.payout : 1;
       const edge = estimatedWin - breakeven;
+      if (!registry.snapshot(order.market).fresh) throw new ManualRequestError(409, 'the selected market feed became stale while requesting the quote');
+      if (order.minEdge !== null && edge < order.minEdge) throw new ManualRequestError(409, `Fresh quote estimated edge ${(edge * 100).toFixed(1)}% is below your ${(order.minEdge * 100).toFixed(1)}% minimum. No trade placed.`);
       const entryLabel = order.companionDemo
         ? 'companion-confirmed model entry'
         : order.entryMode === 'instant'
@@ -2245,6 +2251,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         if (getSession()?.loginid !== session.loginid || client.connectedAccountId !== session.loginid) throw new ManualRequestError(409, 'Selected account changed before purchase. No trade was submitted.');
         const conflict = listOpenTrades(accountId).find((open) => open.id !== trade.id && (open.contract_type === 'DIGITOVER' || open.contract_type === 'DIGITUNDER'));
         if (conflict) throw new ManualRequestError(409, 'another digit contract opened before this purchase could be submitted');
+        if (!registry.snapshot(order.market).fresh) throw new ManualRequestError(409, 'the selected market feed became stale before purchase; no trade was submitted');
+        if (order.minEdge !== null) {
+          const latestEdge = manualModelWin(order) - breakeven;
+          if (latestEdge < order.minEdge) throw new ManualRequestError(409, `Fresh quote estimated edge ${(latestEdge * 100).toFixed(1)}% is below your ${(order.minEdge * 100).toFixed(1)}% minimum. No trade placed.`);
+        }
         buyAttempted = true;
         const result = await client.placeBuy(quote.id, quote.askPrice);
         buyConfirmed = true;
@@ -2303,6 +2314,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const quote = await requestManualQuote(order, session);
       const estimatedWin = manualModelWin(order);
       const breakeven = quote.payout > 0 ? quote.askPrice / quote.payout : 1;
+      if (!registry.snapshot(order.market).fresh) throw new ManualRequestError(409, 'the selected market feed became stale while requesting the quote');
+      if (order.minEdge !== null && estimatedWin - breakeven < order.minEdge) throw new ManualRequestError(409, `Fresh quote estimated edge ${((estimatedWin - breakeven) * 100).toFixed(1)}% is below your ${(order.minEdge * 100).toFixed(1)}% minimum. No trade placed.`);
       const preview: ManualPreview = {
         id: crypto.randomUUID(),
         accountId: accountIdForSession(session.loginid),

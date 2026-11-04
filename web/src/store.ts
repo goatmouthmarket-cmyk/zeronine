@@ -1932,6 +1932,8 @@ export interface ManualOrder {
   companionDemo?: boolean;
   /** Automated pasture orders require an active server-side arm on real accounts. */
   rangerAutomation?: boolean;
+  /** Optional minimum server-estimated edge, expressed as a fraction. */
+  minEdge?: number | null;
   /** Stable for one operator action so retries can never create a second buy. */
   idempotencyKey?: string;
 }
