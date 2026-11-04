@@ -484,18 +484,18 @@ function beginManualPaperTrade(cowTarget) {
   const contract = cowTarget?.contract;
   const tick = paperFreshEntryTick(contract?.symbol);
   if (!tick) {
-    notify(`Paper trade unavailable: no fresh live tick for ${contract?.symbol || 'this market'}. No entry recorded.`);
+    notify(`Paper trade unavailable: no fresh tick for ${contract?.symbol ? marketName(contract.symbol, lastRoomState) : 'this market'}. No trade opened.`);
     return false;
   }
   const trade = createManualPaperEntry(contract, tick, `manual-paper-${++manualPaperTradeSerial}`);
   if (!trade) {
-    notify('Paper trade unavailable: this cow has no valid live digit target. No entry recorded.');
+    notify('Paper trade unavailable: this cow has no valid digit target. No trade opened.');
     return false;
   }
   if (manualPaperTrades.length >= 100) {
     const settledIndex = manualPaperTrades.findIndex((entry) => entry.status !== 'open');
     if (settledIndex < 0) {
-      notify('Paper trade limit reached. Wait for a live result before starting another.');
+      notify('Paper trade limit reached. Wait for a result before trying again.');
       return false;
     }
     manualPaperTrades.splice(settledIndex, 1);
@@ -513,7 +513,7 @@ function beginManualPaperTrade(cowTarget) {
   manualPaperNoticeUntil = 0;
   spawnPaperGhostVisual(trade, cowTarget, 'player');
   renderManualPaperNotice(trade);
-  notify(`Paper entry opened: ${marketName(trade.symbol, lastRoomState)} ${trade.direction.toUpperCase()} ${trade.barrier}. Waiting for the next live tick; no money used.`);
+  notify(`Paper trade open · ${marketName(trade.symbol, lastRoomState)} ${trade.direction.toUpperCase()} ${trade.barrier}. Waiting for the next tick. No money used.`);
   return true;
 }
 
@@ -577,7 +577,7 @@ window.addEventListener('message', (event) => {
     renderManualPaperNotice(latest);
   }
   for (const trade of settled) {
-    notify(`Paper ${trade.status.toUpperCase()}: ${marketName(trade.symbol, lastRoomState)} ${trade.direction.toUpperCase()} ${trade.barrier}, entry ${trade.entryDigit} → exit ${trade.exitDigit}. No money used.`);
+    notify(`Paper ${trade.status === 'won' ? 'WIN' : 'LOSS'} · ${marketName(trade.symbol, lastRoomState)} ${trade.direction.toUpperCase()} ${trade.barrier} · ${trade.entryDigit} → ${trade.exitDigit}. No money used.`);
   }
 });
 

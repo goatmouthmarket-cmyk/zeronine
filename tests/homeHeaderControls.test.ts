@@ -35,7 +35,7 @@ test('pasture header controls bracket navigation on desktop and mobile', () => {
   assert.match(room, /#guestHowToPlay\{border:1px solid #e7c778;background:linear-gradient\(#a92c3f,#681c2b\);color:#fff0bd/);
   assert.match(room, /canvas\.addEventListener\('contextmenu', \(event\) =>/);
   assert.match(room, /event\.pointerType !== 'touch'/);
-  assert.match(room, /Waiting for the next live tick; no money used/);
+  assert.match(room, /Waiting for the next tick\. No money used\./);
   assert.match(room, /REAL MARKET TICK · NO MONEY USED/);
   assert.match(room, /paper-ghost-killed/);
   assert.doesNotMatch(room.slice(room.indexOf('function beginManualPaperTrade'), room.indexOf('function findCowAtClientPoint')), /room-trade|parent\.postMessage/);
