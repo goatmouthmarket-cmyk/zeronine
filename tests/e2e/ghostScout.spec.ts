@@ -44,5 +44,8 @@ test('Ranger Auto exposes separate entry timing, ring and paper research control
   await page.getByRole('button', { name: 'Hide Ranger Auto controls' }).click();
   await game.locator('.target-menu summary').click();
   await expect(game.getByLabel('Manual shots / ticks')).toHaveValue('3');
+  await expect(game.getByLabel('Skip if signal changes')).toBeChecked();
+  await game.getByLabel('Skip if signal changes').uncheck();
+  await expect(game.getByLabel('Skip if signal changes')).not.toBeChecked();
   await expect(game.locator('.hud-avatar svg')).toHaveCount(1);
 });

@@ -117,6 +117,8 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   assert.equal(context.testManualPaper.trades.length, 2, 'opening the scout details never creates a paper entry');
   assert.equal(paperTarget.hp, 3);
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'paper entries never request a real/demo account trade');
+  context.testDefeat({ contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 }, tradeIntent: { accountId: 'REAL_A', stake: 1, signalProtection: true, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
+  assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'protected manual entry does not submit without a fresh matching feed');
   element('cowStake').value = '2.50';
   context.testDefeat({ contract: { market: 'Changed', symbol: 'CHANGED', kind: 'UNDER', barrier: 8 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } });
   const trade = messages.find((message) => message.type === 'zeronine:room-trade');
@@ -132,6 +134,22 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   listeners.get('cowBetStyle')?.get('change')?.();
   assert.equal(context.testStyle(), 'chase', 'the pasture selector changes the active recovery plan');
   assert.equal(savedStyles.get('pasture-manual-bet-style'), 'chase', 'the selected style is persisted');
+});
+
+test('manual signal protection checks the selected setup without requiring Auto ranking', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function manualSignalChanged(');
+  const end = html.indexOf('function onCowDefeated(', start);
+  assert.ok(start >= 0 && end > start);
+  const changed = runInNewContext(`${html.slice(start, end)}; manualSignalChanged`) as (selected: unknown, current: unknown, fresh: boolean, feed: boolean) => boolean;
+  const selected = { symbol: 'R_50', kind: 'OVER', barrier: 2, edge: .04, hitSignal: true };
+  assert.equal(changed(selected, { ...selected, edge: .01 }, true, true), false);
+  assert.equal(changed(selected, { ...selected, barrier: 1 }, true, true), true);
+  assert.equal(changed(selected, { ...selected, edge: -.01 }, true, true), true);
+  assert.equal(changed(selected, { ...selected, hitSignal: false }, true, true), true);
+  assert.equal(changed(selected, selected, false, true), true);
+  assert.equal(changed(selected, selected, true, false), true);
+  assert.equal(changed({ ...selected, edge: -.01, hitSignal: false }, { ...selected, edge: -.02, hitSignal: false }, true, true), false);
 });
 
 test('pasture base and martingale styles calculate from the entered stake', () => {
@@ -956,6 +974,12 @@ test('configured shots determine entry timing independently of level or edge', (
   assert.equal(damage(3, 3, 1), 3);
   assert.equal(damage(3, 3, 3), 1);
   assert.equal(damage(1, 3, 3), 1);
+  const autoStart = html.indexOf('function beginRangerAutoAim(');
+  const autoEnd = html.indexOf('function updateRangerAutomation(', autoStart);
+  assert.match(html.slice(autoStart, autoEnd), /hit\.entryShots=rangerAutoShots/);
+  const manualStart = html.indexOf("canvas.addEventListener('click',e=>");
+  const manualEnd = html.indexOf('function selectRangerAutoCandidate(', manualStart);
+  assert.match(html.slice(manualStart, manualEnd), /hit\.entryShots=rangerManualShots/);
 });
 
 test('automatic paper research records next-tick outcomes without account orders', () => {
