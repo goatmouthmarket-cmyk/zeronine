@@ -388,7 +388,21 @@ function beginManualPaperTrade(cowTarget) {
   manualPaperNoticeUntil = 0;
   const ghost = document.createElement('span');
   ghost.className = 'paper-ghost-cow';
-  ghost.textContent = '🐄';
+  ghost.dataset.facing = (cowTarget.tx || cowTarget.x) < cowTarget.x ? 'left' : 'right';
+  ghost.innerHTML = `<svg viewBox="-58 -40 120 92" aria-hidden="true" focusable="false">
+    <path d="M-38 -4 Q-54 -10 -47 12" fill="none" stroke="#cbb99b" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-30 5h9v34h-9zM18 5h10v34H18z" fill="#b9ac97"/>
+    <path d="M-30 35h11v5h-11zM17 35h12v5H17z" fill="#645044"/>
+    <ellipse cx="-2" cy="-4" rx="38" ry="23" fill="#f0e4ce"/>
+    <path d="M-30-15-16-25-3-19-6-4-20 5-33-3z" fill="#765140"/>
+    <path d="M8-24 30-16 26 3 15 8 4-7z" fill="#654638"/>
+    <path d="M34 1A36 36 0 0 1-35 6" fill="none" stroke="#c6bba9" stroke-width="2"/>
+    <ellipse cx="36" cy="-8" rx="19" ry="18" transform="rotate(-11 36 -8)" fill="#e9ddc6"/>
+    <path d="M25-21 16-27 19-12z" fill="#bc9e7d"/><path d="M43-20 53-27 52-10z" fill="#b9a187"/>
+    <ellipse cx="45" cy="0" rx="13" ry="9" transform="rotate(9 45 0)" fill="#d9aaa2"/>
+    <g fill="#775b55"><circle cx="40" cy="0" r="1.7"/><circle cx="48" cy="0" r="1.7"/></g>
+    <g fill="#2a2823"><circle cx="38" cy="-14" r="2"/><circle cx="47" cy="-14" r="2"/></g>
+  </svg>`;
   const arrow = document.createElement('span');
   arrow.className = 'paper-ghost-arrow';
   paperVisualRoot.append(arrow, ghost);
@@ -471,20 +485,23 @@ function renderManualPaperVisuals(now) {
     const cowY = (visual.trade.targetY - cam.y) * zoom;
     visual.ghost.style.left = `${cowX}px`;
     visual.ghost.style.top = `${cowY}px`;
+    visual.ghost.style.width = `${120 * zoom}px`;
     if (!visual.hit) {
       const dx = cowX - playerX;
       const dy = cowY - playerY;
       visual.arrow.style.left = `${playerX}px`;
       visual.arrow.style.top = `${playerY - 8}px`;
       visual.arrow.style.width = `${Math.hypot(dx, dy)}px`;
-      visual.arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+      const progress = Math.min(1, Math.max(0, elapsed / 360));
+      const eased = 1 - (1 - progress) ** 3;
+      visual.arrow.style.transform = `rotate(${Math.atan2(dy, dx)}rad) scaleX(${eased})`;
       if (elapsed >= 360) {
         visual.hit = true;
-        visual.arrow.remove();
+        visual.arrow.classList.add('paper-arrow-hit');
         visual.ghost.classList.add('paper-ghost-killed');
       }
     }
-    if (elapsed >= 1050) {
+    if (elapsed >= 1200) {
       visual.ghost.remove();
       visual.arrow.remove();
       manualPaperVisuals.splice(index, 1);
@@ -718,19 +735,21 @@ body.room-header-controls #rangerAutoToggle{display:none!important}
 @media(max-width:999.98px){#rangerAutoHud:not([hidden]){width:min(292px,calc(100vw - 16px))!important}#rangerAutoHud input,#rangerAutoHud select,#rangerAutoHud button{min-height:40px}}
 </style><style id="manual-paper-trade">
 .paper-visual-root{position:fixed;inset:0;z-index:5;overflow:hidden;pointer-events:none}
-.paper-ghost-cow{position:absolute;z-index:1;font-size:42px;line-height:1;opacity:.72;filter:grayscale(1) brightness(1.35) sepia(1) hue-rotate(190deg) saturate(4) drop-shadow(0 0 8px #9a7bff);transform:translate(-50%,-55%);transition:opacity .32s ease,filter .32s ease,transform .32s ease}
-.paper-ghost-killed{opacity:0;filter:grayscale(1) brightness(2) drop-shadow(0 0 18px #bca9ff);transform:translate(-50%,-85%) scale(1.5)}
-.paper-ghost-arrow{position:absolute;z-index:1;height:0;border-top:3px dashed #c4b5fd;transform-origin:left center;filter:drop-shadow(0 0 4px #9275ff);animation:paperArrowPulse .14s linear infinite alternate}
-.paper-ranger-bet{position:fixed;z-index:16;left:50%;top:30%;transform:translate(-50%,-100%);display:grid;gap:3px;min-width:190px;max-width:min(280px,calc(100vw - 24px));padding:8px 11px;border:1px solid #a69bd8;border-radius:8px;background:#1f2332f2;color:#f5f0ff;box-shadow:0 5px 16px #10101d88;text-align:center;font:700 10px system-ui;pointer-events:none}
+.paper-ghost-cow{position:absolute;z-index:2;display:block;aspect-ratio:120/92;transform:translate(-48.33%,-43.48%);opacity:.76;filter:sepia(.18) saturate(.65) brightness(1.18) drop-shadow(0 0 5px #e6f5c9);animation:paperCowAppear .22s ease-out;transition:opacity .65s ease,transform .65s cubic-bezier(.2,.65,.3,1),filter .65s ease}
+.paper-ghost-cow svg{display:block;width:100%;height:100%}
+.paper-ghost-cow[data-facing="left"] svg{transform:scaleX(-1)}
+.paper-ghost-killed{opacity:0;filter:sepia(.3) brightness(1.6) drop-shadow(0 0 12px #f7edbc);transform:translate(-48.33%,-63%) scale(1.12)}
+.paper-ghost-arrow{position:absolute;z-index:1;height:3px;border-radius:3px;background:linear-gradient(90deg,#f5dfaa44,#f4d17f 70%,#fff1c5);transform-origin:left center;box-shadow:0 0 5px #e4c778a6;transition:opacity .4s ease}
+.paper-arrow-hit{opacity:0}
+.paper-ranger-bet{position:fixed;z-index:16;left:50%;top:30%;transform:translate(-50%,-100%);display:grid;grid-template-columns:auto 1fr;align-items:center;gap:2px 7px;min-width:150px;max-width:min(230px,calc(100vw - 24px));padding:6px 8px;border:1px solid #b88c61;border-radius:8px;background:#fff0d6f2;box-shadow:0 2px 0 #77513a,0 4px 12px #17351f33;color:#4e3826;text-align:left;font:700 9px/1.2 system-ui;pointer-events:none}
 .paper-ranger-bet[hidden]{display:none}
-.paper-ranger-bet strong{color:#d8ccff;font-size:11px;letter-spacing:.06em}
-.paper-ranger-bet span{color:#f5f0ff}
-.paper-ranger-bet small{color:#b9aecf;font-size:8px;letter-spacing:.08em}
-.paper-ranger-bet[data-phase="won"]{border-color:#85cfad;background:#1b332ef2}
-.paper-ranger-bet[data-phase="won"] strong{color:#a7f3c9}
-.paper-ranger-bet[data-phase="lost"]{border-color:#d3959d;background:#38242df2}
-.paper-ranger-bet[data-phase="lost"] strong{color:#ffbbc5}
-@keyframes paperArrowPulse{to{border-color:#f0abfc;opacity:.55}}
+.paper-ranger-bet strong{color:#276c48;font-size:9px;letter-spacing:.04em;white-space:nowrap}
+.paper-ranger-bet span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paper-ranger-bet span:nth-of-type(2){grid-column:1/-1;color:#5c5140;font-size:9px}
+.paper-ranger-bet small{grid-column:1/-1;color:#866d50;font-size:7px;letter-spacing:.04em}
+.paper-ranger-bet[data-phase="won"]{border-color:#62a679}.paper-ranger-bet[data-phase="won"] strong{color:#167344}
+.paper-ranger-bet[data-phase="lost"]{border-color:#c88779}.paper-ranger-bet[data-phase="lost"] strong{color:#a83e3e}
+@keyframes paperCowAppear{from{opacity:0;filter:brightness(1.5) drop-shadow(0 0 12px #f6ebc3)}to{opacity:.76;filter:sepia(.18) saturate(.65) brightness(1.18) drop-shadow(0 0 5px #e6f5c9)}}
 @media(prefers-reduced-motion:reduce){.paper-ghost-cow,.paper-ghost-arrow{animation:none!important;transition:none!important}}
 </style>
 <style id="guest-how-to-controls">
