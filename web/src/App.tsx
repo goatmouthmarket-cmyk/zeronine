@@ -682,6 +682,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const s = useStore();
   const [headerNavOpen, setHeaderNavOpen] = useState(false);
   const [rangerAutoMenuOpen, setRangerAutoMenuOpen] = useState(false);
+  const [rangerAutoRunning, setRangerAutoRunning] = useState(false);
   const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
@@ -1273,14 +1274,21 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, [active, marketChooserOpen, postRoomState]);
 
   useEffect(() => {
-    if (!active || marketChooserOpen) setRangerAutoMenuOpen(false);
+    if (!active || marketChooserOpen) {
+      setRangerAutoMenuOpen(false);
+      setRangerAutoRunning(false);
+    }
   }, [active, marketChooserOpen]);
 
   useEffect(() => {
     const receiveRoomAction = (event: MessageEvent): void => {
       if (event.origin !== window.location.origin || event.source !== roomFrameRef.current?.contentWindow) return;
-      const message = event.data as { type?: string; page?: Page; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string; rangerAutomation?: boolean } } | null;
+      const message = event.data as { type?: string; page?: Page; running?: boolean; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string; rangerAutomation?: boolean } } | null;
       if (!message?.type) return;
+      if (message.type === 'zeronine:room-auto-status' && typeof message.running === 'boolean') {
+        setRangerAutoRunning(message.running);
+        return;
+      }
       if (message.type === 'zeronine:room-ready') {
         postRoomState();
         return;
@@ -1398,11 +1406,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           {active && !marketChooserOpen && <button
             type="button"
             class={`room-header-action room-header-play${rangerAutoMenuOpen ? ' is-open' : ''}`}
-            aria-label={rangerAutoMenuOpen ? 'Hide Ranger Auto controls' : 'Show Ranger Auto controls'}
+            aria-label={rangerAutoMenuOpen ? 'Hide Ranger Auto controls' : rangerAutoRunning ? 'Ranger Auto running; show controls' : 'Show Ranger Auto controls'}
             aria-expanded={rangerAutoMenuOpen}
             title={rangerAutoMenuOpen ? 'Hide Ranger Auto controls' : 'Ranger Auto'}
             onClick={() => setRangerAutoMenuOpen((open) => !open)}
-          ><Icon name={rangerAutoMenuOpen ? 'square' : 'play'} size={19} strokeWidth={2} /></button>}
+          ><svg class="room-auto-icon" viewBox="0 0 24 24" aria-hidden="true">{rangerAutoRunning ? <path d="M6 4h4v16H6zM14 4h4v16h-4z" /> : <path d="M6 3.5 20 12 6 20.5z" />}</svg>{rangerAutoRunning && <span class="room-auto-running">Running</span>}</button>}
           <button
             type="button"
             class={`header-nav-toggle${headerNavOpen ? ' is-open' : ''}`}

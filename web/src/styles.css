@@ -6741,3 +6741,10 @@ button.activity-row {
   .app[data-page="home"] .header-nav-toggle svg,
   .app[data-page="home"] .room-header-how-to { transition: none; }
 }
+
+/* Ranger Auto launcher: the icon reports status; the button opens the controls. */
+.app[data-page="home"] .room-header-play,
+.app[data-page="home"] .room-header-play.is-open { position: relative; overflow: visible; border: 0; background: transparent; box-shadow: none; color: #f6d281; }
+.app[data-page="home"] .room-header-play .room-auto-icon { width: 25px; height: 25px; fill: currentColor; filter: drop-shadow(0 2px 2px #25432b99); }
+.app[data-page="home"] .room-auto-running { position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); padding: 2px 4px; border-radius: 4px; background: #ebf4dc; color: #235b37; font-size: 8px; font-weight: 900; line-height: 1; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; }
+@media (max-width: 999.98px) { .app[data-page="home"] .room-header-play, .app[data-page="home"] .room-header-play.is-open { position: fixed; border: 0; background: transparent; box-shadow: none; } .app[data-page="home"] .room-header-play .room-auto-icon { width: 30px; height: 30px; } .app[data-page="home"] .room-auto-running { bottom: 1px; } }
