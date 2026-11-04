@@ -257,6 +257,18 @@ test('pasture win effects expire by elapsed time instead of frame count', () => 
   assert.equal(result.remainingEffects, 0, 'the effect is removed once its wall-clock duration ends');
 });
 
+test('market labels use readable names and retain the one-second distinction', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function marketName(symbol,state)');
+  const end = html.indexOf('function ghostContractKey(', start);
+  assert.ok(start >= 0 && end > start);
+  const marketName = runInNewContext(`${html.slice(start, end)}; marketName`, { liveMarkets: [] }) as (symbol: string, state?: object) => string;
+  assert.equal(marketName('1HZ50V'), 'Volatility 50 (1s)');
+  assert.equal(marketName('R_50'), 'Volatility 50');
+  assert.equal(marketName('1HZ50V', { markets: [{ symbol: '1HZ50V', display: 'Volatility 50 (1s) Index' }] }), 'Volatility 50 (1s) Index');
+  assert.equal(marketName('OTHER'), 'OTHER');
+});
+
 test('paper scout shows the matching market, ticket details, and virtual outcome', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
@@ -283,7 +295,7 @@ test('paper scout shows the matching market, ticket details, and virtual outcome
     },
     markets: [{ symbol: 'R_100', fresh: true, lastEpoch: Date.now() / 1000, lastDigit: 3 }],
   });
-  assert.equal(element('paperMiniStatus').textContent, 'OPEN | R_100 | OVER 2');
+  assert.equal(element('paperMiniStatus').textContent, 'OPEN | Volatility 100 Index | OVER 2');
   assert.equal(element('paperMiniStats').textContent, 'Volatility 100 Index | ENTRY 1 > LIVE 3 | VIRTUAL $2.00');
   assert.equal(element('paperMini').dataset.phase, 'open');
 
@@ -295,7 +307,7 @@ test('paper scout shows the matching market, ticket details, and virtual outcome
     },
     markets: [],
   });
-  assert.equal(element('paperMiniStatus').textContent, 'WON | R_100 | OVER 2');
+  assert.equal(element('paperMiniStatus').textContent, 'WON | Volatility 100 Index | OVER 2');
   assert.equal(element('paperMiniStats').textContent, 'Volatility 100 Index | ENTRY 1 > EXIT 3 | +$1.80 VIRTUAL');
 });
 
@@ -383,7 +395,7 @@ test('fresh paper entry signals show a red bet-now marker without replacing othe
   assert.match(script, /signalFeatured=v!==ghostCow&&v\.contract\?\.hitSignal===true/);
   assert.match(script, /if\(signalFeatured\)\{c\.save\(\);c\.strokeStyle='#ff4057'/);
   assert.match(script, /entryAlert=a\.hitSignal\?'<em class="entry-alert">BET NOW<\/em>':'/);
-  assert.match(script, /v===ghostCow&&tag\.symbol\?String\(tag\.symbol\)/);
+  assert.match(script, /v===ghostCow&&tag\.symbol\?marketName\(tag\.symbol,lastRoomState\)/);
 });
 
 test('cooldown timer is centered in the header across viewport sizes', () => {
@@ -736,6 +748,7 @@ test('ranger auto activity skips rebuilding unchanged display data', () => {
     $: (id: string) => elements[id],
     document: { createElement },
     rangerAutoActive: true,
+    marketName: (symbol: string) => symbol,
     rangerAutoTradeIds: trackedIds,
     rangerAutoRunTradeIds: new Set([1, 2]),
     rangerAutoRunSettledTrades: new Map(),
