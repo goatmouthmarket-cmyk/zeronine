@@ -2166,17 +2166,23 @@ function paperTradeFromApi(raw: PaperTradeApi): PaperTrade | null {
   };
 }
 
+const paperTradeRefreshes = new Map<number, Promise<void>>();
+
 /** Contract-level virtual paper ledger. Older deployments may not expose this API yet. */
 export async function loadPaperTrades(limit = 200): Promise<void> {
-  try {
+  const pending = paperTradeRefreshes.get(limit);
+  if (pending) return pending;
+  const refresh = (async () => { try {
     const res = await api<{ trades?: PaperTradeApi[]; portfolio?: PaperPortfolio }>(`/api/paper/trades?limit=${limit}`);
     set({
       paperTrades: Array.isArray(res.trades) ? res.trades.map(paperTradeFromApi).filter((trade): trade is PaperTrade => trade != null).slice(0, limit) : [],
       paperPortfolio: res.portfolio ?? null,
     });
   } catch {
-    set({ paperTrades: [], paperPortfolio: null });
-  }
+    // A temporary network failure should not erase the last research snapshot.
+  } })().finally(() => paperTradeRefreshes.delete(limit));
+  paperTradeRefreshes.set(limit, refresh);
+  return refresh;
 }
 
 /** Detailed virtual-paper evidence for the selected contract. */

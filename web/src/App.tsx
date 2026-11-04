@@ -786,8 +786,12 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, []);
 
   useEffect(() => {
-    if (s.owner) void loadPaperTrades(300);
-  }, [s.owner, s.paperSimulation?.totalTrades]);
+    if (!s.owner || !active) return;
+    const refresh = () => { if (document.visibilityState !== 'hidden') void loadPaperTrades(300); };
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    return () => window.clearInterval(timer);
+  }, [s.owner, active]);
 
   useEffect(() => {
     if (s.owner && s.paperSimulation?.phase !== 'running') void startPaperSimulation().catch(() => undefined);

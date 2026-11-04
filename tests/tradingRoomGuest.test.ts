@@ -269,6 +269,31 @@ test('market labels use readable names and retain the one-second distinction', (
   assert.equal(marketName('OTHER'), 'OTHER');
 });
 
+test('long paper scout labels finish drawing and are constrained to the badge', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function drawGhostPaperBadge()');
+  const end = html.indexOf('let pastureBackground=', start);
+  assert.ok(start >= 0 && end > start);
+  const result = runInNewContext(`
+    let measurements = 0;
+    let textMaxWidth = 0;
+    const c = {
+      font: '', save() {}, restore() {}, beginPath() {}, roundRect() {}, fill() {},
+      measureText() { measurements++; return { width: 250 }; },
+      fillText(text, x, y, width) { if (width) textMaxWidth = width; },
+    };
+    const ghostPaperState = { phase: 'running', openContract: { market: '1HZ50V', direction: 'under', barrier: 7 } };
+    const ghost = { x: 200, y: 200 };
+    const lastRoomState = {};
+    const marketName = () => 'A particularly long readable market name';
+    ${html.slice(start, end)}
+    drawGhostPaperBadge();
+    ({ measurements, textMaxWidth })
+  `, {}, { timeout: 500 }) as { measurements: number; textMaxWidth: number };
+  assert.ok(result.measurements <= 5, 'font fitting must always terminate');
+  assert.equal(result.textMaxWidth, 140);
+});
+
 test('ranger gaze follows the target direction from the head', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const start = html.indexOf('function rangerLookDirection(');
