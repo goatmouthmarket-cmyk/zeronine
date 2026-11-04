@@ -349,6 +349,7 @@ test('ghost details show virtual win rate and at most ten recent results', () =>
       hidden: id !== 'ghostTraderPanel',
       textContent: '',
       dataset: {},
+      classList: { toggle() {} },
       children: [] as any[],
       replaceChildren() { this.children = []; },
       append(...items: unknown[]) { this.children.push(...items); },
@@ -363,7 +364,8 @@ test('ghost details show virtual win rate and at most ten recent results', () =>
     $: node,
     document: { createElement: () => ({ textContent: '', dataset: {}, children: [] as unknown[], append(...items: unknown[]) { this.children.push(...items); } }) },
     ghostPaperState: { phase: 'running', wins: 3, losses: 1, netPnl: 1.4, openContract: null, lastSettled: recent[0], recentTrades: recent },
-    lastRoomState: { markets: [] },
+    ghostReplayPending: false,
+    lastRoomState: { markets: [], research: { canRun: true, latest: { wins: 7, losses: 3, trades: 10, win_rate: 70 }, active: null } },
     marketName: () => 'Volatility 50',
   }) as () => void;
   render();
@@ -372,6 +374,8 @@ test('ghost details show virtual win rate and at most ten recent results', () =>
   assert.equal(node('ghostPanelRate').textContent, '75%');
   assert.equal(node('ghostPanelTrades').children.length, 10);
   assert.match(node('ghostPanelStatus').textContent, /virtual/i);
+  assert.match(node('ghostReplayStatus').textContent, /7W \/ 3L \| 10 simulated trades/);
+  assert.equal(node('ghostReplayRun').disabled, false);
 });
 
 test('ranger gaze follows the target direction from the head', () => {

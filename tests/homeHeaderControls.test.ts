@@ -17,7 +17,7 @@ test('pasture header controls bracket navigation on desktop and mobile', () => {
   assert.match(app, /Stop legacy bot/);
   assert.match(app, /active && !guest && <button[\s\S]*?class="room-header-how-to"/);
   assert.doesNotMatch(app, /room-header-how-to-mobile/);
-  assert.match(app, /\['history', 'account', 'howToPlay'\]\.includes\(message\.page\)/);
+  assert.match(app, /\['history', 'account', 'howToPlay', 'backtest'\]\.includes\(message\.page\)/);
   assert.match(app, /type: 'zeronine:room-auto-menu',\s*open: rangerAutoMenuOpen,\s*controls: true/);
 
   const room = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');

@@ -710,6 +710,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, [active, rememberedReal, s.session?.loginid]);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const roomFrameRef = useRef<HTMLIFrameElement>(null);
+  const scoutReplayBusy = useRef(false);
   const timedManualExecuting = useRef(false);
   const manualStake = Math.max(0.1, Number(manualStakeText) || s.settings?.base_stake || 1);
 
@@ -1183,6 +1184,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       status: trade.status,
       profit: trade.profit,
     })),
+    research: { latest: s.testRuns.find((run) => run.kind === 'backtest') ?? null, active: s.testlab?.kind === 'backtest' ? s.testlab : null, canRun: Boolean(s.owner && s.session) },
     paperSimulation: s.paperSimulation ? {
       phase: s.paperSimulation.phase,
       totalTrades: s.paperSimulation.totalTrades,
@@ -1207,7 +1209,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal]);
+  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal, s.testRuns, s.testlab]);
 
   const postRoomState = useCallback(() => {
     const frame = roomFrameRef.current;
@@ -1283,6 +1285,19 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         postRoomState();
         return;
       }
+      if (message.type === 'zeronine:room-research-replay') {
+        if (!s.owner || !s.session || s.testlab || scoutReplayBusy.current) {
+          roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-research-result', ok: false, message: !s.owner || !s.session ? 'Connect an owner account to run a replay.' : 'Research is already running.' }, window.location.origin);
+          return;
+        }
+        scoutReplayBusy.current = true;
+        void runTestBacktest({ target: 200, configs: ALL_CONFIG_KEYS }).then(() => {
+          roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-research-result', ok: true, message: 'Historical replay complete.' }, window.location.origin);
+        }).catch((error) => {
+          roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-research-result', ok: false, message: error instanceof Error ? error.message : 'Replay failed.' }, window.location.origin);
+        }).finally(() => { scoutReplayBusy.current = false; });
+        return;
+      }
       if (message.type === 'zeronine:room-health-refresh') {
         connectWs();
         void syncCoreState();
@@ -1307,7 +1322,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         if (s.markets.some((item) => item.symbol === message.payload?.market)) selectMarket(message.payload.market);
         return;
       }
-      if (message.type === 'zeronine:room-navigate' && message.page && ['history', 'account', 'howToPlay'].includes(message.page)) {
+      if (message.type === 'zeronine:room-navigate' && message.page && ['history', 'account', 'howToPlay', 'backtest'].includes(message.page)) {
         onNavigate(message.page);
         return;
       }
@@ -1367,7 +1382,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     };
     window.addEventListener('message', receiveRoomAction);
     return () => window.removeEventListener('message', receiveRoomAction);
-  }, [arm, onNavigate, playArenaTarget, postRoomState, s.markets, s.owner, s.session]);
+  }, [arm, onNavigate, playArenaTarget, postRoomState, s.markets, s.owner, s.session, s.testlab]);
 
   return (
     <>
@@ -1382,7 +1397,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             >How to play</button>}
           </div>
           <nav id="home-header-navigation" class={`desktop-nav${headerNavOpen ? ' is-expanded' : ''}`} aria-label="Main navigation" aria-hidden={!headerNavOpen}>
-            {(['home', 'backtest', 'history', 'account'] as const).map((destination) => (
+            {(['home', 'history', 'account'] as const).map((destination) => (
               <button key={destination} type="button" tabIndex={headerNavOpen ? 0 : -1} aria-current={page === destination ? 'page' : undefined}
                 aria-label={{ home: 'Home', backtest: 'Research lab', history: 'History', account: 'Account' }[destination]}
                 title={{ home: 'Home', backtest: 'Research lab', history: 'History', account: 'Account' }[destination]}
@@ -5603,10 +5618,6 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
         <button class={`nav-item${page === 'history' ? ' active' : ''}`} aria-current={page === 'history' ? 'page' : undefined} onClick={() => setPage('history')}>
           <Icon name="history" size={20} />
           History
-        </button>
-        <button class={`nav-item${page === 'backtest' ? ' active' : ''}`} aria-current={page === 'backtest' ? 'page' : undefined} onClick={() => setPage('backtest')}>
-          <Icon name="stats" size={20} />
-          Lab
         </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} aria-current={page === 'account' ? 'page' : undefined} onClick={() => setPage('account')}>
           <Icon name="account" size={20} />
