@@ -634,7 +634,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   app.post('/api/auth/owner', async (req, reply) => {
     if (!publicDashboardEnabled()) return { ok: true };
     const token = (req.body as { token?: string } | undefined)?.token ?? '';
-    if (token !== config.dashboardAdminToken) {
+    if (!config.dashboardAdminToken || token !== config.dashboardAdminToken) {
       reply.code(401);
       return { error: 'invalid dashboard access token' };
     }
@@ -661,16 +661,16 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
           }
         : null,
       recovery: owner ? getRecovery() : null,
-      settings: getSettings(),
+      settings: owner ? getSettings() : null,
       automation: owner
         ? automation.state()
-        : { ...automation.state(), running: false, phase: 'guest', reason: 'Connect Deriv to trade' },
+        : { running: false, phase: 'guest', reason: 'Connect Deriv to trade' },
       intelligence: automation.marketIntelligence(),
       trades: owner ? listTrades(20) : [],
       performance: owner ? getPerformanceSummary() : { wins: 0, losses: 0, pushes: 0, profit: 0, reset_at: 0 },
       paperSimulation: paperSimulator.state(),
-      momentum: momentum?.state() ?? null,
-      gold: goldState(owner, session),
+      momentum: owner ? momentum?.state() ?? null : null,
+      gold: owner ? goldState(true, session) : null,
     };
   });
 
@@ -680,7 +680,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
    */
   app.get('/api/gold/state', async (req) => {
     const owner = isOwner(req);
-    return { state: goldState(owner, getSession()) };
+    return { state: owner ? goldState(true, getSession()) : null };
   });
 
   /** Gold OAuth is distinct from Deriv OAuth and remains demo/read-only. */
@@ -1137,7 +1137,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
-  app.get('/api/momentum/state', async () => ({ state: momentum?.state() ?? null }));
+  app.get('/api/momentum/state', async (req) => ({ state: isOwner(req) ? momentum?.state() ?? null : null }));
   app.post('/api/momentum/start', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
     if (!momentum) { reply.code(503); return { error: 'momentum observer unavailable' }; }
@@ -1621,11 +1621,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
   });
 
-  app.get('/api/settings', async () => getSettings());
+  app.get('/api/settings', async (req, reply) => { if (!requireOwner(req, reply)) return; return getSettings(); });
 
-  app.get('/api/entry-lab', async () => ({
-    state: entryResearch ? entryLabDashboardState(entryResearch.state()) : null,
-  }));
+  app.get('/api/entry-lab', async (req, reply) => { if (!requireOwner(req, reply)) return; return { state: entryResearch ? entryLabDashboardState(entryResearch.state()) : null }; });
 
   app.put('/api/settings', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
@@ -1785,7 +1783,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return resetPerformanceSummary();
   });
 
-  app.get('/api/calibration', async () => getCalibration());
+  app.get('/api/calibration', async (req, reply) => { if (!requireOwner(req, reply)) return; return getCalibration(); });
 
   app.post('/api/test/backtest', async (req, reply) => {
     if (!requireOwner(req, reply)) return;
@@ -1839,14 +1837,16 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     return { error: 'account-funded paper sweeps are retired; use /api/paper/start' };
   });
 
-  app.get('/api/test/runs', async (req) => {
+  app.get('/api/test/runs', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const q = req.query as { kind?: string; limit?: string };
     const kind = q.kind === 'backtest' || q.kind === 'paper' || q.kind === undefined ? q.kind : undefined;
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
     return { runs: kind ? listTestRuns(kind, limit) : listTestRuns(undefined, limit) };
   });
 
-  app.get('/api/test/evidence', async (req) => {
+  app.get('/api/test/evidence', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
     const q = req.query as { limit?: string };
     const limit = Math.min(1000, Math.max(1, Number(q.limit) || 500));
     const events = listDecisionEvents(limit);

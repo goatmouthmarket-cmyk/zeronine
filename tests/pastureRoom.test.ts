@@ -9,10 +9,11 @@ test('pasture shares bounded public presence and chat without sharing account da
   const first = room.join(event => a.push(event))!;
   const second = room.join(event => b.push(event))!;
   assert.equal(room.join(() => {}), null);
-  room.receive(first, { type: 'move', name: '  Cow  Ranger  ', x: 200, y: 300, facing: -1, appearance: { color: '#aabbcc' }, ghost: { x: 620, y: 410 }, accountId: 'private', balance: 42 });
+  room.receive(first, { type: 'move', name: '  Cow  Ranger  ', x: 200, y: 300, facing: -1, action: 'walking', appearance: { color: '#aabbcc' }, ghost: { x: 620, y: 410 }, accountId: 'private', balance: 42 });
   const peer = b.find(event => event.type === 'player' && (event.player as { id: string }).id === first)!.player as Record<string, unknown>;
   assert.equal(peer.name, 'Cow Ranger');
   assert.equal(peer.x, 200);
+  assert.equal(peer.action, 'walking');
   assert.equal('accountId' in peer, false);
   assert.equal('balance' in peer, false);
   assert.ok(b.some(event => event.type === 'ghost' && event.x === 620 && event.y === 410));
@@ -24,6 +25,8 @@ test('pasture shares bounded public presence and chat without sharing account da
   room.receive(first, { type: 'chat', text: 'spam' });
   assert.ok(a.some(event => event.type === 'notice'));
   now += 2000;
+  room.receive(first, { type: 'shot', x: 250, y: 310, stake: 100 });
+  assert.ok(b.some(event => event.type === 'shot' && event.playerId === first && !('stake' in event)));
   room.receive(first, { type: 'kill', x: 250, y: 310, stake: 100 });
   const effect = b.find(event => event.type === 'kill')!;
   assert.equal(effect.playerId, first);

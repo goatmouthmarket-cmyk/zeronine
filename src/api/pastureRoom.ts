@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 type Send = (event: Record<string, unknown>) => void;
 type Appearance = { outfit: string; color: string; accent: string; headwear: string; accessory: string };
-type Player = { id: string; name: string; x: number; y: number; facing: number; appearance: Appearance; lastUpdate: number; lastChat: number; lastKill: number; send: Send };
+type Player = { id: string; name: string; x: number; y: number; facing: number; action: string; appearance: Appearance; lastUpdate: number; lastChat: number; lastKill: number; lastShot: number; send: Send };
 const initialAppearance: Appearance = { outfit: 'classic', color: '#326db1', accent: '#a65b38', headwear: 'none', accessory: 'none' };
 const colors = (value: unknown, fallback: string): string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
 function appearance(input: unknown): Appearance {
@@ -11,7 +11,7 @@ function appearance(input: unknown): Appearance {
   return { outfit: choose('outfit', ['classic', 'vest', 'scout'], 'classic'), color: colors(value.color, initialAppearance.color), accent: colors(value.accent, initialAppearance.accent), headwear: choose('headwear', ['none', 'cap', 'bandana'], 'none'), accessory: choose('accessory', ['none', 'scarf', 'badge'], 'none') };
 }
 function cleanText(value: unknown, limit: number): string { return typeof value === 'string' ? Array.from(value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, limit).join('') : ''; }
-function publicPlayer(player: Player): Record<string, unknown> { return { id: player.id, name: player.name, x: player.x, y: player.y, facing: player.facing, appearance: player.appearance }; }
+function publicPlayer(player: Player): Record<string, unknown> { return { id: player.id, name: player.name, x: player.x, y: player.y, facing: player.facing, action: player.action, appearance: player.appearance }; }
 
 /** Ephemeral visual presence only; never carries account or trade data. */
 export class PastureRoom {
@@ -24,7 +24,7 @@ export class PastureRoom {
   join(send: Send): string | null {
     if (this.players.size >= this.capacity) return null;
     const id = randomUUID(), name = `Ranger ${id.slice(0, 4).toUpperCase()}`;
-    const player: Player = { id, name, x: 480, y: 560, facing: 1, appearance: { ...initialAppearance }, lastUpdate: 0, lastChat: 0, lastKill: 0, send };
+    const player: Player = { id, name, x: 480, y: 560, facing: 1, action: 'idle', appearance: { ...initialAppearance }, lastUpdate: 0, lastChat: 0, lastKill: 0, lastShot: 0, send };
     this.players.set(id, player);
     send({ type: 'welcome', id, players: [...this.players.values()].map(publicPlayer), messages: this.messages, leader: this.players.keys().next().value, ghost: this.ghost });
     this.broadcast({ type: 'player', player: publicPlayer(player) }, id);
@@ -37,7 +37,7 @@ export class PastureRoom {
     const v = raw as Record<string, unknown>, now = this.now();
     if (v.type === 'move') {
       if (now - p.lastUpdate < 180 || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) return;
-      p.lastUpdate = now; p.x = Math.max(0, Math.min(1300, v.x)); p.y = Math.max(0, Math.min(850, v.y)); p.facing = v.facing === -1 ? -1 : 1;
+      p.lastUpdate = now; p.x = Math.max(0, Math.min(1300, v.x)); p.y = Math.max(0, Math.min(850, v.y)); p.facing = v.facing === -1 ? -1 : 1; p.action = ['walking', 'aiming', 'idle', 'inspecting'].includes(String(v.action)) ? String(v.action) : 'idle';
       p.appearance = appearance(v.appearance);
       const name = cleanText(v.name, 24); if (name) p.name = name;
       this.broadcast({ type: 'player', player: publicPlayer(p) }, id);
@@ -51,6 +51,10 @@ export class PastureRoom {
       const message = { id: randomUUID(), playerId: id, name: p.name, text, ts: now };
       this.messages.push(message); if (this.messages.length > 50) this.messages.shift();
       this.broadcast({ type: 'chat', message });
+    } else if (v.type === 'shot') {
+      if (now - p.lastShot < 180 || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) return;
+      p.lastShot = now;
+      this.broadcast({ type: 'shot', playerId: id, x: Math.max(0, Math.min(1300, v.x)), y: Math.max(0, Math.min(850, v.y)) }, id);
     } else if (v.type === 'kill') {
       if (now - p.lastKill < 500 || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) return;
       p.lastKill = now;

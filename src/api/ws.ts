@@ -9,7 +9,7 @@ import { PastureRoom } from './pastureRoom.ts';
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'hold', 'intelligence', 'testlab', 'tuning', 'paper_simulation', 'market_scout', 'momentum']);
+const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'intelligence', 'paper_simulation', 'market_scout']);
 
 export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
   await app.register(websocket, { options: { maxPayload: 8192 } });

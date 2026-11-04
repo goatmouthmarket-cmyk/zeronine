@@ -47,9 +47,26 @@ test('public dashboard exposes global market data but protects the connected acc
     contract_id: 'private-contract', purchase_id: 'private-trade', reason: 'test',
   });
 
+  const priorEnv = cfg.config.nodeEnv;
+  cfg.config.nodeEnv = 'production';
+  cfg.config.dashboardAdminToken = '';
+  const unconfiguredGuest = await app.inject({ method: 'GET', url: '/api/state' });
+  assert.equal(unconfiguredGuest.json().session, null, 'production without an owner token must fail closed');
+  assert.equal(unconfiguredGuest.json().owner, false);
+  const emptyUnlock = await app.inject({ method: 'POST', url: '/api/auth/owner', payload: { token: '' } });
+  assert.equal(emptyUnlock.statusCode, 401, 'an empty token must not unlock the owner account');
+  cfg.config.nodeEnv = priorEnv;
+  cfg.config.dashboardAdminToken = 'owner-test-token';
+
   const guest = await app.inject({ method: 'GET', url: '/api/state' });
   assert.equal(guest.statusCode, 200);
   assert.equal(guest.json().session, null);
+  assert.equal(guest.json().settings, null);
+  assert.equal(guest.json().gold, null);
+  assert.equal(guest.json().momentum, null);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/settings' })).statusCode, 403);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/calibration' })).statusCode, 403);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/test/evidence' })).statusCode, 403);
   assert.deepEqual(guest.json().trades, []);
   assert.equal(guest.json().performance.profit, 0);
   assert.equal(guest.json().public_dashboard, true);

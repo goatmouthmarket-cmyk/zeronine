@@ -5,11 +5,12 @@ import { config } from '../config.ts';
 export const OWNER_COOKIE = 'zeronine_owner';
 
 export function publicDashboardEnabled(): boolean {
-  return config.dashboardAdminToken.length > 0;
+  return config.nodeEnv === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT_ID) || config.dashboardAdminToken.length > 0;
 }
 
 export function isOwner(req: FastifyRequest): boolean {
   if (!publicDashboardEnabled()) return true;
+  if (!config.dashboardAdminToken) return false;
   const signed = req.cookies?.[OWNER_COOKIE];
   if (!signed) return false;
   const value = req.unsignCookie(signed);
