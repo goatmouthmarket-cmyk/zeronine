@@ -1,0 +1,33 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import { PastureRoom } from '../src/api/pastureRoom.ts';
+
+test('pasture shares bounded public presence and chat without sharing account data', () => {
+  let now = 10_000;
+  const room = new PastureRoom(() => now, 2);
+  const a: Record<string, unknown>[] = [], b: Record<string, unknown>[] = [];
+  const first = room.join(event => a.push(event))!;
+  const second = room.join(event => b.push(event))!;
+  assert.equal(room.join(() => {}), null);
+  room.receive(first, { type: 'move', name: '  Cow  Ranger  ', x: 200, y: 300, facing: -1, appearance: { color: '#aabbcc' }, ghost: { x: 620, y: 410 }, accountId: 'private', balance: 42 });
+  const peer = b.find(event => event.type === 'player' && (event.player as { id: string }).id === first)!.player as Record<string, unknown>;
+  assert.equal(peer.name, 'Cow Ranger');
+  assert.equal(peer.x, 200);
+  assert.equal('accountId' in peer, false);
+  assert.equal('balance' in peer, false);
+  assert.ok(b.some(event => event.type === 'ghost' && event.x === 620 && event.y === 410));
+  room.receive(second, { type: 'move', x: 200, y: 300, ghost: { x: 1, y: 1 } });
+  assert.equal(a.some(event => event.type === 'ghost' && event.x === 1), false, 'only the shared scout leader can update its position');
+  room.receive(first, { type: 'chat', text: 'hello <img>\n friend' });
+  const chat = b.find(event => event.type === 'chat')!.message as Record<string, unknown>;
+  assert.equal(chat.text, 'hello <img> friend');
+  room.receive(first, { type: 'chat', text: 'spam' });
+  assert.ok(a.some(event => event.type === 'notice'));
+  now += 2000;
+  room.receive(first, { type: 'kill', x: 250, y: 310, stake: 100 });
+  const effect = b.find(event => event.type === 'kill')!;
+  assert.equal(effect.playerId, first);
+  assert.equal('stake' in effect, false);
+  room.leave(second);
+  assert.ok(a.some(event => event.type === 'leave' && event.id === second));
+});

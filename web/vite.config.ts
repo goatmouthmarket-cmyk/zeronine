@@ -10,6 +10,7 @@ export default defineConfig({
       '/api': 'http://127.0.0.1:8010',
       '/health': 'http://127.0.0.1:8010',
       '/ws': { target: 'ws://127.0.0.1:8010', ws: true },
+      '/pasture-ws': { target: 'ws://127.0.0.1:8010', ws: true },
     },
   },
   build: {

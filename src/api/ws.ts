@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws';
 import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import { isOwner } from './access.ts';
+import { PastureRoom } from './pastureRoom.ts';
 
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
@@ -117,4 +118,25 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     socket.on('close', cleanup);
     socket.on('error', cleanup);
   });
+  const pasture = new PastureRoom();
+  app.get('/pasture-ws', { websocket: true }, (socket: WebSocket, req) => {
+    const origin = req.headers.origin;
+    try { if (origin && new URL(origin).host !== req.headers.host) { socket.close(1008, 'origin rejected'); return; } }
+    catch { socket.close(1008, 'origin rejected'); return; }
+    let closed = false;
+    const send = (event: Record<string, unknown>): void => {
+      if (closed || socket.readyState !== socket.OPEN) return;
+      if (socket.bufferedAmount > MAX_BUFFER) { socket.close(1013, 'slow client'); return; }
+      try { socket.send(JSON.stringify(event)); } catch { socket.terminate(); }
+    };
+    const id = pasture.join(send);
+    if (!id) { socket.close(1013, 'pasture full'); return; }
+    let alive = true;
+    const heartbeat = setInterval(() => { if (!alive) { socket.terminate(); return; } alive = false; socket.ping(); }, HEARTBEAT_INTERVAL_MS);
+    socket.on('pong', () => { alive = true; });
+    socket.on('message', data => { try { pasture.receive(id, JSON.parse(data.toString())); } catch { /* Ignore invalid input. */ } });
+    const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); pasture.leave(id); };
+    socket.on('close', cleanup); socket.on('error', cleanup);
+  });
+
 }
