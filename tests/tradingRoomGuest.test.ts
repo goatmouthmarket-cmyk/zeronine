@@ -269,6 +269,19 @@ test('market labels use readable names and retain the one-second distinction', (
   assert.equal(marketName('OTHER'), 'OTHER');
 });
 
+test('ranger gaze follows the target direction from the head', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('function rangerLookDirection(');
+  const end = html.indexOf('function updateRangerAnimation(', start);
+  assert.ok(start >= 0 && end > start);
+  const look = runInNewContext(`${html.slice(start, end)}; rangerLookDirection`) as (from: { x: number; y: number }, point: { x: number; y: number } | null) => { x: number; y: number };
+  const ranger = { x: 100, y: 100 };
+  assert.equal(look(ranger, { x: 200, y: 80 }).x, 1);
+  assert.equal(look(ranger, { x: 0, y: 80 }).x, -1);
+  assert.equal(look(ranger, { x: 100, y: 0 }).y, -1);
+  assert.equal(look(ranger, null).x, 0);
+});
+
 test('paper scout shows the matching market, ticket details, and virtual outcome', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
   const script = html.split('<script>')[1]?.split('</script>')[0];
