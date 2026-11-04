@@ -6781,3 +6781,25 @@ button.activity-row {
 .pasture-detail-content .connect-card-heading { margin-bottom:8px; }
 
 @media(max-width:999.98px){.pasture-nav.bottom-nav-wrap{border:0!important;box-shadow:none!important}.pasture-nav .pasture-nav-toggle{cursor:pointer}.pasture-nav .pasture-nav-toggle svg{display:block;flex:none}}
+
+/* Account panel and ranger wardrobe */
+.pasture-detail-content .account-overview { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+.pasture-detail-content .account-overview .detail-row { display:grid; gap:2px; padding:7px; border-radius:8px; background:#f3e5ce; }
+.pasture-detail-content .account-overview .detail-label { font-size:10px; }
+.pasture-detail-content .account-overview .detail-value { min-width:0; overflow-wrap:anywhere; font-size:12px; font-weight:800; }
+.ranger-wardrobe { margin:0 0 10px; padding:11px; border:1px solid #d3b491; border-radius:11px; background:#fff7e7; color:#49301f; }
+.wardrobe-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px; }
+.wardrobe-heading small { font-size:9px; font-weight:900; letter-spacing:.1em; color:#92714e; }
+.wardrobe-heading h3 { margin:1px 0 0; color:#49301f; font-size:14px; }
+.wardrobe-reset { padding:5px 8px; border:0; border-radius:7px; background:#e8d5b8; color:#68452d; font-size:10px; font-weight:800; }
+.wardrobe-layout { display:grid; grid-template-columns:minmax(85px,.8fr) minmax(0,1.2fr); align-items:stretch; gap:10px; }
+.wardrobe-preview { display:grid; place-items:center; min-height:150px; border-radius:10px; background:linear-gradient(#bbdca6,#84b36d); overflow:hidden; }
+.wardrobe-preview svg { width:min(100%,110px); height:145px; }
+.wardrobe-breathe { transform-origin:50px 90px; animation:wardrobe-breathe 3s ease-in-out infinite; }
+@keyframes wardrobe-breathe { 50% { transform:translateY(-1.4px) scaleY(1.015); } }
+.wardrobe-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; align-content:start; }
+.wardrobe-fields label { display:grid; gap:3px; min-width:0; color:#76563b; font-size:10px; font-weight:800; }
+.wardrobe-fields select { width:100%; min-width:0; min-height:34px; padding:4px; border:1px solid #d6b897; border-radius:7px; background:#fffdf5; color:#4b3322; font:700 11px system-ui; }
+.wardrobe-fields input[type=color] { width:100%; height:34px; padding:3px; border:1px solid #d6b897; border-radius:7px; background:#fffdf5; cursor:pointer; }
+.wardrobe-note { display:block; margin-top:8px; color:#806a53; font-size:10px; }
+@media(prefers-reduced-motion:reduce){.wardrobe-breathe{animation:none}}

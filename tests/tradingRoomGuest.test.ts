@@ -392,7 +392,7 @@ test('ranger head can face either direction without changing the body direction'
     const draw = runInNewContext(`${html.slice(start, end)}; avatar`, {
       c: context, player: { x: 100, y: 100 }, target: null,
       rangerAnim: { state: 'idle', facing: body, headFacing: head, lookX: head, lookY: 0, idleStart: 0 },
-      performance: { now: () => 0 }, circle() {}, rect() {}, poly() {},
+      performance: { now: () => 0 }, pastureReducedMotion: null, rangerAppearance: { outfit: 'classic', color: '#326db1', accent: '#a65b38', headwear: 'none', accessory: 'none' }, circle() {}, rect() {}, poly() {},
     }) as () => void;
     draw();
     assert.equal(scales[0], body, 'body retains its own facing');
@@ -1111,4 +1111,14 @@ test('pasture atmosphere follows weather and independent day or night', () => {
   assert.deepEqual({ ...targets(0, 0) }, { night: 1, rain: 0 });
   assert.deepEqual({ ...targets(0, 61) }, { night: 1, rain: 1 });
   assert.deepEqual({ ...targets(1, 80) }, { night: 0, rain: 1 });
+});
+
+
+test('ranger appearance validates saved colors and accessory choices', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const start = html.indexOf('const rangerAppearanceDefaults=');
+  const end = html.indexOf('let rangerAppearance=', start);
+  const normalize = runInNewContext(`${html.slice(start, end)}; normalizeRangerAppearance`) as (value: unknown) => Record<string, string>;
+  assert.deepEqual({ ...normalize({ outfit: 'vest', color: '#ab3344', accent: '#abcdef', headwear: 'cap', accessory: 'scarf' }) }, { outfit: 'vest', color: '#ab3344', accent: '#abcdef', headwear: 'cap', accessory: 'scarf' });
+  assert.deepEqual({ ...normalize({ outfit: 'invalid', color: 'red', accent: 'invalid', headwear: 'invalid' }) }, { outfit: 'classic', color: '#326db1', accent: '#a65b38', headwear: 'none', accessory: 'none' });
 });

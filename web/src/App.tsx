@@ -5388,6 +5388,37 @@ function TestLabPage(): JSX.Element {
 
 /* ---------------- account ---------------- */
 
+type RangerAppearance = { outfit: 'classic' | 'vest' | 'scout'; color: string; accent: string; headwear: 'none' | 'cap' | 'bandana'; accessory: 'none' | 'scarf' | 'badge' };
+const defaultRangerAppearance: RangerAppearance = { outfit: 'classic', color: '#326db1', accent: '#a65b38', headwear: 'none', accessory: 'none' };
+function readRangerAppearance(): RangerAppearance {
+  try {
+    const value = JSON.parse(localStorage.getItem('pasture-ranger-appearance') || '{}');
+    return {
+      outfit: ['classic', 'vest', 'scout'].includes(value.outfit) ? value.outfit : 'classic',
+      color: /^#[0-9a-f]{6}$/i.test(value.color) ? value.color : defaultRangerAppearance.color,
+      accent: /^#[0-9a-f]{6}$/i.test(value.accent) ? value.accent : defaultRangerAppearance.accent,
+      headwear: ['none', 'cap', 'bandana'].includes(value.headwear) ? value.headwear : 'none',
+      accessory: ['none', 'scarf', 'badge'].includes(value.accessory) ? value.accessory : 'none',
+    };
+  } catch { return { ...defaultRangerAppearance }; }
+}
+function RangerWardrobe(): JSX.Element {
+  const [appearance, setAppearance] = useState<RangerAppearance>(readRangerAppearance);
+  const update = (patch: Partial<RangerAppearance>) => {
+    const next = { ...appearance, ...patch };
+    setAppearance(next);
+    try { localStorage.setItem('pasture-ranger-appearance', JSON.stringify(next)); } catch { /* Appearance remains available for this session. */ }
+    document.querySelector<HTMLIFrameElement>('iframe.trading-room-frame')?.contentWindow?.postMessage({ type: 'zeronine:ranger-appearance', appearance: next }, window.location.origin);
+  };
+  return <section class="ranger-wardrobe" aria-labelledby="ranger-wardrobe-title">
+    <div class="wardrobe-heading"><div><small>YOUR RANGER</small><h3 id="ranger-wardrobe-title">Outfit &amp; accessories</h3></div><button type="button" class="wardrobe-reset" onClick={() => update(defaultRangerAppearance)}>Reset</button></div>
+    <div class="wardrobe-layout"><div class="wardrobe-preview" aria-label="Ranger appearance preview">
+      <svg viewBox="0 0 100 130" aria-hidden="true"><ellipse cx="50" cy="116" rx="30" ry="7" fill="#254c3450"/><path d="M35 87v25h12V87m7 0v25h12V87" fill="#393a3d"/><path d="M32 107h16v8H32m21-8h16v8H53" fill="#5d4530"/><g class="wardrobe-breathe"><path d="M29 52 25 36 34 27 41 42" fill="#7c4934"/><path d="M33 52h34l3 39H32z" fill={appearance.color} stroke="#334b45" stroke-width="2"/>{appearance.outfit === 'vest' && <path d="M35 53h9l6 29 6-29h9l-4 32H39Z" fill={appearance.accent} opacity=".9"/>}{appearance.outfit === 'scout' && <path d="M34 56 62 84M42 53l26 25" stroke={appearance.accent} stroke-width="5"/>}{appearance.accessory === 'scarf' && <path d="M34 54q16 8 32 0v6q-16 8-32 0zM54 59h7l-1 16h-7z" fill={appearance.accent}/>} {appearance.accessory === 'badge' && <circle cx="60" cy="62" r="4" fill={appearance.accent} stroke="#ffebb5" stroke-width="1"/>}<path d="M33 83h35v7H33z" fill="#866338"/><path d="M29 57v24m42-24v24" stroke="#c69b75" stroke-width="8" stroke-linecap="round"/><circle cx="50" cy="36" r="15" fill="#cba17d"/><path d="M35 34q0-17 15-17t15 17l-9-7-15 6Z" fill="#4d3729"/>{appearance.headwear === 'cap' && <path d="M34 27q3-14 16-14t16 14H34m-3 1h39" fill={appearance.accent} stroke={appearance.accent} stroke-width="3"/>}{appearance.headwear === 'bandana' && <path d="M35 29q15-5 30 0v5q-15-5-30 0z" fill={appearance.accent}/>}<circle cx="51" cy="36" r="1.7" fill="#271f1d"/><circle cx="59" cy="36" r="1.7" fill="#271f1d"/><path d="M75 48q24 20 0 42M75 48v42" fill="none" stroke="#a87643" stroke-width="3"/></g></svg>
+    </div><div class="wardrobe-fields"><label>Outfit<select value={appearance.outfit} onChange={e => update({ outfit: e.currentTarget.value as RangerAppearance['outfit'] })}><option value="classic">Classic</option><option value="vest">Vest</option><option value="scout">Scout</option></select></label><label>Headwear<select value={appearance.headwear} onChange={e => update({ headwear: e.currentTarget.value as RangerAppearance['headwear'] })}><option value="none">None</option><option value="cap">Ranger cap</option><option value="bandana">Bandana</option></select></label><label>Accessory<select value={appearance.accessory} onChange={e => update({ accessory: e.currentTarget.value as RangerAppearance['accessory'] })}><option value="none">None</option><option value="scarf">Scarf</option><option value="badge">Badge</option></select></label><label>Outfit color<input type="color" value={appearance.color} onInput={e => update({ color: e.currentTarget.value })} /></label><label>Accent color<input type="color" value={appearance.accent} onInput={e => update({ accent: e.currentTarget.value })} /></label></div></div>
+    <small class="wardrobe-note">Saved on this browser. Changes appear in the pasture.</small>
+  </section>;
+}
+
 function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element {
   const s = useStore();
   const session = s.session;
@@ -5407,7 +5438,7 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
       .catch((error) => setAccountError(error instanceof Error ? error.message : String(error)))
       .finally(() => setLoadingAccounts(false));
   }, [session?.loginid]);
-  if (!session) return <ConnectView embedded onConnected={onConnected} />;
+  if (!session) return <><RangerWardrobe /><ConnectView embedded onConnected={onConnected} /></>;
   const switchAccount = async (account: DerivAccountInfo): Promise<void> => {
     setAccountError('');
     setSwitchingAccount(account.accountId);
@@ -5468,7 +5499,8 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
       <header class="header">
         <div class="page-title">Account</div>
       </header>
-      <div class="section">
+      <RangerWardrobe />
+      <div class="section account-overview">
         <div class="detail-row">
           <span class="detail-label">Login ID</span>
           <span class="detail-value">{session?.loginid ?? '—'}</span>

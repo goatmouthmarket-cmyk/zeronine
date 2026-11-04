@@ -93,3 +93,23 @@ test('Jamaica weather loads automatically and the mobile menu has no stray borde
   await page.getByRole('button', { name: 'Open game menu' }).click();
   await expect(page.locator('.bottom-nav')).toBeVisible();
 });
+
+
+test('ranger wardrobe updates and saves a guest appearance', async ({ page }) => {
+  await page.route('**/api/**', route => route.fulfill({ json: { owner: false, public_dashboard: true, markets: [], trades: [], session: null, settings: null, recovery: null, automation: null, runs: [], entries: [] } }));
+  await page.routeWebSocket('**/ws', () => {});
+  await page.addInitScript(() => { if (window !== window.parent) window.addEventListener('message', event => { if (event.data?.type === 'zeronine:ranger-appearance') (window as any).__rangerAppearance = event.data.appearance; }); });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/account');
+  await page.getByRole('combobox', { name: 'Outfit', exact: true }).selectOption('vest');
+  await page.getByRole('combobox', { name: 'Headwear' }).selectOption('cap');
+  await page.getByRole('combobox', { name: 'Accessory' }).selectOption('scarf');
+  await page.getByLabel('Outfit color').fill('#ab3344');
+  await expect(page.getByLabel('Ranger appearance preview')).toBeVisible();
+  const frame = page.frameLocator('iframe[title="Deriv Cows interactive trading pasture"]');
+  await expect.poll(() => frame.locator('body').evaluate(() => (window as any).__rangerAppearance?.color)).toBe('#ab3344');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pasture-ranger-appearance') || '{}'))).toMatchObject({ outfit: 'vest', headwear: 'cap', accessory: 'scarf', color: '#ab3344' });
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Outfit', exact: true })).toHaveValue('vest');
+  await expect(page.getByRole('combobox', { name: 'Headwear' })).toHaveValue('cap');
+});
