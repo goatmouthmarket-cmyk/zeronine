@@ -35,10 +35,17 @@ test('tutorial advances after practice and keeps reading steps manual', async ({
   await expect(page.getByRole('heading', { name: 'Set limits first' })).toBeVisible();
   await page.getByRole('button', { name: /Next/ }).click();
   await page.getByRole('button', { name: /Start practice/ }).click();
-  await expect(page.getByRole('heading', { name: 'Follow the run' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Follow the run' })).toBeVisible({ timeout: 9000 });
+  await expect(page.locator('.guide-run-status')).toContainText('Example trade 2');
   await page.getByRole('button', { name: /Next/ }).click();
   await page.getByRole('button', { name: /Next/ }).click();
   await expect(page.getByRole('heading', { name: 'Meet the ghost scout' })).toBeVisible();
   await page.getByRole('button', { name: 'Open ghost scout research' }).click();
+  await expect(page.getByRole('heading', { name: 'Watch the scout work' })).toBeVisible();
+  await expect(page.getByText('Example paper result · WON · no money used')).toBeVisible();
+  await page.getByRole('button', { name: /Next/ }).click();
+  await expect(page.getByRole('heading', { name: 'Read scout research' })).toBeVisible();
+  await expect(page.getByLabel('Example ghost scout research')).toContainText('7 wins / 3 losses');
+  await page.getByRole('button', { name: /Next/ }).click();
   await expect(page.getByRole('heading', { name: 'You’re ready' })).toBeVisible();
 });
