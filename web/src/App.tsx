@@ -436,6 +436,7 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [oauthBusy, setOauthBusy] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const content = (
     <>
@@ -514,9 +515,16 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
         )}
         <div class="connect-card-heading"><span class="connect-card-emblem"><PastureIcon kind="cow" /></span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
         <div class="connect-copy">Sign in to use your demo or real Deriv account. You can explore and shoot cows as a guest; guest shots never place bets.</div>
+        <section class="connect-terms" aria-label="Trading information and terms">
+          <strong>Before you enter the pasture</strong>
+          <p>Trading can result in the loss of your investment. Signals, backtests and game visuals are informational and are not trading or financial advice; results are not guaranteed.</p>
+          <p>Use only an account you are authorized to access and follow Deriv’s applicable rules.</p>
+          <div class="connect-terms-links"><a href="/terms" target="_blank" rel="noopener noreferrer">Our terms</a><a href="https://deriv.com/terms-and-conditions/general-terms-of-use" target="_blank" rel="noopener noreferrer">Deriv terms</a><a href="https://deriv.com/terms-and-conditions/trading-terms" target="_blank" rel="noopener noreferrer">Trading rules</a><a href="https://deriv.com/terms-and-conditions/risk-disclosure" target="_blank" rel="noopener noreferrer">Risk disclosure</a></div>
+          <label class="connect-terms-consent"><input type="checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.currentTarget.checked)} /><span>I have read and agree to the terms and acknowledge the trading risks.</span></label>
+        </section>
         <button
           class="connect-btn connect-btn--oauth"
-          disabled={oauthBusy || (s.publicDashboard && !s.owner && !s.publicDerivLogin)}
+          disabled={!acceptedTerms || oauthBusy || (s.publicDashboard && !s.owner && !s.publicDerivLogin)}
           onClick={async () => {
             setOauthBusy(true);
             setError('');
@@ -546,7 +554,7 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
         />
         <button
           class="connect-btn"
-          disabled={busy || !token.trim() || (s.publicDashboard && !s.owner)}
+          disabled={!acceptedTerms || busy || !token.trim() || (s.publicDashboard && !s.owner)}
           onClick={async () => {
             setBusy(true);
             setError('');

@@ -6803,3 +6803,13 @@ button.activity-row {
 .wardrobe-fields input[type=color] { width:100%; height:34px; padding:3px; border:1px solid #d6b897; border-radius:7px; background:#fffdf5; cursor:pointer; }
 .wardrobe-note { display:block; margin-top:8px; color:#806a53; font-size:10px; }
 @media(prefers-reduced-motion:reduce){.wardrobe-breathe{animation:none}}
+.connect-terms { margin: 16px 0; padding: 14px 15px; border-left: 3px solid #9b6a36; background: #fff9e9; color: #523c2b; animation: connect-terms-in .35s ease-out both; }
+.connect-terms strong { font-size: 13px; }
+.connect-terms p { margin: 7px 0; font-size: 12px; line-height: 1.45; }
+.connect-terms-links { display: flex; flex-wrap: wrap; gap: 5px 12px; margin: 10px 0; }
+.connect-terms-links a { color: #285e3c; font-size: 11px; font-weight: 800; text-decoration: underline; }
+.connect-terms-consent { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.4; font-weight: 700; cursor: pointer; }
+.connect-terms-consent input { flex: none; width: 17px; height: 17px; margin: 1px 0 0; accent-color: #267a48; }
+.connect-terms a:focus-visible, .connect-terms input:focus-visible { outline: 3px solid #267a48; outline-offset: 2px; }
+@keyframes connect-terms-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .connect-terms { animation: none; } }
