@@ -55,7 +55,13 @@ export class MultiplayerStore {
   }
 
   async riskSnapshot(accountId: string, balance: number): Promise<AccountRisk> {
-    if (!Number.isFinite(balance) || balance < 0) throw new Error('valid balance required');
+    if (!accountId || !Number.isFinite(balance) || balance < 0) throw new Error('valid account and balance required');
+    // Owner accounts may enter through the legacy encrypted Deriv session rather
+    // than createSession(). The verified account must exist before its risk row.
+    await this.pool.query(
+      'insert into multiplayer_private.accounts(account_id) values ($1) on conflict (account_id) do nothing',
+      [accountId],
+    );
     const result = await this.pool.query<{ mode: 'base' | 'recovering'; streak: number; debt: string; attempts: number; cycle_stake: string; peak_balance: string }>(
       `insert into multiplayer_private.account_risk(account_id, peak_balance) values ($1, $2)
        on conflict (account_id) do update set peak_balance=greatest(multiplayer_private.account_risk.peak_balance, excluded.peak_balance)

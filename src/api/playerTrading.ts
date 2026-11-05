@@ -144,20 +144,24 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     if (!user) return fail(reply, 401, 'player session required');
     let order: Order;
     try { order = parseOrder(req.body); } catch (error) { return fail(reply, 400, error instanceof Error ? error.message : 'invalid order'); }
+    let stage = 'Deriv account';
     try {
       const info = await account(user.accountId, user.token);
       const settings = getSettings();
       if (order.stake > settings.max_stake) return fail(reply, 409, `stake exceeds configured maximum (${settings.max_stake})`);
       if (!registry.snapshot(order.market).fresh) return fail(reply, 409, 'market feed is stale');
+      stage = 'account risk';
       const riskState = await store.riskSnapshot(user.accountId, info.balance);
       const risk = riskCheck({ stake: order.stake, settings, balance: info.balance,
         context: buildRecoveryContext(settings, undefined, riskState), lastTradeAt: 0,
         tradeGapMs: 0, now: Date.now(), accountId: `deriv:${user.accountId}`,
         lane: 'digit' });
       if (!risk.ok) return fail(reply, 409, `trade blocked: ${risk.reason}`);
+      stage = 'Deriv connection';
       const client = await clients.connect(user.accountId, user.token);
       if (await reconcile(user.accountId, client)) return fail(reply, 409, 'account has an open or uncertain contract');
       if ((await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'Deriv account already has an open contract');
+      stage = 'Deriv quote';
       const offered = await quote(client, order, info.currency);
       if (!Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice || offered.askPrice > info.balance) return fail(reply, 409, 'invalid or unaffordable quote');
       const edge = modelEdge(order, offered.askPrice, offered.payout);
@@ -167,7 +171,11 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       for (const [id, preview] of previews) if (preview.expiresAt <= Date.now()) previews.delete(id);
       previews.set(previewId, { accountId: user.accountId, order, ask: offered.askPrice, payout: offered.payout, edge, expiresAt, mode: info.mode });
       return { previewId, expiresAt, order, quote: { ask: offered.askPrice, payout: offered.payout }, edge, account: { balance: info.balance, currency: info.currency, mode: info.mode } };
-    } catch { return fail(reply, 503, 'account quote unavailable'); }
+    } catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'unknown';
+      console.error(`[player trading] preview failed at ${stage} (${code})`);
+      return fail(reply, 503, `${stage} unavailable; no trade was submitted`);
+    }
   });
 
   app.post('/api/player/trade/confirm', async (req, reply) => {
