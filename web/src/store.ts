@@ -938,6 +938,7 @@ export interface State {
   markets: Market[];
   session: SessionInfo | null;
   playerSession: SessionInfo | null;
+  playerRecovery: Recovery | null;
   playerTrades: TradeRow[];
   recovery: Recovery | null;
   settings: Settings | null;
@@ -980,6 +981,7 @@ const initial: State = {
   markets: [],
   session: null,
   playerSession: null,
+  playerRecovery: null,
   playerTrades: [],
   recovery: null,
   settings: null,
@@ -1542,7 +1544,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_lo
       feed: s.feed,
       markets,
       session: s.session,
-      ...(accountChanged ? { playerSession: null, playerTrades: [], digitRemainingLoss: null, digitTradeEvidence: [] } : {}),
+      ...(accountChanged ? { playerSession: null, playerRecovery: null, playerTrades: [], digitRemainingLoss: null, digitTradeEvidence: [] } : {}),
       recovery: s.recovery,
       settings: s.settings,
       automation: s.automation,
@@ -1589,13 +1591,13 @@ let playerStateRequest = 0;
 export async function refreshPlayerState(): Promise<void> {
   const request = ++playerStateRequest;
   try {
-    const response = await api<{ session: SessionInfo; trades: Array<Record<string, unknown>> }>('/api/player/trading/state');
+    const response = await api<{ session: SessionInfo; risk?: Omit<Recovery, 'last_win_epoch' | 'updated_at'>; trades: Array<Record<string, unknown>> }>('/api/player/trading/state');
     if (request !== playerStateRequest) return;
     if (state.owner && state.multiplayerEnabled && state.session?.loginid !== response.session.loginid) return;
-    set({ playerSession: response.session, playerTrades: response.trades.map(playerTradeRow) });
+    set({ playerSession: response.session, playerRecovery: response.risk ? { ...response.risk, last_win_epoch: 0, updated_at: 0 } : null, playerTrades: response.trades.map(playerTradeRow) });
   } catch {
     if (request !== playerStateRequest) return;
-    set({ playerSession: null, playerTrades: [] });
+    set({ playerSession: null, playerRecovery: null, playerTrades: [] });
   }
 }
 
@@ -1608,7 +1610,7 @@ export async function selectPlayerAccount(accountId: string): Promise<void> {
   await api('/api/player/accounts/select', { method: 'POST', body: JSON.stringify({ accountId }) });
   playerSocket?.close();
   playerStateRequest++;
-  set({ playerSession: null, playerTrades: [] });
+  set({ playerSession: null, playerRecovery: null, playerTrades: [] });
   await refreshPlayerState();
   connectPlayerWs();
 }
@@ -1617,7 +1619,7 @@ export async function logoutPlayer(): Promise<void> {
   await api('/api/player/logout', { method: 'POST' });
   playerSocket?.close();
   playerStateRequest++;
-  set({ playerSession: null, playerTrades: [] });
+  set({ playerSession: null, playerRecovery: null, playerTrades: [] });
 }
 
 let playerSocket: WebSocket | null = null;
@@ -1973,7 +1975,7 @@ export async function switchDerivAccount(accountId: string): Promise<SessionInfo
   });
   signalStabilizer.reset();
   playerStateRequest++;
-  set({ session: res.session, trades: [], playerSession: null, playerTrades: [], digitTradeEvidence: [], digitRemainingLoss: null, performance: null, recovery: null, contract: null, contracts: {}, decision: null });
+  set({ session: res.session, trades: [], playerSession: null, playerRecovery: null, playerTrades: [], digitTradeEvidence: [], digitRemainingLoss: null, performance: null, recovery: null, contract: null, contracts: {}, decision: null });
   await refreshTrades();
   if (state.multiplayerEnabled) await refreshPlayerState();
   return res.session;

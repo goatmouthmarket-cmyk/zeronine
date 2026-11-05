@@ -688,7 +688,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const base = useStore();
   const usePlayerTrading = Boolean(base.multiplayerEnabled);
   const ownerPlayerSession = base.playerSession?.loginid === base.session?.loginid ? base.playerSession : null;
-  const s = { ...base, session: base.owner ? ownerPlayerSession ?? base.session : base.playerSession, trades: usePlayerTrading ? base.playerTrades : base.trades, recovery: usePlayerTrading ? null : base.recovery };
+  const s = { ...base, session: base.owner ? ownerPlayerSession ?? base.session : base.playerSession, trades: usePlayerTrading ? base.playerTrades : base.trades, recovery: usePlayerTrading ? base.playerRecovery : base.recovery };
   const [headerNavOpen, setHeaderNavOpen] = useState(false);
   const [rangerAutoMenuOpen, setRangerAutoMenuOpen] = useState(false);
   const [rangerAutoRunning, setRangerAutoRunning] = useState(false);
@@ -1205,7 +1205,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     accountMode: s.session?.mode ?? null,
     accountId: s.session?.loginid ?? null,
     wsStatus: s.ws,
-    remainingLoss: s.digitRemainingLoss,
+    remainingLoss: usePlayerTrading ? { amount: s.playerRecovery?.debt ?? 0, lastSettledTradeId: null } : s.digitRemainingLoss,
     selected: market?.symbol ?? '',
     busy: manualBusy,
     status: manualMsg,
@@ -1256,7 +1256,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.session, s.signal, s.testRuns, s.testlab]);
+  }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.playerRecovery?.debt, s.session, s.signal, s.testRuns, s.testlab, usePlayerTrading]);
 
   const postRoomState = useCallback(() => {
     const frame = roomFrameRef.current;

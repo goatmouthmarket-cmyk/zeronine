@@ -9,14 +9,15 @@ import type { DerivPrivateClient as PrivateClientType } from '../src/deriv/priva
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'pasture-player-trading-'));
 process.env.SESSION_SECRET = 'test-player-trading-secret-32-characters';
 
-test('two signed players can trade their own accounts but cannot use each otherâ€™s quote', async () => {
-  const [{ default: Fastify }, { default: cookie }, { default: websocket }, { registerPlayerTrading }, { DerivPrivateClient }, { MarketRegistry }, { config }, { setSession }, { encryptToken }] = await Promise.all([
+test('two signed players and the owner trade only their accounts, including manual recovery debt at its cap', async () => {
+  const [{ default: Fastify }, { default: cookie }, { default: websocket }, { registerPlayerTrading }, { DerivPrivateClient }, { MarketRegistry }, { config }, { setSession, updateSettings }, { encryptToken }] = await Promise.all([
     import('fastify'), import('@fastify/cookie'), import('@fastify/websocket'),
     import('../src/api/playerTrading.ts'), import('../src/deriv/privateClient.ts'), import('../src/core/marketState.ts'),
     import('../src/config.ts'), import('../src/db/store.ts'), import('../src/db/crypto.ts'),
   ]);
   const originalAdminToken = config.dashboardAdminToken;
   config.dashboardAdminToken = 'test-owner-dashboard-token';
+  updateSettings({ max_recovery_debt: 1 });
   const originalFetch = globalThis.fetch;
   const originalConnect = DerivPrivateClient.prototype.connect;
   const originalQuote = DerivPrivateClient.prototype.getQuote;
@@ -29,7 +30,7 @@ test('two signed players can trade their own accounts but cannot use each otherâ
   const sessions = new Map([['secret-alice', { accountId: 'VRTC111', token: 'token-alice' }], ['secret-bob', { accountId: 'VRTC222', token: 'token-bob' }]]);
   const store = {
     resolveSession: async (secret: string) => sessions.get(secret) ?? null,
-    riskSnapshot: async () => ({ mode: 'base', streak: 0, debt: 0, attempts: 0, cycleStake: 0, peakBalance: 100 }),
+    riskSnapshot: async () => ({ mode: 'recovering', streak: 0, debt: 1, attempts: 1, cycleStake: 1, peakBalance: 100 }),
     activeContract: async (accountId: string) => active.get(accountId) ?? null,
     listTrades: async (accountId: string) => [...active.entries()].filter(([id]) => id === accountId).map(([id, row]) => ({ ...row, account_id: id })),
     reserve: async (accountId: string, key: string) => {
@@ -107,12 +108,14 @@ test('two signed players can trade their own accounts but cannot use each otherâ
     assert.equal(bobPreview.statusCode, 200, bobPreview.body);
     const bobState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: bob } });
     assert.equal(bobState.json().session.loginid, 'VRTC222');
+    assert.equal(bobState.json().risk.debt, 1);
     assert.deepEqual(bobState.json().trades, []);
     setSession({ id: 'owner-test', loginid: 'VRTC333', balance: 100, currency: 'USD', mode: 'demo', auth_kind: 'pat', token_cipher: encryptToken('token-owner'), created_at: Date.now(), updated_at: Date.now() });
     const ownerCookie = String((await app.inject({ method: 'GET', url: '/test/owner-cookie' })).headers['set-cookie']).split(';', 1)[0];
     const ownerState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: ownerCookie } });
     assert.equal(ownerState.statusCode, 200, ownerState.body);
     assert.equal(ownerState.json().session.loginid, 'VRTC333');
+    assert.equal(ownerState.json().risk.debt, 1);
     const ownerPreview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: ownerCookie }, payload: order });
     assert.equal(ownerPreview.statusCode, 200, ownerPreview.body);
     const ownerStolen = await app.inject({ method: 'POST', url: '/api/player/trade/confirm', headers: { cookie: alice }, payload: { previewId: ownerPreview.json().previewId, idempotencyKey: 'alice-request-0002' } });

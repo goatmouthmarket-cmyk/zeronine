@@ -106,10 +106,11 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     if (!user) return fail(reply, 401, 'player session required');
     try {
       const info = await account(user.accountId, user.token);
+      const risk = await store.riskSnapshot(user.accountId, info.balance);
       const client = await clients.connect(user.accountId, user.token);
       const active = await reconcile(user.accountId, client);
       if (active?.status === 'open' || (active?.status === 'unknown' && active.provider_contract_id)) monitor(user.accountId, client);
-      return { session: { loginid: user.accountId, ...info }, active, trades: await store.listTrades(user.accountId) };
+      return { session: { loginid: user.accountId, ...info }, risk, active, trades: await store.listTrades(user.accountId) };
     } catch { return fail(reply, 503, 'account or trading state unavailable'); }
   });
 
@@ -155,6 +156,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const risk = riskCheck({ stake: order.stake, settings, balance: info.balance,
         context: buildRecoveryContext(settings, undefined, riskState), lastTradeAt: 0,
         tradeGapMs: 0, now: Date.now(), accountId: `deriv:${user.accountId}`,
+        skipRecoveryDebtCap: true,
         lane: 'digit' });
       if (!risk.ok) return fail(reply, 409, `trade blocked: ${risk.reason}`);
       stage = 'Deriv connection';
@@ -202,6 +204,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const risk = riskCheck({ stake: order.stake, settings, balance: info.balance,
         context: buildRecoveryContext(settings, undefined, riskState), lastTradeAt: 0,
         tradeGapMs: 0, now: Date.now(), accountId: `deriv:${user.accountId}`,
+        skipRecoveryDebtCap: true,
         lane: 'digit' });
       if (!risk.ok) return fail(reply, 409, `trade blocked: ${risk.reason}`);
       const client = await clients.connect(user.accountId, user.token);
