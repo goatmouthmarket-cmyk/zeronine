@@ -26,6 +26,18 @@ test('risk check has no daily loss gate', async () => {
   assert.deepEqual(result, { ok: true, reason: 'ok' });
 });
 
+test('explicit manual trades bypass strategy caps while automated trades retain them', async () => {
+  const [{ buildRecoveryContext, riskCheck }, { getSettings }] = await Promise.all([
+    import('../src/strategy/risk.ts'), import('../src/db/store.ts'),
+  ]);
+  const settings = { ...getSettings(), max_recovery_debt: 1, max_recovery_exposure: 1, max_consecutive_losses: 1, max_drawdown_pct: 1 };
+  const context = buildRecoveryContext(settings, undefined, { mode: 'recovering', streak: 1, debt: 1, attempts: 1, cycleStake: 1, peakBalance: 200 });
+  const order = { stake: 1, settings, balance: 100, context, lastTradeAt: 0, tradeGapMs: 0, now: Date.now() };
+  assert.match(riskCheck(order).reason, /max drawdown/);
+  assert.deepEqual(riskCheck({ ...order, skipStrategyCaps: true }), { ok: true, reason: 'ok' });
+  assert.match(riskCheck({ ...order, stake: 31, skipStrategyCaps: true }).reason, /insufficient balance/);
+});
+
 test('profit lock preserves 75% of a bot-run profit peak and leaves only the remainder riskable', async () => {
   const [{ buildRecoveryContext, riskCheck }, { getSettings }] = await Promise.all([
     import('../src/strategy/risk.ts'), import('../src/db/store.ts'),

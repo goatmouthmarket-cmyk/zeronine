@@ -236,7 +236,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       tradeGapMs: 0,
       now: Date.now(),
       accountId,
-      skipRecoveryDebtCap: true,
+      skipStrategyCaps: true,
       lane: 'digit',
     });
     if (!gate.ok) throw new ManualRequestError(409, `manual trade blocked: ${gate.reason}`);

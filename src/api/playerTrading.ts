@@ -156,7 +156,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const risk = riskCheck({ stake: order.stake, settings, balance: info.balance,
         context: buildRecoveryContext(settings, undefined, riskState), lastTradeAt: 0,
         tradeGapMs: 0, now: Date.now(), accountId: `deriv:${user.accountId}`,
-        skipRecoveryDebtCap: true,
+        skipStrategyCaps: true,
         lane: 'digit' });
       if (!risk.ok) return fail(reply, 409, `trade blocked: ${risk.reason}`);
       stage = 'Deriv connection';
@@ -204,7 +204,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const risk = riskCheck({ stake: order.stake, settings, balance: info.balance,
         context: buildRecoveryContext(settings, undefined, riskState), lastTradeAt: 0,
         tradeGapMs: 0, now: Date.now(), accountId: `deriv:${user.accountId}`,
-        skipRecoveryDebtCap: true,
+        skipStrategyCaps: true,
         lane: 'digit' });
       if (!risk.ok) return fail(reply, 409, `trade blocked: ${risk.reason}`);
       const client = await clients.connect(user.accountId, user.token);

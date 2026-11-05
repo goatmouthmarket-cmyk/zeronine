@@ -17,7 +17,7 @@ test('two signed players and the owner trade only their accounts, including manu
   ]);
   const originalAdminToken = config.dashboardAdminToken;
   config.dashboardAdminToken = 'test-owner-dashboard-token';
-  updateSettings({ max_recovery_debt: 1 });
+  updateSettings({ max_recovery_debt: 1, max_recovery_exposure: 1, max_consecutive_losses: 1, max_drawdown_pct: 1 });
   const originalFetch = globalThis.fetch;
   const originalConnect = DerivPrivateClient.prototype.connect;
   const originalQuote = DerivPrivateClient.prototype.getQuote;
@@ -30,7 +30,7 @@ test('two signed players and the owner trade only their accounts, including manu
   const sessions = new Map([['secret-alice', { accountId: 'VRTC111', token: 'token-alice' }], ['secret-bob', { accountId: 'VRTC222', token: 'token-bob' }]]);
   const store = {
     resolveSession: async (secret: string) => sessions.get(secret) ?? null,
-    riskSnapshot: async () => ({ mode: 'recovering', streak: 0, debt: 1, attempts: 1, cycleStake: 1, peakBalance: 100 }),
+    riskSnapshot: async () => ({ mode: 'recovering', streak: 1, debt: 1, attempts: 1, cycleStake: 1, peakBalance: 200 }),
     activeContract: async (accountId: string) => active.get(accountId) ?? null,
     listTrades: async (accountId: string) => [...active.entries()].filter(([id]) => id === accountId).map(([id, row]) => ({ ...row, account_id: id })),
     reserve: async (accountId: string, key: string) => {

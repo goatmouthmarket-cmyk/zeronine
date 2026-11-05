@@ -48,6 +48,8 @@ export function riskCheck(params: {
   tradeGapMs: number;
   now: number;
   accountId?: string;
+  /** User-confirmed manual orders do not inherit strategy-run stop limits. */
+  skipStrategyCaps?: boolean;
   skipRecoveryDebtCap?: boolean;
   /** Multi-lot routes enforce their own bounded product/account admission. */
   skipOpenContractCheck?: boolean;
@@ -73,7 +75,7 @@ export function riskCheck(params: {
   // no further trades are permitted until a manual reset of the run.
   const drawdownPct = settings.max_drawdown_pct > 0 ? settings.max_drawdown_pct / 100 : 0;
   if (
-    drawdownPct > 0 &&
+    !params.skipStrategyCaps && drawdownPct > 0 &&
     context.peakBalance > 0 &&
     balance > 0 &&
     (context.peakBalance - balance) / context.peakBalance >= drawdownPct
@@ -81,12 +83,12 @@ export function riskCheck(params: {
     return { ok: false, reason: `max drawdown (${settings.max_drawdown_pct}%) reached` };
   }
 
-  if (context.streak + 1 > settings.max_consecutive_losses) {
+  if (!params.skipStrategyCaps && context.streak + 1 > settings.max_consecutive_losses) {
     return { ok: false, reason: `consecutive loss cap (${settings.max_consecutive_losses}) reached` };
   }
 
   // Cycle-limit rails are only active while recovering debt.
-  if (context.debt > 0.005) {
+  if (!params.skipStrategyCaps && context.debt > 0.005) {
     if (context.cycleStake + stake > settings.max_recovery_exposure) {
       return { ok: false, reason: `recovery exposure cap (${settings.max_recovery_exposure}) would be exceeded` };
     }
