@@ -678,7 +678,7 @@ function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { pre
       <p>{preview.risk.reason}</p>
       {error && <p role="alert">{error}</p>}
       {preview.account.mode === 'real' && <label class="pasture-review-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed((event.currentTarget as HTMLInputElement).checked)} /> I understand this uses real funds.</label>}
-      {preview.account.mode === 'real' && <label class="pasture-review-confirm"><input type="checkbox" checked={remember} onChange={(event) => setRemember((event.currentTarget as HTMLInputElement).checked)} /><span>Remember for this real account on this browser. Future cow trades will be submitted without another confirmation.</span></label>}
+      <label class="pasture-review-confirm"><input type="checkbox" checked={remember} onChange={(event) => setRemember((event.currentTarget as HTMLInputElement).checked)} /><span>Don't show this confirmation again on this account and browser.</span></label>
       <div class="pasture-review-actions"><button type="button" onClick={onCancel} disabled={busy}>Cancel</button><button type="button" onClick={() => onConfirm(remember)} disabled={busy || (preview.account.mode === 'real' && !confirmed) || !seconds}>{busy ? 'Confirming…' : preview.account.mode === 'real' ? 'Confirm real-money trade' : 'Confirm demo trade'}</button></div>
     </section>
   </div>;
@@ -713,10 +713,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const sessionRef = useRef(s.session);
   sessionRef.current = s.session;
   useEffect(() => {
-    const account = s.session?.mode === 'real' ? s.session.loginid : null;
+    const account = s.session?.loginid ?? null;
+    const mode = s.session?.mode;
     const refreshPreference = () => {
-      try { setRememberedAccount(account && localStorage.getItem(`zeronine:real-cow-confirm:${account}`) === 'enabled' ? account : null); }
-      catch { setRememberedAccount(null); }
+      try {
+        const key = `zeronine:${mode === 'real' ? 'real' : 'demo'}-cow-confirm:${account}`;
+        setRememberedAccount(account && localStorage.getItem(key) === 'enabled' ? account : null);
+      } catch { setRememberedAccount(null); }
     };
     refreshPreference();
     window.addEventListener('real-cow-preference', refreshPreference);
@@ -926,11 +929,22 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         ? await previewPlayerTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge })
         : await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge });
       if (sessionRef.current?.loginid !== s.session?.loginid || sessionRef.current?.mode !== s.session?.mode) throw new Error('Account changed while requesting the quote. No trade was submitted.');
-      if (!usePlayerTrading && s.owner && maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode)) {
-        setManualExecution({ stage: 'buying', message: 'Real funds · checking the fresh quote and account safeguards' });
-        const result = await confirmManualTrade(preview.previewId, crypto.randomUUID());
-        setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Real-money purchase confirmed · waiting for settlement' });
-        setManualMsg(`Real-money contract purchased @ ${fmtMoney(result.trade.ask, preview.account.currency)} · payout ${fmtMoney(result.trade.payout, preview.account.currency)}`);
+      // Skip the review only after this exact account and mode have opted in.
+      // The server still refreshes the quote and enforces trade/risk checks.
+      const skipReview = rememberedAccount === s.session?.loginid
+        && sessionRef.current?.loginid === s.session?.loginid
+        && sessionRef.current?.mode === s.session?.mode
+        && preview.account.mode === s.session?.mode
+        && (preview.account.mode === 'demo'
+          || maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode));
+      if (skipReview) {
+        setManualExecution({ stage: 'buying', message: 'Checking the fresh quote and account safeguards' });
+        const result = usePlayerTrading
+          ? await confirmPlayerTrade(preview.previewId, preview.account.mode === 'real')
+          : await confirmManualTrade(preview.previewId, crypto.randomUUID());
+        setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for settlement' });
+        setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, preview.account.currency)} · payout ${fmtMoney(result.trade.payout, preview.account.currency)}`);
+        roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-review-purchased' }, window.location.origin);
         void refreshTrades();
         return true;
       }
@@ -992,6 +1006,19 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
         const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
         const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: manualStake, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid });
+        if (sessionRef.current?.loginid !== s.session?.loginid || sessionRef.current?.mode !== s.session?.mode) throw new Error('Account changed while requesting the quote. No trade was submitted.');
+        const skipReview = rememberedAccount === s.session?.loginid
+          && preview.account.mode === s.session?.mode
+          && (preview.account.mode === 'demo'
+            || maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode));
+        if (skipReview) {
+          setManualExecution({ stage: 'buying', message: 'Refreshing the quote and reserving the digit lane' });
+          const result = await confirmManualTrade(preview.previewId, crypto.randomUUID());
+          setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for settlement' });
+          setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, preview.account.currency)} · payout ${fmtMoney(result.trade.payout, preview.account.currency)}`);
+          void refreshTrades();
+          return true;
+        }
         setManualPreview(preview);
         setManualExecution({ stage: 'review', message: 'Quote ready · review every value before confirming' });
         setManualMsg('Live quote ready for review · no contract has been purchased');
@@ -1048,9 +1075,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const result = usePlayerTrading
         ? await confirmPlayerTrade(manualPreview.previewId, manualPreview.account.mode === 'real')
         : await confirmManualTrade(manualPreview.previewId, crypto.randomUUID());
-      const account = s.session?.mode === 'real' ? s.session.loginid : null;
-      if (remember && account && sessionRef.current?.loginid === account && sessionRef.current?.mode === 'real') {
-        try { localStorage.setItem(`zeronine:real-cow-confirm:${account}`, 'enabled'); setRememberedAccount(account); } catch { /* Continue with review on future trades if storage is unavailable. */ }
+      const account = s.session?.loginid ?? null;
+      const mode = s.session?.mode;
+      if (remember && account && sessionRef.current?.loginid === account && sessionRef.current?.mode === mode) {
+        const key = `zeronine:${mode === 'real' ? 'real' : 'demo'}-cow-confirm:${account}`;
+        try { localStorage.setItem(key, 'enabled'); setRememberedAccount(account); } catch { /* Continue with review on future trades if storage is unavailable. */ }
       }
       setManualPreview(null);
       setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
@@ -1422,8 +1451,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         roomFrameRef.current?.contentWindow?.postMessage({
           type: 'zeronine:room-trade-result',
           ok,
-          phase: ok && usePlayerTrading ? 'review' : ok && s.session?.mode === 'real' && !rememberedReal ? 'review' : undefined,
-          message: ok ? (usePlayerTrading ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
+          phase: ok && s.session?.mode === 'real' && rememberedAccount !== s.session?.loginid ? 'review' : undefined,
+          message: ok ? (s.session?.mode === 'real' && rememberedAccount !== s.session?.loginid ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
         }, window.location.origin);
       });
     };
