@@ -87,12 +87,42 @@ test('public dashboard exposes global market data but protects the connected acc
   assert.equal(blockedOAuth.statusCode, 403);
 
   cfg.config.allowPublicDerivLogin = true;
-  const oauthStart = await app.inject({ method: 'GET', url: '/api/auth/oauth/start' });
-  assert.equal(oauthStart.statusCode, 403, 'public OAuth must not unlock a shared account');
-  const oauthCallback = await app.inject({ method: 'GET', url: '/api/auth/oauth/callback?state=invalid&token1=oauth-test-token' });
-  assert.equal(oauthCallback.statusCode, 403);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, options?: RequestInit) => {
+    if (String(url) === cfg.config.oauthTokenUrl) {
+      const code = new URLSearchParams(String(options?.body)).get('code');
+      return Response.json({ access_token: `token-${code}`, expires_in: 3600 });
+    }
+    if (String(url).includes('/accounts')) {
+      const auth = (options?.headers as Record<string, string>).Authorization;
+      const id = auth.endsWith('alice') ? 'VRTC111' : 'VRTC222';
+      return Response.json({ data: [{ account_id: id, account_type: 'demo', currency: 'USD', balance: id === 'VRTC111' ? 111 : 222 }] });
+    }
+    throw new Error('unexpected request');
+  }) as typeof fetch;
+  const signIn = async (code: string): Promise<string> => {
+    const start = await app.inject({ method: 'GET', url: '/api/auth/oauth/start' });
+    assert.equal(start.statusCode, 200);
+    const state = new URL(start.json().url).searchParams.get('state');
+    const cookie = String(start.headers['set-cookie']).split(';', 1)[0];
+    const callback = await app.inject({ method: 'GET', url: `/api/auth/oauth/callback?state=${state}&code=${code}`, headers: { cookie } });
+    assert.equal(callback.headers.location, '/?oauth=player');
+    const cookies = Array.isArray(callback.headers['set-cookie']) ? callback.headers['set-cookie'] : [String(callback.headers['set-cookie'])];
+    const player = cookies.find(value => value.startsWith('deriv_cows_session='));
+    assert.ok(player);
+    assert.ok(!cookies.some(value => value.startsWith('zeronine_owner=')));
+    return player.split(';', 1)[0];
+  };
+  const alice = await signIn('alice');
+  const bob = await signIn('bob');
+  assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: alice } })).json().session.balance, 111);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: bob } })).json().session.balance, 222);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/state', headers: { cookie: alice } })).json().session, null);
+  await app.inject({ method: 'POST', url: '/api/player/logout', headers: { cookie: alice } });
+  assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: alice } })).statusCode, 401);
+  assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: bob } })).statusCode, 200);
   assert.equal(store.getSession()?.loginid, 'CR123');
-  assert.equal((await app.inject({ method: 'GET', url: '/api/state' })).json().public_deriv_login, false);
+  globalThis.fetch = originalFetch;
 
   const unlock = await app.inject({ method: 'POST', url: '/api/auth/owner', payload: { token: 'owner-test-token' } });
   assert.equal(unlock.statusCode, 200);

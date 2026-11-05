@@ -43,7 +43,7 @@ async function tokenPost(body: URLSearchParams): Promise<TokenSet> {
   return {
     accessToken: String(j.access_token),
     refreshToken: j.refresh_token ? String(j.refresh_token) : null,
-    expiresIn: Number(j.expires_in) || 3600,
+    expiresIn: Number(j.expires_in) || 0,
   };
 }
 

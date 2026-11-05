@@ -437,6 +437,13 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
   const [error, setError] = useState('');
   const [oauthBusy, setOauthBusy] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [playerSession, setPlayerSession] = useState<{ loginid: string; balance: number; currency: string; mode: string } | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetch('/api/player/session', { credentials: 'same-origin' }).then(response => response.ok ? response.json() : null)
+      .then(result => { if (active) setPlayerSession(result?.session ?? null); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const content = (
     <>
@@ -514,6 +521,7 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
           </>
         )}
         <div class="connect-card-heading"><span class="connect-card-emblem"><PastureIcon kind="cow" /></span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
+        {playerSession && <div class="connect-terms" role="status"><strong>Signed in · {playerSession.loginid}</strong><p>{playerSession.mode === 'demo' ? 'Demo' : 'Real'} account · {playerSession.currency} {playerSession.balance.toFixed(2)}</p><p>Player sign-in is active. Independent trading is not available yet.</p><button type="button" class="connect-btn" onClick={async () => { await fetch('/api/player/logout', { method: 'POST', credentials: 'same-origin' }); setPlayerSession(null); }}>Sign out</button></div>}
         <div class="connect-copy">Sign in to use your demo or real Deriv account. You can explore and shoot cows as a guest; guest shots never place bets.</div>
         <section class="connect-terms" aria-label="Trading information and terms">
           <strong>Before you enter the pasture</strong>

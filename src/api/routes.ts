@@ -15,7 +15,8 @@ import type { PaperSimulator } from '../simulation/paperSimulator.ts';
 import type { TelemetryService } from '../telemetry/service.ts';
 import type { MomentumObserver } from '../momentum/observer.ts';
 import { momentumEntryGuard } from '../momentum/observer.ts';
-import { encryptToken } from '../db/crypto.ts';
+import { decryptToken, encryptToken } from '../db/crypto.ts';
+import { createPlayerSession, playerForSession, revokePlayerSession } from './playerSessions.ts';
 import {
   buildAuthorizeUrl,
   exchangeOauthCode,
@@ -50,6 +51,7 @@ import {
   getRecovery,
   getSession,
   getGameProgress,
+  getDb,
   recordGameCowKill,
   getSettings,
   insertTrade,
@@ -99,11 +101,17 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   // process-level instance. It serializes short provider commands only; quote
   // streaming and settlement subscriptions stay independent and responsive.
   const accountCoordinator = deps.accountCoordinator ?? new AccountCoordinator();
-  const oauthPending = new Map<string, { verifier: string; created: number }>();
+  const oauthPending = new Map<string, { verifier: string; created: number; player: boolean }>();
   const oauthStateCookie = 'zeronine_deriv_oauth_state';
-  // This runtime has one private client and one stored account. Granting an
-  // arbitrary OAuth visitor owner access would expose that shared account.
-  const canStartDerivOauth = (req: FastifyRequest): boolean => isOwner(req);
+  // Public OAuth creates a player session and must never grant owner access.
+  const canStartDerivOauth = (req: FastifyRequest): boolean => isOwner(req) || config.allowPublicDerivLogin;
+  const playerCookie = 'deriv_cows_session';
+  const playerSecret = (req: FastifyRequest): string | null => {
+    const cookie = req.cookies?.[playerCookie];
+    if (!cookie) return null;
+    const value = req.unsignCookie(cookie);
+    return value.valid ? value.value : null;
+  };
   const gamePlayerId = (req: FastifyRequest, reply: FastifyReply): string => {
     const cookie = req.cookies?.deriv_cows_player;
     const signed = typeof cookie === 'string' ? req.unsignCookie(cookie) : null;
@@ -654,7 +662,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       feed: feed.status(),
       markets: registry.allSnapshots(),
       public_dashboard: publicDashboardEnabled(),
-      public_deriv_login: false,
+      public_deriv_login: config.allowPublicDerivLogin,
       owner,
       session: owner && session
         ? {
@@ -1934,7 +1942,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
     const { verifier, challenge } = newPkce();
     const state = crypto.randomUUID();
-    oauthPending.set(state, { verifier, created: Date.now() });
+    for (const [key, pending] of oauthPending) if (Date.now() - pending.created > 10 * 60_000) oauthPending.delete(key);
+    oauthPending.set(state, { verifier, created: Date.now(), player: !isOwner(req) });
     reply.setCookie(oauthStateCookie, state, {
       httpOnly: true,
       sameSite: 'lax',
@@ -1962,11 +1971,30 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const cookieState = signedState ? req.unsignCookie(signedState) : null;
     const entry = state && cookieState?.valid && cookieState.value === state ? oauthPending.get(state) : undefined;
     reply.clearCookie(oauthStateCookie, { path: '/' });
-    if (!entry || !state) {
+    if (!entry || !state || Date.now() - entry.created > 10 * 60_000 || entry.player === isOwner(req)) {
       reply.redirect('/?oauth=error&msg=invalid%20or%20expired%20OAuth%20request');
       return;
     }
     oauthPending.delete(state);
+
+    if (entry.player) {
+      const code = str('code');
+      if (!code) { reply.redirect('/?oauth=error&msg=missing%20authorization%20code'); return; }
+      try {
+        const tokenSet = await exchangeOauthCode(code, entry.verifier);
+        if (!Number.isFinite(tokenSet.expiresIn) || tokenSet.expiresIn <= 0) throw new Error('invalid token lifetime');
+        const accounts = await listDerivAccounts(tokenSet.accessToken);
+        const selected = accounts.find((account) => String(account.account_type ?? '').toLowerCase().includes('demo')) ?? accounts[0];
+        if (!selected) throw new Error('no Deriv account available');
+        const secret = createPlayerSession(String(selected.account_id), tokenSet.accessToken, Date.now() + tokenSet.expiresIn * 1000);
+        revokePlayerSession(playerSecret(req));
+        reply.setCookie(playerCookie, secret, { httpOnly: true, sameSite: 'lax', path: '/', secure: config.nodeEnv === 'production', signed: true, maxAge: Math.min(tokenSet.expiresIn, 12 * 60 * 60) });
+        reply.redirect('/?oauth=player');
+      } catch {
+        reply.redirect('/?oauth=error&msg=Deriv%20sign-in%20failed');
+      }
+      return;
+    }
 
     const picks: Array<{ account?: string; token: string }> = [];
     for (let i = 1; i <= 30; i++) {
@@ -2019,6 +2047,24 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     } catch (err) {
       reply.redirect(`/?oauth=error&msg=${encodeURIComponent(String(err))}`);
     }
+  });
+
+  app.get('/api/player/session', async (req, reply) => {
+    const loginid = playerForSession(playerSecret(req));
+    if (!loginid) { reply.code(401); return { error: 'player session required' }; }
+    const row = getDb().prepare('SELECT token_cipher FROM player_accounts WHERE loginid=?').get(loginid) as { token_cipher: string } | undefined;
+    if (!row) { reply.code(401); return { error: 'player session required' }; }
+    try {
+      const account = (await listDerivAccounts(decryptToken(row.token_cipher))).find(item => String(item.account_id) === loginid);
+      if (!account) { reply.code(401); return { error: 'Deriv account unavailable; sign in again' }; }
+      return { session: { loginid, balance: Number(account.balance ?? 0), currency: account.currency ?? '', mode: String(account.account_type ?? '').toLowerCase().includes('demo') ? 'demo' : 'real' } };
+    } catch { reply.code(502); return { error: 'Deriv account unavailable; sign in again' }; }
+  });
+
+  app.post('/api/player/logout', async (req, reply) => {
+    revokePlayerSession(playerSecret(req));
+    reply.clearCookie(playerCookie, { path: '/' });
+    return { ok: true };
   });
 
   app.post('/api/auth/reconnect', async (req, reply) => {
