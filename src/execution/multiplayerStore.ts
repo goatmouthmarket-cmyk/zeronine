@@ -9,15 +9,30 @@ const sessionHash = (secret: string): string => createHash('sha256').update(secr
 const validSecret = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 const validRoomId = (value: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
+/** Change only the endpoint and project-qualified login; keep the secret in Railway. */
+export function multiplayerConnectionString(connectionString: string, poolerHost?: string, poolerUser?: string): string {
+  if (!connectionString) throw new Error('multiplayer database connection is required');
+  const url = new URL(connectionString);
+  if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.searchParams.get('sslmode') === 'disable') throw new Error('encrypted PostgreSQL connection is required');
+  if (poolerHost || poolerUser) {
+    const projectRef = /^db\.([a-z0-9]+)\.supabase\.co$/.exec(url.hostname)?.[1];
+    if (!projectRef || !poolerHost || !/^[a-z0-9-]+\.pooler\.supabase\.com$/.test(poolerHost) || poolerUser !== `postgres.${projectRef}`) {
+      throw new Error('valid Supabase session pooler host and project user required');
+    }
+    url.hostname = poolerHost;
+    url.username = poolerUser;
+    url.port = '5432';
+  }
+  return url.toString();
+}
+
 /** Private database access stays on the server; no service credentials reach browsers. */
 export class MultiplayerStore {
   private readonly pool: Pool;
 
   constructor(connectionString: string) {
-    if (!connectionString) throw new Error('multiplayer database connection is required');
-    const url = new URL(connectionString);
-    if (!['postgres:', 'postgresql:'].includes(url.protocol) || url.searchParams.get('sslmode') === 'disable') throw new Error('encrypted PostgreSQL connection is required');
-    this.pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false }, max: 8, connectionTimeoutMillis: 5000 });
+    const effectiveConnection = multiplayerConnectionString(connectionString, process.env.MULTIPLAYER_POOLER_HOST, process.env.MULTIPLAYER_POOLER_USER);
+    this.pool = new Pool({ connectionString: effectiveConnection, ssl: { rejectUnauthorized: false }, max: 8, connectionTimeoutMillis: 5000 });
     this.pool.on('error', () => { console.error('[multiplayer database] idle connection lost'); });
   }
 
