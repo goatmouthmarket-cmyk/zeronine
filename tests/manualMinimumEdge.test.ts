@@ -37,6 +37,12 @@ test('manual minimum edge uses the current server model and fresh proposal befor
     assert.equal(blocked.statusCode, 409);
     assert.match(blocked.json().error, /below your.*minimum/i);
     assert.equal(buys, 0);
+    // A zero minimum means "no edge filter", even when the model edge is negative.
+    ratio = 1.02;
+    const zeroMinimum = await app.inject({ method: 'POST', url: '/api/trade/manual/preview', payload: { ...base, minEdge: 0 } });
+    assert.equal(zeroMinimum.statusCode, 200, zeroMinimum.body);
+    assert.ok(zeroMinimum.json().model.edge < 0, 'this quote estimates a negative edge');
+    ratio = 1.8;
     const preview = await app.inject({ method: 'POST', url: '/api/trade/manual/preview', payload: { ...base, minEdge: .24 } });
     assert.equal(preview.statusCode, 200);
     ratio = 1.78;

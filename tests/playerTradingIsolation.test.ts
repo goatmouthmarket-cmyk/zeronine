@@ -106,6 +106,10 @@ test('two signed players and the owner trade only their accounts, including manu
     assert.equal(duplicate.statusCode, 409);
     const bobPreview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: bob }, payload: order });
     assert.equal(bobPreview.statusCode, 200, bobPreview.body);
+    // MAX_STAKE sizes automation only; an explicit pasture order is held to the
+    // account balance rail instead of the bot's stake cap.
+    const aboveBotCap = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: bob }, payload: { ...order, stake: 26 } });
+    assert.equal(aboveBotCap.statusCode, 200, aboveBotCap.body);
     const bobState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: bob } });
     assert.equal(bobState.json().session.loginid, 'VRTC222');
     assert.equal(bobState.json().risk.debt, 1);

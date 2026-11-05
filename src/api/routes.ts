@@ -2344,7 +2344,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const breakeven = quote.payout > 0 ? quote.askPrice / quote.payout : 1;
       const edge = estimatedWin - breakeven;
       if (!registry.snapshot(order.market).fresh) throw new ManualRequestError(409, 'the selected market feed became stale while requesting the quote');
-      if (order.minEdge !== null && edge < order.minEdge) throw new ManualRequestError(409, `Fresh quote estimated edge ${(edge * 100).toFixed(1)}% is below your ${(order.minEdge * 100).toFixed(1)}% minimum. No trade placed.`);
+      if (order.minEdge !== null && order.minEdge > 0 && edge < order.minEdge) throw new ManualRequestError(409, `Fresh quote estimated edge ${(edge * 100).toFixed(1)}% is below your ${(order.minEdge * 100).toFixed(1)}% minimum. No trade placed.`);
       const entryLabel = order.companionDemo
         ? 'companion-confirmed model entry'
         : order.entryMode === 'instant'
@@ -2441,7 +2441,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const estimatedWin = manualModelWin(order);
       const breakeven = quote.payout > 0 ? quote.askPrice / quote.payout : 1;
       if (!registry.snapshot(order.market).fresh) throw new ManualRequestError(409, 'the selected market feed became stale while requesting the quote');
-      if (order.minEdge !== null && estimatedWin - breakeven < order.minEdge) throw new ManualRequestError(409, `Fresh quote estimated edge ${((estimatedWin - breakeven) * 100).toFixed(1)}% is below your ${(order.minEdge * 100).toFixed(1)}% minimum. No trade placed.`);
+      if (order.minEdge !== null && order.minEdge > 0 && estimatedWin - breakeven < order.minEdge) throw new ManualRequestError(409, `Fresh quote estimated edge ${((estimatedWin - breakeven) * 100).toFixed(1)}% is below your ${(order.minEdge * 100).toFixed(1)}% minimum. No trade placed.`);
       const preview: ManualPreview = {
         id: crypto.randomUUID(),
         accountId: accountIdForSession(session.loginid),

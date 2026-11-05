@@ -149,7 +149,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     try {
       const info = await account(user.accountId, user.token);
       const settings = getSettings();
-      if (order.stake > settings.max_stake) return fail(reply, 409, `stake exceeds configured maximum (${settings.max_stake})`);
+      // The operator picks the stake on an explicit order; the balance rail in
+      // riskCheck below is the sizing limit here, not the bot's MAX_STAKE cap.
       if (!registry.snapshot(order.market).fresh) return fail(reply, 409, 'market feed is stale');
       stage = 'account risk';
       const riskState = await store.riskSnapshot(user.accountId, info.balance);
@@ -167,7 +168,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const offered = await quote(client, order, info.currency);
       if (!Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice || offered.askPrice > info.balance) return fail(reply, 409, 'invalid or unaffordable quote');
       const edge = modelEdge(order, offered.askPrice, offered.payout);
-      if (edge < order.minEdge) return fail(reply, 409, 'quote does not meet minimum edge');
+      // A zero (or absent) minimum means the operator asked for no edge filter.
+      if (order.minEdge > 0 && edge < order.minEdge) return fail(reply, 409, 'quote does not meet minimum edge');
       const previewId = randomUUID();
       const expiresAt = Date.now() + 30_000;
       for (const [id, preview] of previews) if (preview.expiresAt <= Date.now()) previews.delete(id);
@@ -199,7 +201,6 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const info = await account(user.accountId, user.token);
       if (info.mode !== preview.mode || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'account or market changed');
       const settings = getSettings();
-      if (order.stake > settings.max_stake) return fail(reply, 409, `stake exceeds configured maximum (${settings.max_stake})`);
       const riskState = await store.riskSnapshot(user.accountId, info.balance);
       const risk = riskCheck({ stake: order.stake, settings, balance: info.balance,
         context: buildRecoveryContext(settings, undefined, riskState), lastTradeAt: 0,
@@ -212,7 +213,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if ((await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'Deriv account already has an open contract');
       const offered = await quote(client, order, info.currency);
       if (offered.askPrice > preview.ask * 1.02 || offered.payout < preview.payout * .98 || offered.askPrice > info.balance || !Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice) return fail(reply, 409, 'quote changed; review again');
-      if (modelEdge(order, offered.askPrice, offered.payout) < order.minEdge || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'market no longer meets entry conditions');
+      if ((order.minEdge > 0 && modelEdge(order, offered.askPrice, offered.payout) < order.minEdge) || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'market no longer meets entry conditions');
       try { reservation = await store.reserve(user.accountId, body.idempotencyKey, { ...order, mode: info.mode }); }
       catch { return fail(reply, 409, 'account has an open or uncertain contract'); }
       if (client.connectedAccountId !== user.accountId) throw new Error('connected account changed');

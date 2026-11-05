@@ -119,6 +119,8 @@ test('guest cow defeat is practice and does not send a trade request', () => {
   assert.equal(messages.filter((message) => message.type === 'zeronine:room-trade').length, tradesBeforePaper, 'paper entries never request a real/demo account trade');
   const weakCow = { contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1, edge: .01 }, tradeIntent: { accountId: 'REAL_A', stake: 1, minEdge: .02, contract: { symbol: 'SELECTED' } } };
   assert.match(context.testLock(weakCow), /below your manual minimum/, 'edge is checked on the first shooting tick');
+  const zeroMinimumCow = { contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1, edge: -.02 }, tradeIntent: { accountId: 'REAL_A', stake: 1, minEdge: 0, contract: { symbol: 'SELECTED' } } };
+  assert.equal(context.testLock(zeroMinimumCow), '', 'a zero minimum never blocks even a negative edge');
   element('cowStake').value = '2.50';
   const lockedCow = { contract: { market: 'Selected', symbol: 'SELECTED', kind: 'UNDER', barrier: 8, edge: .04 }, tradeIntent: { accountId: 'REAL_A', stake: 1.75, minEdge: .02, contract: { market: 'Selected', symbol: 'SELECTED', kind: 'OVER', barrier: 1 } } };
   assert.equal(context.testLock(lockedCow), '');
