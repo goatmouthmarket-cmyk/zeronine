@@ -936,6 +936,8 @@ export interface State {
   feed: FeedStatus | null;
   markets: Market[];
   session: SessionInfo | null;
+  playerSession: SessionInfo | null;
+  playerTrades: TradeRow[];
   recovery: Recovery | null;
   settings: Settings | null;
   automation: AutomationState | null;
@@ -976,6 +978,8 @@ const initial: State = {
   feed: null,
   markets: [],
   session: null,
+  playerSession: null,
+  playerTrades: [],
   recovery: null,
   settings: null,
   automation: null,
@@ -1563,6 +1567,62 @@ function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_lo
   lastStateSyncAt = Date.now();
 }
 
+const playerTradeId = (id: string): number => Number.parseInt(id.replace(/-/g, '').slice(0, 12), 16);
+function playerTradeRow(raw: Record<string, unknown>): TradeRow {
+  const direction = raw.direction === 'under' ? 'under' : 'over';
+  const status = raw.status === 'open' ? 'pending' : raw.status === 'unknown' ? 'timeout' : raw.status === 'purchasing' ? 'purchasing' : raw.status;
+  return {
+    id: playerTradeId(String(raw.id)), account_id: `deriv:${String(raw.account_id)}`,
+    ts: Date.parse(String(raw.created_at)) || 0, market: String(raw.market),
+    contract_type: direction === 'under' ? 'DIGITUNDER' : 'DIGITOVER', barrier: Number(raw.barrier),
+    duration: 1, duration_unit: 't', stake: Number(raw.stake), ask_price: Number(raw.ask_price),
+    payout: Number(raw.payout), est_win: 0, profit: Number(raw.profit),
+    status: status as TradeRow['status'], contract_id: String(raw.provider_contract_id ?? ''),
+    purchase_id: String(raw.id), reason: 'player manual trade', origin: 'manual',
+    resolved_at: raw.settled_at ? Date.parse(String(raw.settled_at)) : 0,
+  };
+}
+
+export async function refreshPlayerState(): Promise<void> {
+  try {
+    const response = await api<{ session: SessionInfo; trades: Array<Record<string, unknown>> }>('/api/player/trading/state');
+    set({ playerSession: response.session, playerTrades: response.trades.map(playerTradeRow) });
+  } catch {
+    set({ playerSession: null, playerTrades: [] });
+  }
+}
+
+export async function loadPlayerAccounts(): Promise<Array<{ accountId: string; mode: 'demo' | 'real'; currency: string; balance: number }>> {
+  const response = await api<{ accounts: Array<{ accountId: string; mode: 'demo' | 'real'; currency: string; balance: number }> }>('/api/player/accounts');
+  return response.accounts;
+}
+
+export async function selectPlayerAccount(accountId: string): Promise<void> {
+  await api('/api/player/accounts/select', { method: 'POST', body: JSON.stringify({ accountId }) });
+  playerSocket?.close();
+  await refreshPlayerState();
+  connectPlayerWs();
+}
+
+export async function logoutPlayer(): Promise<void> {
+  await api('/api/player/logout', { method: 'POST' });
+  playerSocket?.close();
+  set({ playerSession: null, playerTrades: [] });
+}
+
+let playerSocket: WebSocket | null = null;
+function connectPlayerWs(): void {
+  if (playerSocket || typeof WebSocket !== 'function') return;
+  const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/player-ws`);
+  playerSocket = socket;
+  socket.onmessage = (message) => {
+    try { const event = JSON.parse(String(message.data)); if (event.type === 'balance' || event.type === 'trade') void refreshPlayerState(); }
+    catch { /* Ignore malformed events. */ }
+  };
+  socket.onclose = () => { if (playerSocket === socket) playerSocket = null; window.setTimeout(connectPlayerWs, 5000); };
+  socket.onerror = () => socket.close();
+}
+
 async function refreshCoreState(): Promise<void> {
   if (stateRefresh) return stateRefresh;
   stateRefreshController?.abort();
@@ -1573,6 +1633,7 @@ async function refreshCoreState(): Promise<void> {
       const snapshot = (await api('/api/state', { signal: controller.signal })) as State & { public_dashboard?: boolean; owner?: boolean };
       if (controller.signal.aborted || stateRefreshController !== controller) return;
       applyCoreState(snapshot);
+      if (!snapshot.owner) void refreshPlayerState();
     } catch {
       // Keep the last good state. WebSocket recovery continues independently.
     }
@@ -1602,6 +1663,7 @@ export async function bootstrap(): Promise<void> {
   void loadAutoBacktestStatus();
   void loadAutoPaperStatus();
   connectWs();
+  connectPlayerWs();
 }
 
 export async function loadAutoBacktestStatus(): Promise<void> {
@@ -2012,6 +2074,31 @@ export async function confirmManualTrade(previewId: string, idempotencyKey: stri
     method: 'POST',
     body: JSON.stringify({ previewId, idempotencyKey }),
   }, 45_000);
+}
+
+export async function previewPlayerTrade(order: ManualOrder): Promise<ManualTradePreview> {
+  const raw = await api<{
+    previewId: string; expiresAt: number; order: { market: string; direction: 'over' | 'under'; barrier: number; stake: number };
+    quote: { ask: number; payout: number }; edge: number;
+    account: { balance: number; currency: string; mode: 'demo' | 'real' };
+  }>('/api/player/trade/preview', { method: 'POST', body: JSON.stringify(order) });
+  const market = state.markets.find(item => item.symbol === raw.order.market);
+  return {
+    previewId: raw.previewId, expiresAt: raw.expiresAt,
+    order: { ...raw.order, entryMode: 'instant' },
+    quote: { ...raw.quote, potentialProfit: raw.quote.payout - raw.quote.ask, breakeven: raw.quote.ask / raw.quote.payout },
+    model: { estimatedWin: raw.edge + raw.quote.ask / raw.quote.payout, edge: raw.edge },
+    account: { ...raw.account, balanceAfter: Math.max(0, raw.account.balance - raw.quote.ask) },
+    market: { display: market?.display ?? raw.order.market, lastDigit: market?.lastDigit ?? 0, lastEpoch: market?.lastEpoch ?? 0, fresh: market?.fresh ?? false },
+    risk: { ok: true, reason: 'Account, balance, feed, open-contract and quote checks passed.' },
+  };
+}
+
+export async function confirmPlayerTrade(previewId: string, confirmRealFunds: boolean): Promise<ManualTradeResult> {
+  const result = await api<{ ok: true; contractId: string; reservationId: string; ask: number; payout: number }>(
+    '/api/player/trade/confirm', { method: 'POST', body: JSON.stringify({ previewId, idempotencyKey: crypto.randomUUID(), confirmRealFunds }) }, 45_000);
+  void refreshPlayerState();
+  return { ok: true, trade: { id: playerTradeId(result.reservationId), contractId: result.contractId, ask: result.ask, payout: result.payout, estimatedWin: 0, breakeven: result.ask / result.payout, edge: 0 } };
 }
 
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {

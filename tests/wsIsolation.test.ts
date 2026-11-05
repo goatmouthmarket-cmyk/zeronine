@@ -48,3 +48,36 @@ test('unauthenticated websocket never receives account events', async () => {
     config.nodeEnv = oldEnv;
   }
 });
+
+test('private pasture websocket requires room membership and a signed player session', async () => {
+  const app = Fastify();
+  const hub = new Hub();
+  const roomId = '11111111-1111-4111-8111-111111111111';
+  await app.register(cookie, { secret: 'local-test-secret-long-enough' });
+  await registerWs(app, hub, new MarketRegistry({ onTick() {} }), {
+    resolveSession: async (secret: string | null) => secret === 'alice-secret' ? { accountId: 'VRTC111', token: 'token' } : secret === 'bob-secret' ? { accountId: 'VRTC222', token: 'token' } : null,
+    isRoomMember: async (accountId: string, room: string) => accountId === 'VRTC111' && room === roomId,
+  } as never);
+  app.get('/test/cookie/:name', (req, reply) => { reply.setCookie('deriv_cows_session', `${(req.params as { name: string }).name}-secret`, { signed: true, path: '/' }); return { ok: true }; });
+  const aliceCookie = String((await app.inject('/test/cookie/alice')).headers['set-cookie']).split(';', 1)[0];
+  const bobCookie = String((await app.inject('/test/cookie/bob')).headers['set-cookie']).split(';', 1)[0];
+  await app.listen({ port: 0, host: '127.0.0.1' });
+  const address = app.server.address();
+  assert.ok(address && typeof address !== 'string');
+  const open = (cookieHeader?: string) => new WebSocket(`ws://127.0.0.1:${address.port}/pasture-ws?room=${roomId}`, { headers: cookieHeader ? { cookie: cookieHeader } : {} });
+  const alice = open(aliceCookie), bob = open(bobCookie), guest = open();
+  try {
+    const rejected = (socket: WebSocket) => new Promise<number>((resolve, reject) => { socket.once('close', code => resolve(code)); socket.once('error', reject); });
+    const bobRejected = rejected(bob), guestRejected = rejected(guest);
+    const welcome = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      alice.on('message', data => { const event = JSON.parse(data.toString()); if (event.type === 'welcome') resolve(event); });
+      alice.once('error', reject);
+    });
+    assert.equal(welcome.type, 'welcome');
+    assert.equal(await bobRejected, 1008);
+    assert.equal(await guestRejected, 1008);
+  } finally {
+    alice.close(); bob.close(); guest.close();
+    await app.close();
+  }
+});

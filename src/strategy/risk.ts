@@ -8,8 +8,8 @@ export interface RiskCheck {
   reason: string;
 }
 
-export function buildRecoveryContext(settings: SettingsRow, accountId?: string): RecoveryContext {
-  const rec = getRecovery(accountId);
+export function buildRecoveryContext(settings: SettingsRow, accountId?: string, recovery?: Pick<RecoveryContext, 'mode' | 'streak' | 'debt' | 'attempts' | 'cycleStake' | 'peakBalance'>): RecoveryContext {
+  const rec = recovery ?? getRecovery(accountId);
   const strategy: StrategyMode =
     settings.strategy_mode === 'martingale' ||
     settings.strategy_mode === 'boosted_martingale' ||

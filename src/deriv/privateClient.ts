@@ -114,6 +114,11 @@ type Pending = {
 const DEFAULT_TIMEOUT = 12000;
 
 export class DerivPrivateClient {
+  private readonly persistBalance: (balance: number) => void;
+  /** Supply a player-scoped writer for independent account clients. */
+  constructor(options?: { persistBalance?: (balance: number) => void }) {
+    this.persistBalance = options?.persistBalance ?? updateSessionBalance;
+  }
   private ws: WebSocket | null = null;
   private reqCounter = 1000;
   private pending = new Map<number, Pending>();
@@ -256,7 +261,7 @@ export class DerivPrivateClient {
     if (msg.msg_type === 'balance') {
       const balance = msg.balance?.balance;
       if (typeof balance === 'number') {
-        updateSessionBalance(balance);
+        this.persistBalance(balance);
         this.onBalance?.(balance);
       }
       return;
@@ -434,7 +439,7 @@ export class DerivPrivateClient {
     if (!s?.contract_id) throw new Error('sell rejected');
     const balanceAfter = Number(s.balance_after);
     if (Number.isFinite(balanceAfter)) {
-      updateSessionBalance(balanceAfter);
+      this.persistBalance(balanceAfter);
       this.onBalance?.(balanceAfter);
     }
     return {

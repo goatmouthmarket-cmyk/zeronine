@@ -8,9 +8,11 @@ import { resolveStoredToken } from './deriv/oauth.ts';
 import { Hub } from './api/hub.ts';
 import { registerApi } from './api/routes.ts';
 import { registerWs } from './api/ws.ts';
+import { registerPlayerTrading } from './api/playerTrading.ts';
 import { MarketRegistry } from './core/marketState.ts';
 import { DerivPublicFeed } from './deriv/publicFeed.ts';
 import { DerivPrivateClient } from './deriv/privateClient.ts';
+import { MultiplayerStore } from './execution/multiplayerStore.ts';
 import { Automation } from './strategy/automation.ts';
 import { DecisionMemory } from './intelligence/decisionMemory.ts';
 import {
@@ -427,8 +429,23 @@ async function main(): Promise<void> {
     }
   }, 500);
   entryResearchTimer.unref();
-  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, gold, entryResearch, telemetry });
-  await registerWs(app, hub, registry);
+  const multiplayerStore = process.env.MULTIPLAYER_DATABASE_URL ? new MultiplayerStore(process.env.MULTIPLAYER_DATABASE_URL) : undefined;
+  if (multiplayerStore && config.sessionSecret.length < 32) throw new Error('multiplayer mode requires a 32-character SESSION_SECRET');
+  if (multiplayerStore) await multiplayerStore.health();
+  if (multiplayerStore) app.addHook('onClose', async () => multiplayerStore.close());
+  if (multiplayerStore) {
+    const legacyOpenRoutes = new Set(['/api/gold/trade', '/api/momentum/trade', '/api/automation/start', '/api/automation/arm']);
+    app.addHook('preHandler', async (req, reply) => {
+      const pathname = req.url.split('?', 1)[0];
+      if (req.method === 'POST' && (legacyOpenRoutes.has(pathname) || pathname.startsWith('/api/trade/manual'))) {
+        reply.code(409).send({ error: 'Use the player account trading flow while multiplayer mode is enabled.' });
+      }
+    });
+    automation.stop('multiplayer account isolation');
+  }
+  registerApi(app, { registry, feed, client, hub, automation, paperSimulator, gold, entryResearch, telemetry, multiplayerStore });
+  await registerWs(app, hub, registry, multiplayerStore);
+  if (multiplayerStore) registerPlayerTrading(app, multiplayerStore, registry);
 
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');
   if (fs.existsSync(webDist)) {
@@ -461,7 +478,7 @@ async function main(): Promise<void> {
 
   await feed.connect();
 
-  automation.watch();
+  if (!multiplayerStore) automation.watch();
 
   const reconnectPrivate = async (): Promise<void> => {
     const session = getSession();

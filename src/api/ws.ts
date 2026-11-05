@@ -5,13 +5,14 @@ import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import { isOwner } from './access.ts';
 import { PastureRooms } from './pastureRoom.ts';
+import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
 
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
 const HEARTBEAT_INTERVAL_MS = 15_000;
 const PUBLIC_EVENTS = new Set(['tick', 'feed', 'signal', 'intelligence', 'paper_simulation', 'market_scout']);
 
-export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry): Promise<void> {
+export async function registerWs(app: FastifyInstance, hub: Hub, registry: MarketRegistry, multiplayerStore?: MultiplayerStore): Promise<void> {
   await app.register(websocket, { options: { maxPayload: 8192 } });
 
   let lastSignal: unknown = null;
@@ -120,6 +121,7 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
   });
   const pastures = new PastureRooms();
   app.get('/pasture-ws', { websocket: true }, (socket: WebSocket, req) => {
+    void (async () => {
     const origin = req.headers.origin;
     try { if (origin && new URL(origin).host !== req.headers.host) { socket.close(1008, 'origin rejected'); return; } }
     catch { socket.close(1008, 'origin rejected'); return; }
@@ -130,17 +132,37 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       try { socket.send(JSON.stringify(event)); } catch { socket.terminate(); }
     };
     const query = req.query as { room?: unknown };
-    const roomId = query.room === undefined ? 'public' : query.room;
+    const roomId = query.room === undefined ? 'public' : typeof query.room === 'string' ? query.room.toLowerCase() : query.room;
     if (typeof roomId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) { socket.close(1008, 'invalid room'); return; }
+    let secret: string | null = null;
+    let accountId: string | null = null;
+    if (roomId !== 'public') {
+      if (!multiplayerStore) { socket.close(1008, 'private rooms unavailable'); return; }
+      const signed = req.cookies?.deriv_cows_session;
+      const value = signed ? req.unsignCookie(signed) : null;
+      secret = value?.valid ? value.value : null;
+      const session = await multiplayerStore.resolveSession(secret);
+      accountId = session?.accountId ?? null;
+      if (!accountId || !await multiplayerStore.isRoomMember(accountId, roomId)) { socket.close(1008, 'room access required'); return; }
+    }
+    if (socket.readyState !== socket.OPEN) return;
     const joined = pastures.join(roomId, send);
     if (!joined) { socket.close(1013, 'pasture full'); return; }
     const { id, room: pasture } = joined;
     let alive = true;
-    const heartbeat = setInterval(() => { if (!alive) { socket.terminate(); return; } alive = false; socket.ping(); }, HEARTBEAT_INTERVAL_MS);
+    const heartbeat = setInterval(() => { void (async () => {
+      if (!alive) { socket.terminate(); return; }
+      if (accountId && multiplayerStore) {
+        const session = await multiplayerStore.resolveSession(secret);
+        if (session?.accountId !== accountId || !await multiplayerStore.isRoomMember(accountId, roomId)) { socket.close(1008, 'room access expired'); return; }
+      }
+      alive = false; socket.ping();
+    })().catch(() => socket.close(1011, 'room unavailable')); }, HEARTBEAT_INTERVAL_MS);
     socket.on('pong', () => { alive = true; });
     socket.on('message', data => { try { pasture.receive(id, JSON.parse(data.toString())); } catch { /* Ignore invalid input. */ } });
     const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); pastures.leave(roomId, pasture, id); };
     socket.on('close', cleanup); socket.on('error', cleanup);
+    })().catch(() => socket.close(1011, 'room unavailable'));
   });
 
 }

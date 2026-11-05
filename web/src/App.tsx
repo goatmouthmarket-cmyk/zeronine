@@ -21,6 +21,10 @@ import {
   manualTrade,
   previewManualTrade,
   confirmManualTrade,
+  previewPlayerTrade,
+  confirmPlayerTrade,
+  refreshPlayerState,
+  logoutPlayer,
   resetPerformance,
   updateSettings,
   loadTestRuns,
@@ -39,6 +43,8 @@ import {
   startPaperSimulation,
   resetPaperSimulation,
   loadDerivAccounts,
+  loadPlayerAccounts,
+  selectPlayerAccount,
   switchDerivAccount,
   cashOutAccountOpenContract,
   cashOutAllAccountOpenContracts,
@@ -521,7 +527,7 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
           </>
         )}
         <div class="connect-card-heading"><span class="connect-card-emblem"><PastureIcon kind="cow" /></span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
-        {playerSession && <div class="connect-terms" role="status"><strong>Signed in · {playerSession.loginid}</strong><p>{playerSession.mode === 'demo' ? 'Demo' : 'Real'} account · {playerSession.currency} {playerSession.balance.toFixed(2)}</p><p>Player sign-in is active. Independent trading is not available yet.</p><button type="button" class="connect-btn" onClick={async () => { await fetch('/api/player/logout', { method: 'POST', credentials: 'same-origin' }); setPlayerSession(null); }}>Sign out</button></div>}
+        {playerSession && <div class="connect-terms" role="status"><strong>Signed in · {playerSession.loginid}</strong><p>{playerSession.mode === 'demo' ? 'Demo' : 'Real'} account · {playerSession.currency} {playerSession.balance.toFixed(2)}</p><p>Your account stays private in the pasture.</p><button type="button" class="connect-btn" onClick={async () => { await logoutPlayer(); setPlayerSession(null); }}>Sign out</button></div>}
         <div class="connect-copy">Sign in to use your demo or real Deriv account. You can explore and shoot cows as a guest; guest shots never place bets.</div>
         <section class="connect-terms" aria-label="Trading information and terms">
           <strong>Before you enter the pasture</strong>
@@ -660,7 +666,7 @@ function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { pre
   const seconds = Math.max(0, Math.ceil((preview.expiresAt - now) / 1000));
   return <div class="pasture-review-backdrop">
     <section class="pasture-review" role="dialog" aria-modal="true" aria-labelledby="pasture-review-title">
-      <span class="pasture-review-kicker">Real funds · review required</span>
+      <span class="pasture-review-kicker">{preview.account.mode === 'real' ? 'Real funds' : 'Demo funds'} · review required</span>
       <h2 id="pasture-review-title">{shortMarketName(preview.market.display)} · {sideLabel(preview.order.direction, preview.order.barrier)}</h2>
       <p>No bet has been placed. Review the live quote before confirming.</p>
       <div class="pasture-review-grid">
@@ -671,18 +677,23 @@ function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { pre
       </div>
       <p>{preview.risk.reason}</p>
       {error && <p role="alert">{error}</p>}
-      <label class="pasture-review-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed((event.currentTarget as HTMLInputElement).checked)} /> I understand this uses real funds.</label>
-      <label class="pasture-review-confirm"><input type="checkbox" checked={remember} onChange={(event) => setRemember((event.currentTarget as HTMLInputElement).checked)} /><span>Remember for this real account on this browser. Future cow trades will be submitted without another confirmation.</span></label>
-      <div class="pasture-review-actions"><button type="button" onClick={onCancel} disabled={busy}>Cancel</button><button type="button" onClick={() => onConfirm(remember)} disabled={busy || !confirmed || !seconds}>{busy ? 'Confirming…' : 'Confirm real-money trade'}</button></div>
+      {preview.account.mode === 'real' && <label class="pasture-review-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed((event.currentTarget as HTMLInputElement).checked)} /> I understand this uses real funds.</label>}
+      {preview.account.mode === 'real' && <label class="pasture-review-confirm"><input type="checkbox" checked={remember} onChange={(event) => setRemember((event.currentTarget as HTMLInputElement).checked)} /><span>Remember for this real account on this browser. Future cow trades will be submitted without another confirmation.</span></label>}
+      <div class="pasture-review-actions"><button type="button" onClick={onCancel} disabled={busy}>Cancel</button><button type="button" onClick={() => onConfirm(remember)} disabled={busy || (preview.account.mode === 'real' && !confirmed) || !seconds}>{busy ? 'Confirming…' : preview.account.mode === 'real' ? 'Confirm real-money trade' : 'Confirm demo trade'}</button></div>
     </section>
   </div>;
 }
 
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
-  const s = useStore();
+  const base = useStore();
+  const s = { ...base, session: base.owner ? base.session : base.playerSession, trades: base.owner ? base.trades : base.playerTrades };
   const [headerNavOpen, setHeaderNavOpen] = useState(false);
   const [rangerAutoMenuOpen, setRangerAutoMenuOpen] = useState(false);
   const [rangerAutoRunning, setRangerAutoRunning] = useState(false);
+  const [roomId, setRoomId] = useState<string | null>(null);
+  const [roomCode, setRoomCode] = useState('');
+  const [roomError, setRoomError] = useState('');
+  const [roomBusy, setRoomBusy] = useState(false);
   const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
@@ -703,6 +714,36 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [showRealCowNotice, setShowRealCowNotice] = useState(false);
   const sessionRef = useRef(s.session);
   sessionRef.current = s.session;
+  useEffect(() => {
+    const accountId = s.playerSession?.loginid;
+    if (!accountId || s.owner) { setRoomId(null); return; }
+    let activeRequest = true;
+    void (async () => {
+      const key = `deriv-cows-room:${accountId}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const check = await fetch(`/api/player/rooms/${encodeURIComponent(saved)}`, { credentials: 'same-origin' });
+        if (check.ok) { if (activeRequest) setRoomId(saved); return; }
+      }
+      const created = await fetch('/api/player/rooms', { method: 'POST', credentials: 'same-origin' });
+      if (!created.ok) throw new Error('Could not create a private room');
+      const data = await created.json();
+      if (activeRequest) { localStorage.setItem(key, data.roomId); setRoomId(data.roomId); }
+    })().catch(() => { if (activeRequest) setRoomError('Private room unavailable. Try refreshing.'); });
+    return () => { activeRequest = false; };
+  }, [s.playerSession?.loginid, s.owner]);
+  const joinRoom = async (): Promise<void> => {
+    if (!s.playerSession || roomBusy) return;
+    setRoomBusy(true); setRoomError('');
+    try {
+      const response = await fetch('/api/player/rooms/join', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roomId: roomCode.trim() }) });
+      if (!response.ok) throw new Error('Room not found. Check the invite code.');
+      const data = await response.json();
+      localStorage.setItem(`deriv-cows-room:${s.playerSession.loginid}`, data.roomId);
+      setRoomId(data.roomId); setRoomCode('');
+    } catch (error) { setRoomError(error instanceof Error ? error.message : 'Could not join room'); }
+    finally { setRoomBusy(false); }
+  };
   useEffect(() => {
     const account = s.session?.mode === 'real' ? s.session.loginid : null;
     const refreshPreference = () => {
@@ -847,6 +888,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
   ): Promise<boolean> => {
+    if (!s.owner && s.playerSession) return previewManualNow(direction, barrier, marketSymbol ?? '', stakeOverride, onFailure, rangerAutomation, minEdge);
     if (guest || !marketSymbol) {
       onFailure?.('Connect Deriv and select a live market before placing a bet.');
       return false;
@@ -912,9 +954,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
-      const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge });
+      const preview = s.owner
+        ? await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge })
+        : await previewPlayerTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge });
       if (sessionRef.current?.loginid !== s.session?.loginid || sessionRef.current?.mode !== s.session?.mode) throw new Error('Account changed while requesting the quote. No trade was submitted.');
-      if (maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode)) {
+      if (s.owner && maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode)) {
         setManualExecution({ stage: 'buying', message: 'Real funds · checking the fresh quote and account safeguards' });
         const result = await confirmManualTrade(preview.previewId, crypto.randomUUID());
         setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Real-money purchase confirmed · waiting for settlement' });
@@ -966,6 +1010,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     companionDemo = false,
   ): Promise<boolean> => {
     if (!marketSymbol) return false;
+    if (!s.owner && s.playerSession) return previewManualNow(direction, barrier, marketSymbol, manualStake);
     // Companion prompts are an explicit instruction to trade now. They still
     // use the current best model setup and all normal account/lane safeguards.
     if (companionDemo) return executeManualNow(direction, barrier, marketSymbol, manualStake, 'model', true);
@@ -1032,7 +1077,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualError(false);
     setManualExecution({ stage: 'buying', message: 'Refreshing the quote and reserving the digit lane' });
     try {
-      const result = await confirmManualTrade(manualPreview.previewId, crypto.randomUUID());
+      const result = s.owner
+        ? await confirmManualTrade(manualPreview.previewId, crypto.randomUUID())
+        : await confirmPlayerTrade(manualPreview.previewId, manualPreview.account.mode === 'real');
       const account = s.session?.mode === 'real' ? s.session.loginid : null;
       if (remember && account && sessionRef.current?.loginid === account && sessionRef.current?.mode === 'real') {
         try { localStorage.setItem(`zeronine:real-cow-confirm:${account}`, 'enabled'); setRememberedAccount(account); } catch { /* Continue with review on future trades if storage is unavailable. */ }
@@ -1406,8 +1453,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         roomFrameRef.current?.contentWindow?.postMessage({
           type: 'zeronine:room-trade-result',
           ok,
-          phase: ok && s.session?.mode === 'real' && !rememberedReal ? 'review' : undefined,
-          message: ok ? (s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
+          phase: ok && !s.owner && s.playerSession ? 'review' : ok && s.session?.mode === 'real' && !rememberedReal ? 'review' : undefined,
+          message: ok ? (!s.owner && s.playerSession ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
         }, window.location.origin);
       });
     };
@@ -1461,13 +1508,21 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>
 
+      {active && s.playerSession && <div class="pasture-room-invite" aria-label="Multiplayer room">
+        <span>Room <strong>{roomId ?? 'Connecting…'}</strong></span>
+        {roomId && <button type="button" onClick={() => void navigator.clipboard?.writeText(roomId)}>Copy invite</button>}
+        <label><span class="sr-only">Room invite code</span><input value={roomCode} onInput={(event) => setRoomCode(event.currentTarget.value)} placeholder="Paste room invite" /></label>
+        <button type="button" disabled={!roomCode.trim() || roomBusy} onClick={() => void joinRoom()}>{roomBusy ? 'Joining…' : 'Join'}</button>
+        {roomError && <small role="alert">{roomError}</small>}
+      </div>}
+
       {active && rememberedReal && showRealCowNotice && <div class="real-cow-mode" role="status"><span>Real-money cow trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); window.dispatchEvent(new Event('real-cow-preference')); }}>Turn confirmation on</button></div>}
 
-      {active && !marketChooserOpen && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
+      {active && !marketChooserOpen && (!s.playerSession || roomId) && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
         <iframe
           ref={roomFrameRef}
           class="trading-room-frame"
-          src="/trading-room.html"
+          src={`/trading-room.html${s.playerSession && roomId ? `?room=${encodeURIComponent(roomId)}` : ''}`}
           title="Deriv Cows interactive trading pasture"
           onLoad={() => { postRoomState(); syncDetailHud(); }}
         />
@@ -3216,6 +3271,14 @@ function PastureHistory(): JSX.Element {
     } catch { if (token === generation.current) setError('Could not load older trades. Please try again.'); }
     finally { if (token === generation.current) setBusy(false); }
   };
+  if (!s.owner && s.playerSession) return <section class="pasture-history" aria-label="Your account trades">
+    <p class="pasture-detail-intro">Account trades for <strong>{s.playerSession.loginid}</strong></p>
+    <div class="pasture-history-list">{s.playerTrades.map(trade => <article class="pasture-history-row" key={trade.id}>
+      <div><strong>{shortMarketName(s.markets.find(market => market.symbol === trade.market)?.display ?? trade.market)}</strong><small>{tradeContractLabel(trade)} · {new Date(trade.ts).toLocaleString()}</small></div>
+      <div><b class={trade.status === 'won' ? 'win' : trade.status === 'lost' ? 'loss' : ''}>{trade.status.toUpperCase()}</b><small>{fmtSigned(trade.profit, s.playerSession?.currency ?? '')}</small></div>
+    </article>)}</div>
+    {!s.playerTrades.length && <p class="pasture-detail-empty">No account trades yet.</p>}
+  </section>;
   if (!s.owner) return <p class="pasture-detail-empty">Unlock the dashboard to view your trade history.</p>;
   if (!s.session) return <p class="pasture-detail-empty">Connect Deriv to see your account trade history.</p>;
   return <section class="pasture-history" aria-label="Account trades">
@@ -5445,6 +5508,11 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
   const [cashingOutAll, setCashingOutAll] = useState(false);
   const [accountError, setAccountError] = useState('');
   const [disconnecting, setDisconnecting] = useState(false);
+  const [playerAccounts, setPlayerAccounts] = useState<Array<{ accountId: string; mode: 'demo' | 'real'; currency: string; balance: number }>>([]);
+  useEffect(() => {
+    if (!s.playerSession || s.owner) return;
+    void loadPlayerAccounts().then(setPlayerAccounts).catch((error) => setAccountError(error instanceof Error ? error.message : String(error)));
+  }, [s.playerSession?.loginid, s.owner]);
   useEffect(() => {
     if (!session) return;
     setLoadingAccounts(true);
@@ -5454,6 +5522,7 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
       .catch((error) => setAccountError(error instanceof Error ? error.message : String(error)))
       .finally(() => setLoadingAccounts(false));
   }, [session?.loginid]);
+  if (!s.owner && s.playerSession) return <><RangerWardrobe /><section class="connect-card" aria-label="Your Deriv account"><h2 class="connect-title">Your Deriv account</h2><p>{s.playerSession.loginid} · {s.playerSession.mode === 'real' ? 'Real' : 'Demo'}</p><p>Balance: {fmtMoney(s.playerSession.balance, s.playerSession.currency)}</p><p>Market signals and research are shared. Trades and balance belong to this account.</p>{playerAccounts.length > 1 && <div class="player-account-list" aria-label="Authorized Deriv accounts">{playerAccounts.map(account => <button class="connect-btn" type="button" key={account.accountId} disabled={switchingAccount !== '' || account.accountId === s.playerSession?.loginid} onClick={async () => { setSwitchingAccount(account.accountId); setAccountError(''); try { await selectPlayerAccount(account.accountId); } catch (error) { setAccountError(error instanceof Error ? error.message : String(error)); } finally { setSwitchingAccount(''); } }}>{account.mode === 'demo' ? 'Demo' : 'Real'} · {account.accountId} · {fmtMoney(account.balance, account.currency)}</button>)}</div>}{accountError && <p role="alert">{accountError}</p>}<button class="connect-btn" type="button" onClick={() => void refreshPlayerState()}>Refresh account</button><button class="connect-btn" type="button" onClick={() => void logoutPlayer()}>Sign out</button></section></>;
   if (!session) return <><RangerWardrobe /><ConnectView embedded onConnected={onConnected} /></>;
   const switchAccount = async (account: DerivAccountInfo): Promise<void> => {
     setAccountError('');

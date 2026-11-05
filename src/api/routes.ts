@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { createHmac } from 'node:crypto';
 import { config } from '../config.ts';
 import { GoldRuntime, GoldRuntimeUnavailableError } from '../gold/runtime.ts';
 import { GoldOAuthError } from '../gold/onboarding.ts';
@@ -17,6 +18,7 @@ import type { MomentumObserver } from '../momentum/observer.ts';
 import { momentumEntryGuard } from '../momentum/observer.ts';
 import { decryptToken, encryptToken } from '../db/crypto.ts';
 import { createPlayerSession, playerForSession, revokePlayerSession } from './playerSessions.ts';
+import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
 import {
   buildAuthorizeUrl,
   exchangeOauthCode,
@@ -91,6 +93,7 @@ export interface ApiDeps {
   telemetry?: TelemetryService;
   /** Shared command lane for account-funded Deriv operations. */
   accountCoordinator?: AccountCoordinator;
+  multiplayerStore?: MultiplayerStore;
 }
 
 export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
@@ -101,10 +104,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   // process-level instance. It serializes short provider commands only; quote
   // streaming and settlement subscriptions stay independent and responsive.
   const accountCoordinator = deps.accountCoordinator ?? new AccountCoordinator();
+  const multiplayerStore = deps.multiplayerStore;
   const oauthPending = new Map<string, { verifier: string; created: number; player: boolean }>();
   const oauthStateCookie = 'zeronine_deriv_oauth_state';
   // Public OAuth creates a player session and must never grant owner access.
-  const canStartDerivOauth = (req: FastifyRequest): boolean => isOwner(req) || config.allowPublicDerivLogin;
+  const canStartDerivOauth = (req: FastifyRequest): boolean => isOwner(req) || (config.allowPublicDerivLogin && Boolean(multiplayerStore));
   const playerCookie = 'deriv_cows_session';
   const playerSecret = (req: FastifyRequest): string | null => {
     const cookie = req.cookies?.[playerCookie];
@@ -112,7 +116,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const value = req.unsignCookie(cookie);
     return value.valid ? value.value : null;
   };
-  const gamePlayerId = (req: FastifyRequest, reply: FastifyReply): string => {
+  const gamePlayerId = async (req: FastifyRequest, reply: FastifyReply): Promise<string> => {
+    if (multiplayerStore) {
+      const session = await multiplayerStore.resolveSession(playerSecret(req));
+      if (session) {
+        const hash = createHmac('sha256', config.sessionSecret).update(`game:${session.accountId}`).digest('hex');
+        return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+      }
+    }
     const cookie = req.cookies?.deriv_cows_player;
     const signed = typeof cookie === 'string' ? req.unsignCookie(cookie) : null;
     if (signed?.valid && /^[0-9a-f-]{36}$/i.test(signed.value)) return signed.value;
@@ -612,7 +623,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   }));
 
   app.get('/api/game/progress', async (req, reply) => {
-    const playerId = gamePlayerId(req, reply);
+    const playerId = await gamePlayerId(req, reply);
     return { progress: getGameProgress(playerId) };
   });
 
@@ -622,7 +633,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: 'invalid game progress event' };
     }
-    const playerId = gamePlayerId(req, reply);
+    const playerId = await gamePlayerId(req, reply);
     return { progress: recordGameCowKill(playerId, body.eventId, body.duringBreak) };
   });
 
@@ -662,7 +673,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       feed: feed.status(),
       markets: registry.allSnapshots(),
       public_dashboard: publicDashboardEnabled(),
-      public_deriv_login: config.allowPublicDerivLogin,
+      public_deriv_login: config.allowPublicDerivLogin && Boolean(multiplayerStore),
       owner,
       session: owner && session
         ? {
@@ -1986,8 +1997,11 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         const accounts = await listDerivAccounts(tokenSet.accessToken);
         const selected = accounts.find((account) => String(account.account_type ?? '').toLowerCase().includes('demo')) ?? accounts[0];
         if (!selected) throw new Error('no Deriv account available');
-        const secret = createPlayerSession(String(selected.account_id), tokenSet.accessToken, Date.now() + tokenSet.expiresIn * 1000);
-        revokePlayerSession(playerSecret(req));
+        const secret = multiplayerStore
+          ? await multiplayerStore.createSession(String(selected.account_id), tokenSet.accessToken, Date.now() + tokenSet.expiresIn * 1000)
+          : createPlayerSession(String(selected.account_id), tokenSet.accessToken, Date.now() + tokenSet.expiresIn * 1000);
+        if (multiplayerStore) await multiplayerStore.revokeSession(playerSecret(req));
+        else revokePlayerSession(playerSecret(req));
         reply.setCookie(playerCookie, secret, { httpOnly: true, sameSite: 'lax', path: '/', secure: config.nodeEnv === 'production', signed: true, maxAge: Math.min(tokenSet.expiresIn, 12 * 60 * 60) });
         reply.redirect('/?oauth=player');
       } catch {
@@ -2050,19 +2064,56 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.get('/api/player/session', async (req, reply) => {
-    const loginid = playerForSession(playerSecret(req));
+    const remoteSession = multiplayerStore ? await multiplayerStore.resolveSession(playerSecret(req)) : null;
+    const loginid = multiplayerStore ? remoteSession?.accountId : playerForSession(playerSecret(req));
     if (!loginid) { reply.code(401); return { error: 'player session required' }; }
-    const row = getDb().prepare('SELECT token_cipher FROM player_accounts WHERE loginid=?').get(loginid) as { token_cipher: string } | undefined;
-    if (!row) { reply.code(401); return { error: 'player session required' }; }
+    const row = multiplayerStore ? null : getDb().prepare('SELECT token_cipher FROM player_accounts WHERE loginid=?').get(loginid) as { token_cipher: string } | undefined;
+    if (!remoteSession && !row) { reply.code(401); return { error: 'player session required' }; }
     try {
-      const account = (await listDerivAccounts(decryptToken(row.token_cipher))).find(item => String(item.account_id) === loginid);
+      const account = (await listDerivAccounts(remoteSession?.token ?? decryptToken(row!.token_cipher))).find(item => String(item.account_id) === loginid);
       if (!account) { reply.code(401); return { error: 'Deriv account unavailable; sign in again' }; }
       return { session: { loginid, balance: Number(account.balance ?? 0), currency: account.currency ?? '', mode: String(account.account_type ?? '').toLowerCase().includes('demo') ? 'demo' : 'real' } };
     } catch { reply.code(502); return { error: 'Deriv account unavailable; sign in again' }; }
   });
 
+  app.get('/api/player/accounts', async (req, reply) => {
+    if (!multiplayerStore) { reply.code(503); return { error: 'multiplayer accounts unavailable' }; }
+    const session = await multiplayerStore.resolveSession(playerSecret(req));
+    if (!session) { reply.code(401); return { error: 'player session required' }; }
+    try {
+      const accounts = await listDerivAccounts(session.token);
+      return { selectedAccountId: session.accountId, accounts: accounts.map(account => ({
+        accountId: String(account.account_id),
+        mode: String(account.account_type ?? '').toLowerCase().includes('demo') ? 'demo' : 'real',
+        currency: account.currency ?? '', balance: Number(account.balance ?? 0),
+      })) };
+    } catch { reply.code(503); return { error: 'Deriv accounts unavailable' }; }
+  });
+
+  app.post('/api/player/accounts/select', async (req, reply) => {
+    const origin = req.headers.origin;
+    try { if (origin && new URL(origin).host !== req.headers.host) { reply.code(403); return { error: 'origin rejected' }; } }
+    catch { reply.code(403); return { error: 'origin rejected' }; }
+    if (!multiplayerStore) { reply.code(503); return { error: 'multiplayer accounts unavailable' }; }
+    const oldSecret = playerSecret(req);
+    const session = await multiplayerStore.resolveSession(oldSecret);
+    if (!session) { reply.code(401); return { error: 'player session required' }; }
+    const accountId = (req.body as { accountId?: unknown } | undefined)?.accountId;
+    if (typeof accountId !== 'string') { reply.code(400); return { error: 'account ID required' }; }
+    try {
+      const accounts = await listDerivAccounts(session.token);
+      const selected = accounts.find(account => String(account.account_id) === accountId);
+      if (!selected) { reply.code(403); return { error: 'account not authorized by Deriv' }; }
+      const secret = await multiplayerStore.createSession(accountId, session.token, session.expiresAt);
+      await multiplayerStore.revokeSession(oldSecret);
+      reply.setCookie(playerCookie, secret, { httpOnly: true, sameSite: 'lax', path: '/', secure: config.nodeEnv === 'production', signed: true, maxAge: Math.max(1, Math.floor((session.expiresAt - Date.now()) / 1000)) });
+      return { ok: true, accountId };
+    } catch { reply.code(503); return { error: 'account switch unavailable' }; }
+  });
+
   app.post('/api/player/logout', async (req, reply) => {
-    revokePlayerSession(playerSecret(req));
+    if (multiplayerStore) await multiplayerStore.revokeSession(playerSecret(req));
+    else revokePlayerSession(playerSecret(req));
     reply.clearCookie(playerCookie, { path: '/' });
     return { ok: true };
   });

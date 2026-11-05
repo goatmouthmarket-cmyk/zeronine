@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
+import { randomBytes } from 'node:crypto';
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'overunder-public-dashboard-'));
 process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret';
@@ -37,7 +38,17 @@ test('public dashboard exposes global market data but protects the connected acc
   const automation = new autoMod.Automation(registry, client, hub);
   const paperSimulator = new paperMod.PaperSimulator();
   const telemetry = new telemetryMod.TelemetryService(path.join(cfg.config.dataDir, 'test-telemetry.db'), 30);
-  routesMod.registerApi(app, { registry, feed, client, hub, automation, paperSimulator, telemetry });
+  const playerSessions = new Map<string, { accountId: string; token: string; expiresAt: number }>();
+  const multiplayerStore = {
+    createSession: async (accountId: string, token: string, expiresAt: number) => {
+      const secret = randomBytes(32).toString('base64url');
+      playerSessions.set(secret, { accountId, token, expiresAt });
+      return secret;
+    },
+    resolveSession: async (secret: string | null) => secret ? playerSessions.get(secret) ?? null : null,
+    revokeSession: async (secret: string | null) => { if (secret) playerSessions.delete(secret); },
+  };
+  routesMod.registerApi(app, { registry, feed, client, hub, automation, paperSimulator, telemetry, multiplayerStore: multiplayerStore as never });
 
   store.setSession({
     id: 'public-test-session', loginid: 'CR123', balance: 123.45, currency: 'USD', mode: 'demo', auth_kind: 'pat',
