@@ -1,7 +1,6 @@
 import { memo } from 'preact/compat';
 import { useDialogFocus } from './useDialogFocus';
 import { goldMiningDirection } from './goldMining';
-import { maySkipCowReview } from './realCowConsent';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, SessionInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, GoldModuleState, GoldDemoAccount, GoldSide, GoldTimeframe, GoldDerivTradePurchase, GoldDerivTradeClose, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct, ManualTradePreview, ManualTradeResult } from './store';
@@ -651,9 +650,8 @@ function QuickAccountMenu({ session, onNavigate }: { session: SessionInfo | null
   </div>;
 }
 
-function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { preview: ManualTradePreview; busy: boolean; error: string; onConfirm: (remember: boolean) => void; onCancel: () => void }): JSX.Element {
+function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { preview: ManualTradePreview; busy: boolean; error: string; onConfirm: () => void; onCancel: () => void }): JSX.Element {
   const [confirmed, setConfirmed] = useState(false);
-  const [remember, setRemember] = useState(false);
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(timer); }, []);
   const seconds = Math.max(0, Math.ceil((preview.expiresAt - now) / 1000));
@@ -671,8 +669,7 @@ function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { pre
       <p>{preview.risk.reason}</p>
       {error && <p role="alert">{error}</p>}
       <label class="pasture-review-confirm"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed((event.currentTarget as HTMLInputElement).checked)} /> I understand this uses real funds.</label>
-      <label class="pasture-review-confirm"><input type="checkbox" checked={remember} onChange={(event) => setRemember((event.currentTarget as HTMLInputElement).checked)} /><span>Remember for this real account on this browser. Future cow trades will be submitted without another confirmation.</span></label>
-      <div class="pasture-review-actions"><button type="button" onClick={onCancel} disabled={busy}>Cancel</button><button type="button" onClick={() => onConfirm(remember)} disabled={busy || !confirmed || !seconds}>{busy ? 'Confirming…' : 'Confirm real-money trade'}</button></div>
+      <div class="pasture-review-actions"><button type="button" onClick={onCancel} disabled={busy}>Cancel</button><button type="button" onClick={onConfirm} disabled={busy || !confirmed || !seconds}>{busy ? 'Confirming…' : 'Confirm real-money trade'}</button></div>
     </section>
   </div>;
 }
@@ -697,34 +694,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [timedManualSetup, setTimedManualSetup] = useState<ManualSetup | null>(null);
   const [pendingManualIntent, setPendingManualIntent] = useState<TimedManualIntent | null>(null);
   const [manualPreview, setManualPreview] = useState<ManualTradePreview | null>(null);
-  const [rememberedAccount, setRememberedAccount] = useState<string | null>(null);
-  const [showRealCowNotice, setShowRealCowNotice] = useState(false);
   const sessionRef = useRef(s.session);
   sessionRef.current = s.session;
-  useEffect(() => {
-    const account = s.session?.mode === 'real' ? s.session.loginid : null;
-    const refreshPreference = () => {
-      try { setRememberedAccount(account && localStorage.getItem(`zeronine:real-cow-confirm:${account}`) === 'enabled' ? account : null); }
-      catch { setRememberedAccount(null); }
-    };
-    refreshPreference();
-    window.addEventListener('real-cow-preference', refreshPreference);
-    window.addEventListener('storage', refreshPreference);
-    return () => { window.removeEventListener('real-cow-preference', refreshPreference); window.removeEventListener('storage', refreshPreference); };
-  }, [s.session?.loginid, s.session?.mode]);
-  const rememberedReal = Boolean(s.session?.mode === 'real' && rememberedAccount === s.session.loginid);
   useEffect(() => { if (s.session) void refreshTrades(); }, [s.session?.loginid]);
-  useEffect(() => {
-    if (!active || !rememberedReal) { setShowRealCowNotice(false); return; }
-    const noticeKey = `zeronine:real-cow-notice-seen:${s.session?.loginid ?? ''}`;
-    try {
-      if (localStorage.getItem(noticeKey) === 'seen') { setShowRealCowNotice(false); return; }
-      localStorage.setItem(noticeKey, 'seen');
-    } catch { /* If storage is unavailable, show the reminder for this visit only. */ }
-    setShowRealCowNotice(true);
-    const timer = window.setTimeout(() => setShowRealCowNotice(false), 10_000);
-    return () => window.clearTimeout(timer);
-  }, [active, rememberedReal, s.session?.loginid]);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const roomFrameRef = useRef<HTMLIFrameElement>(null);
   const timedManualExecuting = useRef(false);
@@ -888,7 +860,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   ): Promise<boolean> => {
     setManualBusy(true);
     setManualError(false);
-    setManualMsg('Requesting a live quote for review...');
+    setManualMsg('Requesting a live quote...');
     setManualExecution({ stage: 'quoting', message: 'Checking feed, account risk, and live payout' });
     try {
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
@@ -896,17 +868,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
       const preview = await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation });
       if (sessionRef.current?.loginid !== s.session?.loginid || sessionRef.current?.mode !== s.session?.mode) throw new Error('Account changed while requesting the quote. No trade was submitted.');
-      if (maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode)) {
-        setManualExecution({ stage: 'buying', message: 'Real funds · checking the fresh quote and account safeguards' });
-        const result = await confirmManualTrade(preview.previewId, crypto.randomUUID());
-        setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Real-money purchase confirmed · waiting for settlement' });
-        setManualMsg(`Real-money contract purchased @ ${fmtMoney(result.trade.ask, preview.account.currency)} · payout ${fmtMoney(result.trade.payout, preview.account.currency)}`);
-        void refreshTrades();
-        return true;
-      }
-      setManualPreview(preview);
-      setManualExecution({ stage: 'review', message: 'Quote ready - review every value before confirming' });
-      setManualMsg('Live quote ready for review - no contract has been purchased');
+      // Pasture orders are one operator action: quote, live safeguard check, purchase.
+      // There is no per-trade confirmation step for cow trades.
+      setManualExecution({ stage: 'buying', message: 'Real funds · checking the fresh quote and account safeguards' });
+      const result = await confirmManualTrade(preview.previewId, crypto.randomUUID());
+      setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Real-money purchase confirmed · waiting for settlement' });
+      setManualMsg(`Real-money contract purchased @ ${fmtMoney(result.trade.ask, preview.account.currency)} · payout ${fmtMoney(result.trade.payout, preview.account.currency)}`);
+      void refreshTrades();
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1000,7 +968,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     return true;
   };
 
-  const confirmManualPreview = async (remember = false): Promise<void> => {
+  const confirmManualPreview = async (): Promise<void> => {
     if (!manualPreview || manualBusy) return;
     if (Date.now() >= manualPreview.expiresAt) {
       setManualPreview(null);
@@ -1014,10 +982,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualExecution({ stage: 'buying', message: 'Refreshing the quote and reserving the digit lane' });
     try {
       const result = await confirmManualTrade(manualPreview.previewId, crypto.randomUUID());
-      const account = s.session?.mode === 'real' ? s.session.loginid : null;
-      if (remember && account && sessionRef.current?.loginid === account && sessionRef.current?.mode === 'real') {
-        try { localStorage.setItem(`zeronine:real-cow-confirm:${account}`, 'enabled'); setRememberedAccount(account); } catch { /* Continue with review on future trades if storage is unavailable. */ }
-      }
       setManualPreview(null);
       setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
       setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, manualPreview.account.currency)} · payout ${fmtMoney(result.trade.payout, manualPreview.account.currency)}`);
@@ -1346,8 +1310,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         roomFrameRef.current?.contentWindow?.postMessage({
           type: 'zeronine:room-trade-result',
           ok,
-          phase: ok && s.session?.mode === 'real' && !rememberedReal ? 'review' : undefined,
-          message: ok ? (s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
+          message: ok ? (s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
         }, window.location.origin);
       });
     };
@@ -1401,8 +1364,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>
 
-      {active && rememberedReal && showRealCowNotice && <div class="real-cow-mode" role="status"><span>Real-money cow trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); window.dispatchEvent(new Event('real-cow-preference')); }}>Turn confirmation on</button></div>}
-
       {active && !marketChooserOpen && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
         <iframe
           ref={roomFrameRef}
@@ -1413,7 +1374,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         />
       </section>}
 
-      {active && !marketChooserOpen && manualPreview && <PastureQuoteReview key={manualPreview.previewId} preview={manualPreview} busy={manualBusy} error={manualError ? manualMsg : ''} onConfirm={(remember) => void confirmManualPreview(remember)} onCancel={cancelManualPreview} />}
+      {active && !marketChooserOpen && manualPreview && <PastureQuoteReview key={manualPreview.previewId} preview={manualPreview} busy={manualBusy} error={manualError ? manualMsg : ''} onConfirm={() => void confirmManualPreview()} onCancel={cancelManualPreview} />}
 
       {active && marketChooserOpen && <section class={`trading-room-home room-${roomActivity}`} aria-label="Advanced manual trading controls">
         <TradingRoomEnvironment
@@ -3167,23 +3128,6 @@ function BotLimitInput({
   );
 }
 
-function CowConfirmationSettings({ session }: { session: SessionInfo }): JSX.Element | null {
-  const [disabled, setDisabled] = useState(false);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    const refresh = () => {
-      try { setDisabled(session.mode === 'real' && localStorage.getItem(`zeronine:real-cow-confirm:${session.loginid}`) === 'enabled'); }
-      catch { setDisabled(false); }
-    };
-    refresh();
-    window.addEventListener('real-cow-preference', refresh);
-    window.addEventListener('storage', refresh);
-    return () => { window.removeEventListener('real-cow-preference', refresh); window.removeEventListener('storage', refresh); };
-  }, [session.loginid, session.mode]);
-  if (session.mode !== 'real') return null;
-  return <section class="cow-confirm-settings" aria-label="Real-money cow trade confirmation"><div><span>PASTURE SETTINGS</span><h2>Real-money confirmation</h2><p>{disabled ? 'Confirmation is off for cow trades on this account in this browser.' : 'You will review and confirm real-money cow trades before they are placed.'}</p></div><button type="button" disabled={!disabled} onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${session.loginid}`); setError(''); window.dispatchEvent(new Event('real-cow-preference')); } catch { setError('Could not update this browser setting. Please try again.'); } }}>{disabled ? 'Turn confirmation on' : 'Confirmation on'}</button>{error && <small role="alert">{error}</small>}</section>;
-}
-
 function BotPage(): JSX.Element {
   const s = useStore();
   const [stakeText, setStakeText] = useState(String(s.settings?.base_stake ?? 1));
@@ -3298,8 +3242,6 @@ function BotPage(): JSX.Element {
         <div class="page-title">Bot Cockpit</div>
         <div class="subtitle">Configure, protect, and launch automation from one control room</div>
       </header>
-
-      <CowConfirmationSettings session={s.session} />
 
       <ObservationRail
         automation={automation}
