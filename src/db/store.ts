@@ -387,6 +387,19 @@ function migrate(d: DatabaseSync): void {
       created_at INTEGER,
       updated_at INTEGER
     );
+    CREATE TABLE IF NOT EXISTS player_accounts (
+      loginid TEXT PRIMARY KEY,
+      token_cipher TEXT NOT NULL,
+      token_expires_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS player_sessions (
+      session_hash TEXT PRIMARY KEY,
+      loginid TEXT NOT NULL REFERENCES player_accounts(loginid) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_player_sessions_loginid ON player_sessions(loginid);
     CREATE TABLE IF NOT EXISTS game_progress (
       player_id TEXT PRIMARY KEY,
       xp INTEGER NOT NULL DEFAULT 0,

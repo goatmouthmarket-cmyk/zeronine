@@ -30,4 +30,5 @@
 
 ## Delivery
 
+- For an authorized multi-step implementation, make a concrete plan, carry out each batch, and continue through verification and delivery without stopping after a plan, investigation, or partial implementation. Research missing technical details and resolve routine decisions autonomously. Ask only when essential information or authorization is genuinely unavailable; clearly report any actual blocker and completed work.
 - After each completed task, commit the verified changes and push the current branch unless the user directs otherwise.
