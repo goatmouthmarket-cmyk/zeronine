@@ -9,6 +9,9 @@ import type { MarketRegistry } from '../core/marketState.ts';
 import { buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { getSettings } from '../db/store.ts';
 import { estimateWinRate, winDigits } from '../core/digitMath.ts';
+import { isOwner } from './access.ts';
+import { getSession } from '../db/store.ts';
+import { resolveStoredToken } from '../deriv/oauth.ts';
 
 type Direction = 'over' | 'under';
 type Order = { market: string; direction: Direction; barrier: number; stake: number; minEdge: number };
@@ -34,7 +37,14 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     const value = req.unsignCookie(signed);
     return value.valid ? value.value : null;
   };
-  const principal = async (req: FastifyRequest) => store.resolveSession(secretFor(req));
+  const principal = async (req: FastifyRequest) => {
+    if (isOwner(req)) {
+      const ownerSession = getSession();
+      if (ownerSession) return { accountId: ownerSession.loginid, token: await resolveStoredToken(), source: 'owner' as const };
+    }
+    const player = await store.resolveSession(secretFor(req));
+    return player ? { ...player, source: 'player' as const } : null;
+  };
   const account = async (accountId: string, token: string) => {
     const info = (await listDerivAccounts(token)).find(item => String(item.account_id) === accountId);
     if (!info) throw new Error('Deriv account unavailable; sign in again');
@@ -220,7 +230,9 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (socket.readyState !== socket.OPEN) return;
       const accountId = user.accountId;
       const secret = secretFor(req);
-      const stillAuthorized = async () => (await store.resolveSession(secret))?.accountId === accountId;
+      const stillAuthorized = async () => user.source === 'owner'
+        ? isOwner(req) && getSession()?.loginid === accountId
+        : (await store.resolveSession(secret))?.accountId === accountId;
       const send = (event: Event) => { void (async () => {
         if (!await stillAuthorized()) { socket.close(1008, 'session expired'); return; }
         if (socket.readyState === socket.OPEN && socket.bufferedAmount < 65536) socket.send(JSON.stringify(event));

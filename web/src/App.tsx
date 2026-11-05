@@ -686,7 +686,9 @@ function PastureQuoteReview({ preview, busy, error, onConfirm, onCancel }: { pre
 
 function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const base = useStore();
-  const s = { ...base, session: base.owner ? base.session : base.playerSession, trades: base.owner ? base.trades : base.playerTrades };
+  const usePlayerTrading = Boolean(base.multiplayerEnabled);
+  const ownerPlayerSession = base.playerSession?.loginid === base.session?.loginid ? base.playerSession : null;
+  const s = { ...base, session: base.owner ? ownerPlayerSession ?? base.session : base.playerSession, trades: usePlayerTrading ? base.playerTrades : base.trades, recovery: usePlayerTrading ? null : base.recovery };
   const [headerNavOpen, setHeaderNavOpen] = useState(false);
   const [rangerAutoMenuOpen, setRangerAutoMenuOpen] = useState(false);
   const [rangerAutoRunning, setRangerAutoRunning] = useState(false);
@@ -768,7 +770,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     pushes: digitTrades.filter((t) => t.status === 'push' || t.status === 'expired' || t.status === 'timeout').length,
     profit: digitTrades.reduce((acc, t) => acc + (t.profit ?? 0), 0),
   }), [digitTrades]);
-  const performance = s.performance ?? fallbackPerformance;
+  const performance = usePlayerTrading ? fallbackPerformance : s.performance ?? fallbackPerformance;
 
   const candidates = s.signal?.signal.candidates ?? [];
   const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
@@ -854,7 +856,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
   ): Promise<boolean> => {
-    if (!s.owner && s.playerSession) return previewManualNow(direction, barrier, marketSymbol ?? '', stakeOverride, onFailure, rangerAutomation, minEdge);
+    if (usePlayerTrading) return previewManualNow(direction, barrier, marketSymbol ?? '', stakeOverride, onFailure, rangerAutomation, minEdge);
     if (guest || !marketSymbol) {
       onFailure?.('Connect Deriv and select a live market before placing a bet.');
       return false;
@@ -920,11 +922,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const selectedMarket = s.markets.find((item) => item.symbol === marketSymbol);
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
-      const preview = s.owner
-        ? await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge })
-        : await previewPlayerTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge });
+      const preview = usePlayerTrading
+        ? await previewPlayerTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge })
+        : await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge });
       if (sessionRef.current?.loginid !== s.session?.loginid || sessionRef.current?.mode !== s.session?.mode) throw new Error('Account changed while requesting the quote. No trade was submitted.');
-      if (s.owner && maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode)) {
+      if (!usePlayerTrading && s.owner && maySkipCowReview(rememberedAccount, s.session, sessionRef.current, preview.account.mode)) {
         setManualExecution({ stage: 'buying', message: 'Real funds · checking the fresh quote and account safeguards' });
         const result = await confirmManualTrade(preview.previewId, crypto.randomUUID());
         setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Real-money purchase confirmed · waiting for settlement' });
@@ -976,7 +978,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     companionDemo = false,
   ): Promise<boolean> => {
     if (!marketSymbol) return false;
-    if (!s.owner && s.playerSession) return previewManualNow(direction, barrier, marketSymbol, manualStake);
+    if (usePlayerTrading) return previewManualNow(direction, barrier, marketSymbol, manualStake);
     // Companion prompts are an explicit instruction to trade now. They still
     // use the current best model setup and all normal account/lane safeguards.
     if (companionDemo) return executeManualNow(direction, barrier, marketSymbol, manualStake, 'model', true);
@@ -1043,9 +1045,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setManualError(false);
     setManualExecution({ stage: 'buying', message: 'Refreshing the quote and reserving the digit lane' });
     try {
-      const result = s.owner
-        ? await confirmManualTrade(manualPreview.previewId, crypto.randomUUID())
-        : await confirmPlayerTrade(manualPreview.previewId, manualPreview.account.mode === 'real');
+      const result = usePlayerTrading
+        ? await confirmPlayerTrade(manualPreview.previewId, manualPreview.account.mode === 'real')
+        : await confirmManualTrade(manualPreview.previewId, crypto.randomUUID());
       const account = s.session?.mode === 'real' ? s.session.loginid : null;
       if (remember && account && sessionRef.current?.loginid === account && sessionRef.current?.mode === 'real') {
         try { localStorage.setItem(`zeronine:real-cow-confirm:${account}`, 'enabled'); setRememberedAccount(account); } catch { /* Continue with review on future trades if storage is unavailable. */ }
@@ -1182,9 +1184,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     setSettlementBusy(true);
     setManualError(false);
     try {
-      if (!openAccountTrade.contract_id) await clearStuckTrade();
+      if (!usePlayerTrading && !openAccountTrade.contract_id) await clearStuckTrade();
       await syncCoreState();
-      await refreshTrades();
+      if (usePlayerTrading) await refreshPlayerState();
+      else await refreshTrades();
     } catch (err) {
       setManualError(true);
       setManualMsg(err instanceof Error ? err.message : String(err));
@@ -1419,8 +1422,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         roomFrameRef.current?.contentWindow?.postMessage({
           type: 'zeronine:room-trade-result',
           ok,
-          phase: ok && !s.owner && s.playerSession ? 'review' : ok && s.session?.mode === 'real' && !rememberedReal ? 'review' : undefined,
-          message: ok ? (!s.owner && s.playerSession ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
+          phase: ok && usePlayerTrading ? 'review' : ok && s.session?.mode === 'real' && !rememberedReal ? 'review' : undefined,
+          message: ok ? (usePlayerTrading ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' && !rememberedReal ? 'Live quote ready for your confirmation.' : s.session?.mode === 'real' ? 'Real-money order submitted.' : 'Deriv order submitted.') : failureMessage,
         }, window.location.origin);
       });
     };
@@ -3229,7 +3232,8 @@ function PastureHistory(): JSX.Element {
     } catch { if (token === generation.current) setError('Could not load older trades. Please try again.'); }
     finally { if (token === generation.current) setBusy(false); }
   };
-  if (!s.owner && s.playerSession) return <section class="pasture-history" aria-label="Your account trades">
+  if (s.multiplayerEnabled && !s.playerSession) return <p class="pasture-detail-empty">Connect Deriv to see your account trades.</p>;
+  if (s.multiplayerEnabled && s.playerSession) return <section class="pasture-history" aria-label="Your account trades">
     <p class="pasture-detail-intro">Account trades for <strong>{s.playerSession.loginid}</strong></p>
     <div class="pasture-history-list">{s.playerTrades.map(trade => <article class="pasture-history-row" key={trade.id}>
       <div><strong>{shortMarketName(s.markets.find(market => market.symbol === trade.market)?.display ?? trade.market)}</strong><small>{tradeContractLabel(trade)} · {new Date(trade.ts).toLocaleString()}</small></div>

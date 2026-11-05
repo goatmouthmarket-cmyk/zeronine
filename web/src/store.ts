@@ -931,6 +931,7 @@ export interface GoldModuleState {
 export interface State {
   publicDashboard?: boolean;
   publicDerivLogin?: boolean;
+  multiplayerEnabled?: boolean;
   owner?: boolean;
   ws: 'connecting' | 'open' | 'closed';
   feed: FeedStatus | null;
@@ -1533,7 +1534,7 @@ window.setInterval(() => {
 
 // ---- actions ----
 
-function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_login?: boolean; owner?: boolean }): void {
+function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_login?: boolean; multiplayer_enabled?: boolean; owner?: boolean }): void {
   const markets = Array.isArray(s.markets) ? s.markets : [];
   const accountChanged = state.session?.loginid !== s.session?.loginid;
   cachePublicMarkets(markets);
@@ -1541,7 +1542,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_lo
       feed: s.feed,
       markets,
       session: s.session,
-      ...(accountChanged ? { digitRemainingLoss: null, digitTradeEvidence: [] } : {}),
+      ...(accountChanged ? { playerSession: null, playerTrades: [], digitRemainingLoss: null, digitTradeEvidence: [] } : {}),
       recovery: s.recovery,
       settings: s.settings,
       automation: s.automation,
@@ -1552,6 +1553,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_lo
       gold: s.gold ?? null,
       publicDashboard: Boolean(s.public_dashboard),
       publicDerivLogin: Boolean(s.public_deriv_login),
+      multiplayerEnabled: Boolean(s.multiplayer_enabled),
       owner: Boolean(s.owner),
       digits: (() => {
         const out: Record<string, number[]> = {};
@@ -1583,11 +1585,16 @@ function playerTradeRow(raw: Record<string, unknown>): TradeRow {
   };
 }
 
+let playerStateRequest = 0;
 export async function refreshPlayerState(): Promise<void> {
+  const request = ++playerStateRequest;
   try {
     const response = await api<{ session: SessionInfo; trades: Array<Record<string, unknown>> }>('/api/player/trading/state');
+    if (request !== playerStateRequest) return;
+    if (state.owner && state.multiplayerEnabled && state.session?.loginid !== response.session.loginid) return;
     set({ playerSession: response.session, playerTrades: response.trades.map(playerTradeRow) });
   } catch {
+    if (request !== playerStateRequest) return;
     set({ playerSession: null, playerTrades: [] });
   }
 }
@@ -1600,6 +1607,8 @@ export async function loadPlayerAccounts(): Promise<Array<{ accountId: string; m
 export async function selectPlayerAccount(accountId: string): Promise<void> {
   await api('/api/player/accounts/select', { method: 'POST', body: JSON.stringify({ accountId }) });
   playerSocket?.close();
+  playerStateRequest++;
+  set({ playerSession: null, playerTrades: [] });
   await refreshPlayerState();
   connectPlayerWs();
 }
@@ -1607,6 +1616,7 @@ export async function selectPlayerAccount(accountId: string): Promise<void> {
 export async function logoutPlayer(): Promise<void> {
   await api('/api/player/logout', { method: 'POST' });
   playerSocket?.close();
+  playerStateRequest++;
   set({ playerSession: null, playerTrades: [] });
 }
 
@@ -1630,10 +1640,10 @@ async function refreshCoreState(): Promise<void> {
   stateRefreshController = controller;
   const refresh = (async () => {
     try {
-      const snapshot = (await api('/api/state', { signal: controller.signal })) as State & { public_dashboard?: boolean; owner?: boolean };
+      const snapshot = (await api('/api/state', { signal: controller.signal })) as State & { public_dashboard?: boolean; multiplayer_enabled?: boolean; owner?: boolean };
       if (controller.signal.aborted || stateRefreshController !== controller) return;
       applyCoreState(snapshot);
-      if (!snapshot.owner) void refreshPlayerState();
+      if (!snapshot.owner || snapshot.multiplayer_enabled) void refreshPlayerState();
     } catch {
       // Keep the last good state. WebSocket recovery continues independently.
     }
@@ -1962,8 +1972,10 @@ export async function switchDerivAccount(accountId: string): Promise<SessionInfo
     body: JSON.stringify({ accountId }),
   });
   signalStabilizer.reset();
-  set({ session: res.session, trades: [], digitTradeEvidence: [], digitRemainingLoss: null, performance: null, recovery: null, contract: null, contracts: {}, decision: null });
+  playerStateRequest++;
+  set({ session: res.session, trades: [], playerSession: null, playerTrades: [], digitTradeEvidence: [], digitRemainingLoss: null, performance: null, recovery: null, contract: null, contracts: {}, decision: null });
   await refreshTrades();
+  if (state.multiplayerEnabled) await refreshPlayerState();
   return res.session;
 }
 

@@ -10,10 +10,13 @@ process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'pasture-player-trading-'));
 process.env.SESSION_SECRET = 'test-player-trading-secret-32-characters';
 
 test('two signed players can trade their own accounts but cannot use each otherâ€™s quote', async () => {
-  const [{ default: Fastify }, { default: cookie }, { default: websocket }, { registerPlayerTrading }, { DerivPrivateClient }, { MarketRegistry }] = await Promise.all([
+  const [{ default: Fastify }, { default: cookie }, { default: websocket }, { registerPlayerTrading }, { DerivPrivateClient }, { MarketRegistry }, { config }, { setSession }, { encryptToken }] = await Promise.all([
     import('fastify'), import('@fastify/cookie'), import('@fastify/websocket'),
     import('../src/api/playerTrading.ts'), import('../src/deriv/privateClient.ts'), import('../src/core/marketState.ts'),
+    import('../src/config.ts'), import('../src/db/store.ts'), import('../src/db/crypto.ts'),
   ]);
+  const originalAdminToken = config.dashboardAdminToken;
+  config.dashboardAdminToken = 'test-owner-dashboard-token';
   const originalFetch = globalThis.fetch;
   const originalConnect = DerivPrivateClient.prototype.connect;
   const originalQuote = DerivPrivateClient.prototype.getQuote;
@@ -45,7 +48,7 @@ test('two signed players can trade their own accounts but cannot use each otherâ
   };
   globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
     const token = (options?.headers as Record<string, string>).Authorization;
-    const accountId = token.endsWith('alice') ? 'VRTC111' : 'VRTC222';
+    const accountId = token.endsWith('alice') ? 'VRTC111' : token.endsWith('owner') ? 'VRTC333' : 'VRTC222';
     return Response.json({ data: [{ account_id: accountId, account_type: 'demo', currency: 'USD', balance: 100 }] });
   }) as typeof fetch;
   DerivPrivateClient.prototype.connect = async function (_token, accountId) { connected.set(this, accountId!); return { loginid: accountId!, balance: 100, currency: 'USD', mode: 'demo' }; };
@@ -63,6 +66,7 @@ test('two signed players can trade their own accounts but cannot use each otherâ
     await app.register(cookie, { secret: process.env.SESSION_SECRET });
     await app.register(websocket);
     app.get('/test/cookie/:name', (req, reply) => { const name = (req.params as { name: string }).name; reply.setCookie('deriv_cows_session', `secret-${name}`, { signed: true, path: '/' }); return { ok: true }; });
+    app.get('/test/owner-cookie', (_req, reply) => { reply.setCookie('zeronine_owner', config.dashboardAdminToken, { signed: true, path: '/' }); return { ok: true }; });
     const registry = new MarketRegistry({ onTick: () => undefined });
     // The shared market is fresh and has a known digit sample.
     (registry as unknown as { has: (symbol: string) => boolean; snapshot: (symbol: string) => unknown }).has = () => true;
@@ -104,6 +108,27 @@ test('two signed players can trade their own accounts but cannot use each otherâ
     const bobState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: bob } });
     assert.equal(bobState.json().session.loginid, 'VRTC222');
     assert.deepEqual(bobState.json().trades, []);
+    setSession({ id: 'owner-test', loginid: 'VRTC333', balance: 100, currency: 'USD', mode: 'demo', auth_kind: 'pat', token_cipher: encryptToken('token-owner'), created_at: Date.now(), updated_at: Date.now() });
+    const ownerCookie = String((await app.inject({ method: 'GET', url: '/test/owner-cookie' })).headers['set-cookie']).split(';', 1)[0];
+    const ownerState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: ownerCookie } });
+    assert.equal(ownerState.statusCode, 200, ownerState.body);
+    assert.equal(ownerState.json().session.loginid, 'VRTC333');
+    const ownerPreview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: ownerCookie }, payload: order });
+    assert.equal(ownerPreview.statusCode, 200, ownerPreview.body);
+    const ownerStolen = await app.inject({ method: 'POST', url: '/api/player/trade/confirm', headers: { cookie: alice }, payload: { previewId: ownerPreview.json().previewId, idempotencyKey: 'alice-request-0002' } });
+    assert.equal(ownerStolen.statusCode, 403);
+    const ownerBuy = await app.inject({ method: 'POST', url: '/api/player/trade/confirm', headers: { cookie: ownerCookie }, payload: { previewId: ownerPreview.json().previewId, idempotencyKey: 'owner-request-0001' } });
+    assert.equal(ownerBuy.statusCode, 200, ownerBuy.body);
+    assert.deepEqual(bought, ['VRTC111', 'VRTC333']);
+    setSession({ id: 'owner-switched', loginid: 'VRTC222', balance: 100, currency: 'USD', mode: 'demo', auth_kind: 'pat', token_cipher: encryptToken('token-bob'), created_at: Date.now(), updated_at: Date.now() });
+    const switchedState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: ownerCookie } });
+    assert.equal(switchedState.json().session.loginid, 'VRTC222');
+    const switchedOwnerPreview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: ownerCookie }, payload: order });
+    assert.equal(switchedOwnerPreview.statusCode, 200, switchedOwnerPreview.body);
+    setSession({ id: 'owner-switched-back', loginid: 'VRTC333', balance: 100, currency: 'USD', mode: 'demo', auth_kind: 'pat', token_cipher: encryptToken('token-owner'), created_at: Date.now(), updated_at: Date.now() });
+    const staleOwnerConfirm = await app.inject({ method: 'POST', url: '/api/player/trade/confirm', headers: { cookie: ownerCookie }, payload: { previewId: switchedOwnerPreview.json().previewId, idempotencyKey: 'owner-request-0002' } });
+    assert.equal(staleOwnerConfirm.statusCode, 403);
+    assert.deepEqual(bought, ['VRTC111', 'VRTC333']);
   } finally {
     aliceSocket?.close();
     bobSocket?.close();
@@ -114,5 +139,6 @@ test('two signed players can trade their own accounts but cannot use each otherâ
     DerivPrivateClient.prototype.placeBuy = originalBuy;
     DerivPrivateClient.prototype.getOpenContractIds = originalPortfolio;
     DerivPrivateClient.prototype.getContractSnapshot = originalSnapshot;
+    config.dashboardAdminToken = originalAdminToken;
   }
 });

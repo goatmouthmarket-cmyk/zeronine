@@ -674,6 +674,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       markets: registry.allSnapshots(),
       public_dashboard: publicDashboardEnabled(),
       public_deriv_login: config.allowPublicDerivLogin && Boolean(multiplayerStore),
+      multiplayer_enabled: Boolean(multiplayerStore),
       owner,
       session: owner && session
         ? {
