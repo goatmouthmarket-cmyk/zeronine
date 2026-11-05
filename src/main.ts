@@ -478,7 +478,12 @@ async function main(): Promise<void> {
 
   await feed.connect();
 
-  if (!multiplayerStore) automation.watch();
+  // Watch mode is public-market work only: it publishes scanner candidates for
+  // the dashboard and feeds the virtual paper simulator, and never asks for a
+  // private Deriv proposal unless an operator starts a bot run. Keeping it on
+  // in multiplayer is what lets the shared Ghost Scout receive signals; the
+  // account-isolation stop above still forbids any account order.
+  automation.watch();
 
   const reconnectPrivate = async (): Promise<void> => {
     const session = getSession();

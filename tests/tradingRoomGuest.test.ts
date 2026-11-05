@@ -1174,3 +1174,98 @@ test('live ranger hourglass follows demo and real submission phases', () => {
   harness.render(null);
   assert.equal(harness.wait.hidden, true, 'no bet means no hourglass');
 });
+
+test('ghost scout patrols smoothly, pauses, and only the leader drives it', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('function ghostPatrolOwner(');
+  const end = script.indexOf('function moveToward(', start);
+  assert.ok(start >= 0 && end > start, 'the ghost patrol exists');
+  const harness = runInNewContext(`let pastureSocket=null,pastureLeaderId='',pastureSelfId='',ghost={x:400,y:400},ghostPatrol=null,ghostWalkPhase=0,ghostWalkDir=1,cows=[];
+${script.slice(start, end)};
+({
+  patrol: advanceGhostPatrol,
+  owner: ghostPatrolOwner,
+  ghost: () => ({ x: ghost.x, y: ghost.y }),
+  state: () => ({ ...(ghostPatrol || {}) }),
+  walkPhase: () => ghostWalkPhase,
+  setGhost: (x, y) => { ghost.x = x; ghost.y = y },
+  setPatrol: (point) => { ghostPatrol = point },
+  setSession: (self, leader, online) => { pastureSelfId = self; pastureLeaderId = leader; pastureSocket = online ? {} : null },
+  setCows: (herd) => { cows = herd },
+})`, {}) as {
+    patrol: (now: number, dt: number) => void;
+    owner: () => boolean;
+    ghost: () => { x: number; y: number };
+    state: () => { x?: number; y?: number; pauseUntil?: number };
+    walkPhase: () => number;
+    setGhost: (x: number, y: number) => void;
+    setPatrol: (point: { x: number; y: number; pauseUntil: number } | null) => void;
+    setSession: (self: string, leader: string, online: boolean) => void;
+    setCows: (herd: Array<{ x: number; y: number; alive: boolean }>) => void;
+  };
+
+  // Solo play: the scout picks its own destination, then idles for a beat.
+  harness.patrol(1000, 1 / 60);
+  const first = harness.state();
+  assert.ok(Number.isFinite(first.x) && Number.isFinite(first.y), 'a patrol destination is chosen');
+  assert.ok((first.pauseUntil ?? 0) > 1000, 'it studies the pasture before walking');
+  assert.deepEqual({ ...harness.ghost() }, { x: 400, y: 400 }, 'choosing a destination never teleports the scout');
+
+  // Walking is bounded by the patrol speed: no jumps, no jitter.
+  harness.setGhost(400, 400);
+  harness.setPatrol({ x: 900, y: 400, pauseUntil: 0 });
+  harness.patrol(2000, 1 / 60);
+  const step = harness.ghost();
+  assert.ok(step.x > 400, 'the scout walks toward its destination');
+  assert.ok(step.x - 400 <= 72 * (1 / 60) + 1e-6, 'a single frame never exceeds the patrol speed');
+  assert.equal(step.y, 400, 'it walks in a straight line');
+  assert.ok(harness.walkPhase() > 0, 'the walk cycle advances while moving');
+
+  // Arrival starts a new search after a natural pause.
+  harness.setGhost(898, 400);
+  harness.patrol(3000, 1 / 60);
+  const arrived = harness.state();
+  assert.ok((arrived.pauseUntil ?? 0) > 3000, 'arrival pauses before the next search');
+  assert.ok(Math.hypot((arrived.x ?? 0) - 898, (arrived.y ?? 0) - 400) > 2, 'the next destination is somewhere else');
+
+  // A pause holds the scout still and stops the walk cycle.
+  harness.setGhost(500, 500);
+  harness.setPatrol({ x: 900, y: 500, pauseUntil: 9_000 });
+  harness.patrol(4_000, 1 / 60);
+  assert.deepEqual({ ...harness.ghost() }, { x: 500, y: 500 });
+  assert.equal(harness.walkPhase(), 0);
+
+  // Patrols prefer the herd without ever leaving the pasture bounds.
+  harness.setCows([{ x: 400, y: 300, alive: true }]);
+  for (let i = 0; i < 40; i++) {
+    harness.setGhost(400, 300);
+    harness.setPatrol({ x: 402, y: 300, pauseUntil: 0 });
+    harness.patrol(5_000 + i, 1 / 60);
+    const point = harness.state();
+    assert.ok((point.x ?? -1) >= 110 && (point.x ?? 0) <= 980, 'patrol stays inside the pasture');
+    assert.ok((point.y ?? -1) >= 130 && (point.y ?? 0) <= 760, 'patrol stays inside the pasture');
+  }
+
+  // Followers never move the shared ghost; they render the leader's position.
+  harness.setSession('me', 'leader', true);
+  assert.equal(harness.owner(), false, 'only the shared ghost owner simulates it');
+  harness.setGhost(600, 600);
+  harness.setPatrol({ x: 120, y: 120, pauseUntil: 0 });
+  harness.patrol(6_000, 1 / 60);
+  assert.deepEqual({ ...harness.ghost() }, { x: 600, y: 600 }, 'a follower leaves the ghost to the leader');
+  assert.deepEqual({ ...harness.state() }, {}, 'a follower discards its own patrol');
+  harness.setSession('me', 'me', true);
+  assert.equal(harness.owner(), true, 'the leader drives the shared ghost');
+  harness.setSession('', '', true);
+  assert.equal(harness.owner(), true, 'a single-player room drives its own ghost');
+});
+
+test('ghost scout shows the gold hourglass while its paper contract settles', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  assert.match(html, /function drawGhostPaperWait\(t\)\{[^}]*openContract[^}]*\}/);
+  assert.match(html, /ghostWaitPath=new Path2D\('M10 4h12M10 28h12M12 5c0 5 2 7 4 9 2-2 4-4 4-9M12 27c0-5 2-7 4-9 2 2 4 4 4 9'\)/);
+  assert.match(html, /ghostAvatar\(\);drawGhostPaperWait\(t\);drawGhostPaperBadge\(\)/, 'the hourglass is drawn with the scout');
+  assert.match(html, /last\.status==='lost'\)fx\.push\(\{[^}]*color:'#ffb1b5'\}/, 'a lost paper trade leaves a visible result');
+});
