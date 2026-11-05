@@ -1124,3 +1124,53 @@ test('ranger appearance validates saved colors and accessory choices', () => {
   assert.deepEqual({ ...normalize({ outfit: 'vest', color: '#ab3344', accent: '#abcdef', headwear: 'cap', accessory: 'scarf' }) }, { outfit: 'vest', color: '#ab3344', accent: '#abcdef', headwear: 'cap', accessory: 'scarf' });
   assert.deepEqual({ ...normalize({ outfit: 'invalid', color: 'red', accent: 'invalid', headwear: 'invalid' }) }, { outfit: 'classic', color: '#326db1', accent: '#a65b38', headwear: 'none', accessory: 'none' });
 });
+
+test('live ranger hourglass follows demo and real submission phases', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  const script = html.split('<script>')[1]?.split('</script>')[0];
+  assert.ok(script);
+  const start = script.indexOf('const liveRangerWait = document.createElement');
+  const end = script.indexOf('function paperTickKey(', start);
+  assert.ok(start >= 0 && end > start, 'the live ranger wait indicator exists');
+  const element = () => ({
+    hidden: false as boolean, firstChild: null as unknown, className: '', attrs: {} as Record<string, string>,
+    setAttribute(name: string, value: string) { this.attrs[name] = value; },
+    append(child: unknown) { this.firstChild = child; },
+    replaceChildren(child: unknown) { this.firstChild = child; },
+  });
+  const mirror = element();
+  const context = {
+    lastRoomState: { accountMode: 'demo' },
+    document: { body: { appendChild() {} }, createElement: () => mirror, createElementNS: () => element() },
+  };
+  const harness = runInNewContext(`let lastRoomState = globalThis.lastRoomState; ${script.slice(start, end)}; ({ render: renderLiveRangerWait, wait: liveRangerWait, setMode: (mode) => { lastRoomState = { accountMode: mode }; } })`, context) as {
+    render: (phase: string | null) => void;
+    wait: ReturnType<typeof element>;
+    setMode: (mode: 'demo' | 'real') => void;
+  };
+  const hourglass = 'M10 4h12M10 28h12M12 5c0 5 2 7 4 9 2-2 4-4 4-9M12 27c0-5 2-7 4-9 2 2 4 4 4 9';
+
+  harness.setMode('demo');
+  harness.render('submitting');
+  assert.equal(harness.wait.hidden, false, 'a demo order waits from the request onwards');
+  const svg = harness.wait.firstChild as unknown as { attrs: Record<string, string>; firstChild: { attrs: Record<string, string> } };
+  assert.equal(svg.attrs.viewBox, "0 0 32 32");
+  assert.equal(svg.firstChild.attrs.d, hourglass, "the paper scout hourglass glyph is reused");
+  assert.equal(harness.wait.attrs['aria-label'], 'Trade waiting for result');
+  harness.render('open');
+  assert.equal(harness.wait.hidden, false, 'a demo contract keeps waiting until it settles');
+  harness.render('won');
+  assert.equal(harness.wait.hidden, true, 'settlement clears the hourglass');
+  harness.render('lost');
+  assert.equal(harness.wait.hidden, true);
+
+  harness.setMode('real');
+  harness.render('submitting');
+  assert.equal(harness.wait.hidden, true, 'a real order shows it only once the trade is submitted');
+  harness.render('open');
+  assert.equal(harness.wait.hidden, false, 'the submitted real trade shows the same hourglass');
+  harness.render('won');
+  assert.equal(harness.wait.hidden, true);
+  harness.render(null);
+  assert.equal(harness.wait.hidden, true, 'no bet means no hourglass');
+});
