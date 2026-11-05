@@ -21,6 +21,7 @@ export class PastureRoom {
   private now: () => number;
   private capacity: number;
   constructor(now: () => number = Date.now, capacity = 100) { this.now = now; this.capacity = capacity; }
+  get size(): number { return this.players.size; }
   join(send: Send): string | null {
     if (this.players.size >= this.capacity) return null;
     const id = randomUUID(), name = `Ranger ${id.slice(0, 4).toUpperCase()}`;
@@ -62,4 +63,29 @@ export class PastureRoom {
     }
   }
   private broadcast(event: Record<string, unknown>, except?: string): void { for (const [id, player] of this.players) if (id !== except) player.send(event); }
+}
+
+/** Room state is ephemeral and scoped to a single room identifier. */
+export class PastureRooms {
+  private rooms = new Map<string, PastureRoom>();
+  private readonly maxRooms: number;
+  constructor(maxRooms = 256) { this.maxRooms = maxRooms; }
+
+  join(roomId: string, send: Send): { id: string; room: PastureRoom } | null {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) return null;
+    let room = this.rooms.get(roomId);
+    if (!room) {
+      if (this.rooms.size >= this.maxRooms) return null;
+      room = new PastureRoom();
+      this.rooms.set(roomId, room);
+    }
+    const id = room.join(send);
+    if (!id) return null;
+    return { id, room };
+  }
+
+  leave(roomId: string, room: PastureRoom, id: string): void {
+    room.leave(id);
+    if (room.size === 0 && this.rooms.get(roomId) === room) this.rooms.delete(roomId);
+  }
 }

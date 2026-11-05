@@ -1,6 +1,26 @@
 ﻿import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PastureRoom } from '../src/api/pastureRoom.ts';
+import { PastureRoom, PastureRooms } from '../src/api/pastureRoom.ts';
+
+test('room registry isolates presence and chat and discards empty rooms', () => {
+  const rooms = new PastureRooms(2);
+  const a: Record<string, unknown>[] = [], b: Record<string, unknown>[] = [], other: Record<string, unknown>[] = [];
+  const first = rooms.join('one', event => a.push(event))!;
+  const second = rooms.join('one', event => b.push(event))!;
+  const isolated = rooms.join('two', event => other.push(event))!;
+  assert.equal(rooms.join('three', () => {}), null);
+  assert.equal(rooms.join('../bad', () => {}), null);
+  first.room.receive(first.id, { type: 'chat', text: 'hello' });
+  assert.ok(b.some(event => event.type === 'chat'));
+  assert.ok(!other.some(event => event.type === 'chat' || event.type === 'player'));
+  rooms.leave('one', first.room, first.id);
+  rooms.leave('one', second.room, second.id);
+  const fresh: Record<string, unknown>[] = [];
+  const replacement = rooms.join('one', event => fresh.push(event))!;
+  assert.deepEqual(fresh[0].messages, []);
+  rooms.leave('one', replacement.room, replacement.id);
+  rooms.leave('two', isolated.room, isolated.id);
+});
 
 test('pasture shares bounded public presence and chat without sharing account data', () => {
   let now = 10_000;

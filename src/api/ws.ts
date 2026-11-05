@@ -4,7 +4,7 @@ import type { WebSocket } from 'ws';
 import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import { isOwner } from './access.ts';
-import { PastureRoom } from './pastureRoom.ts';
+import { PastureRooms } from './pastureRoom.ts';
 
 const TICK_INTERVAL_MS = 150;
 const MAX_BUFFER = 64 * 1024;
@@ -118,7 +118,7 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     socket.on('close', cleanup);
     socket.on('error', cleanup);
   });
-  const pasture = new PastureRoom();
+  const pastures = new PastureRooms();
   app.get('/pasture-ws', { websocket: true }, (socket: WebSocket, req) => {
     const origin = req.headers.origin;
     try { if (origin && new URL(origin).host !== req.headers.host) { socket.close(1008, 'origin rejected'); return; } }
@@ -129,13 +129,17 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       if (socket.bufferedAmount > MAX_BUFFER) { socket.close(1013, 'slow client'); return; }
       try { socket.send(JSON.stringify(event)); } catch { socket.terminate(); }
     };
-    const id = pasture.join(send);
-    if (!id) { socket.close(1013, 'pasture full'); return; }
+    const query = req.query as { room?: unknown };
+    const roomId = query.room === undefined ? 'public' : query.room;
+    if (typeof roomId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) { socket.close(1008, 'invalid room'); return; }
+    const joined = pastures.join(roomId, send);
+    if (!joined) { socket.close(1013, 'pasture full'); return; }
+    const { id, room: pasture } = joined;
     let alive = true;
     const heartbeat = setInterval(() => { if (!alive) { socket.terminate(); return; } alive = false; socket.ping(); }, HEARTBEAT_INTERVAL_MS);
     socket.on('pong', () => { alive = true; });
     socket.on('message', data => { try { pasture.receive(id, JSON.parse(data.toString())); } catch { /* Ignore invalid input. */ } });
-    const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); pasture.leave(id); };
+    const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); pastures.leave(roomId, pasture, id); };
     socket.on('close', cleanup); socket.on('error', cleanup);
   });
 
