@@ -81,3 +81,60 @@ test('private pasture websocket requires room membership and a signed player ses
     await app.close();
   }
 });
+
+test('signed players automatically share pasture presence, chat, and cow kills', async () => {
+  const oldToken = config.dashboardAdminToken;
+  const oldEnv = config.nodeEnv;
+  config.dashboardAdminToken = 'test-owner-token';
+  config.nodeEnv = 'production';
+  const app = Fastify();
+  await app.register(cookie, { secret: 'local-test-secret-long-enough' });
+  await registerWs(app, new Hub(), new MarketRegistry({ onTick() {} }), {
+    resolveSession: async (secret: string | null) => secret === 'alice-secret' ? { accountId: 'VRTC111' } : secret === 'bob-secret' ? { accountId: 'VRTC222' } : null,
+    isRoomMember: async () => false,
+  } as never);
+  app.get('/test/cookie/:name', (req, reply) => { reply.setCookie('deriv_cows_session', `${(req.params as { name: string }).name}-secret`, { signed: true, path: '/' }); return { ok: true }; });
+  const aliceCookie = String((await app.inject('/test/cookie/alice')).headers['set-cookie']).split(';', 1)[0];
+  const bobCookie = String((await app.inject('/test/cookie/bob')).headers['set-cookie']).split(';', 1)[0];
+  await app.listen({ port: 0, host: '127.0.0.1' });
+  const address = app.server.address();
+  assert.ok(address && typeof address !== 'string');
+  const open = (cookieHeader?: string) => {
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}/pasture-ws?room=main`, { headers: cookieHeader ? { cookie: cookieHeader } : {} });
+    const events: Array<Record<string, any>> = [];
+    socket.on('message', data => events.push(JSON.parse(data.toString())));
+    return { socket, events };
+  };
+  const waitFor = async (events: Array<Record<string, any>>, type: string): Promise<Record<string, any>> => {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const event = events.find(item => item.type === type);
+      if (event) return event;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    throw new Error(`${type} event not received`);
+  };
+  const alice = open(aliceCookie);
+  let bob: ReturnType<typeof open> | null = null;
+  let guest: ReturnType<typeof open> | null = null;
+  try {
+    await waitFor(alice.events, 'welcome');
+    bob = open(bobCookie);
+    const bobWelcome = await waitFor(bob.events, 'welcome');
+    assert.equal(bobWelcome.players.length, 2);
+    assert.equal((await waitFor(alice.events, 'player')).player.id, bobWelcome.id);
+    assert.doesNotMatch(JSON.stringify(bobWelcome), /VRTC111|VRTC222|balance|token/);
+    bob.socket.send(JSON.stringify({ type: 'chat', text: 'Hello pasture' }));
+    assert.equal((await waitFor(alice.events, 'chat')).message.text, 'Hello pasture');
+    bob.socket.send(JSON.stringify({ type: 'kill', x: 120, y: 240 }));
+    assert.equal((await waitFor(alice.events, 'kill')).playerId, bobWelcome.id);
+    guest = open();
+    const closed = await new Promise<number>((resolve, reject) => { guest!.socket.once('close', resolve); guest!.socket.once('error', reject); });
+    assert.equal(closed, 1008);
+  } finally {
+    alice.socket.terminate(); bob?.socket.terminate(); guest?.socket.terminate();
+    await app.close();
+    config.dashboardAdminToken = oldToken;
+    config.nodeEnv = oldEnv;
+  }
+});

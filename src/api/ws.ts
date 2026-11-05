@@ -4,6 +4,7 @@ import type { WebSocket } from 'ws';
 import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import { isOwner } from './access.ts';
+import { getSession } from '../db/store.ts';
 import { PastureRooms } from './pastureRoom.ts';
 import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
 
@@ -136,14 +137,20 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     if (typeof roomId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) { socket.close(1008, 'invalid room'); return; }
     let secret: string | null = null;
     let accountId: string | null = null;
+    let ownerSession = false;
     if (roomId !== 'public') {
-      if (!multiplayerStore) { socket.close(1008, 'private rooms unavailable'); return; }
-      const signed = req.cookies?.deriv_cows_session;
-      const value = signed ? req.unsignCookie(signed) : null;
-      secret = value?.valid ? value.value : null;
-      const session = await multiplayerStore.resolveSession(secret);
-      accountId = session?.accountId ?? null;
-      if (!accountId || !await multiplayerStore.isRoomMember(accountId, roomId)) { socket.close(1008, 'room access required'); return; }
+      if (roomId === 'main' && isOwner(req)) {
+        accountId = getSession()?.loginid ?? null;
+        ownerSession = Boolean(accountId);
+      }
+      if (!accountId && multiplayerStore) {
+        const signed = req.cookies?.deriv_cows_session;
+        const value = signed ? req.unsignCookie(signed) : null;
+        secret = value?.valid ? value.value : null;
+        const session = await multiplayerStore.resolveSession(secret);
+        accountId = session?.accountId ?? null;
+      }
+      if (!accountId || (roomId !== 'main' && (!multiplayerStore || !await multiplayerStore.isRoomMember(accountId, roomId)))) { socket.close(1008, 'pasture access required'); return; }
     }
     if (socket.readyState !== socket.OPEN) return;
     const joined = pastures.join(roomId, send);
@@ -152,9 +159,11 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     let alive = true;
     const heartbeat = setInterval(() => { void (async () => {
       if (!alive) { socket.terminate(); return; }
-      if (accountId && multiplayerStore) {
+      if (ownerSession) {
+        if (!isOwner(req) || getSession()?.loginid !== accountId) { socket.close(1008, 'session expired'); return; }
+      } else if (accountId && multiplayerStore) {
         const session = await multiplayerStore.resolveSession(secret);
-        if (session?.accountId !== accountId || !await multiplayerStore.isRoomMember(accountId, roomId)) { socket.close(1008, 'room access expired'); return; }
+        if (session?.accountId !== accountId || (roomId !== 'main' && !await multiplayerStore.isRoomMember(accountId, roomId))) { socket.close(1008, 'pasture access expired'); return; }
       }
       alive = false; socket.ping();
     })().catch(() => socket.close(1011, 'room unavailable')); }, HEARTBEAT_INTERVAL_MS);

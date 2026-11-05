@@ -690,10 +690,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [headerNavOpen, setHeaderNavOpen] = useState(false);
   const [rangerAutoMenuOpen, setRangerAutoMenuOpen] = useState(false);
   const [rangerAutoRunning, setRangerAutoRunning] = useState(false);
-  const [roomId, setRoomId] = useState<string | null>(null);
-  const [roomCode, setRoomCode] = useState('');
-  const [roomError, setRoomError] = useState('');
-  const [roomBusy, setRoomBusy] = useState(false);
   const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
   const [manualMsg, setManualMsg] = useState('');
@@ -714,36 +710,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [showRealCowNotice, setShowRealCowNotice] = useState(false);
   const sessionRef = useRef(s.session);
   sessionRef.current = s.session;
-  useEffect(() => {
-    const accountId = s.playerSession?.loginid;
-    if (!accountId || s.owner) { setRoomId(null); return; }
-    let activeRequest = true;
-    void (async () => {
-      const key = `deriv-cows-room:${accountId}`;
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const check = await fetch(`/api/player/rooms/${encodeURIComponent(saved)}`, { credentials: 'same-origin' });
-        if (check.ok) { if (activeRequest) setRoomId(saved); return; }
-      }
-      const created = await fetch('/api/player/rooms', { method: 'POST', credentials: 'same-origin' });
-      if (!created.ok) throw new Error('Could not create a private room');
-      const data = await created.json();
-      if (activeRequest) { localStorage.setItem(key, data.roomId); setRoomId(data.roomId); }
-    })().catch(() => { if (activeRequest) setRoomError('Private room unavailable. Try refreshing.'); });
-    return () => { activeRequest = false; };
-  }, [s.playerSession?.loginid, s.owner]);
-  const joinRoom = async (): Promise<void> => {
-    if (!s.playerSession || roomBusy) return;
-    setRoomBusy(true); setRoomError('');
-    try {
-      const response = await fetch('/api/player/rooms/join', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ roomId: roomCode.trim() }) });
-      if (!response.ok) throw new Error('Room not found. Check the invite code.');
-      const data = await response.json();
-      localStorage.setItem(`deriv-cows-room:${s.playerSession.loginid}`, data.roomId);
-      setRoomId(data.roomId); setRoomCode('');
-    } catch (error) { setRoomError(error instanceof Error ? error.message : 'Could not join room'); }
-    finally { setRoomBusy(false); }
-  };
   useEffect(() => {
     const account = s.session?.mode === 'real' ? s.session.loginid : null;
     const refreshPreference = () => {
@@ -1508,21 +1474,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>
 
-      {active && s.playerSession && <div class="pasture-room-invite" aria-label="Multiplayer room">
-        <span>Room <strong>{roomId ?? 'Connecting…'}</strong></span>
-        {roomId && <button type="button" onClick={() => void navigator.clipboard?.writeText(roomId)}>Copy invite</button>}
-        <label><span class="sr-only">Room invite code</span><input value={roomCode} onInput={(event) => setRoomCode(event.currentTarget.value)} placeholder="Paste room invite" /></label>
-        <button type="button" disabled={!roomCode.trim() || roomBusy} onClick={() => void joinRoom()}>{roomBusy ? 'Joining…' : 'Join'}</button>
-        {roomError && <small role="alert">{roomError}</small>}
-      </div>}
-
       {active && rememberedReal && showRealCowNotice && <div class="real-cow-mode" role="status"><span>Real-money cow trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); window.dispatchEvent(new Event('real-cow-preference')); }}>Turn confirmation on</button></div>}
 
-      {active && !marketChooserOpen && (!s.playerSession || roomId) && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
+      {active && !marketChooserOpen && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
         <iframe
           ref={roomFrameRef}
           class="trading-room-frame"
-          src={`/trading-room.html${s.playerSession && roomId ? `?room=${encodeURIComponent(roomId)}` : ''}`}
+          src={`/trading-room.html${s.session ? '?room=main' : ''}`}
           title="Deriv Cows interactive trading pasture"
           onLoad={() => { postRoomState(); syncDetailHud(); }}
         />
