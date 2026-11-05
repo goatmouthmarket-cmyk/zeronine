@@ -19,6 +19,8 @@ export interface AppConfig {
   oauthTokenUrl: string;
   sessionSecret: string;
   dashboardAdminToken: string;
+  /** Allows a visitor to establish the shared dashboard session through Deriv OAuth. */
+  allowPublicDerivLogin: boolean;
   baseStake: number;
   maxStake: number;
   martingaleSteps: number;
@@ -116,6 +118,7 @@ export function loadConfig(): AppConfig {
     // control the connected Deriv account. Public market intelligence remains
     // available without it.
     dashboardAdminToken: process.env.DASHBOARD_ADMIN_TOKEN || '',
+    allowPublicDerivLogin: process.env.DERIV_OAUTH_ALLOW_PUBLIC_LOGIN === '1',
     baseStake: num('BASE_STAKE', 1),
     maxStake: num('MAX_STAKE', 25),
     martingaleSteps: num('MARTINGALE_STEPS', 5),

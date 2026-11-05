@@ -335,6 +335,8 @@ cp .env.example .env
 
 Configure the required application settings and credentials.
 
+To enable **Continue with Deriv** without first entering `DASHBOARD_ADMIN_TOKEN`, set `DERIV_OAUTH_ALLOW_PUBLIC_LOGIN=1`. Use this only on a private, single-user deployment: the application maintains one shared connected account session, and a successful OAuth return grants that browser owner controls.
+
 Do not commit API credentials, authentication tokens, or other secrets.
 
 ### Build the Frontend

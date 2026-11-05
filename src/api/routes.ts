@@ -100,6 +100,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   // streaming and settlement subscriptions stay independent and responsive.
   const accountCoordinator = deps.accountCoordinator ?? new AccountCoordinator();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
+  const oauthStateCookie = 'zeronine_deriv_oauth_state';
+  const canStartDerivOauth = (req: FastifyRequest): boolean =>
+    isOwner(req) || config.allowPublicDerivLogin;
   const gamePlayerId = (req: FastifyRequest, reply: FastifyReply): string => {
     const cookie = req.cookies?.deriv_cows_player;
     const signed = typeof cookie === 'string' ? req.unsignCookie(cookie) : null;
@@ -650,6 +653,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       feed: feed.status(),
       markets: registry.allSnapshots(),
       public_dashboard: publicDashboardEnabled(),
+      public_deriv_login: config.allowPublicDerivLogin,
       owner,
       session: owner && session
         ? {
@@ -1923,20 +1927,45 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   });
 
   app.get('/api/auth/oauth/start', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!canStartDerivOauth(req)) {
+      reply.code(403);
+      return { error: 'dashboard owner access required' };
+    }
     const { verifier, challenge } = newPkce();
     const state = crypto.randomUUID();
     oauthPending.set(state, { verifier, created: Date.now() });
+    reply.setCookie(oauthStateCookie, state, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: config.nodeEnv === 'production',
+      signed: true,
+      maxAge: 10 * 60,
+    });
     return { ok: true, url: buildAuthorizeUrl(state, challenge) };
   });
 
   app.get('/api/auth/oauth/callback', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
+    if (!canStartDerivOauth(req)) {
+      reply.code(403);
+      return { error: 'dashboard owner access required' };
+    }
     const q = (req.query ?? {}) as Record<string, string | string[]>;
     const str = (k: string): string | undefined => {
       const v = q[k];
       return Array.isArray(v) ? v[0] : typeof v === 'string' ? v : undefined;
     };
+
+    const state = str('state');
+    const signedState = req.cookies?.[oauthStateCookie];
+    const cookieState = signedState ? req.unsignCookie(signedState) : null;
+    const entry = state && cookieState?.valid && cookieState.value === state ? oauthPending.get(state) : undefined;
+    reply.clearCookie(oauthStateCookie, { path: '/' });
+    if (!entry || !state) {
+      reply.redirect('/?oauth=error&msg=invalid%20or%20expired%20OAuth%20request');
+      return;
+    }
+    oauthPending.delete(state);
 
     const picks: Array<{ account?: string; token: string }> = [];
     for (let i = 1; i <= 30; i++) {
@@ -1954,10 +1983,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       token = (preferred ?? picks[0]).token;
     } else {
       const code = str('code');
-      const state = str('state');
-      const entry = state ? oauthPending.get(state) : undefined;
-      if (code && entry) {
-        oauthPending.delete(state!);
+      if (code) {
         try {
           tokenSet = await exchangeOauthCode(code, entry.verifier);
           token = tokenSet.accessToken;
@@ -1987,6 +2013,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         created_at: created,
         updated_at: created,
       });
+      if (config.allowPublicDerivLogin) grantOwner(reply);
       hub.emit({ type: 'session', ts: Date.now(), session: { ...info } });
       reply.redirect('/?oauth=ok');
     } catch (err) {

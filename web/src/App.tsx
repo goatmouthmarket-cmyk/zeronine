@@ -478,7 +478,7 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
       </div>
 
       <div class="connect-card">
-        {s.publicDashboard && !s.owner && (
+        {s.publicDashboard && !s.owner && !s.publicDerivLogin && (
           <>
           <div class="connect-title">Owner access</div>
             <div class="connect-copy">This dashboard currently requires owner access to connect an account. Guest play is available without it.</div>
@@ -516,7 +516,7 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
         <div class="connect-copy">Sign in to use your demo or real Deriv account. You can explore and shoot cows as a guest; guest shots never place bets.</div>
         <button
           class="connect-btn connect-btn--oauth"
-          disabled={oauthBusy || (s.publicDashboard && !s.owner)}
+          disabled={oauthBusy || (s.publicDashboard && !s.owner && !s.publicDerivLogin)}
           onClick={async () => {
             setOauthBusy(true);
             setError('');

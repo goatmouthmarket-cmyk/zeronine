@@ -930,6 +930,7 @@ export interface GoldModuleState {
 
 export interface State {
   publicDashboard?: boolean;
+  publicDerivLogin?: boolean;
   owner?: boolean;
   ws: 'connecting' | 'open' | 'closed';
   feed: FeedStatus | null;
@@ -1528,7 +1529,7 @@ window.setInterval(() => {
 
 // ---- actions ----
 
-function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean }): void {
+function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_login?: boolean; owner?: boolean }): void {
   const markets = Array.isArray(s.markets) ? s.markets : [];
   const accountChanged = state.session?.loginid !== s.session?.loginid;
   cachePublicMarkets(markets);
@@ -1546,6 +1547,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; owner?: boolean
       momentum: s.momentum ?? null,
       gold: s.gold ?? null,
       publicDashboard: Boolean(s.public_dashboard),
+      publicDerivLogin: Boolean(s.public_deriv_login),
       owner: Boolean(s.owner),
       digits: (() => {
         const out: Record<string, number[]> = {};

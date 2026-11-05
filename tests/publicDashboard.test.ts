@@ -24,7 +24,9 @@ test('public dashboard exposes global market data but protects the connected acc
       import('../src/telemetry/service.ts'),
     ]);
   const previousToken = cfg.config.dashboardAdminToken;
+  const previousPublicLogin = cfg.config.allowPublicDerivLogin;
   cfg.config.dashboardAdminToken = 'owner-test-token';
+  cfg.config.allowPublicDerivLogin = false;
 
   const app = Fastify();
   await app.register(cookie, { secret: cfg.config.sessionSecret });
@@ -81,6 +83,30 @@ test('public dashboard exposes global market data but protects the connected acc
   assert.equal((await app.inject({ method: 'GET', url: '/api/telemetry/events' })).statusCode, 403);
   assert.equal((await app.inject({ method: 'POST', url: '/api/telemetry/paper', payload: {} })).statusCode, 403);
 
+  const blockedOAuth = await app.inject({ method: 'GET', url: '/api/auth/oauth/start' });
+  assert.equal(blockedOAuth.statusCode, 403);
+
+  cfg.config.allowPublicDerivLogin = true;
+  const oauthStart = await app.inject({ method: 'GET', url: '/api/auth/oauth/start' });
+  assert.equal(oauthStart.statusCode, 200);
+  const oauthUrl = new URL(oauthStart.json().url);
+  const oauthState = oauthUrl.searchParams.get('state');
+  assert.ok(oauthState);
+  const oauthCookie = String(oauthStart.headers['set-cookie']).split(';', 1)[0];
+  client.connect = async () => ({ loginid: 'VRTC123', balance: 100, currency: 'USD', mode: 'demo' });
+  const oauthCallback = await app.inject({
+    method: 'GET',
+    url: `/api/auth/oauth/callback?state=${oauthState}&token1=oauth-test-token`,
+    headers: { cookie: oauthCookie },
+  });
+  assert.equal(oauthCallback.statusCode, 302);
+  assert.equal(oauthCallback.headers.location, '/?oauth=ok');
+  assert.match(String(oauthCallback.headers['set-cookie']), /zeronine_owner=/);
+  store.setSession({
+    id: 'public-test-session', loginid: 'CR123', balance: 123.45, currency: 'USD', mode: 'demo', auth_kind: 'pat',
+    token_cipher: 'private', created_at: Date.now(), updated_at: Date.now(),
+  });
+
   const unlock = await app.inject({ method: 'POST', url: '/api/auth/owner', payload: { token: 'owner-test-token' } });
   assert.equal(unlock.statusCode, 200);
   const cookieHeader = String(unlock.headers['set-cookie']).split(';', 1)[0];
@@ -127,4 +153,5 @@ test('public dashboard exposes global market data but protects the connected acc
   await telemetry.close();
   await app.close();
   cfg.config.dashboardAdminToken = previousToken;
+  cfg.config.allowPublicDerivLogin = previousPublicLogin;
 });
