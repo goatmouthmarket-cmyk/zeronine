@@ -101,8 +101,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const accountCoordinator = deps.accountCoordinator ?? new AccountCoordinator();
   const oauthPending = new Map<string, { verifier: string; created: number }>();
   const oauthStateCookie = 'zeronine_deriv_oauth_state';
-  const canStartDerivOauth = (req: FastifyRequest): boolean =>
-    isOwner(req) || config.allowPublicDerivLogin;
+  // This runtime has one private client and one stored account. Granting an
+  // arbitrary OAuth visitor owner access would expose that shared account.
+  const canStartDerivOauth = (req: FastifyRequest): boolean => isOwner(req);
   const gamePlayerId = (req: FastifyRequest, reply: FastifyReply): string => {
     const cookie = req.cookies?.deriv_cows_player;
     const signed = typeof cookie === 'string' ? req.unsignCookie(cookie) : null;
@@ -653,7 +654,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       feed: feed.status(),
       markets: registry.allSnapshots(),
       public_dashboard: publicDashboardEnabled(),
-      public_deriv_login: config.allowPublicDerivLogin,
+      public_deriv_login: false,
       owner,
       session: owner && session
         ? {
@@ -2013,7 +2014,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         created_at: created,
         updated_at: created,
       });
-      if (config.allowPublicDerivLogin) grantOwner(reply);
       hub.emit({ type: 'session', ts: Date.now(), session: { ...info } });
       reply.redirect('/?oauth=ok');
     } catch (err) {

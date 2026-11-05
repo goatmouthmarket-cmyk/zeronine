@@ -88,24 +88,11 @@ test('public dashboard exposes global market data but protects the connected acc
 
   cfg.config.allowPublicDerivLogin = true;
   const oauthStart = await app.inject({ method: 'GET', url: '/api/auth/oauth/start' });
-  assert.equal(oauthStart.statusCode, 200);
-  const oauthUrl = new URL(oauthStart.json().url);
-  const oauthState = oauthUrl.searchParams.get('state');
-  assert.ok(oauthState);
-  const oauthCookie = String(oauthStart.headers['set-cookie']).split(';', 1)[0];
-  client.connect = async () => ({ loginid: 'VRTC123', balance: 100, currency: 'USD', mode: 'demo' });
-  const oauthCallback = await app.inject({
-    method: 'GET',
-    url: `/api/auth/oauth/callback?state=${oauthState}&token1=oauth-test-token`,
-    headers: { cookie: oauthCookie },
-  });
-  assert.equal(oauthCallback.statusCode, 302);
-  assert.equal(oauthCallback.headers.location, '/?oauth=ok');
-  assert.match(String(oauthCallback.headers['set-cookie']), /zeronine_owner=/);
-  store.setSession({
-    id: 'public-test-session', loginid: 'CR123', balance: 123.45, currency: 'USD', mode: 'demo', auth_kind: 'pat',
-    token_cipher: 'private', created_at: Date.now(), updated_at: Date.now(),
-  });
+  assert.equal(oauthStart.statusCode, 403, 'public OAuth must not unlock a shared account');
+  const oauthCallback = await app.inject({ method: 'GET', url: '/api/auth/oauth/callback?state=invalid&token1=oauth-test-token' });
+  assert.equal(oauthCallback.statusCode, 403);
+  assert.equal(store.getSession()?.loginid, 'CR123');
+  assert.equal((await app.inject({ method: 'GET', url: '/api/state' })).json().public_deriv_login, false);
 
   const unlock = await app.inject({ method: 'POST', url: '/api/auth/owner', payload: { token: 'owner-test-token' } });
   assert.equal(unlock.statusCode, 200);
