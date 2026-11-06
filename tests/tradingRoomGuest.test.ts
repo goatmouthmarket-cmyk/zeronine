@@ -1269,3 +1269,27 @@ test('ghost scout shows the gold hourglass while its paper contract settles', ()
   assert.match(html, /ghostAvatar\(\);drawGhostPaperWait\(t\);drawGhostPaperBadge\(\)/, 'the hourglass is drawn with the scout');
   assert.match(html, /last\.status==='lost'\)fx\.push\(\{[^}]*color:'#ffb1b5'\}/, 'a lost paper trade leaves a visible result');
 });
+
+test('ranger brain belongs to the main ranger and cannot reach ghost or order paths', () => {
+  const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+  assert.match(html, /id="rangerBrainGlyph"/);
+  assert.match(html, /id="rangerBrainPanel"/);
+  assert.match(html, /\/api\/ranger-brain\/status/);
+  // The ranger's own screen position is exposed so the glyph and the menu can
+  // follow it instead of sitting at a fixed viewport spot.
+  assert.match(html, /__zeronineRanger=\{thinking:false,screen\(\)/);
+  assert.match(html, /const thinking=typeof window!==.undefined.&&!!window\.__zeronineRanger\?\.thinking/);
+  // Right-clicking the ranger opens the Brain; cow and ghost gestures are left
+  // to their existing handlers.
+  assert.match(html, /if \(!rangerAt\(event\.clientX, event\.clientY\)\) return;/);
+  assert.match(html, /setOpen\(true\);/);
+  // The Brain panel is declared before the ghost scout panel and shares nothing
+  // with the ghost's independent paper ledger.
+  const brainPanel = html.indexOf('id="rangerBrainPanel"');
+  const ghostPanel = html.indexOf('id="ghostTraderPanel"');
+  assert.ok(brainPanel > 0 && brainPanel < ghostPanel);
+  assert.doesNotMatch(html, /rangerBrain[A-Za-z]*\.(wins|losses|recentTrades)/);
+  assert.doesNotMatch(html, /ranger-brain[^"'`]{0,80}(purchase|buy|stake)/i);
+  // The panel never claims a demo or real action.
+  assert.match(html, /The Brain cannot place demo or real orders/);
+});

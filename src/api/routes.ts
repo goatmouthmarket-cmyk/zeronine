@@ -35,6 +35,7 @@ import { entryLabDashboardState, type EntryResearchRuntime } from '../testlab/en
 import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
+import { buildBrainReport } from '../brain/service.ts';
 import {
   type TradeRow,
   clearSession,
@@ -1782,6 +1783,22 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const q = req.query as { limit?: string };
     const limit = Math.min(500, Math.max(1, Number(q.limit) || 100));
     return { trades: listPaperTrades(limit) };
+  });
+
+  // Ranger Brain: an owner-only, paper-only read model over settled virtual
+  // outcomes. It observes and explains; it cannot place demo or real orders.
+  app.get('/api/ranger-brain/status', async (req, reply) => {
+    if (!requireOwner(req, reply)) return;
+    reply.header('cache-control', 'no-store');
+    const query = req.query as { market?: string; lookbackDays?: string };
+    const market = typeof query.market === 'string' && query.market.length <= 64 ? query.market : null;
+    const lookbackDays = Number(query.lookbackDays);
+    return {
+      report: buildBrainReport({
+        market,
+        lookbackDays: Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : undefined,
+      }),
+    };
   });
 
   app.get('/api/paper/trades/:contractRef', async (req, reply) => {
