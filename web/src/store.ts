@@ -1595,9 +1595,13 @@ export async function refreshPlayerState(): Promise<void> {
     if (request !== playerStateRequest) return;
     if (state.owner && state.multiplayerEnabled && state.session?.loginid !== response.session.loginid) return;
     set({ playerSession: response.session, playerRecovery: response.risk ? { ...response.risk, last_win_epoch: 0, updated_at: 0 } : null, playerTrades: response.trades.map(playerTradeRow) });
-  } catch {
+  } catch (error) {
     if (request !== playerStateRequest) return;
-    set({ playerSession: null, playerRecovery: null, playerTrades: [] });
+    // Only erase session on auth error (401), not transient network/503 errors
+    const err = error as Error;
+    if (err.message && err.message.includes('401') || err.status === 401) {
+      set({ playerSession: null, playerRecovery: null, playerTrades: [] });
+    }
   }
 }
 
@@ -1610,7 +1614,6 @@ export async function selectPlayerAccount(accountId: string): Promise<void> {
   await api('/api/player/accounts/select', { method: 'POST', body: JSON.stringify({ accountId }) });
   playerSocket?.close();
   playerStateRequest++;
-  set({ playerSession: null, playerRecovery: null, playerTrades: [] });
   await refreshPlayerState();
   connectPlayerWs();
 }

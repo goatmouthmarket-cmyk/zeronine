@@ -741,6 +741,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, [active, rememberedReal, s.session?.loginid]);
   const [manualExecution, setManualExecution] = useState<ManualExecutionView>({ stage: 'idle' });
   const roomFrameRef = useRef<HTMLIFrameElement>(null);
+  const sessionRef = useRef(s.session);
   const syncDetailHud = useCallback(() => {
     const doc = roomFrameRef.current?.contentDocument;
     const hud = doc?.getElementById('playerHud');
@@ -804,7 +805,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, [digitTrades]);
 
   useEffect(() => {
-    void loadTestRuns();
+    if (s.owner) void loadTestRuns();
   }, []);
 
   useEffect(() => {
@@ -829,6 +830,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const manualExecutionTrade = manualExecution.trade
     ? digitTrades.find((trade) => trade.id === manualExecution.trade?.id) ?? null
     : null;
+  useEffect(() => {
+    sessionRef.current = s.session;
+  }, [s.session]);
+
   useEffect(() => {
     if (!manualExecutionTrade || manualExecution.stage !== 'purchased') return;
     if (['won', 'lost', 'push', 'expired', 'timeout', 'error'].includes(manualExecutionTrade.status)) {
@@ -1500,7 +1505,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <iframe
           ref={roomFrameRef}
           class="trading-room-frame"
-          src={`/trading-room.html${s.session ? '?room=main' : ''}`}
+          src={`/trading-room.html${sessionRef.current ? '?room=main' : ''}`}
           title="Deriv Cows interactive trading pasture"
           onLoad={() => { postRoomState(); syncDetailHud(); }}
         />
