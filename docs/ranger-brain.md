@@ -25,10 +25,10 @@ ledger.
     src/brain/policy.ts    paper_shoot | watch | wait, with reason codes
                           |
                           v
-    src/brain/service.ts   owner-scoped read model (mind, lessons, hours)
+    src/brain/service.ts   read model (mind, lessons, hours)
                           |
                           v
-    GET /api/ranger-brain/status   (owner-only, cache-control: no-store)
+    GET /api/ranger-brain/status   (public read-only, 10s memo, no-store)
                           |
                           v
     web/public/trading-room.html   brain resting on the ranger's crown,
@@ -132,8 +132,12 @@ no account mode, and `PAPER_ONLY` is always present.
 
 ## Security notes
 
-- `GET /api/ranger-brain/status` reuses `requireOwner`; a non-owner gets the
-  standard 403 and the room shows "Owner access is required".
+- `GET /api/ranger-brain/status` is readable by every pasture visitor, guests
+  included: the report is paper research with no balance, token or account id,
+  and gating it on owner access is what kept the brain from loading in
+  production. Owner-only routes keep `requireOwner` and are untouched.
+- The route memoises one report per `market`/`lookbackDays` pair for ten
+  seconds, so a public caller cannot force a paper-ledger rescan per request.
 - The endpoint is read-only, returns no balances, tokens or account identifiers,
   and sends `cache-control: no-store`.
 - No credential ever leaves Node: the browser talks only to its own origin.

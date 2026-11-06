@@ -87,6 +87,10 @@ test('public dashboard exposes global market data but protects the connected acc
 
   const guestWrite = await app.inject({ method: 'PUT', url: '/api/settings', payload: { base_stake: 99 } });
   assert.equal(guestWrite.statusCode, 403);
+  const guestBrain = await app.inject({ method: 'GET', url: '/api/ranger-brain/status' });
+  assert.equal(guestBrain.statusCode, 200, 'the paper brain is readable without owner access');
+  assert.equal(guestBrain.json().report.mode, 'paper');
+  assert.doesNotMatch(guestBrain.body, /loginid|balance|token/i);
   const guestLedger = await app.inject({ method: 'GET', url: '/api/ledger' });
   assert.deepEqual(guestLedger.json().entries, []);
   const guestPaper = await app.inject({ method: 'POST', url: '/api/paper/start' });

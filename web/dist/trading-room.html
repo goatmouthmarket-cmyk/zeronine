@@ -1527,7 +1527,7 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
     let failure = '';
     try {
       const response = await fetch(BRAIN_ENDPOINT, { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
-      if (response.status === 401 || response.status === 403) failure = 'Owner access is required to read your ranger brain.';
+      if (response.status === 401 || response.status === 403) failure = 'This server is not serving the Brain yet.';
       else if (!response.ok) failure = 'The game server could not answer the Brain request (' + response.status + ').';
       else {
         const payload = await response.json();

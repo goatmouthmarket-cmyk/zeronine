@@ -1787,18 +1787,24 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   // Ranger Brain: an owner-only, paper-only read model over settled virtual
   // outcomes. It observes and explains; it cannot place demo or real orders.
+  // Paper research only: the report carries no balance, token or account id, so
+  // every pasture visitor reads the same brain. Memoised for ten seconds so a
+  // public route cannot be used to rescan the paper ledger on every request.
+  const brainCache = new Map<string, { at: number; report: ReturnType<typeof buildBrainReport> }>();
   app.get('/api/ranger-brain/status', async (req, reply) => {
-    if (!requireOwner(req, reply)) return;
     reply.header('cache-control', 'no-store');
     const query = req.query as { market?: string; lookbackDays?: string };
     const market = typeof query.market === 'string' && query.market.length <= 64 ? query.market : null;
     const lookbackDays = Number(query.lookbackDays);
-    return {
-      report: buildBrainReport({
-        market,
-        lookbackDays: Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : undefined,
-      }),
-    };
+    const lookback = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : undefined;
+    const key = `${market ?? 'auto'}|${lookback ?? 'default'}`;
+    const now = Date.now();
+    const cached = brainCache.get(key);
+    if (cached && now - cached.at < 10_000) return { report: cached.report };
+    const report = buildBrainReport({ market, lookbackDays: lookback });
+    brainCache.set(key, { at: now, report });
+    while (brainCache.size > 8) brainCache.delete(String(brainCache.keys().next().value));
+    return { report };
   });
 
   app.get('/api/paper/trades/:contractRef', async (req, reply) => {
