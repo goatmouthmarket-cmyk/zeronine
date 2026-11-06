@@ -31,8 +31,25 @@ ledger.
     GET /api/ranger-brain/status   (owner-only, cache-control: no-store)
                           |
                           v
-    web/public/trading-room.html   bronze brain glyph beside the ranger,
+    web/public/trading-room.html   brain resting on the ranger's crown,
                                    right-click / long-press menu, thinking pose
+
+### How the pasture presents it
+
+The panel answers three questions with shapes before text: a **trust ring**
+(filled by settled outcomes against `BRAIN_MIN_MARKET_OUTCOMES`, pips for the
+last few tenths), a **break-even gauge** (a notch at the mark, green fill when
+paper wins sit above it, red below), and a **day map** (24 UTC bars, gold
+outline on the strongest hour, ring on the current one). The default view shows
+no win-rate, break-even or P&L figures; those live in the tooltips and in the
+Training and Hours tabs, where someone is deliberately reading detail. Every
+sentence is generated from the same evidence object, and `insufficient data`
+stays a normal visible state rather than an empty panel.
+
+The brain glyph is anchored to the exposed head position
+(`window.__zeronineRanger.head()`), so it sits on the crown and moves with the
+ranger instead of floating beside him. It is drawn as a stroke, not a chip, and
+keeps the gold hourglass language of the rest of the HUD.
 
 ### Deviation from the Python-first plan
 

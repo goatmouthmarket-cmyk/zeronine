@@ -47,6 +47,8 @@ export interface RangerBrainReport {
   market: string | null;
   lookbackDays: number;
   outcomes: number;
+  /** Mirrors BRAIN_MIN_MARKET_OUTCOMES so the pasture can draw the same bar. */
+  evidenceTarget: number;
   winRate: number | null;
   breakeven: number | null;
   netPnl: number;
@@ -248,6 +250,7 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
     market: profile.market,
     lookbackDays: profile.lookbackDays,
     outcomes: profile.outcomes,
+    evidenceTarget: BRAIN_MIN_MARKET_OUTCOMES,
     winRate: profile.winRate,
     breakeven: profile.breakeven,
     netPnl: profile.netPnl,
