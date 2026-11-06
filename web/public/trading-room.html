@@ -1417,7 +1417,7 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
         ? (best ? best.label + ' has the real evidence. Paper shots only.' : 'Evidence is still too thin to call a window.')
         : latest.mind === 'waiting'
           ? 'This market is running cold. Waiting beats forcing a shot.'
-          : (best ? 'Still learning. ' + best.label + ' looks strongest so far, not proven yet.' : 'Still learning. Gathering paper results before any call.');
+          : (best ? 'Still learning. ' + best.label + ' has strongest edge, not proven yet.' : 'Still learning. Gathering paper results before any call.');
     drawRing(progress, latest.mind);
     $('brainRing').title = latest.outcomes + ' of ' + target + ' settled paper outcomes for ' + String(latest.market || 'this market');
     $('brainReadyTitle').textContent = latest.mind === 'offline' ? 'Nothing to learn from yet'
@@ -1500,7 +1500,7 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
       ? latest.bestHour.label + ' carries the strongest paper record so far. Each hour answers only for its own results, never a pooled average.'
       : 'No hour stands out yet. Each hour is judged on its own results, never pooled.';
     $('brainWeekdaySummary').textContent = latest.currentHour
-      ? 'Right now, ' + latest.currentHour.label + ' looks ' + plainVerdict(latest.currentHour.verdict) + '.'
+      ? 'Right now, ' + latest.currentHour.label + ' · ' + plainVerdict(latest.currentHour.verdict) + '.'
       : 'The current hour has no results yet.';
     const bar = $('brainTrainingBar');
     if (bar) bar.textContent = latest.outcomes + ' / ' + target + ' outcomes';
