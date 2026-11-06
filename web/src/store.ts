@@ -2087,7 +2087,7 @@ export async function confirmManualTrade(previewId: string, idempotencyKey: stri
   return api<ManualTradeResult>('/api/trade/manual/confirm', {
     method: 'POST',
     body: JSON.stringify({ previewId, idempotencyKey }),
-  }, 45_000);
+  }, 20_000);
 }
 
 export async function previewPlayerTrade(order: ManualOrder): Promise<ManualTradePreview> {

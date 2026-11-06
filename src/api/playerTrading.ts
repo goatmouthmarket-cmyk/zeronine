@@ -95,7 +95,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         const active = await reconcile(accountId, client);
         if (!active || (active.status !== 'open' && !(active.status === 'unknown' && active.provider_contract_id))) { clearInterval(timer); monitors.delete(accountId); }
       } finally { running = false; }
-    })().catch(() => { running = false; }); }, 3_000);
+    })().catch(() => { running = false; }); }, 1_000);
     timer.unref();
     monitors.set(accountId, timer);
   };

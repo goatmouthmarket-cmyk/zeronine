@@ -111,7 +111,7 @@ type Pending = {
   timeout: NodeJS.Timeout;
 };
 
-const DEFAULT_TIMEOUT = 12000;
+const DEFAULT_TIMEOUT = 8000;
 
 export class DerivPrivateClient {
   private readonly persistBalance: (balance: number) => void;
@@ -478,9 +478,9 @@ export class DerivPrivateClient {
         done = true;
         subs.delete(wrapped);
         resolve({ contractId, status: 'open', profit: 0, sellPrice: 0, buyPrice: 0, settled: false });
-      }, 20000);
+      }, 8000);
 
-      this.request(proposalOpenContract(contractId, 0, true), 'proposal_open_contract', 60000)
+      this.request(proposalOpenContract(contractId, 0, true), 'proposal_open_contract', 20000)
         .then((msg) => {
           const c = (msg as any)?.proposal_open_contract;
           if (c?.contract_id) finish(this.normalizeContract(c));
