@@ -22,9 +22,16 @@ export class PastureRoom {
   private capacity: number;
   constructor(now: () => number = Date.now, capacity = 100) { this.now = now; this.capacity = capacity; }
   get size(): number { return this.players.size; }
-  join(send: Send): string | null {
+  join(send: Send, playerId?: string): string | null {
     if (this.players.size >= this.capacity) return null;
-    const id = randomUUID(), name = `Ranger ${id.slice(0, 4).toUpperCase()}`;
+    // Reuse existing player ID if provided (for reconnects)
+    if (playerId && this.players.has(playerId)) {
+      const existing = this.players.get(playerId)!;
+      existing.send({ type: 'welcome', id: playerId, players: [...this.players.values()].map(publicPlayer), messages: this.messages, leader: this.players.keys().next().value, ghost: this.ghost });
+      this.broadcast({ type: 'player', player: publicPlayer(existing) }, playerId);
+      return playerId;
+    }
+    const id = playerId || randomUUID(), name = `Ranger ${id.slice(0, 4).toUpperCase()}`;
     const player: Player = { id, name, x: 480, y: 560, facing: 1, action: 'idle', appearance: { ...initialAppearance }, lastUpdate: 0, lastChat: 0, lastKill: 0, lastShot: 0, send };
     this.players.set(id, player);
     send({ type: 'welcome', id, players: [...this.players.values()].map(publicPlayer), messages: this.messages, leader: this.players.keys().next().value, ghost: this.ghost });

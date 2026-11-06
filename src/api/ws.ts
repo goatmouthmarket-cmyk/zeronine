@@ -168,7 +168,18 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       alive = false; socket.ping();
     })().catch(() => socket.close(1011, 'room unavailable')); }, HEARTBEAT_INTERVAL_MS);
     socket.on('pong', () => { alive = true; });
-    socket.on('message', data => { try { pasture.receive(id, JSON.parse(data.toString())); } catch { /* Ignore invalid input. */ } });
+    let joinedPlayerId = null;
+    socket.on('message', data => {
+      try { const msg = JSON.parse(data.toString());
+        if (msg.type === 'set-pasture-self-id' && msg.id && !joinedPlayerId) {
+          joinedPlayerId = msg.id;
+          const result = pastures.join(roomId, send, msg.id);
+          if (result && result.id) { id = result.id; }
+        } else {
+          pasture.receive(id, JSON.parse(data.toString()));
+        }
+      } catch { /* Ignore invalid input. */ }
+    });
     const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); pastures.leave(roomId, pasture, id); };
     socket.on('close', cleanup); socket.on('error', cleanup);
     })().catch(() => socket.close(1011, 'room unavailable'));
