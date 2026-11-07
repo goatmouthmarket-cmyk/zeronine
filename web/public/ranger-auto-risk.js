@@ -19,6 +19,8 @@ export const RANGER_RISK_STYLES = ['base', 'martingale', 'boosted', 'chase'];
  * @property {string} [style]
  * @property {number} [debt]
  * @property {number | null} [payout]
+ * @property {number | null} [estimatePayout] Theoretical estimate (e.g. estPayout); never treated as a live broker quote.
+ * @property {boolean} [payoutAuthoritative] True only for a verified live broker quote.
  * @property {number | null} [winChance]
  * @property {number} [balance]
  * @property {number} [serverMaxStake]
@@ -31,6 +33,8 @@ export const RANGER_RISK_STYLES = ['base', 'martingale', 'boosted', 'chase'];
  * @property {string} [style]
  * @property {number} [losses]
  * @property {number | null} [payout]
+ * @property {number | null} [estimatePayout]
+ * @property {boolean} [payoutAuthoritative]
  * @property {number | null} [winChance]
  * @property {number} [balance]
  * @property {number} [startDebt]
@@ -42,8 +46,11 @@ export const RANGER_RISK_STYLES = ['base', 'martingale', 'boosted', 'chase'];
  * @property {number} lossNumber
  * @property {number | null} stake
  * @property {number | null} [payout]
+ * @property {number | null} [estimatePayout]
  * @property {number} [net]
  * @property {string} [netSource]
+ * @property {boolean} [authoritative]
+ * @property {boolean} [illustrative]
  * @property {number} cumulativeLoss
  * @property {number} remainingBalance
  * @property {number} [recoveryTarget]
@@ -63,6 +70,9 @@ export const RANGER_RISK_STYLES = ['base', 'martingale', 'boosted', 'chase'];
  * @property {number} exposure
  * @property {number | null} blockedAt
  * @property {boolean} payoutBlocked
+ * @property {boolean} [usesEstimate]
+ * @property {boolean} [hasVerifiedPayout]
+ * @property {boolean} [illustrative]
  * @property {number | null} runLossStopAt
  * @property {number} endDebt
  * @property {number | null} winsToRecover
@@ -78,6 +88,15 @@ export const RANGER_RISK_STYLES = ['base', 'martingale', 'boosted', 'chase'];
  * @property {number} [lossesToCooldown]
  * @property {number} [cooldownSeconds]
  * @property {number} [takeProfit]
+ * @property {number} [maxRunLoss]
+ * @property {number} [startDebt]
+ * @property {number | null} [payout]
+ * @property {number | null} [estimatePayout]
+ * @property {boolean} [payoutAuthoritative]
+ * @property {number | null} [winChance]
+ * @property {number} [serverMaxStake]
+ * @property {number} [runProfit]
+ * @property {number} [ratio]
  * @property {number} [maxRunLoss]
  * @property {number} [startDebt]
  * @property {number | null} [payout]
@@ -125,22 +144,32 @@ export function recoveryTarget(input = {}) {
 }
 
 /**
- * Net return per unit of stake. A live payout is authoritative; without one the
- * pasture falls back to the theoretical digit win chance, which is a model, not
- * a quote. `source` lets the UI label the number honestly.
- * @param {StakeInput} [input]
- * @returns {{ net: number, source: 'payout' | 'model' | 'unavailable' }}
+ * Net return per unit of stake. An authoritative live/broker payout wins.
+ * A theoretical estimate payout (e.g. estPayout from signal candidates) is
+ * usable for illustrative pre-start modeling but is never a live quote.
+ * Without payout data the pasture falls back to the theoretical digit win
+ * chance, which is also a model, not a quote. `source` lets the UI label the
+ * number honestly.
+ * @param {StakeInput & { estimatePayout?: number | null, payoutAuthoritative?: boolean }} [input]
+ * @returns {{ net: number, source: 'payout' | 'estimate' | 'model' | 'unavailable', authoritative: boolean }}
  */
 export function netReturnPerUnit(input = {}) {
-  const { payout = null, winChance = null } = input;
+  const { payout = null, estimatePayout = null, winChance = null, payoutAuthoritative } = input;
   const quoted = Number(payout);
-  if (Number.isFinite(quoted) && quoted > 1) return { net: quoted - 1, source: 'payout' };
+  const explicitAuthoritative = payoutAuthoritative === true;
+  const explicitEstimate = payoutAuthoritative === false;
+  if (Number.isFinite(quoted) && quoted > 1 && !explicitEstimate) {
+    return { net: quoted - 1, source: explicitAuthoritative ? 'payout' : 'payout', authoritative: explicitAuthoritative || payoutAuthoritative !== false };
+  }
+  const estimate = Number(estimatePayout);
+  if (Number.isFinite(estimate) && estimate > 1) return { net: estimate - 1, source: 'estimate', authoritative: false };
+  if (explicitEstimate && Number.isFinite(quoted) && quoted > 1) return { net: quoted - 1, source: 'estimate', authoritative: false };
   const chance = Number(winChance);
   if (Number.isFinite(chance) && chance > 0 && chance < 1) {
     const net = Math.max(0.05, 0.95 / Math.max(0.05, chance) - 1);
-    return { net, source: 'model' };
+    return { net, source: 'model', authoritative: false };
   }
-  return { net: 0, source: 'unavailable' };
+  return { net: 0, source: 'unavailable', authoritative: false };
 }
 
 /** The pasture's 90% balance cap, in cents. */
@@ -154,22 +183,23 @@ export function balanceCap(balance, ratio = BALANCE_LIMIT_RATIO) {
  * Plan one wager exactly as the pasture would. Any limit that blocks execution
  * is reported instead of silently shrinking the projection.
  *
- * @param {StakeInput} [input]
+ * @param {StakeInput & { estimatePayout?: number | null, payoutAuthoritative?: boolean }} [input]
  * @returns {Record<string, any>}
  */
 export function planStake(input = {}) {
-  /** @type {Required<Pick<StakeInput, 'baseStake' | 'style' | 'debt' | 'payout' | 'winChance' | 'balance' | 'serverMaxStake' | 'ratio'>>} */
-  const { baseStake = 0, style = 'base', debt = 0, payout = null, winChance = null, balance = 0, serverMaxStake = 0, ratio = BALANCE_LIMIT_RATIO } = /** @type {any} */ (input);
+  /** @type {Required<Pick<StakeInput, 'baseStake' | 'style' | 'debt' | 'payout' | 'winChance' | 'balance' | 'serverMaxStake' | 'ratio'>> & { estimatePayout?: number | null, payoutAuthoritative?: boolean }} */
+  const { baseStake = 0, style = 'base', debt = 0, payout = null, estimatePayout = null, payoutAuthoritative, winChance = null, balance = 0, serverMaxStake = 0, ratio = BALANCE_LIMIT_RATIO } = /** @type {any} */ (input);
   const base = Number(baseStake);
   if (!Number.isFinite(base) || base <= 0) {
-    return { stake: 0, blocked: true, reason: 'Enter a stake greater than zero.', cap: 0, recoveryTarget: 0, net: 0, netSource: 'unavailable' };
+    return { stake: 0, blocked: true, reason: 'Enter a stake greater than zero.', cap: 0, recoveryTarget: 0, net: 0, netSource: 'unavailable', authoritative: false };
   }
   const cap = balanceCap(balance, ratio);
   if (!(cap > 0)) {
-    return { stake: 0, blocked: true, reason: 'Account balance is unavailable; no wager is executable.', cap: 0, recoveryTarget: recoveryTarget({ style, debt, baseStake: base }), net: 0, netSource: 'unavailable' };
+    return { stake: 0, blocked: true, reason: 'Account balance is unavailable; no wager is executable.', cap: 0, recoveryTarget: recoveryTarget({ style, debt, baseStake: base }), net: 0, netSource: 'unavailable', authoritative: false };
   }
   const target = recoveryTarget({ style, debt, baseStake: base });
-  const { net, source } = netReturnPerUnit({ payout, winChance });
+  const netInfo = netReturnPerUnit({ payout, estimatePayout, payoutAuthoritative, winChance });
+  const { net, source, authoritative } = netInfo;
   if (target > 0 && !(net > 0)) {
     return {
       stake: 0,
@@ -180,6 +210,8 @@ export function planStake(input = {}) {
       net: 0,
       netSource: source,
       payoutDependent: true,
+      authoritative: false,
+      illustrative: false,
     };
   }
   const wanted = target > 0 ? Math.max(base, target / net) : base;
@@ -196,6 +228,8 @@ export function planStake(input = {}) {
       net,
       netSource: source,
       requiredStake: stake,
+      authoritative: Boolean(authoritative),
+      illustrative: !authoritative && (source === 'estimate' || source === 'model'),
     };
   }
   // A win only clears the target if the rounded stake's net return covers it.
@@ -204,15 +238,18 @@ export function planStake(input = {}) {
   // a win clears the debt.
   const projectedNet = stake * net;
   const clearingStake = target > 0 ? Math.ceil((target / net) * 100 - 1e-9) / 100 : null;
+  const illustrative = !authoritative && (source === 'estimate' || source === 'model');
   return {
     stake,
     blocked: false,
-    reason: '',
+    reason: illustrative ? 'Illustrative scenario based on a theoretical payout estimate. Actual execution uses the live broker quote and enforces all risk checks.' : '',
     cap,
     limit,
     recoveryTarget: target,
     net,
     netSource: source,
+    authoritative: Boolean(authoritative),
+    illustrative,
     requiredStake: stake,
     clearingStake,
     coversTarget: target <= 0 ? true : projectedNet + 1e-9 >= target,
@@ -231,11 +268,11 @@ export function planStake(input = {}) {
  * `maxRunLoss` is a stop applied *after* a verified settlement, so the step that
  * reaches the boundary is still executed; the next entry is what gets blocked.
  *
- * @param {LadderInput} [input]
+ * @param {LadderInput & { estimatePayout?: number | null, payoutAuthoritative?: boolean }} [input]
  * @returns {Ladder}
  */
 export function buildLossLadder(input = {}) {
-  const { baseStake = 0, style = 'base', losses = 3, payout = null, winChance = null, balance = 0, startDebt = 0, maxRunLoss = 0, serverMaxStake = 0, ratio = BALANCE_LIMIT_RATIO } = /** @type {any} */ (input);
+  const { baseStake = 0, style = 'base', losses = 3, payout = null, estimatePayout = null, payoutAuthoritative, winChance = null, balance = 0, startDebt = 0, maxRunLoss = 0, serverMaxStake = 0, ratio = BALANCE_LIMIT_RATIO } = /** @type {any} */ (input);
   const count = Math.max(1, Math.min(20, Math.floor(Number(losses) || 3)));
   const steps = [];
   let debt = positive(startDebt);
@@ -244,8 +281,10 @@ export function buildLossLadder(input = {}) {
   let blockedAt = null;
   let runLossStopAt = null;
   let payoutBlocked = false;
+  let anyAuthoritative = false;
+  let anyEstimate = false;
   for (let index = 1; index <= count; index += 1) {
-    const plan = planStake({ baseStake, style, debt, payout, winChance, balance: remaining, serverMaxStake, ratio });
+    const plan = planStake({ baseStake, style, debt, payout, estimatePayout, payoutAuthoritative, winChance, balance: remaining, serverMaxStake, ratio });
     if (plan.blocked) {
       if (plan.payoutDependent) payoutBlocked = true;
       steps.push({
@@ -257,22 +296,30 @@ export function buildLossLadder(input = {}) {
         reason: plan.reason,
         projectedNextStake: null,
         requiredStake: plan.requiredStake ?? null,
+        netSource: plan.netSource || 'unavailable',
+        illustrative: false,
       });
       blockedAt = index;
       break;
     }
+    if (plan.authoritative) anyAuthoritative = true;
+    if (plan.netSource === 'estimate' || plan.netSource === 'model') anyEstimate = true;
     const stake = plan.stake;
     // Money is tracked in cents so the ladder never displays float dust.
     cumulative = roundStake(cumulative + stake);
     remaining = roundStake(remaining - stake);
     debt = roundStake(debt + stake);
-    const next = planStake({ baseStake, style, debt, payout, winChance, balance: remaining, serverMaxStake, ratio });
+    const next = planStake({ baseStake, style, debt, payout, estimatePayout, payoutAuthoritative, winChance, balance: remaining, serverMaxStake, ratio });
+    const displayedPayout = plan.netSource === 'payout' && plan.authoritative ? Number(payout) : null;
     const step = {
       lossNumber: index,
       stake,
-      payout: plan.netSource === 'payout' ? Number(payout) : null,
+      payout: displayedPayout,
+      estimatePayout: plan.netSource === 'estimate' ? Number(estimatePayout ?? payout) : null,
       net: plan.net,
       netSource: plan.netSource,
+      authoritative: Boolean(plan.authoritative),
+      illustrative: Boolean(plan.illustrative),
       cumulativeLoss: cumulative,
       remainingBalance: remaining,
       recoveryTarget: plan.recoveryTarget,
@@ -282,7 +329,7 @@ export function buildLossLadder(input = {}) {
       projectedNextStake: next.blocked ? null : next.stake,
       nextBlockedReason: next.blocked ? next.reason : '',
       status: 'executable',
-      reason: '',
+      reason: plan.reason || '',
     };
     steps.push(step);
     if (maxRunLoss > 0 && cumulative + 1e-9 >= maxRunLoss && runLossStopAt === null) runLossStopAt = index;
@@ -305,6 +352,9 @@ export function buildLossLadder(input = {}) {
     exposure,
     blockedAt,
     payoutBlocked,
+    usesEstimate: anyEstimate && !anyAuthoritative,
+    hasVerifiedPayout: anyAuthoritative,
+    illustrative: anyEstimate && !anyAuthoritative,
     runLossStopAt,
     endDebt: debt,
     winsToRecover,
@@ -402,12 +452,14 @@ export function describeWorstCase(input = {}) {
  * @returns {Record<string, any>}
  */
 export function buildRiskPreview(input = {}) {
-  const { baseStake = 0, style = 'base', accountMode = null, accountId = null, balance = 0, currency = 'USD', lossesToCooldown = 3, cooldownSeconds = 45, takeProfit = 0, maxRunLoss = 0, startDebt = 0, payout = null, winChance = null, serverMaxStake = 0, runProfit = 0, ratio = BALANCE_LIMIT_RATIO } = /** @type {any} */ (input);
-  const ladder = buildLossLadder({ baseStake, style, losses: lossesToCooldown, payout, winChance, balance, startDebt, maxRunLoss, serverMaxStake, ratio });
-  const first = planStake({ baseStake, style, debt: startDebt, payout, winChance, balance, serverMaxStake, ratio });
+  const { baseStake = 0, style = 'base', accountMode = null, accountId = null, balance = 0, currency = 'USD', lossesToCooldown = 3, cooldownSeconds = 45, takeProfit = 0, maxRunLoss = 0, startDebt = 0, payout = null, estimatePayout = null, payoutAuthoritative, winChance = null, serverMaxStake = 0, runProfit = 0, ratio = BALANCE_LIMIT_RATIO } = /** @type {any} */ (input);
+  const ladder = buildLossLadder({ baseStake, style, losses: lossesToCooldown, payout, estimatePayout, payoutAuthoritative, winChance, balance, startDebt, maxRunLoss, serverMaxStake, ratio });
+  const first = planStake({ baseStake, style, debt: startDebt, payout, estimatePayout, payoutAuthoritative, winChance, balance, serverMaxStake, ratio });
   const perWinProfit = first.blocked ? null : first.stake * first.net;
   const takeProfitProjection = projectTakeProfit({ target: takeProfit, runProfit, perWinProfit });
   const boundedByRunLoss = Number(maxRunLoss) > 0;
+  const verifiedPayout = first.netSource === 'payout' && first.authoritative ? Number(payout) : null;
+  const theoreticalEstimatePayout = first.netSource === 'estimate' ? Number(estimatePayout ?? payout) : null;
   return {
     config: {
       accountMode,
@@ -423,7 +475,10 @@ export function buildRiskPreview(input = {}) {
       startDebt: positive(startDebt),
       netPerUnit: first.net,
       netSource: first.netSource,
-      payout: first.netSource === 'payout' ? Number(payout) : null,
+      authoritative: Boolean(first.authoritative),
+      illustrative: Boolean(first.illustrative || ladder.illustrative),
+      payout: verifiedPayout,
+      estimatePayout: theoreticalEstimatePayout,
       winChance: Number.isFinite(Number(winChance)) && Number(winChance) > 0 && Number(winChance) < 1 ? Number(winChance) : null,
       perWinProfit,
       balanceCap: first.cap,

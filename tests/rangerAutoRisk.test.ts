@@ -155,7 +155,7 @@ test('preview groups config, ladder and take profit from one model', () => {
 });
 
 test('payout data that is unavailable is labelled, not invented', () => {
-  assert.deepEqual(netReturnPerUnit({ payout: null, winChance: null }), { net: 0, source: 'unavailable' });
+  assert.deepEqual(netReturnPerUnit({ payout: null, winChance: null }), { net: 0, source: 'unavailable', authoritative: false });
   assert.equal(netReturnPerUnit({ payout: 1.9 }).source, 'payout');
   assert.equal(netReturnPerUnit({ winChance: 0.5 }).source, 'model');
   const blocked = planStake({ baseStake: 1, style: 'martingale', debt: 4, payout: null, winChance: null, balance: 100 });
@@ -164,6 +164,67 @@ test('payout data that is unavailable is labelled, not invented', () => {
   const ladder = buildLossLadder({ baseStake: 1, style: 'martingale', losses: 3, payout: null, winChance: null, balance: 100, startDebt: 4 });
   assert.equal(ladder.payoutBlocked, true);
   assert.equal(ladder.steps[0].status, 'blocked');
+});
+
+test('theoretical estimate payouts model recovery scenarios but are never labelled authoritative quotes', () => {
+  const net = netReturnPerUnit({ estimatePayout: 1.8 });
+  assert.equal(net.source, 'estimate');
+  assert.equal(net.authoritative, false);
+  assert.equal(Math.round(net.net * 100) / 100, 0.8);
+  const plan = planStake({ baseStake: 1, style: 'martingale', debt: 4, estimatePayout: 1.8, balance: 100 });
+  assert.equal(plan.blocked, false);
+  assert.equal(plan.authoritative, false);
+  assert.equal(plan.illustrative, true);
+  assert.equal(plan.netSource, 'estimate');
+  assert.match(plan.reason, /Illustrative scenario/);
+  const ladder = buildLossLadder({ baseStake: 1, style: 'martingale', losses: 3, estimatePayout: 1.8, balance: 100, startDebt: 4 });
+  assert.equal(ladder.payoutBlocked, false, 'a valid estimate allows modeling; it is not missing payout data');
+  assert.equal(ladder.usesEstimate, true);
+  assert.equal(ladder.hasVerifiedPayout, false);
+  assert.equal(ladder.steps[0].status, 'executable');
+  assert.equal(ladder.steps[0].illustrative, true);
+  const preview = buildRiskPreview({ baseStake: 1, style: 'martingale', estimatePayout: 1.8, balance: 100, startDebt: 4, takeProfit: 10 });
+  assert.equal(preview.config.netSource, 'estimate');
+  assert.equal(preview.config.authoritative, false);
+  assert.equal(preview.config.illustrative, true);
+  assert.equal(preview.config.payout, null, 'estimates must never be reported as verified/live payout');
+  assert.equal(preview.config.estimatePayout, 1.8);
+});
+
+test('explicit authoritative payout remains the verified quote source', () => {
+  const net = netReturnPerUnit({ payout: 1.9, payoutAuthoritative: true });
+  assert.equal(net.source, 'payout');
+  assert.equal(net.authoritative, true);
+  const preview = buildRiskPreview({ baseStake: 1, style: 'base', payout: 1.9, payoutAuthoritative: true, balance: 100 });
+  assert.equal(preview.config.netSource, 'payout');
+  assert.equal(preview.config.authoritative, true);
+  assert.equal(preview.config.payout, 1.9);
+});
+
+test('estimate modeling preserves Base, Martingale, Boosted and Chase recovery math', () => {
+  const cases: Array<[string, number, number[]]> = [
+    ['base', 0, [1, 1, 1]],
+    ['martingale', 0, [1, 1.25, 2.81]],
+    ['boosted', 5, [6.88]],
+    ['chase', 5, [2.19]],
+  ];
+  for (const [style, startDebt, expected] of cases) {
+    const ladder = buildLossLadder({ baseStake: 1, style, losses: expected.length, estimatePayout: 1.8, balance: 100, startDebt });
+    assert.deepEqual(ladder.steps.map((s) => s.stake), expected, `${style} stakes changed under estimate modeling`);
+    assert.equal(ladder.payoutBlocked, false);
+    assert.equal(ladder.usesEstimate, true, `${style} should report estimate-based modeling`);
+    assert.equal(ladder.hasVerifiedPayout, false, `${style} must not claim a verified quote`);
+  }
+});
+
+test('changing estimate payout changes modeled recovery sizing without inventing a live quote', () => {
+  const low = buildLossLadder({ baseStake: 1, style: 'martingale', losses: 2, estimatePayout: 1.5, balance: 100 });
+  const high = buildLossLadder({ baseStake: 1, style: 'martingale', losses: 2, estimatePayout: 2.2, balance: 100 });
+  assert.deepEqual(low.steps.map((s) => s.stake), [1, 2]);
+  assert.deepEqual(high.steps.map((s) => s.stake), [1, 1]);
+  assert.notEqual(low.steps[1].net, high.steps[1].net);
+  assert.equal(low.hasVerifiedPayout, false);
+  assert.equal(high.hasVerifiedPayout, false);
 });
 
 test('rounding keeps cents and never returns a zero wager for a positive stake', () => {

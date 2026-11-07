@@ -66,7 +66,7 @@ type PreviewContext = {
   card: () => Element;
   body: () => Element;
   confirmButton: () => Element;
-  model: () => { error?: string; ladder: { exposure: number; steps: Array<{ lossNumber: number; stake: number | null; status: string }> }; config: { maxRunLoss: number; takeProfit: number } } | null;
+  model: () => any;
   open: () => void;
   confirm: () => void;
   begin: () => void;
@@ -322,4 +322,132 @@ test('a restored run keeps its elapsed clock and waits for the player to resume'
   assert.match(reloaded.status(), /^Run restored \(paused\) · \d\d:\d\d:\d\d elapsed · START AUTO to review and resume$/);
   assert.match(reloaded.timerText(), /^\d\d:\d\d:\d\d$/, 'the restored clock keeps counting from the original start');
   assert.equal(reloaded.started.length, 0, 'a restored run stays paused until the player confirms the preview');
+});
+
+
+const estimateState = {
+  accountId: 'demo-1',
+  accountMode: 'demo',
+  currency: 'USD',
+  balance: 100,
+  markets: [
+    { symbol: 'R_100', fresh: true },
+    { symbol: 'R_50', fresh: true },
+  ],
+  candidates: [
+    { market: 'R_100', direction: 'over', barrier: 3, estPayout: 1.8, estWin: 0.72, edge: 0.08, score: 0.3 },
+  ],
+  trades: [],
+};
+
+test('valid estPayout estimates produce an illustrative modeled preview without claiming a live quote', () => {
+  const pasture = makeContext();
+  pasture.setStake('1');
+  pasture.setStyle('martingale');
+  pasture.setState(estimateState);
+  pasture.open();
+
+  const model = pasture.model();
+  assert.ok(model && !model.error, 'a valid estimate should produce a model');
+  assert.equal(model.ladder.payoutBlocked, false, 'valid estimates must not block modeling');
+  assert.equal(model.config.netSource, 'estimate');
+  assert.equal(model.config.authoritative, false);
+  assert.equal(model.config.payout, null, 'estimate must never be reported as verified payout');
+  assert.equal(model.config.estimatePayout, 1.8);
+  assert.ok(model.ladder.steps.length >= 1);
+  assert.equal(model.ladder.steps[0].status, 'executable');
+  assert.equal(pasture.confirmButton().disabled, false, 'illustrative estimate models allow confirming with warnings');
+  const body = text(pasture.body());
+  assert.match(body, /theoretical estimate, not a live quote/i);
+  assert.match(body, /Illustrative scenario only/i);
+  assert.match(body, /not claimed executable/i);
+  assert.match(body, /authoritative broker pricing/i);
+  assert.doesNotMatch(body, /\(live quote\)/i);
+  const warningMatches = body.match(/Illustrative scenario only/gi) || [];
+  assert.equal(warningMatches.length, 1, 'the same payout issue should not be warned about repeatedly');
+});
+
+test('missing payout/estimate data blocks confirmation with an unavailable warning', () => {
+  const pasture = makeContext();
+  pasture.setStake('1');
+  pasture.setStyle('martingale');
+  pasture.setState({
+    ...estimateState,
+    markets: [{ symbol: 'R_100', fresh: true }],
+    candidates: [{ market: 'R_100', direction: 'over', barrier: 3, estPayout: null, estWin: 0.72, edge: 0.08, score: 0.3 }],
+  });
+  pasture.open();
+  const model = pasture.model();
+  assert.ok(model);
+  assert.equal(model.ladder.payoutBlocked, true);
+  assert.equal(pasture.confirmButton().disabled, true);
+  assert.match(text(pasture.body()), /no valid theoretical estimate could model recovery sizing/i);
+});
+
+test('stale market data excludes candidates from payout estimation (freshness from state.markets)', () => {
+  const pasture = makeContext();
+  pasture.setStake('1');
+  pasture.setStyle('martingale');
+  pasture.setState({
+    ...estimateState,
+    markets: [{ symbol: 'R_100', fresh: false }],
+    candidates: [{ market: 'R_100', direction: 'over', barrier: 3, estPayout: 1.8, estWin: 0.72, edge: 0.08, score: 0.3 }],
+  });
+  pasture.open();
+  assert.equal(pasture.model().ladder.payoutBlocked, true, 'stale matching market must not produce a usable payout estimate');
+});
+
+test('fresh market data allows estPayout estimation for the matching market', () => {
+  const pasture = makeContext();
+  pasture.setStake('1');
+  pasture.setStyle('martingale');
+  pasture.setState({
+    ...estimateState,
+    markets: [{ symbol: 'R_100', fresh: false }, { symbol: 'R_50', fresh: true }],
+    candidates: [
+      { market: 'R_100', direction: 'over', barrier: 3, estPayout: 1.8, estWin: 0.72, edge: 0.08, score: 0.5 },
+      { market: 'R_50', direction: 'under', barrier: 6, estPayout: 2.1, estWin: 0.71, edge: 0.06, score: 0.2 },
+    ],
+  });
+  pasture.open();
+  const model = pasture.model();
+  assert.equal(model.ladder.payoutBlocked, false);
+  assert.equal(model.config.estimatePayout, 2.1, 'should use an estimate from a fresh matching market, not an unrelated/stale one');
+  assert.match(text(pasture.body()), /R_50/);
+});
+
+test('changing payout estimates updates modeled recovery stakes and preserves recovery strategies', () => {
+  const low = makeContext();
+  low.setStake('1');
+  low.setStyle('martingale');
+  low.setState({ ...estimateState, candidates: [{ market: 'R_100', direction: 'over', barrier: 3, estPayout: 1.5, estWin: 0.72, edge: 0.08, score: 0.3 }] });
+  low.open();
+  const high = makeContext();
+  high.setStake('1');
+  high.setStyle('martingale');
+  high.setState({ ...estimateState, candidates: [{ market: 'R_100', direction: 'over', barrier: 3, estPayout: 2.2, estWin: 0.72, edge: 0.08, score: 0.3 }] });
+  high.open();
+  assert.deepEqual(low.model().ladder.steps.slice(0, 2).map((s: any) => s.stake), [1, 2]);
+  assert.deepEqual(high.model().ladder.steps.slice(0, 2).map((s: any) => s.stake), [1, 1]);
+
+  for (const [style, expected] of [['base', [1, 1]], ['boosted', [1, 1.88]], ['chase', [1, 1]]] as Array<[string, number[]]>) {
+    const p = makeContext();
+    p.setStake('1');
+    p.setStyle(style);
+    p.setState(estimateState);
+    p.open();
+    assert.deepEqual(p.model().ladder.steps.slice(0, 2).map((s: any) => s.stake), expected, `${style} preview stakes changed`);
+  }
+});
+
+test('legacy candidate shape with fresh/payout is still modeled (backward compatibility)', () => {
+  const pasture = makeContext();
+  pasture.setStake('1');
+  pasture.setState(demoState);
+  pasture.open();
+  const model = pasture.model();
+  assert.ok(model && !model.error);
+  assert.equal(model.ladder.payoutBlocked, false);
+  pasture.confirm();
+  assert.equal(pasture.started.join(','), 'start');
 });

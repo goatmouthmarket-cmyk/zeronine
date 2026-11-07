@@ -1283,14 +1283,49 @@ function rangerRiskConfig(rows){const grid=rangerRiskNode('div','risk-config');f
 function rangerRiskLine(label,value,negative){const line=rangerRiskNode('p','risk-line');line.dataset.negative=negative?'true':'false';line.append(rangerRiskNode('span','',label),rangerRiskNode('strong','',value));return line}
 function rangerRiskRunKey(accountId,accountMode){return 'ranger-auto-run-v1:'+String(accountId||'guest')+':'+String(accountMode||'unknown')}
 
+function rangerRiskMarketFresh(state, market){
+  const markets=Array.isArray(state&&state.markets)?state.markets:null;
+  if(markets){
+    const row=markets.find(item=>item&&String(item.symbol||'')===String(market||''));
+    return !!(row&&row.fresh===true);
+  }
+  return null;
+}
+function rangerRiskCandidatePayout(item){
+  const estimate=Number(item&&item.estPayout);
+  if(Number.isFinite(estimate)&&estimate>1)return{value:Math.round(estimate*100)/100,source:'estimate',authoritative:false};
+  const payout=Number(item&&item.payout);
+  if(Number.isFinite(payout)&&payout>1)return{value:Math.round(payout*100)/100,source:'estimate',authoritative:false};
+  return{value:null,source:'unavailable',authoritative:false};
+}
 function rangerRiskPayoutSample(state){
-  const list=(Array.isArray(state&&state.candidates)?state.candidates:[]).filter(item=>item&&item.fresh===true&&Number(item.payout)>1).map(item=>Number(item.payout)).sort((a,b)=>a-b);
-  if(!list.length)return{payout:null,count:0};
-  return{payout:Math.round(list[Math.floor(list.length/2)]*100)/100,count:list.length};
+  const candidates=Array.isArray(state&&state.candidates)?state.candidates:[];
+  const marketsPresent=Array.isArray(state&&state.markets);
+  const isFresh=item=>{
+    const marketFresh=rangerRiskMarketFresh(state,item&&item.market);
+    if(marketFresh!==null)return marketFresh;
+    return marketsPresent?false:item&&item.fresh===true;
+  };
+  const usable=candidates.filter(item=>{
+    if(!item)return false;
+    const payout=rangerRiskCandidatePayout(item);
+    return payout.value!==null&&isFresh(item);
+  });
+  if(!usable.length)return{payout:null,estimatePayout:null,authoritative:false,source:'unavailable',count:0,market:null,symbol:null,verified:false};
+  const rules={minEdge:(Number(typeof rangerAutoMinEdge!=='undefined'?rangerAutoMinEdge:0)||0)/100,green:typeof rangerRingGreen!=='undefined'?rangerRingGreen:true,gold:typeof rangerRingGold!=='undefined'?rangerRingGold:true,red:typeof rangerRingRed!=='undefined'?rangerRingRed:true};
+  const eligible=usable.filter(item=>{
+    const edge=Number(item.edge);
+    const score=Number(item.score);
+    const p=Number(item.estWin);
+    return Number.isFinite(edge)&&edge>0&&edge>=rules.minEdge&&Number.isFinite(score)&&score>0&&p>=.70;
+  }).sort((a,b)=>Number(b.score)-Number(a.score)||Number(b.edge)-Number(a.edge)||Number(b.estWin)-Number(a.estWin));
+  const pick=eligible[0]||usable.slice().sort((a,b)=>Number(b.edge)-Number(a.edge)||Number(b.score)-Number(a.score))[0];
+  const payout=rangerRiskCandidatePayout(pick);
+  return{payout:null,estimatePayout:payout.value,authoritative:false,source:payout.source,verified:false,count:usable.length,market:pick.market||null,symbol:pick.market||null,direction:pick.direction||null,barrier:pick.barrier??null,label:'Theoretical estimate (not a live broker quote)'};
 }
 function rangerRiskFingerprint(){
   const settings=rangerAutoSettingsFromInputs(),state=lastRoomState||{},payout=rangerRiskPayoutSample(state),stake=Number($('rangerAutoStake')&&$('rangerAutoStake').value);
-  return JSON.stringify([stake,settings.lossLimit,settings.cooldownSeconds,settings.takeProfit,settings.maxRunLoss,cowBetStyle,state.accountId==null?null:state.accountId,state.accountMode==null?null:state.accountMode,Math.round((Number(state.balance)||0)*100),payout.payout,Math.round((sessionRecovery.amount||0)*100)]);
+  return JSON.stringify([stake,settings.lossLimit,settings.cooldownSeconds,settings.takeProfit,settings.maxRunLoss,cowBetStyle,state.accountId==null?null:state.accountId,state.accountMode==null?null:state.accountMode,Math.round((Number(state.balance)||0)*100),payout.estimatePayout,payout.symbol,payout.direction,payout.barrier,Math.round((sessionRecovery.amount||0)*100)]);
 }
 function rangerRiskBuildModel(){
   const tools=rangerRiskTools();
@@ -1300,7 +1335,7 @@ function rangerRiskBuildModel(){
   const state=lastRoomState||{},stake=Number($('rangerAutoStake')&&$('rangerAutoStake').value);
   if(!Number.isFinite(stake)||stake<=0)return{error:'Enter a positive base stake before starting Ranger Auto.'};
   const payout=rangerRiskPayoutSample(state);
-  const model=tools.risk.buildRiskPreview({baseStake:stake,style:cowBetStyle,accountMode:state.accountMode==null?null:state.accountMode,accountId:state.accountId==null?null:state.accountId,balance:Number(state.balance)||0,currency:state.currency||betCurrency||'USD',lossesToCooldown:settings.lossLimit,cooldownSeconds:settings.cooldownSeconds,takeProfit:settings.takeProfit,maxRunLoss:settings.maxRunLoss,startDebt:sessionRecovery.amount,runProfit:rangerAutoRunProfit(state),payout:payout.payout});
+  const model=tools.risk.buildRiskPreview({baseStake:stake,style:cowBetStyle,accountMode:state.accountMode==null?null:state.accountMode,accountId:state.accountId==null?null:state.accountId,balance:Number(state.balance)||0,currency:state.currency||betCurrency||'USD',lossesToCooldown:settings.lossLimit,cooldownSeconds:settings.cooldownSeconds,takeProfit:settings.takeProfit,maxRunLoss:settings.maxRunLoss,startDebt:sessionRecovery.amount,runProfit:rangerAutoRunProfit(state),payout:null,estimatePayout:payout.estimatePayout,payoutAuthoritative:false});
   model.payoutSample=payout;
   return model;
 }
@@ -1516,6 +1551,9 @@ function rangerRiskRenderPreview(){
   }
   const cfg=model.config,currency=cfg.currency||'USD',mode=cfg.accountMode==='real'?'Real account':cfg.accountMode==='demo'?'Demo account':'No Deriv account connected';
   const config=rangerRiskBlock('Configuration');
+  const sample=model.payoutSample||{};
+  const netLabel=cfg.perWinProfit===null?'Unavailable':rangerRiskAmount(cfg.perWinProfit,currency)+(cfg.netSource==='payout'&&cfg.authoritative?' (verified live quote)':cfg.netSource==='estimate'?' (theoretical estimate, not a live quote)':cfg.netSource==='model'?' (payout model)':'');
+  const payoutSampleLabel=sample.estimatePayout?sample.estimatePayout.toFixed(2)+'x theoretical estimate'+(sample.market?` for ${sample.market}${sample.direction?(' '+String(sample.direction).toUpperCase()):''}${sample.barrier!=null?(' '+sample.barrier):''}`:'')+' · '+String(sample.count||0)+' fresh candidate'+(sample.count===1?'':'s')+' (not a live broker quote)':sample.payout&&sample.verified?sample.payout.toFixed(2)+'x from '+sample.count+' quote'+(sample.count===1?'':'s'):'Unavailable';
   config.append(rangerRiskConfig([
     ['Account mode',mode],
     ['Balance',cfg.balance===null?'Unavailable':rangerRiskAmount(cfg.balance,currency)],
@@ -1526,14 +1564,14 @@ function rangerRiskRenderPreview(){
     ['Take profit',cfg.takeProfit>0?rangerRiskAmount(cfg.takeProfit,currency):'Take profit disabled'],
     ['Maximum run loss',cfg.maxRunLoss>0?rangerRiskAmount(cfg.maxRunLoss,currency):'Not set (run loss unbounded)'],
     ['Tracked recovery debt',cfg.startDebt>0?rangerRiskAmount(cfg.startDebt,currency):'None'],
-    ['Net per winning trade',cfg.perWinProfit===null?'Unavailable':rangerRiskAmount(cfg.perWinProfit,currency)+(cfg.netSource==='payout'?' (live quote)':' (payout model)')],
+    ['Net per winning trade',netLabel],
     ['Executable stake cap',cfg.executableLimit>0?rangerRiskAmount(cfg.executableLimit,currency):'Unavailable'],
-    ['Live payout sample',model.payoutSample&&model.payoutSample.count?model.payoutSample.payout.toFixed(2)+'x from '+model.payoutSample.count+' quote'+(model.payoutSample.count===1?'':'s'):'Unavailable'],
+    ['Payout estimate',payoutSampleLabel],
   ]));
   body.append(config);
 
   const ladder=model.ladder;
-  const stepsBlock=rangerRiskBlock('Consecutive losses · '+rangerRiskStyleLabel(cfg.style));
+  const stepsBlock=rangerRiskBlock('Consecutive losses · '+rangerRiskStyleLabel(cfg.style)+(ladder.illustrative?' (illustrative estimate)':''));
   const steps=rangerRiskNode('div','risk-steps');
   const head=rangerRiskNode('div','risk-steps-head');
   for(const label of ['#','Stake','Cumulative','Balance left','Gate'])head.append(rangerRiskNode('span','',label));
@@ -1541,22 +1579,28 @@ function rangerRiskRenderPreview(){
   for(const step of ladder.steps){
     const row=rangerRiskNode('div','risk-step');
     row.dataset.status=step.status;
-    row.append(rangerRiskNode('b','','L'+step.lossNumber),rangerRiskNode('span','',step.stake===null?'--':Number(step.stake).toFixed(2)),rangerRiskNode('span','',Number(step.cumulativeLoss||0).toFixed(2)),rangerRiskNode('span','',Number(step.remainingBalance||0).toFixed(2)),rangerRiskNode('em','',step.status==='blocked'?'BLOCKED':'OK'));
+    row.append(rangerRiskNode('b','','L'+step.lossNumber),rangerRiskNode('span','',step.stake===null?'--':Number(step.stake).toFixed(2)),rangerRiskNode('span','',Number(step.cumulativeLoss||0).toFixed(2)),rangerRiskNode('span','',Number(step.remainingBalance||0).toFixed(2)),rangerRiskNode('em','',step.status==='blocked'?'BLOCKED':(step.illustrative?'MODEL':'OK')));
     if(step.status==='blocked'&&step.reason)row.title=step.reason;
     steps.append(row);
   }
   stepsBlock.append(steps);
+  const payoutWarnings=[];
   if(ladder.blockedAt){
     const blocked=ladder.steps[ladder.blockedAt-1];
-    stepsBlock.append(rangerRiskNode('p','risk-warn',(blocked&&blocked.reason)||'A projected wager breaches a risk limit and is not executable.'));
+    payoutWarnings.push((blocked&&blocked.reason)||'A projected wager breaches a risk limit and is not executable.');
   }else{
-    stepsBlock.append(rangerRiskLine('Projected loss before the first cooldown: ',rangerRiskAmount(ladder.exposure,currency),true));
+    stepsBlock.append(rangerRiskLine('Projected loss before the first cooldown: ',rangerRiskAmount(ladder.exposure,currency)+(ladder.illustrative?' (illustrative)':''),true));
   }
   if(ladder.runLossStopAt)stepsBlock.append(rangerRiskNode('p','risk-note','The maximum run loss boundary is crossed by loss '+ladder.runLossStopAt+'; that trade still settles before new entries are blocked.'));
-  if(ladder.payoutBlocked)stepsBlock.append(rangerRiskNode('p','risk-warn','Payout data is unavailable, so recovery sizing cannot be projected honestly. Choose Base or wait for a live quote.'));
+  if(ladder.payoutBlocked){
+    payoutWarnings.push('Verified payout is unavailable and no valid theoretical estimate could model recovery sizing. Choose Base or wait for a fresh estimate/live quote.');
+  }else if(ladder.illustrative||cfg.illustrative||(sample.estimatePayout&&!sample.verified)){
+    payoutWarnings.push('Illustrative scenario only: uses a theoretical payout estimate, not a verified live broker quote. Projected recovery stakes are not claimed executable. Actual execution enforces authoritative broker pricing, account balance and all existing risk checks, and rechecks the executable stake against the actual quote.');
+  }
+  for(const warning of [...new Set(payoutWarnings.filter(Boolean))])stepsBlock.append(rangerRiskNode('p','risk-warn',warning));
   const shortfall=ladder.steps.filter(step=>step.status==='executable'&&step.coversTarget===false)[0];
-  if(shortfall)stepsBlock.append(rangerRiskNode('p','risk-note','Step '+shortfall.lossNumber+' rounds to '+Number(shortfall.stake).toFixed(2)+' '+currency+', a cent short of the '+Number(shortfall.clearingStake||0).toFixed(2)+' needed to clear that debt. The preview shows the executable amount.'));
-  if(ladder.winsToRecover)stepsBlock.append(rangerRiskNode('p','risk-note','Winning bets needed to clear the tracked debt at the projected next stake: '+ladder.winsToRecover+'.'));
+  if(shortfall)stepsBlock.append(rangerRiskNode('p','risk-note','Step '+shortfall.lossNumber+' rounds to '+Number(shortfall.stake).toFixed(2)+' '+currency+', a cent short of the '+Number(shortfall.clearingStake||0).toFixed(2)+' needed to clear that debt. The preview shows the modeled amount; execution still rechecks the actual quote and risk limits.'));
+  if(ladder.winsToRecover)stepsBlock.append(rangerRiskNode('p','risk-note','Winning bets needed to clear the tracked debt at the projected next stake: '+ladder.winsToRecover+(ladder.illustrative?' (illustrative estimate).':'.')));
   body.append(stepsBlock);
 
   const reward=rangerRiskBlock('Risk and reward');
@@ -1598,7 +1642,12 @@ function rangerRiskRenderPreview(){
   worst.append(rangerRiskNode('p','risk-note','All figures are estimates from the settings above and live quotes. Market outcomes, payouts and settlement speed are not guaranteed.'));
   body.append(worst);
 
+  // Only block confirmation when recovery cannot be modeled at all. Illustrative
+  // estimate-based scenarios are allowed with explicit warnings; actual execution
+  // still enforces authoritative broker pricing and all risk checks.
   if(ladder.payoutBlocked&&confirm)confirm.disabled=true;
+  if(confirm&&ladder.illustrative&&!ladder.payoutBlocked)confirm.textContent='CONFIRM & START AUTO (ILLUSTRATIVE ESTIMATE)';
+  else if(confirm)confirm.textContent='CONFIRM & START AUTO';
 }
 function rangerRiskEstimateNodes(estimate,tools){
   const nodes=[];
