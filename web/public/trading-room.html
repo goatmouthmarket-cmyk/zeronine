@@ -310,53 +310,63 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
 @media(max-width:700px){#rangerBrainPanel{top:auto;bottom:max(84px,calc(env(safe-area-inset-bottom) + 72px));left:8px;right:8px;width:auto;max-height:min(66dvh,460px)}.ranger-brain-tabs button{min-height:32px}#rangerBrainGlyph{width:27px;height:27px}}
 @media(prefers-reduced-motion:reduce){#rangerBrainGlyph,#rangerBrainGlyph.computing,#rangerBrainGlyph .brain-spark{animation:none!important}#rangerBrainBubble{transition:none}}
 </style><style id="ranger-auto-risk-preview">
-#rangerAutoRiskPreview,#rangerAutoRunReport{position:fixed;z-index:96;left:50%;top:50%;transform:translate(-50%,-50%);width:min(432px,calc(100vw - 16px));max-height:min(88dvh,760px);overflow-y:auto;padding:10px 11px 11px;border:1px solid #c9a469;border-radius:14px;background:#fff7e8f7;color:#3a2b1d;box-shadow:0 10px 30px #102a1b4d;font:600 11px/1.35 system-ui,sans-serif;overscroll-behavior:contain}
+#rangerAutoRiskPreview,#rangerAutoRunReport{position:fixed;z-index:96;left:50%;top:50%;transform:translate(-50%,-50%);width:min(480px,calc(100vw - 18px));max-height:min(88dvh,780px);overflow-y:auto;padding:12px 14px 14px;border:1.5px solid #c9a469;border-radius:16px;background:linear-gradient(180deg,#fffbf3fa 0%,#f7eedefc 100%);color:#382819;box-shadow:0 18px 44px rgba(16,42,27,0.32),0 0 0 1px rgba(255,255,255,0.7) inset;font:600 11px/1.35 system-ui,sans-serif;overscroll-behavior:contain;animation:cardModalPop .22s cubic-bezier(.34,1.4,.64,1)}
 #rangerAutoRiskPreview[hidden],#rangerAutoRunReport[hidden]{display:none!important}
-.risk-preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
-.risk-preview-head strong{font-size:10px;letter-spacing:.09em;color:#5a3c22}
-.risk-preview-close{width:28px;height:28px;min-height:28px;padding:0;border:1px solid #c9a469;border-radius:8px;background:#fffaf0;color:#5a3c22;font:900 15px/1 system-ui;cursor:pointer}
-.risk-preview-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
-.risk-preview-actions button{min-height:36px;padding:6px;border:1px solid #957048;border-radius:8px;background:#fffaf0;color:#3b2b1d;font:850 9px system-ui;cursor:pointer}
-.risk-preview-actions button:last-child{border-color:#236b48;background:#23784f;color:#fff}
-.risk-preview-actions button:disabled{opacity:.5;cursor:default}
-.risk-block{margin:7px 0;padding:7px 8px;border:1px solid #d8bd93;border-radius:9px;background:#fffaf0}
-.risk-block>h4{margin:0 0 5px;color:#6a4828;font:900 8px system-ui;letter-spacing:.09em;text-transform:uppercase}
-.risk-config{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:3px 8px;font-size:10px}
-.risk-config span{min-width:0;color:#6d5334;overflow-wrap:anywhere}
-.risk-config strong{text-align:right;font-variant-numeric:tabular-nums;color:#2f2417}
-.risk-steps{display:grid;gap:2px;margin-top:5px}
-.risk-steps-head,.risk-step{display:grid;grid-template-columns:24px repeat(3,minmax(0,1fr)) 38px;gap:4px;align-items:center;font-variant-numeric:tabular-nums}
-.risk-steps-head{color:#8a6d4b;font-size:8px;letter-spacing:.04em;padding-bottom:2px}
-.risk-step{padding:3px 0;border-top:1px solid #e4d2b4;font-size:9px;color:#3b2b1d}
-.risk-step b{color:#8a5a2c}
-.risk-step em{font-style:normal;text-align:right;font-weight:900;color:#17673b}
-.risk-step[data-status="blocked"] em,.risk-step[data-status="blocked"] b{color:#a32334}
-.risk-step[data-status="blocked"]{background:#ffeef0;border-radius:5px}
-.risk-line{margin:5px 0 0;font-size:10px;color:#4a3520}
-.risk-line strong{color:#17673b}
+@keyframes cardModalPop{from{opacity:0;transform:translate(-50%,-46%) scale(0.96)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.risk-preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:8px;margin-bottom:8px;border-bottom:1.5px solid #e7d3b0}
+.risk-preview-head strong{font:900 11px/1.2 system-ui,sans-serif;letter-spacing:.09em;color:#4a3418;display:flex;align-items:center;gap:5px}
+.risk-preview-close{width:28px;height:28px;min-height:28px;padding:0;border:1px solid #c8a773;border-radius:8px;background:#fffcf5;color:#553e24;font:900 15px/1 system-ui;cursor:pointer;transition:all .15s ease}
+.risk-preview-close:hover{background:#ffffff;border-color:#9f7d4b;transform:scale(1.05)}
+.risk-preview-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.risk-preview-actions button{min-height:38px;padding:7px 10px;border:1.5px solid #a4815a;border-radius:9px;background:#fffbf4;color:#4a3520;font:850 10px/1.1 system-ui;letter-spacing:.03em;cursor:pointer;transition:all .16s ease}
+.risk-preview-actions button:hover:not(:disabled){background:#ffffff;border-color:#7a5a34;transform:translateY(-1px);box-shadow:0 3px 10px rgba(50,35,20,0.1)}
+.risk-preview-actions button:last-child{border-color:#1c6a43;background:linear-gradient(135deg,#278155,#19653f);color:#fffdf5;box-shadow:0 3px 10px rgba(25,95,59,0.28)}
+.risk-preview-actions button:last-child:hover:not(:disabled){background:linear-gradient(135deg,#2ea068,#1f7b4e);box-shadow:0 5px 14px rgba(25,95,59,0.38)}
+.risk-preview-actions button:disabled{opacity:.45;cursor:not-allowed;transform:none!important;box-shadow:none!important}
+.risk-block{margin:8px 0;padding:9px 11px;border:1.5px solid #dfc7a3;border-radius:12px;background:#ffffffdd;box-shadow:0 2px 8px rgba(55,38,22,0.04);animation:riskBlockIn .2s ease}
+.risk-block>h4{margin:0 0 6px;color:#5c3f21;font:900 9px system-ui;letter-spacing:.09em;text-transform:uppercase;display:flex;align-items:center;gap:4px}
+@keyframes riskBlockIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.risk-config{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;font-size:10px}
+.risk-config-card{display:flex;flex-direction:column;justify-content:space-between;padding:6px 8px;border-radius:9px;background:linear-gradient(135deg,#fffefb,#fbf3e5);border:1px solid #e7d4b7;box-shadow:0 1px 4px rgba(50,35,20,0.04);transition:transform .15s ease,border-color .15s ease}
+.risk-config-card:hover{transform:translateY(-1px);border-color:#baa076}
+.risk-config-card span{color:#7d6448;font:800 8px system-ui;text-transform:uppercase;letter-spacing:.06em}
+.risk-config-card strong{color:#2b1f13;font:900 11px/1.25 system-ui;margin-top:2px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.risk-steps{display:grid;gap:4px;margin-top:6px}
+.risk-steps-head,.risk-step{display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.1fr) 52px;gap:6px;align-items:center;font-variant-numeric:tabular-nums}
+.risk-steps-head{color:#7b6245;font:850 8px system-ui;letter-spacing:.06em;text-transform:uppercase;padding:0 6px 3px;border-bottom:1px solid #e7d5b8}
+.risk-step{padding:5px 8px;border-radius:9px;background:#fffcf6;border:1px solid #ebd8bd;font-size:9.5px;color:#382819;transition:all .16s ease}
+.risk-step:hover{background:#ffffff;border-color:#bfa176;transform:translateX(2px);box-shadow:0 2px 6px rgba(50,35,20,0.06)}
+.risk-step b{display:inline-grid;place-items:center;width:22px;height:19px;border-radius:5px;background:#ede0c9;color:#553b21;font:900 9px system-ui}
+.risk-step em{font-style:normal;text-align:center;font:900 8.5px/1 system-ui;padding:3px 6px;border-radius:999px;letter-spacing:.04em;background:#d4f3e0;color:#16683b;border:1px solid #91d7aa}
+.risk-step[data-status="blocked"] em,.risk-step[data-status="blocked"] b{background:#ffe3e6;color:#ab1f30;border-color:#f79aa6}
+.risk-step[data-status="blocked"]{background:#fff5f6;border-color:#f4b4bc}
+.risk-line{margin:6px 0 0;padding:5px 8px;border-radius:8px;background:#f9f0e0;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:#4a3520}
+.risk-line strong{color:#17673b;font:900 11px system-ui}
 .risk-line[data-negative="true"] strong{color:#a32334}
-.risk-note{margin:5px 0 0;color:#7b6044;font:750 8px/1.4 system-ui}
-.risk-warn{margin:5px 0 0;padding:5px 6px;border:1px solid #d94755;border-radius:6px;background:#fff0f1;color:#8f1724;font:800 9px/1.35 system-ui}
-.risk-ok{margin:5px 0 0;padding:5px 6px;border:1px solid #79b48a;border-radius:6px;background:#eefaf0;color:#175c36;font:800 9px/1.35 system-ui}
-.risk-bar{height:7px;margin:4px 0 0;border-radius:6px;background:#e8d8bb;overflow:hidden}
-.risk-bar>i{display:block;height:100%;width:0%;background:linear-gradient(#5ecb85,#1f9a53)}
+.risk-note{margin:6px 0 0;padding:5px 8px;border-radius:7px;background:#fbf3e5;border-left:3px solid #bda177;color:#695137;font:750 8.5px/1.35 system-ui}
+.risk-warn{margin:6px 0 0;padding:7px 9px;border:1px solid #f19da7;border-radius:8px;background:linear-gradient(135deg,#fff3f4,#ffe9eb);color:#8e1c29;font:750 9px/1.35 system-ui;box-shadow:0 2px 6px rgba(180,30,50,0.05)}
+.risk-ok{margin:6px 0 0;padding:6px 8px;border:1px solid #79b48a;border-radius:8px;background:#eefaf0;color:#175c36;font:800 9px/1.35 system-ui}
+.risk-bar{height:8px;margin:5px 0 0;border-radius:6px;background:#e8d8bb;overflow:hidden}
+.risk-bar>i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#5ecb85,#1f9a53);transition:width .5s ease}
 .risk-estimate{font-size:10px;color:#4a3520}
 .risk-estimate strong{color:#1b5c3a}
 .risk-report section{margin:8px 0}
-.risk-report h4{margin:0 0 4px;color:#6a4828;font:900 8px system-ui;letter-spacing:.09em;text-transform:uppercase}
+.risk-report h4{margin:0 0 4px;color:#5c3f21;font:900 8.5px system-ui;letter-spacing:.09em;text-transform:uppercase}
 .risk-report .risk-config{font-size:9.5px}
 .risk-recent{display:grid;gap:4px;margin-top:6px}
-.risk-recent button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;min-height:32px;padding:5px 7px;border:1px solid #d0b48a;border-radius:7px;background:#fffaf0;color:#3f2d1d;font:800 9px system-ui;text-align:left;cursor:pointer}
+.risk-recent button{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;min-height:34px;padding:6px 8px;border:1px solid #d0b48a;border-radius:8px;background:#fffaf0;color:#3f2d1d;font:800 9.5px system-ui;text-align:left;cursor:pointer;transition:all .15s ease}
+.risk-recent button:hover{background:#ffffff;transform:translateY(-1px);border-color:#a48154}
 .risk-recent button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#rangerAutoTimer{display:grid;gap:1px;margin:5px 0 3px;padding:5px 6px;border-radius:8px;background:#00000038;color:#fff;font-size:9px}
+#rangerAutoTimer{display:grid;gap:2px;margin:5px 0 3px;padding:6px 8px;border-radius:8px;background:#00000042;color:#fff;font-size:9.5px}
 #rangerAutoTimer>div{display:flex;justify-content:space-between;gap:8px}
 #rangerAutoTimer span{color:#dff0d4}
 #rangerAutoTimer strong{color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap}
-#rangerAutoReportShow{display:block;width:100%;min-height:26px;margin-top:4px;padding:4px 6px;border:1px solid #cbe6c0;border-radius:7px;background:#123322d9;color:#eafbe0;font:850 8px system-ui;cursor:pointer;pointer-events:auto}
+#rangerAutoReportShow{display:block;width:100%;min-height:28px;margin-top:5px;padding:5px 8px;border:1px solid #cbe6c0;border-radius:8px;background:#123322d9;color:#eafbe0;font:850 8.5px system-ui;cursor:pointer;pointer-events:auto;transition:all .15s ease}
+#rangerAutoReportShow:hover{background:#18452ed9;transform:translateY(-1px)}
 #rangerAutoReportShow[hidden]{display:none}
 @media(max-width:999.98px){#rangerAutoRiskPreview,#rangerAutoRunReport{z-index:99}}
-@media(max-width:420px){#rangerAutoRiskPreview,#rangerAutoRunReport{width:calc(100vw - 10px);max-height:90dvh;padding:9px}.risk-steps-head,.risk-step{grid-template-columns:20px repeat(3,minmax(0,1fr)) 32px;gap:3px;font-size:8.5px}.risk-config{font-size:9.5px}#rangerAutoTimer{font-size:8.5px}}
-@media(max-width:360px){.risk-steps-head,.risk-step{grid-template-columns:18px repeat(3,minmax(0,1fr)) 28px;font-size:8px}.risk-preview-actions button{min-height:34px}}
+@media(max-width:480px){#rangerAutoRiskPreview,#rangerAutoRunReport{width:calc(100vw - 12px);max-height:90dvh;padding:10px}.risk-config{grid-template-columns:1fr 1fr}.risk-steps-head,.risk-step{grid-template-columns:24px minmax(0,1fr) minmax(0,1.1fr) minmax(0,1.1fr) 46px;gap:4px;font-size:8.5px}}
+@media(max-width:360px){.risk-config{grid-template-columns:1fr}.risk-steps-head,.risk-step{grid-template-columns:20px repeat(3,minmax(0,1fr)) 40px;font-size:8px}.risk-preview-actions button{min-height:34px}}
 </style>
 <script type="module">
   const publish = (tools) => { globalThis.__rangerAutoTools = tools; };
@@ -1279,7 +1289,7 @@ function rangerRiskClock(ms){const tools=rangerRiskTools();if(tools)return tools
 function rangerRiskDuration(ms){const tools=rangerRiskTools();if(tools)return tools.timing.formatDuration(ms);return rangerRiskClock(ms)}
 function rangerRiskNode(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node}
 function rangerRiskBlock(title){const block=rangerRiskNode('div','risk-block');if(title)block.append(rangerRiskNode('h4','',title));return block}
-function rangerRiskConfig(rows){const grid=rangerRiskNode('div','risk-config');for(const row of rows)grid.append(rangerRiskNode('span','',row[0]),rangerRiskNode('strong','',row[1]));return grid}
+function rangerRiskConfig(rows){const grid=rangerRiskNode('div','risk-config');for(const row of rows){const card=rangerRiskNode('div','risk-config-card');card.append(rangerRiskNode('span','',row[0]),rangerRiskNode('strong','',row[1]));grid.append(card)}return grid}
 function rangerRiskLine(label,value,negative){const line=rangerRiskNode('p','risk-line');line.dataset.negative=negative?'true':'false';line.append(rangerRiskNode('span','',label),rangerRiskNode('strong','',value));return line}
 function rangerRiskRunKey(accountId,accountMode){return 'ranger-auto-run-v1:'+String(accountId||'guest')+':'+String(accountMode||'unknown')}
 

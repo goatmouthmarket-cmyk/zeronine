@@ -3,7 +3,6 @@
   window.__pastureBrainRefineV1 = true;
   const $ = (id) => document.getElementById(id);
   const reduce = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const isMobile = () => window.matchMedia && matchMedia('(max-width: 700px)').matches;
 
   function pct(v) { return Number.isFinite(v) ? (v * 100).toFixed(1) + '%' : '--'; }
   function plainVerdict(v) {
@@ -13,11 +12,11 @@
     return 'I need more practice before calling it';
   }
   function friendlyMind(report) {
-    if (!report) return 'I can’t read my notes right now.';
-    if (report.mind === 'paper_hunting') return 'Looking for a good opportunity';
-    if (report.mind === 'waiting') return 'Waiting for better conditions';
-    if (report.mind === 'offline' || !report.outcomes) return 'Watching and collecting experience';
-    return 'Studying recent trades and learning from outcomes';
+    if (!report) return 'I cannot read my notes right now.';
+    if (report.mind === 'paper_hunting') return 'Looking for high-edge setups';
+    if (report.mind === 'waiting') return 'Waiting for favorable market hours';
+    if (report.mind === 'offline' || !report.outcomes) return 'Watching and collecting paper experience';
+    return 'Studying recent setups and learning from paper outcomes';
   }
 
   async function fetchReport() {
@@ -50,27 +49,92 @@
     const ev = $('brainSuggestionEvidence');
     const card = $('brainSuggestionCard');
     if (!state || !why) return;
+
+    // Ensure visual dashboard container exists inside card
+    let visualBox = $('brainThinkingVisuals');
+    if (!visualBox && card) {
+      visualBox = document.createElement('div');
+      visualBox.id = 'brainThinkingVisuals';
+      card.insertBefore(visualBox, why);
+    }
+
     if (!report) {
       state.textContent = 'Watching and learning from paper results.';
-      why.textContent = 'I’ll explain a suggestion here when I can read real evidence. Suggestions are paper-research observations, not permission to place trades.';
+      why.textContent = 'I will explain a suggestion here when I can read real evidence. Suggestions are paper-research observations, not permission to place trades.';
       if (ev) ev.textContent = 'I compare completed paper outcomes against the break-even mark for the same setup. I only speak up when stored evidence supports it.';
       card?.setAttribute('data-state', 'learning');
+      if (visualBox) visualBox.innerHTML = '';
       return;
     }
+
     const best = report.bestHour;
     const cur = report.currentHour;
     const outcomes = Number(report.outcomes) || 0;
     const target = Number(report.evidenceTarget) || 100;
+    const winRate = Number(report.winRate);
+    const breakeven = Number(report.breakeven);
+
     let label = 'Keep studying';
-    if (report.mind === 'paper_hunting' && best && best.verdict === 'favorable') label = 'Worth watching';
-    else if (report.mind === 'waiting' || (cur && cur.verdict === 'unfavorable')) label = 'Wait for a better chance';
-    else if (!outcomes || outcomes < Math.max(10, target * 0.25)) label = 'Still exploring';
-    else if (report.verdict === 'insufficient_evidence' || report.verdict === 'no_separable_edge') label = 'No reliable signal yet';
-    state.textContent = label + ' · ' + friendlyMind(report);
+    let pulseClass = 'pulse-blue';
+    if (report.mind === 'paper_hunting' && best && best.verdict === 'favorable') {
+      label = 'Worth watching';
+      pulseClass = 'pulse-green';
+    } else if (report.mind === 'waiting' || (cur && cur.verdict === 'unfavorable')) {
+      label = 'Wait for better conditions';
+      pulseClass = 'pulse-amber';
+    } else if (!outcomes || outcomes < Math.max(10, target * 0.25)) {
+      label = 'Still exploring';
+      pulseClass = 'pulse-blue';
+    } else if (report.verdict === 'insufficient_evidence' || report.verdict === 'no_separable_edge') {
+      label = 'No reliable edge yet';
+      pulseClass = 'pulse-amber';
+    }
+
+    state.innerHTML = `<span class="brain-pulse-dot ${pulseClass}" aria-hidden="true"></span> <strong>${label}</strong> — ${friendlyMind(report)}`;
+
+    // Build visual animated gauge & cards
+    if (visualBox) {
+      const winPct = Number.isFinite(winRate) ? Math.min(100, Math.max(0, winRate * 100)) : 0;
+      const bePct = Number.isFinite(breakeven) ? Math.min(100, Math.max(0, breakeven * 100)) : 50;
+      const progressPct = Math.min(100, Math.round((outcomes / Math.max(1, target)) * 100));
+
+      visualBox.innerHTML = `
+        <div class="brain-visual-grid">
+          <div class="brain-visual-stat">
+            <span class="brain-visual-stat-label">Paper Win Rate</span>
+            <span class="brain-visual-stat-value" style="color: ${winRate >= breakeven ? '#17673b' : '#9c3822'}">
+              ${pct(winRate)} <small style="font-size:9px;color:#7a6246;font-weight:700">req ${pct(breakeven)}</small>
+            </span>
+          </div>
+          <div class="brain-visual-stat">
+            <span class="brain-visual-stat-label">Evidence Progress</span>
+            <span class="brain-visual-stat-value">
+              ${outcomes} <small style="font-size:9px;color:#7a6246;font-weight:700">/ ${target} (${progressPct}%)</small>
+            </span>
+          </div>
+        </div>
+        <div class="brain-visual-gauge-card">
+          <div class="brain-gauge-header">
+            <span>Win Rate vs Break-even</span>
+            <strong>${winRate >= breakeven ? 'POSITIVE EDGE' : 'BELOW TARGET'}</strong>
+          </div>
+          <div class="brain-gauge-track" title="Win Rate: ${pct(winRate)}, Break-even: ${pct(breakeven)}">
+            <div class="brain-gauge-bar" style="width: ${winPct}%"></div>
+            <div class="brain-gauge-target" style="left: ${bePct}%" title="Break-even target"></div>
+          </div>
+          <div class="brain-gauge-subtext">
+            <span>0%</span>
+            <span style="color:#c93b3b;font-weight:800">Target ${pct(breakeven)}</span>
+            <span>100%</span>
+          </div>
+        </div>
+      `;
+    }
+
     const parts = [];
     if (best) parts.push(`Strongest studied hour (UTC): ${best.label} — ${plainVerdict(best.verdict)}${Number.isFinite(best.winRate) ? `, ${pct(best.winRate)} wins` : ''} over ${best.outcomes || 0} completed paper outcomes.`);
     if (cur) parts.push(`Right now (${cur.label} UTC): ${plainVerdict(cur.verdict)} based on ${cur.outcomes || 0} completed paper outcomes.`);
-    if (Number.isFinite(report.winRate) && Number.isFinite(report.breakeven)) parts.push(`Overall paper win rate ${pct(report.winRate)} vs break-even ${pct(report.breakeven)} (${outcomes} completed outcomes).`);
+    if (Number.isFinite(winRate) && Number.isFinite(breakeven)) parts.push(`Overall paper win rate ${pct(winRate)} vs break-even ${pct(breakeven)} (${outcomes} completed outcomes).`);
     parts.push('This is a paper-research suggestion, not permission to place demo or real trades.');
     why.textContent = parts.join(' ');
     if (ev) ev.textContent = `Evidence: ${outcomes} of ${target} completed paper outcomes for ${report.market || 'this market'} (lookback ${report.lookbackDays || '?'} days). I only separate hours from break-even when stored evidence supports it.`;
@@ -85,16 +149,15 @@
       li.dataset.refined = '1';
       const small = li.querySelector('small');
       const meta = small ? small.textContent || '' : '';
-      // Add friendly status chip without changing stored finding text.
       const chip = document.createElement('span');
       chip.className = 'brain-lesson-chip';
       const lower = meta.toLowerCase();
-      chip.textContent = /validated/.test(lower) ? 'Supported by enough evidence' : /provisional/.test(lower) ? 'Still checking' : 'Still exploring';
+      chip.textContent = /validated/.test(lower) ? 'Supported by evidence' : /provisional/.test(lower) ? 'Still verifying' : 'Exploring pattern';
       li.insertBefore(chip, small || null);
       if (small) {
         const det = document.createElement('details');
         det.className = 'brain-evidence-details';
-        const sum = document.createElement('summary'); sum.textContent = 'How do I know?';
+        const sum = document.createElement('summary'); sum.textContent = 'View Evidence';
         const p = document.createElement('p'); p.textContent = meta.replace(/\s*\|\s*/g, ' · ');
         det.append(sum, p);
         small.replaceWith(det);
@@ -126,16 +189,17 @@
     const barrier = mem.barrier != null ? mem.barrier : (mem.targetDigit != null ? mem.targetDigit : '?');
     const won = mem.status === 'won';
     const t = mem.updated_at || mem.exitEpoch || mem.opened_at || mem.ts;
-    const when = t ? new Date(Number(t) < 2e10 ? Number(t) * 1000 : Number(t)).toLocaleString() : 'time unavailable';
-    cap.textContent = `Visual recap of a paper result · ${market} ${dir} ${barrier} · ${when}. Virtual only.`;
+    const when = t ? new Date(Number(t) < 2e10 ? Number(t) * 1000 : Number(t)).toLocaleTimeString() : '';
+    cap.textContent = `Visual recap of paper outcome · ${market} ${dir} ${barrier}${when ? ' · ' + when : ''} · Virtual only`;
     void stage.offsetWidth;
     stage.classList.add('playing');
     replayTimer = setTimeout(() => {
       stage.classList.add('hit');
       res.hidden = false;
-      res.textContent = won ? 'Paper win (virtual)' : 'Paper loss (virtual)';
-      cap.textContent += won ? ' I’ll keep studying setups like this as evidence grows.' : ' I’ll keep checking whether this setup holds up with more evidence.';
-      replayTimer = setTimeout(() => { stage.classList.remove('playing'); }, 1200);
+      res.textContent = won ? '✓ Paper Win (Virtual)' : '✗ Paper Loss (Virtual)';
+      res.style.borderColor = won ? '#4ade80' : '#f87171';
+      cap.textContent += won ? ' — Setup held up favorably.' : ' — Collecting more samples to verify.';
+      replayTimer = setTimeout(() => { stage.classList.remove('playing'); }, 1400);
     }, reduce() ? 0 : 900);
   }
 
@@ -144,12 +208,12 @@
     const actions = $('brainReplayActions'), note = $('brainReplayNote');
     if (!actions) return;
     actions.replaceChildren();
-    const memories = paperMemories.filter(m => m && (m.status === 'won' || m.status === 'lost')).slice(0, 5);
+    const memories = paperMemories.filter(m => m && (m.status === 'won' || m.status === 'lost')).slice(0, 6);
     if (!memories.length) {
       if (note) note.textContent = 'I can replay a completed paper result as a short, read-only visual recap once paper outcomes are available here. This is a visual recap of a paper result — not a recorded shot path and never a real trade.';
       return;
     }
-    if (note) note.textContent = 'Choose a completed paper result to watch a short, read-only visual recap. The scene illustrates the stored result; it does not reproduce a recorded shot path or place any trade.';
+    if (note) note.textContent = 'Select a completed paper outcome below to watch an animated visual recap. Visual illustrative playback only.';
     memories.forEach((mem) => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -159,7 +223,14 @@
       const dir = String(mem.direction || mem.contract_type || '').toUpperCase().replace('DIGITOVER','OVER').replace('DIGITUNDER','UNDER');
       const market = mem.market || mem.symbol || 'Market';
       const barrier = mem.barrier ?? mem.targetDigit ?? '';
-      b.innerHTML = `<span class="brain-memory-tile-state">${won ? 'WIN' : 'LOSS'}</span><span class="brain-memory-tile-main">${market} ${dir} ${barrier}</span><span class="brain-memory-tile-sub">Paper recap</span>`;
+      b.innerHTML = `
+        <span class="brain-memory-tile-state">
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${won ? '#258f55' : '#d94652'}"></span>
+          ${won ? 'WON' : 'LOST'}
+        </span>
+        <span class="brain-memory-tile-main">${market} ${dir} ${barrier}</span>
+        <span class="brain-memory-tile-sub">Tap to replay</span>
+      `;
       b.setAttribute('aria-label', `${won ? 'Paper win' : 'Paper loss'}, ${market} ${dir} ${barrier}. Play read-only visual recap.`);
       b.addEventListener('click', () => playReplay(mem));
       actions.appendChild(b);
@@ -167,14 +238,13 @@
   }
 
   async function refreshThinking() {
-    if ($('brainPaneThinking')?.hidden === false || $('rangerBrainPanel') && !$('rangerBrainPanel').hidden) {
+    if ($('brainPaneThinking')?.hidden === false || ($('rangerBrainPanel') && !$('rangerBrainPanel').hidden)) {
       const report = await fetchReport();
       renderThinking(report);
     }
   }
 
   function setupOneMenuMobile() {
-    // Keep Brain as a mobile bottom sheet feel; existing coordination is in pasture-ui-refine.js.
     const panel = $('rangerBrainPanel');
     if (!panel) return;
     panel.setAttribute('aria-modal', 'false');
@@ -186,7 +256,6 @@
     renderMemoryReplay();
     decorateLessons();
     refreshThinking();
-    // Re-decorate when runtime updates content.
     const root = $('rangerBrainPanel');
     if (root) {
       let t = 0;
