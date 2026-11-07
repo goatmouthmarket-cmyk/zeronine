@@ -99,7 +99,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     timer.unref();
     monitors.set(accountId, timer);
   };
-  const fail = (reply: { code: (code: number) => unknown }, status: number, message: string) => { reply.code(status); return { error: message }; };
+  const fail = (reply: { code: (code: number) => unknown }, status: number, message: string, extra?: Record<string, unknown>) => { reply.code(status); return { error: message, ...extra }; };
 
   app.get('/api/player/trading/state', async (req, reply) => {
     const user = await principal(req);
@@ -111,7 +111,12 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const active = await reconcile(user.accountId, client);
       if (active?.status === 'open' || (active?.status === 'unknown' && active.provider_contract_id)) monitor(user.accountId, client);
       return { session: { loginid: user.accountId, ...info }, risk, active, trades: await store.listTrades(user.accountId) };
-    } catch { return fail(reply, 503, 'account or trading state unavailable'); }
+    } catch {
+      // The player session itself is still valid; only the Deriv/account services
+      // are unavailable. Report that distinctly so the browser shows
+      // "reconnecting" instead of signing the player out.
+      return fail(reply, 503, 'account or trading state unavailable', { code: 'trading_state_unavailable', retryable: true });
+    }
   });
 
   app.post('/api/player/rooms', async (req, reply) => {

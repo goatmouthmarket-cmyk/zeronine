@@ -4,8 +4,10 @@ import type { WebSocket } from 'ws';
 import type { Hub } from './hub.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import { isOwner } from './access.ts';
+import { config } from '../config.ts';
 import { getSession } from '../db/store.ts';
-import { PastureRooms } from './pastureRoom.ts';
+import { authenticatedPresenceId, guestPresenceId, PastureRooms } from './pastureRoom.ts';
+import { randomUUID } from 'node:crypto';
 import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
 
 const TICK_INTERVAL_MS = 150;
@@ -132,6 +134,10 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       if (socket.bufferedAmount > MAX_BUFFER) { socket.close(1013, 'slow client'); return; }
       try { socket.send(JSON.stringify(event)); } catch { socket.terminate(); }
     };
+    const closeSocket = (code: number, reason: string): void => {
+      closed ||= false;
+      try { if (socket.readyState === socket.OPEN || socket.readyState === socket.CONNECTING) socket.close(code, reason); } catch { /* already closing */ }
+    };
     const query = req.query as { room?: unknown };
     const roomId = query.room === undefined ? 'public' : typeof query.room === 'string' ? query.room.toLowerCase() : query.room;
     if (typeof roomId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) { socket.close(1008, 'invalid room'); return; }
@@ -153,40 +159,50 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       if (!accountId || (roomId !== 'main' && (!multiplayerStore || !await multiplayerStore.isRoomMember(accountId, roomId)))) { socket.close(1008, 'pasture access required'); return; }
     }
     if (socket.readyState !== socket.OPEN) return;
-    const joined = pastures.join(roomId, send);
+    // Identity is decided here, from verified credentials only. A browser can
+    // never choose, reclaim or guess another Ranger's presence id.
+    const connectionId = randomUUID();
+    const presenceId = accountId ? authenticatedPresenceId(config.sessionSecret, roomId, accountId) : guestPresenceId();
+    const joined = pastures.join(roomId, { presenceId, connectionId, send, close: closeSocket });
     if (!joined) { socket.close(1013, 'pasture full'); return; }
-    let id = joined.id;
-    let pasture = joined.room;
+    const id = joined.id;
+    const pasture = joined.room;
     let alive = true;
-    const heartbeat = setInterval(() => { void (async () => {
-      if (!alive) { socket.terminate(); return; }
-      if (ownerSession) {
-        if (!isOwner(req) || getSession()?.loginid !== accountId) { socket.close(1008, 'session expired'); return; }
-      } else if (accountId && multiplayerStore) {
-        const session = await multiplayerStore.resolveSession(secret);
-        if (session?.accountId !== accountId || (roomId !== 'main' && !await multiplayerStore.isRoomMember(accountId, roomId))) { socket.close(1008, 'pasture access expired'); return; }
-      }
-      alive = false; socket.ping();
-    })().catch(() => socket.close(1011, 'room unavailable')); }, HEARTBEAT_INTERVAL_MS);
-    socket.on('pong', () => { alive = true; });
-    let joinedPlayerId: string | null = null;
-    socket.on('message', data => {
-      try { const msg = JSON.parse(data.toString());
-        if (msg.type === 'set-pasture-self-id' && typeof msg.id === 'string' && !joinedPlayerId) {
-          joinedPlayerId = msg.id;
-          // Re-key the presence to the client's stable id so a reconnect never
-          // leaves a duplicate ranger standing on the pasture.
-          if (msg.id !== id) {
-            pastures.leave(roomId, pasture, id);
-            const result = pastures.join(roomId, send, msg.id);
-            if (result) { id = result.id; pasture = result.room; }
+    let checking = false;
+    const heartbeat = setInterval(() => {
+      void (async () => {
+        if (!alive) { socket.terminate(); return; }
+        alive = false;
+        socket.ping();
+        // Overlapping validations are skipped instead of piling up sessions checks.
+        if (checking) return;
+        checking = true;
+        try {
+          if (ownerSession) {
+            if (!isOwner(req) || getSession()?.loginid !== accountId) { closeSocket(1008, 'session expired'); return; }
+          } else if (accountId && multiplayerStore) {
+            const session = await multiplayerStore.resolveSession(secret);
+            if (!session || session.accountId !== accountId) { closeSocket(1008, 'pasture access expired'); return; }
+            if (roomId !== 'main' && !await multiplayerStore.isRoomMember(accountId, roomId)) { closeSocket(1008, 'pasture access expired'); return; }
           }
-        } else {
-          pasture.receive(id, msg);
-        }
+        } catch {
+          // A database hiccup is not proof that the session ended. Keep the
+          // presence and re-check on the next heartbeat instead of forcing a
+          // reconnect loop that would look like a logout.
+        } finally { checking = false; }
+      })();
+    }, HEARTBEAT_INTERVAL_MS);
+    socket.on('pong', () => { alive = true; });
+    socket.on('message', data => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
+        // The presence id is server-issued; any client-supplied identity claim
+        // is ignored by the room itself.
+        pasture.receive(id, connectionId, msg);
       } catch { /* Ignore invalid input. */ }
     });
-    const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); pastures.leave(roomId, pasture, id); };
+    const cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); pastures.leave(roomId, pasture, id, connectionId); };
     socket.on('close', cleanup); socket.on('error', cleanup);
     })().catch(() => socket.close(1011, 'room unavailable'));
   });

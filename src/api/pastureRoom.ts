@@ -1,8 +1,37 @@
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 
 type Send = (event: Record<string, unknown>) => void;
 type Appearance = { outfit: string; color: string; accent: string; headwear: string; accessory: string };
-type Player = { id: string; name: string; x: number; y: number; facing: number; action: string; appearance: Appearance; lastUpdate: number; lastChat: number; lastKill: number; lastShot: number; send: Send };
+type Player = {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  facing: number;
+  action: string;
+  appearance: Appearance;
+  lastUpdate: number;
+  lastChat: number;
+  lastKill: number;
+  lastShot: number;
+  send: Send;
+  /** Closes the socket that owns this presence; used when another tab takes over. */
+  close?: (code: number, reason: string) => void;
+  /** Identifies the socket that currently owns this presence. */
+  connectionId: string;
+};
+/**
+ * A server-authorized pasture presence. `presenceId` is derived from verified
+ * credentials (or randomly for guests) and is the only identity a browser may
+ * ever see; `connectionId` distinguishes the socket that currently owns it so
+ * a stale socket can never remove or hijack a newer connection.
+ */
+export type PastureConnection = {
+  presenceId: string;
+  connectionId: string;
+  send: Send;
+  close?: (code: number, reason: string) => void;
+};
 const initialAppearance: Appearance = { outfit: 'classic', color: '#326db1', accent: '#a65b38', headwear: 'none', accessory: 'none' };
 const colors = (value: unknown, fallback: string): string => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
 function appearance(input: unknown): Appearance {
@@ -12,6 +41,19 @@ function appearance(input: unknown): Appearance {
 }
 function cleanText(value: unknown, limit: number): string { return typeof value === 'string' ? Array.from(value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, limit).join('') : ''; }
 function publicPlayer(player: Player): Record<string, unknown> { return { id: player.id, name: player.name, x: player.x, y: player.y, facing: player.facing, action: player.action, appearance: player.appearance }; }
+const VALID_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Derive the public presence id for an authenticated player. The account id is
+ * never broadcast; it is hashed with the server secret so two rooms cannot be
+ * correlated and a browser cannot forge another player's presence id.
+ */
+export function authenticatedPresenceId(secret: string, roomId: string, accountId: string): string {
+  return `r-${createHmac('sha256', secret || 'pasture').update(`${roomId}:${accountId}`).digest('hex').slice(0, 20)}`;
+}
+
+/** Guests never reclaim presence: every guest connection gets a fresh id. */
+export function guestPresenceId(): string { return `g-${randomUUID()}`; }
 
 /** Ephemeral visual presence only; never carries account or trade data. */
 export class PastureRoom {
@@ -22,26 +64,55 @@ export class PastureRoom {
   private capacity: number;
   constructor(now: () => number = Date.now, capacity = 100) { this.now = now; this.capacity = capacity; }
   get size(): number { return this.players.size; }
-  join(send: Send, playerId?: string): string | null {
-    if (this.players.size >= this.capacity) return null;
-    // Reuse existing player ID if provided (for reconnects)
-    if (playerId && this.players.has(playerId)) {
-      const existing = this.players.get(playerId)!;
-      existing.send({ type: 'welcome', id: playerId, players: [...this.players.values()].map(publicPlayer), messages: this.messages, leader: this.players.keys().next().value, ghost: this.ghost });
-      this.broadcast({ type: 'player', player: publicPlayer(existing) }, playerId);
-      return playerId;
+  get leaderId(): string | null { return this.players.keys().next().value ?? null; }
+  private welcome(player: Player): Record<string, unknown> {
+    return { type: 'welcome', id: player.id, players: [...this.players.values()].map(publicPlayer), messages: this.messages, leader: this.players.keys().next().value ?? null, ghost: this.ghost };
+  }
+  /**
+   * Join or take over a presence. The identity is decided by the caller from
+   * verified credentials, so a browser cannot claim an arbitrary Ranger id.
+   */
+  join(connection: PastureConnection): string | null {
+    if (!VALID_ID.test(connection.presenceId)) return null;
+    const existing = this.players.get(connection.presenceId);
+    if (existing) {
+      if (existing.connectionId === connection.connectionId) {
+        existing.send = connection.send;
+        connection.send(this.welcome(existing));
+        return existing.id;
+      }
+      // A newer connection for the same authenticated player takes ownership.
+      // The previous socket is detached first so its later cleanup is a no-op.
+      existing.close?.(4001, 'presence replaced by a newer connection');
+      existing.connectionId = connection.connectionId;
+      existing.send = connection.send;
+      existing.close = connection.close;
+      connection.send(this.welcome(existing));
+      this.broadcast({ type: 'player', player: publicPlayer(existing) }, existing.id);
+      return existing.id;
     }
-    const id = playerId || randomUUID(), name = `Ranger ${id.slice(0, 4).toUpperCase()}`;
-    const player: Player = { id, name, x: 480, y: 560, facing: 1, action: 'idle', appearance: { ...initialAppearance }, lastUpdate: 0, lastChat: 0, lastKill: 0, lastShot: 0, send };
+    if (this.players.size >= this.capacity) return null;
+    const id = connection.presenceId;
+    const name = `Ranger ${id.replace(/^[a-z]-/, '').slice(0, 4).toUpperCase()}`;
+    const player: Player = { id, name, x: 480, y: 560, facing: 1, action: 'idle', appearance: { ...initialAppearance }, lastUpdate: 0, lastChat: 0, lastKill: 0, lastShot: 0, send: connection.send, close: connection.close, connectionId: connection.connectionId };
     this.players.set(id, player);
-    send({ type: 'welcome', id, players: [...this.players.values()].map(publicPlayer), messages: this.messages, leader: this.players.keys().next().value, ghost: this.ghost });
+    connection.send(this.welcome(player));
     this.broadcast({ type: 'player', player: publicPlayer(player) }, id);
     return id;
   }
-  leave(id: string): void { const wasLeader = this.players.keys().next().value === id; if (this.players.delete(id)) { this.broadcast({ type: 'leave', id }); if (wasLeader) this.broadcast({ type: 'leader', id: this.players.keys().next().value ?? null }); } }
-  receive(id: string, raw: unknown): void {
+  /** Only the connection that currently owns the presence may remove it. */
+  leave(id: string, connectionId: string): boolean {
+    const player = this.players.get(id);
+    if (!player || player.connectionId !== connectionId) return false;
+    const wasLeader = this.players.keys().next().value === id;
+    this.players.delete(id);
+    this.broadcast({ type: 'leave', id });
+    if (wasLeader) this.broadcast({ type: 'leader', id: this.players.keys().next().value ?? null });
+    return true;
+  }
+  receive(id: string, connectionId: string, raw: unknown): void {
     const p = this.players.get(id);
-    if (!p || !raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    if (!p || p.connectionId !== connectionId || !raw || typeof raw !== 'object' || Array.isArray(raw)) return;
     const v = raw as Record<string, unknown>, now = this.now();
     if (v.type === 'move') {
       if (now - p.lastUpdate < 180 || typeof v.x !== 'number' || !Number.isFinite(v.x) || typeof v.y !== 'number' || !Number.isFinite(v.y)) return;
@@ -78,7 +149,7 @@ export class PastureRooms {
   private readonly maxRooms: number;
   constructor(maxRooms = 256) { this.maxRooms = maxRooms; }
 
-  join(roomId: string, send: Send, playerId?: string): { id: string; room: PastureRoom } | null {
+  join(roomId: string, connection: PastureConnection): { id: string; room: PastureRoom } | null {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) return null;
     let room = this.rooms.get(roomId);
     if (!room) {
@@ -86,14 +157,16 @@ export class PastureRooms {
       room = new PastureRoom();
       this.rooms.set(roomId, room);
     }
-    const stableId = typeof playerId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(playerId) ? playerId : undefined;
-    const id = room.join(send, stableId);
-    if (!id) return null;
+    const id = room.join(connection);
+    if (!id) {
+      if (room.size === 0 && this.rooms.get(roomId) === room) this.rooms.delete(roomId);
+      return null;
+    }
     return { id, room };
   }
 
-  leave(roomId: string, room: PastureRoom, id: string): void {
-    room.leave(id);
+  leave(roomId: string, room: PastureRoom, id: string, connectionId: string): void {
+    room.leave(id, connectionId);
     if (room.size === 0 && this.rooms.get(roomId) === room) this.rooms.delete(roomId);
   }
 }
