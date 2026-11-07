@@ -645,6 +645,7 @@ test('Ranger Auto recovery styles only cool down after two consecutive losses', 
       const rangerAutoTradeIds = new Set([1, 2]);
       const rangerBet = { rangerAutomation: true, betStyle: '${style}', hitProbability: 0.7 };
       const performance = { now: () => 100 };
+      const rangerRiskNoteCooldown = () => {};
       ${script.slice(start, end)}
       ({ settleCooldown, getState: () => ({ rangerAutoLossStreak, lossCooldownStreak, cooldownReason, lockUntil }) })
     `) as {
@@ -678,6 +679,7 @@ test('Ranger Auto uses its configured loss threshold and cooldown duration', () 
     const rangerAutoTradeIds = new Set([1, 2, 3]);
     const rangerBet = { rangerAutomation: true, betStyle: 'chase', hitProbability: 0.7 };
     const performance = { now: () => 100 };
+    const rangerRiskNoteCooldown = () => {};
     ${script.slice(start, end)}
     ({ settleCooldown, getState: () => ({ rangerAutoLossStreak, lockCooldownStreak: lossCooldownStreak, lockUntil }) })
   `) as {
@@ -704,7 +706,7 @@ test('Ranger Auto validates the adjustable cooldown and take-profit settings', (
     { $: (id: string) => ({ value: ({ rangerAutoLossLimit: '3', rangerAutoCooldownSeconds: '120', rangerAutoTakeProfit: '25.5' } as Record<string, string>)[id] }) },
   ) as () => { error: string; lossLimit?: number; cooldownSeconds?: number; takeProfit?: number };
 
-  assert.deepEqual({ ...settings() }, { lossLimit: 3, cooldownSeconds: 120, takeProfit: 25.5, minEdge: 0, manualShots: 3, autoShots: 3, paperCount: 20, paperWinTarget: 55, green: true, gold: true, red: true, paperEnabled: false, error: '' });
+  assert.deepEqual({ ...settings() }, { lossLimit: 3, cooldownSeconds: 120, takeProfit: 25.5, maxRunLoss: 0, minEdge: 0, manualShots: 3, autoShots: 3, paperCount: 20, paperWinTarget: 55, green: true, gold: true, red: true, paperEnabled: false, error: '' });
 });
 
 test('Ranger Auto identity and run ID survive contract submission', () => {

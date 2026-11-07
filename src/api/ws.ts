@@ -155,7 +155,8 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
     if (socket.readyState !== socket.OPEN) return;
     const joined = pastures.join(roomId, send);
     if (!joined) { socket.close(1013, 'pasture full'); return; }
-    const { id, room: pasture } = joined;
+    let id = joined.id;
+    let pasture = joined.room;
     let alive = true;
     const heartbeat = setInterval(() => { void (async () => {
       if (!alive) { socket.terminate(); return; }
@@ -168,15 +169,20 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
       alive = false; socket.ping();
     })().catch(() => socket.close(1011, 'room unavailable')); }, HEARTBEAT_INTERVAL_MS);
     socket.on('pong', () => { alive = true; });
-    let joinedPlayerId = null;
+    let joinedPlayerId: string | null = null;
     socket.on('message', data => {
       try { const msg = JSON.parse(data.toString());
-        if (msg.type === 'set-pasture-self-id' && msg.id && !joinedPlayerId) {
+        if (msg.type === 'set-pasture-self-id' && typeof msg.id === 'string' && !joinedPlayerId) {
           joinedPlayerId = msg.id;
-          const result = pastures.join(roomId, send, msg.id);
-          if (result && result.id) { id = result.id; }
+          // Re-key the presence to the client's stable id so a reconnect never
+          // leaves a duplicate ranger standing on the pasture.
+          if (msg.id !== id) {
+            pastures.leave(roomId, pasture, id);
+            const result = pastures.join(roomId, send, msg.id);
+            if (result) { id = result.id; pasture = result.room; }
+          }
         } else {
-          pasture.receive(id, JSON.parse(data.toString()));
+          pasture.receive(id, msg);
         }
       } catch { /* Ignore invalid input. */ }
     });

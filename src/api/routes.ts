@@ -55,6 +55,8 @@ import {
   getSession,
   getGameProgress,
   getDb,
+  listRangerAutoRuns,
+  saveRangerAutoRun,
   recordGameCowKill,
   getSettings,
   insertTrade,
@@ -636,6 +638,130 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     }
     const playerId = await gamePlayerId(req, reply);
     return { progress: recordGameCowKill(playerId, body.eventId, body.duringBreak) };
+  });
+
+  // Ranger Auto run reports. These are the player's own finished runs, used by
+  // the pasture to reopen reports and to estimate time-to-target from real
+  // durations. Telemetry-shaped and never in the trade path: a failure here
+  // cannot block a quote, purchase, settlement or stop.
+  const numberOrNull = (value: unknown, limit = 1e12): number | null => {
+    const number = Number(value);
+    return Number.isFinite(number) && Math.abs(number) <= limit ? number : null;
+  };
+  const countOrZero = (value: unknown, limit = 1e9): number => {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? Math.min(limit, number) : 0;
+  };
+  const rangerRunJson = (row: Record<string, unknown>) => ({
+    runId: String(row.run_id),
+    accountId: String(row.account_id ?? ''),
+    accountMode: String(row.account_mode ?? 'unknown'),
+    currency: String(row.currency ?? 'USD'),
+    startedAt: Number(row.started_at),
+    endedAt: Number(row.ended_at),
+    outcome: String(row.outcome ?? 'other'),
+    stopReason: String(row.stop_reason ?? ''),
+    targetReached: Number(row.target_reached) === 1,
+    takeProfit: Number(row.take_profit) || 0,
+    maxRunLoss: Number(row.max_run_loss) || 0,
+    startingBalance: numberOrNull(row.starting_balance),
+    endingBalance: numberOrNull(row.ending_balance),
+    realizedProfit: Number(row.realized_profit) || 0,
+    peakProfit: numberOrNull(row.peak_profit),
+    maxDrawdown: numberOrNull(row.max_drawdown),
+    trades: Number(row.trades) || 0,
+    wins: Number(row.wins) || 0,
+    losses: Number(row.losses) || 0,
+    avgWinProfit: numberOrNull(row.avg_win_profit),
+    avgLossProfit: numberOrNull(row.avg_loss_profit),
+    largestLoss: numberOrNull(row.largest_loss),
+    longestLossStreak: Number(row.longest_loss_streak) || 0,
+    cooldowns: Number(row.cooldowns) || 0,
+    cooldownMs: Number(row.cooldown_ms) || 0,
+    activeMs: Number(row.active_ms) || 0,
+    waitingMs: Number(row.waiting_ms) || 0,
+    wallMs: Number(row.wall_ms) || 0,
+    avgTradeMs: Number(row.avg_trade_ms) || 0,
+    timeToTargetMs: numberOrNull(row.time_to_target_ms),
+    estimatedTimeToTargetMs: numberOrNull(row.estimated_time_to_target_ms),
+    settledStakes: Number(row.settled_stakes) || 0,
+  });
+  app.get('/api/ranger-auto/runs', async (req, reply) => {
+    const query = req.query as { limit?: unknown } | undefined;
+    const limit = Math.max(1, Math.min(50, Math.floor(Number(query?.limit) || 12)));
+    const playerId = await gamePlayerId(req, reply);
+    return { runs: listRangerAutoRuns(playerId, limit).map((row) => rangerRunJson(row as unknown as Record<string, unknown>)) };
+  });
+  app.post('/api/ranger-auto/runs', async (req, reply) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const runId = typeof body.runId === 'string' ? body.runId : '';
+    if (!/^[A-Za-z0-9:_-]{8,80}$/.test(runId)) { reply.code(400); return { error: 'invalid run id' }; }
+    const startedAt = numberOrNull(body.startedAt);
+    const endedAt = numberOrNull(body.endedAt);
+    if (!startedAt || !endedAt || endedAt < startedAt) { reply.code(400); return { error: 'invalid run timestamps' }; }
+    const accountMode = body.accountMode === 'demo' || body.accountMode === 'real' ? body.accountMode : 'unknown';
+    const tradeRows = Array.isArray(body.tradeRows) ? body.tradeRows : Array.isArray(body.trades) ? body.trades : [];
+    const tradesDetail = tradeRows.slice(0, 200).map((item) => {
+      const trade = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+      return {
+        tradeId: String(trade.tradeId ?? '').slice(0, 64),
+        stake: numberOrNull(trade.stake),
+        payout: numberOrNull(trade.payout),
+        profit: numberOrNull(trade.profit),
+        status: typeof trade.status === 'string' ? trade.status.slice(0, 24) : 'unknown',
+        purchasedAt: numberOrNull(trade.purchasedAt),
+        settledAt: numberOrNull(trade.settledAt),
+      };
+    }).filter((trade) => trade.tradeId.length > 0);
+    const events = Array.isArray(body.events) ? body.events.slice(0, 200).map((item) => {
+      const event = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+      return {
+        ts: numberOrNull(event.ts) ?? endedAt,
+        type: String(event.type ?? 'event').slice(0, 40),
+        detail: typeof event.detail === 'string' ? event.detail.slice(0, 120) : undefined,
+      };
+    }) : [];
+    const playerId = await gamePlayerId(req, reply);
+    const settings = body.settings && typeof body.settings === 'object' && !Array.isArray(body.settings)
+      ? body.settings as Record<string, unknown>
+      : {};
+    const result = saveRangerAutoRun(playerId, {
+      runId,
+      accountId: typeof body.accountId === 'string' ? body.accountId.slice(0, 64) : '',
+      accountMode,
+      currency: typeof body.currency === 'string' ? body.currency.slice(0, 8) : 'USD',
+      startedAt, endedAt,
+      outcome: typeof body.outcome === 'string' ? body.outcome.slice(0, 40) : 'other',
+      stopReason: typeof body.stopReason === 'string' ? body.stopReason.slice(0, 160) : '',
+      targetReached: body.targetReached === true,
+      takeProfit: countOrZero(body.takeProfit),
+      maxRunLoss: countOrZero(body.maxRunLoss),
+      startingBalance: numberOrNull(body.startingBalance),
+      endingBalance: numberOrNull(body.endingBalance),
+      realizedProfit: numberOrNull(body.realizedProfit) ?? 0,
+      peakProfit: numberOrNull(body.peakProfit),
+      maxDrawdown: numberOrNull(body.maxDrawdown),
+      trades: countOrZero(body.trades),
+      wins: countOrZero(body.wins),
+      losses: countOrZero(body.losses),
+      avgWinProfit: numberOrNull(body.avgWinProfit),
+      avgLossProfit: numberOrNull(body.avgLossProfit),
+      largestLoss: numberOrNull(body.largestLoss),
+      longestLossStreak: countOrZero(body.longestLossStreak),
+      cooldowns: countOrZero(body.cooldowns),
+      cooldownMs: countOrZero(body.cooldownMs),
+      activeMs: countOrZero(body.activeMs),
+      waitingMs: countOrZero(body.waitingMs),
+      wallMs: countOrZero(body.wallMs),
+      avgTradeMs: countOrZero(body.avgTradeMs),
+      timeToTargetMs: numberOrNull(body.timeToTargetMs),
+      estimatedTimeToTargetMs: numberOrNull(body.estimatedTimeToTargetMs),
+      settledStakes: countOrZero(body.settledStakes),
+      settings,
+      tradesDetail,
+      events,
+    });
+    return { ok: true, saved: result.saved, runId: result.runId };
   });
 
   app.get('/api/game/health', async (req) => {

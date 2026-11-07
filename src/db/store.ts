@@ -713,6 +713,66 @@ function migrate(d: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_pattern_stats_market ON pattern_stats(market);
     CREATE INDEX IF NOT EXISTS idx_digits_market_id ON digits(market, id DESC);
+    CREATE TABLE IF NOT EXISTS ranger_auto_runs (
+      player_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      account_id TEXT NOT NULL DEFAULT '',
+      account_mode TEXT NOT NULL DEFAULT 'unknown',
+      currency TEXT NOT NULL DEFAULT 'USD',
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      outcome TEXT NOT NULL,
+      stop_reason TEXT NOT NULL DEFAULT '',
+      target_reached INTEGER NOT NULL DEFAULT 0,
+      take_profit REAL NOT NULL DEFAULT 0,
+      max_run_loss REAL NOT NULL DEFAULT 0,
+      starting_balance REAL,
+      ending_balance REAL,
+      realized_profit REAL NOT NULL DEFAULT 0,
+      peak_profit REAL,
+      max_drawdown REAL,
+      trades INTEGER NOT NULL DEFAULT 0,
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      avg_win_profit REAL,
+      avg_loss_profit REAL,
+      largest_loss REAL,
+      longest_loss_streak INTEGER NOT NULL DEFAULT 0,
+      cooldowns INTEGER NOT NULL DEFAULT 0,
+      cooldown_ms INTEGER NOT NULL DEFAULT 0,
+      active_ms INTEGER NOT NULL DEFAULT 0,
+      waiting_ms INTEGER NOT NULL DEFAULT 0,
+      wall_ms INTEGER NOT NULL DEFAULT 0,
+      avg_trade_ms INTEGER NOT NULL DEFAULT 0,
+      time_to_target_ms INTEGER,
+      estimated_time_to_target_ms INTEGER,
+      settled_stakes REAL NOT NULL DEFAULT 0,
+      settings_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (player_id, run_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ranger_auto_runs_player ON ranger_auto_runs(player_id, ended_at DESC);
+    CREATE TABLE IF NOT EXISTS ranger_auto_run_trades (
+      player_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      trade_id TEXT NOT NULL,
+      stake REAL,
+      payout REAL,
+      profit REAL,
+      status TEXT,
+      purchased_at INTEGER,
+      settled_at INTEGER,
+      PRIMARY KEY (player_id, run_id, trade_id)
+    );
+    CREATE TABLE IF NOT EXISTS ranger_auto_run_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL,
+      run_id TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      detail TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ranger_auto_run_events_run ON ranger_auto_run_events(player_id, run_id, id);
   `);
 
   // Migration: add exit detail columns if missing
@@ -744,6 +804,13 @@ function migrate(d: DatabaseSync): void {
   d.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_ledger_entry_key ON trade_ledger(entry_key)`);
   backfillTradeLedger(d);
   void cols;
+
+  const rangerRunCols = new Set(
+    (d.prepare(`PRAGMA table_info(ranger_auto_runs)`).all() as Array<{ name: string }>).map((c) => c.name),
+  );
+  if (!rangerRunCols.has('avg_win_profit')) d.exec(`ALTER TABLE ranger_auto_runs ADD COLUMN avg_win_profit REAL`);
+  if (!rangerRunCols.has('avg_loss_profit')) d.exec(`ALTER TABLE ranger_auto_runs ADD COLUMN avg_loss_profit REAL`);
+  void rangerRunCols;
 
   const settingsCols = new Set(
     (d.prepare(`PRAGMA table_info(settings)`).all() as Array<{ name: string }>).map((c) => c.name),
@@ -1251,6 +1318,138 @@ export function recordGameCowKill(playerId: string, eventId: string, duringBreak
     throw error;
   }
   return getGameProgress(playerId);
+}
+
+/** One finished in-game Ranger Auto run, owned by the player who ran it. */
+export interface RangerAutoRunRow {
+  player_id: string;
+  run_id: string;
+  account_id: string;
+  account_mode: 'demo' | 'real' | 'unknown';
+  currency: string;
+  started_at: number;
+  ended_at: number;
+  outcome: string;
+  stop_reason: string;
+  target_reached: number;
+  take_profit: number;
+  max_run_loss: number;
+  starting_balance: number | null;
+  ending_balance: number | null;
+  realized_profit: number;
+  peak_profit: number | null;
+  max_drawdown: number | null;
+  trades: number;
+  wins: number;
+  losses: number;
+  avg_win_profit: number | null;
+  avg_loss_profit: number | null;
+  largest_loss: number | null;
+  longest_loss_streak: number;
+  cooldowns: number;
+  cooldown_ms: number;
+  active_ms: number;
+  waiting_ms: number;
+  wall_ms: number;
+  avg_trade_ms: number;
+  time_to_target_ms: number | null;
+  estimated_time_to_target_ms: number | null;
+  settled_stakes: number;
+  settings_json: string;
+  created_at: number;
+}
+
+export interface RangerAutoRunInput {
+  runId: string;
+  accountId: string;
+  accountMode: 'demo' | 'real' | 'unknown';
+  currency: string;
+  startedAt: number;
+  endedAt: number;
+  outcome: string;
+  stopReason: string;
+  targetReached: boolean;
+  takeProfit: number;
+  maxRunLoss: number;
+  startingBalance: number | null;
+  endingBalance: number | null;
+  realizedProfit: number;
+  peakProfit: number | null;
+  maxDrawdown: number | null;
+  trades: number;
+  wins: number;
+  losses: number;
+  avgWinProfit: number | null;
+  avgLossProfit: number | null;
+  largestLoss: number | null;
+  longestLossStreak: number;
+  cooldowns: number;
+  cooldownMs: number;
+  activeMs: number;
+  waitingMs: number;
+  wallMs: number;
+  avgTradeMs: number;
+  timeToTargetMs: number | null;
+  estimatedTimeToTargetMs: number | null;
+  settledStakes: number;
+  settings: Record<string, unknown>;
+  tradesDetail: Array<{ tradeId: string; stake: number | null; payout: number | null; profit: number | null; status: string; purchasedAt: number | null; settledAt: number | null }>;
+  events: Array<{ ts: number; type: string; detail?: string }>;
+}
+
+/**
+ * Persist a finished run exactly once. The client may retry a post after a
+ * dropped connection; the (player_id, run_id) key makes that idempotent so a
+ * retry can never double-count a run, its trades or its cooldowns.
+ */
+export function saveRangerAutoRun(playerId: string, run: RangerAutoRunInput): { saved: boolean; runId: string } {
+  const d = getDb();
+  d.exec('BEGIN IMMEDIATE');
+  try {
+    const result = d.prepare(`
+      INSERT OR IGNORE INTO ranger_auto_runs
+        (player_id, run_id, account_id, account_mode, currency, started_at, ended_at, outcome, stop_reason,
+         target_reached, take_profit, max_run_loss, starting_balance, ending_balance, realized_profit, peak_profit,
+         max_drawdown, trades, wins, losses, avg_win_profit, avg_loss_profit, largest_loss, longest_loss_streak,
+         cooldowns, cooldown_ms, active_ms, waiting_ms, wall_ms, avg_trade_ms, time_to_target_ms,
+         estimated_time_to_target_ms, settled_stakes, settings_json, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(
+      playerId, run.runId, run.accountId, run.accountMode, run.currency, run.startedAt, run.endedAt, run.outcome,
+      run.stopReason, run.targetReached ? 1 : 0, run.takeProfit, run.maxRunLoss, run.startingBalance, run.endingBalance,
+      run.realizedProfit, run.peakProfit, run.maxDrawdown, run.trades, run.wins, run.losses, run.avgWinProfit,
+      run.avgLossProfit, run.largestLoss,
+      run.longestLossStreak, run.cooldowns, run.cooldownMs, run.activeMs, run.waitingMs, run.wallMs, run.avgTradeMs,
+      run.timeToTargetMs, run.estimatedTimeToTargetMs, run.settledStakes, JSON.stringify(run.settings ?? {}), Date.now(),
+    );
+    const saved = Number(result.changes) > 0;
+    if (saved) {
+      const insertTrade = d.prepare(`INSERT OR IGNORE INTO ranger_auto_run_trades
+        (player_id, run_id, trade_id, stake, payout, profit, status, purchased_at, settled_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`);
+      for (const trade of run.tradesDetail.slice(0, 200)) {
+        insertTrade.run(playerId, run.runId, trade.tradeId, trade.stake, trade.payout, trade.profit, trade.status, trade.purchasedAt, trade.settledAt);
+      }
+      const insertEvent = d.prepare('INSERT INTO ranger_auto_run_events (player_id, run_id, ts, type, detail) VALUES (?,?,?,?,?)');
+      for (const event of run.events.slice(0, 200)) insertEvent.run(playerId, run.runId, event.ts, event.type, event.detail ?? null);
+    }
+    d.exec('COMMIT');
+    return { saved, runId: run.runId };
+  } catch (error) {
+    d.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+/** Most recent finished runs for one player; never crosses player identity. */
+export function listRangerAutoRuns(playerId: string, limit = 20): RangerAutoRunRow[] {
+  return getDb().prepare('SELECT * FROM ranger_auto_runs WHERE player_id = ? ORDER BY ended_at DESC, created_at DESC LIMIT ?')
+    .all(playerId, Math.max(1, Math.min(100, limit))) as unknown as RangerAutoRunRow[];
+}
+
+export function listRangerAutoRunTrades(playerId: string, runId: string): Array<{ trade_id: string; stake: number | null; payout: number | null; profit: number | null; status: string; purchased_at: number | null; settled_at: number | null }> {
+  return getDb().prepare('SELECT trade_id, stake, payout, profit, status, purchased_at, settled_at FROM ranger_auto_run_trades WHERE player_id = ? AND run_id = ? ORDER BY trade_id')
+    .all(playerId, runId) as unknown as Array<{ trade_id: string; stake: number | null; payout: number | null; profit: number | null; status: string; purchased_at: number | null; settled_at: number | null }>;
 }
 
 export function getSession(): SessionRow | null {

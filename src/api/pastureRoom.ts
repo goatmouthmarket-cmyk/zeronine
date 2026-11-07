@@ -78,7 +78,7 @@ export class PastureRooms {
   private readonly maxRooms: number;
   constructor(maxRooms = 256) { this.maxRooms = maxRooms; }
 
-  join(roomId: string, send: Send): { id: string; room: PastureRoom } | null {
+  join(roomId: string, send: Send, playerId?: string): { id: string; room: PastureRoom } | null {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) return null;
     let room = this.rooms.get(roomId);
     if (!room) {
@@ -86,7 +86,8 @@ export class PastureRooms {
       room = new PastureRoom();
       this.rooms.set(roomId, room);
     }
-    const id = room.join(send);
+    const stableId = typeof playerId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(playerId) ? playerId : undefined;
+    const id = room.join(send, stableId);
     if (!id) return null;
     return { id, room };
   }
