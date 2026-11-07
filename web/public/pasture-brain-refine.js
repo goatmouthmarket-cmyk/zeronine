@@ -108,7 +108,7 @@
     const box = document.createElement('section');
     box.id = 'brainReplayBox';
     box.className = 'brain-memory-card';
-    box.innerHTML = '<strong>📜 Memory replay (read-only)</strong><p class="brain-friendly-note" id="brainReplayNote">I can replay a completed paper result as a short, read-only visual recap. This is a visual recap of a paper result — not a recorded shot path and never a real trade.</p><div class="brain-memory-actions" id="brainReplayActions"></div><div class="brain-replay-stage" id="brainReplayStage" aria-label="Paper result visual recap" hidden><div class="brain-replay-ground"></div><div class="brain-replay-ranger" aria-hidden="true">🏹</div><div class="brain-replay-cow" id="brainReplayCow" aria-hidden="true">🐄</div><div class="brain-replay-arrow" aria-hidden="true">➤</div><div class="brain-replay-result" id="brainReplayResult" hidden></div><div class="brain-replay-caption" id="brainReplayCaption"></div></div>';
+    box.innerHTML = '<strong>Memory replay (read-only)</strong><p class="brain-friendly-note" id="brainReplayNote">I can replay a completed paper result as a short, read-only visual recap. This is a visual recap of a paper result — not a recorded shot path and never a real trade.</p><div class="brain-memory-actions" id="brainReplayActions" role="list" aria-label="Completed paper results"></div><div class="brain-replay-stage" id="brainReplayStage" aria-label="Paper result visual recap" hidden><div class="brain-replay-ground"></div><div class="brain-replay-ranger" aria-hidden="true"><span class="brain-replay-label">Ranger</span></div><div class="brain-replay-cow" id="brainReplayCow" aria-hidden="true"><span class="brain-replay-label">Cow</span></div><div class="brain-replay-arrow" aria-hidden="true"></div><div class="brain-replay-result" id="brainReplayResult" hidden></div><div class="brain-replay-caption" id="brainReplayCaption"></div></div>';
     pane.insertBefore(box, pane.firstChild);
     return box;
   }
@@ -153,9 +153,14 @@
     memories.forEach((mem) => {
       const b = document.createElement('button');
       b.type = 'button';
+      b.className = 'brain-memory-tile' + (mem.status === 'won' ? ' is-win' : ' is-loss');
+      b.setAttribute('role', 'listitem');
       const won = mem.status === 'won';
       const dir = String(mem.direction || mem.contract_type || '').toUpperCase().replace('DIGITOVER','OVER').replace('DIGITUNDER','UNDER');
-      b.textContent = `${won ? '✅ Win' : '❌ Loss'} · ${mem.market || mem.symbol || 'Market'} ${dir} ${mem.barrier ?? mem.targetDigit ?? ''}`.trim();
+      const market = mem.market || mem.symbol || 'Market';
+      const barrier = mem.barrier ?? mem.targetDigit ?? '';
+      b.innerHTML = `<span class="brain-memory-tile-state">${won ? 'WIN' : 'LOSS'}</span><span class="brain-memory-tile-main">${market} ${dir} ${barrier}</span><span class="brain-memory-tile-sub">Paper recap</span>`;
+      b.setAttribute('aria-label', `${won ? 'Paper win' : 'Paper loss'}, ${market} ${dir} ${barrier}. Play read-only visual recap.`);
       b.addEventListener('click', () => playReplay(mem));
       actions.appendChild(b);
     });
