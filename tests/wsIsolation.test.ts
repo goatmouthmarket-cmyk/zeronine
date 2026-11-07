@@ -140,6 +140,10 @@ test('signed players automatically share pasture presence, chat, and cow kills',
 });
 
 test('reconnecting reuses one authenticated Ranger and stale sockets cannot remove it', async () => {
+  const oldToken = config.dashboardAdminToken;
+  const oldEnv = config.nodeEnv;
+  config.dashboardAdminToken = 'test-owner-token';
+  config.nodeEnv = 'production';
   const app = Fastify();
   await app.register(cookie, { secret: 'local-test-secret-long-enough' });
   await registerWs(app, new Hub(), new MarketRegistry({ onTick() {} }), {
@@ -207,5 +211,7 @@ test('reconnecting reuses one authenticated Ranger and stale sockets cannot remo
   } finally {
     bob.socket.terminate(); aliceFirst.socket.terminate(); aliceSecond.socket.terminate();
     await app.close();
+    config.dashboardAdminToken = oldToken;
+    config.nodeEnv = oldEnv;
   }
 });
