@@ -6813,3 +6813,6 @@ button.activity-row {
 .connect-terms a:focus-visible, .connect-terms input:focus-visible { outline: 3px solid #267a48; outline-offset: 2px; }
 @keyframes connect-terms-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .connect-terms { animation: none; } }
+
+.player-reconnect { position: fixed; z-index: 34; top: 88px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 24px); padding: 6px 12px; border: 1px solid #6e7f8f; border-radius: 999px; background: #121820ea; color: #dfe8f1; font-size: 11px; font-weight: 700; letter-spacing: .01em; }
+@media (max-width: 700px) { .player-reconnect { top: 72px; width: max-content; font-size: 10px; } }

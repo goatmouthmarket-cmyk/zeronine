@@ -1,6 +1,7 @@
 import { memo } from 'preact/compat';
 import { useDialogFocus } from './useDialogFocus';
 import { maySkipCowReview } from './realCowConsent';
+import { nextPastureRoom } from './authState';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { JSX } from 'preact';
 import type { Market, TradeRow, LedgerEntry, Settings, SignalCandidate, QuoteEvt, Decision, ContractEvt, Recovery, TestRunRow, TestLabActive, PatternRow, DerivAccountInfo, SessionInfo, AutomationState, MomentumScanMarket, MomentumScanSample, MomentumCandle, MomentumResearchRow, MomentumTradePurchase, MomentumTradeClose, PaperTrade, PaperPortfolio, MultiplierOptionsResult, EntryLabMethod, EntryLabProduct, ManualTradePreview, ManualTradeResult } from './store';
@@ -712,6 +713,14 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [showRealCowNotice, setShowRealCowNotice] = useState(false);
   const sessionRef = useRef(s.session);
   sessionRef.current = s.session;
+  // The embedded pasture room follows confirmed authentication only. A 503 or
+  // a reconnect must never flip the iframe to the public room (which would
+  // remount it and spawn a second Ranger connection).
+  const resolvedLoginId = s.session?.loginid ?? null;
+  const [pastureRoom, setPastureRoom] = useState<string | null>(() => nextPastureRoom(null, resolvedLoginId, base.playerAuthStatus));
+  useEffect(() => {
+    setPastureRoom((previous) => nextPastureRoom(previous, resolvedLoginId, base.playerAuthStatus));
+  }, [resolvedLoginId, base.playerAuthStatus]);
   useEffect(() => {
     const account = s.session?.loginid ?? null;
     const mode = s.session?.mode;
@@ -804,8 +813,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   }, [digitTrades]);
 
   useEffect(() => {
-    void loadTestRuns();
-  }, []);
+    if (!s.owner) return;
+    void loadTestRuns().catch(() => undefined);
+  }, [s.owner]);
 
   useEffect(() => {
     if (!s.owner || !active) return;
@@ -1494,13 +1504,15 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>
 
+      {active && base.playerAuthStatus === 'reconnecting' && base.playerAuthMessage && <div class="player-reconnect" role="status"><span>{base.playerAuthMessage}</span></div>}
+
       {active && rememberedReal && showRealCowNotice && <div class="real-cow-mode" role="status"><span>Manual real-money trades: confirmation off</span><button type="button" onClick={() => { try { localStorage.removeItem(`zeronine:real-cow-confirm:${s.session?.loginid}`); } catch { /* In-memory state still returns to review. */ } setRememberedAccount(null); window.dispatchEvent(new Event('real-cow-preference')); }}>Turn confirmation on</button></div>}
 
       {active && !marketChooserOpen && <section class="trading-room-frame-shell" aria-label="Interactive manual trading room">
         <iframe
           ref={roomFrameRef}
           class="trading-room-frame"
-          src={`/trading-room.html${s.session ? '?room=main' : ''}`}
+          src={`/trading-room.html${pastureRoom ? `?room=${encodeURIComponent(pastureRoom)}` : ''}`}
           title="Deriv Cows interactive trading pasture"
           onLoad={() => { postRoomState(); syncDetailHud(); }}
         />
@@ -5387,10 +5399,13 @@ function TestLabPage(): JSX.Element {
   const paperContract = paper?.openContract ?? paper?.lastSettled;
 
   useEffect(() => {
-    void loadTestRuns();
+    // Owner-only endpoints: guests must never generate 403s every minute, and
+    // the timer starts as soon as owner access is granted.
+    if (!s.owner) return;
+    void loadTestRuns().catch(() => undefined);
     const timer = window.setInterval(() => void loadTestRuns().catch(() => undefined), 60_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [s.owner]);
   useEffect(() => {
     if (tab === 'patterns') void loadPatternsData();
   }, [tab]);

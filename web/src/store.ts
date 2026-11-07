@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'preact/compat';
 import { SignalStabilizer } from './signalStability';
+import { ApiError, errorMessage } from './http';
+import { classifyPlayerStateFailure, type PlayerAuthStatus } from './authState';
 
 export interface Market {
   symbol: string;
@@ -940,6 +942,11 @@ export interface State {
   playerSession: SessionInfo | null;
   playerRecovery: Recovery | null;
   playerTrades: TradeRow[];
+  /** Session health for the Derby player login, separate from the owner session. */
+  playerAuthStatus: PlayerAuthStatus;
+  playerAuthMessage: string;
+  /** Set while an account switch is confirmed by the backend. */
+  playerAccountSwitch: { accountId: string; status: 'switching' | 'verified' | 'failed' } | null;
   recovery: Recovery | null;
   settings: Settings | null;
   automation: AutomationState | null;
@@ -983,6 +990,9 @@ const initial: State = {
   playerSession: null,
   playerRecovery: null,
   playerTrades: [],
+  playerAuthStatus: 'idle',
+  playerAuthMessage: '',
+  playerAccountSwitch: null,
   recovery: null,
   settings: null,
   automation: null,
@@ -1078,8 +1088,11 @@ export async function api<T = unknown>(path: string, init?: RequestInit, timeout
     res = await fetch(path, { ...init, cache: 'no-store', headers, signal: init?.signal ?? timeoutController?.signal });
   } catch (error) {
     if (timeout) window.clearTimeout(timeout);
-    if (error instanceof DOMException && error.name === 'AbortError' && !init?.signal) throw new Error('request timed out');
-    throw error;
+    if (error instanceof DOMException && error.name === 'AbortError' && !init?.signal) {
+      throw new ApiError('request timed out', { status: 0, code: 'timeout', kind: 'timeout' });
+    }
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(errorMessage(error), { status: 0, code: 'network_error', kind: 'network' });
   }
   if (timeout) window.clearTimeout(timeout);
   let body: unknown = null;
@@ -1089,8 +1102,8 @@ export async function api<T = unknown>(path: string, init?: RequestInit, timeout
     // non-json response
   }
   if (!res.ok) {
-    const msg = (body as { error?: string })?.error ?? `HTTP ${res.status}`;
-    throw new Error(msg);
+    const payload = body as { error?: string; code?: string } | null;
+    throw new ApiError(payload?.error ?? `HTTP ${res.status}`, { status: res.status, code: payload?.code ?? `http_${res.status}`, kind: 'http' });
   }
   return body as T;
 }
@@ -1538,7 +1551,10 @@ window.setInterval(() => {
 
 function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_login?: boolean; multiplayer_enabled?: boolean; owner?: boolean }): void {
   const markets = Array.isArray(s.markets) ? s.markets : [];
-  const accountChanged = state.session?.loginid !== s.session?.loginid;
+  // Owner dashboard identity and the multiplayer player identity are separate.
+  // Only reset player state when it is the owner session mirroring this login.
+  const playerTracksOwner = Boolean(s.owner) && !s.multiplayer_enabled;
+  const accountChanged = playerTracksOwner && state.session?.loginid !== s.session?.loginid;
   cachePublicMarkets(markets);
   set({
       feed: s.feed,
@@ -1592,12 +1608,36 @@ export async function refreshPlayerState(): Promise<void> {
   const request = ++playerStateRequest;
   try {
     const response = await api<{ session: SessionInfo; risk?: Omit<Recovery, 'last_win_epoch' | 'updated_at'>; trades: Array<Record<string, unknown>> }>('/api/player/trading/state');
+    // A slower response must never overwrite a newer account snapshot.
     if (request !== playerStateRequest) return;
     if (state.owner && state.multiplayerEnabled && state.session?.loginid !== response.session.loginid) return;
-    set({ playerSession: response.session, playerRecovery: response.risk ? { ...response.risk, last_win_epoch: 0, updated_at: 0 } : null, playerTrades: response.trades.map(playerTradeRow) });
-  } catch {
+    set({
+      playerSession: response.session,
+      playerRecovery: response.risk ? { ...response.risk, last_win_epoch: 0, updated_at: 0 } : null,
+      playerTrades: response.trades.map(playerTradeRow),
+      playerAuthStatus: 'live',
+      playerAuthMessage: '',
+      playerAccountSwitch: state.playerAccountSwitch?.status === 'switching' ? { ...state.playerAccountSwitch, status: 'verified' } : null,
+    });
+  } catch (error) {
     if (request !== playerStateRequest) return;
-    set({ playerSession: null, playerRecovery: null, playerTrades: [] });
+    const decision = classifyPlayerStateFailure(error);
+    if (decision.clearSession) {
+      // Verified 401/revocation: the backend no longer honours this session.
+      set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: decision.status, playerAuthMessage: decision.message, playerAccountSwitch: null });
+      return;
+    }
+    // Outage or transport failure: keep the last verified session on screen so a
+    // 503 never looks like a logout, and let authorization stay server-side.
+    const pendingSwitch = state.playerAccountSwitch;
+    set({
+      playerSession: state.playerSession,
+      playerRecovery: state.playerRecovery,
+      playerTrades: state.playerTrades,
+      playerAuthStatus: state.playerSession ? decision.status : 'reconnecting',
+      playerAuthMessage: decision.message,
+      playerAccountSwitch: pendingSwitch?.status === 'switching' ? { ...pendingSwitch, status: 'failed' } : pendingSwitch,
+    });
   }
 }
 
@@ -1607,10 +1647,19 @@ export async function loadPlayerAccounts(): Promise<Array<{ accountId: string; m
 }
 
 export async function selectPlayerAccount(accountId: string): Promise<void> {
-  await api('/api/player/accounts/select', { method: 'POST', body: JSON.stringify({ accountId }) });
+  // Switching stays transactional: the previous account's figures stay on
+  // screen (marked as switching) until the backend confirms the selection.
+  set({ playerAccountSwitch: { accountId, status: 'switching' }, playerAuthMessage: '' });
+  try {
+    await api('/api/player/accounts/select', { method: 'POST', body: JSON.stringify({ accountId }) });
+  } catch (error) {
+    set({ playerAccountSwitch: { accountId, status: 'failed' }, playerAuthStatus: state.playerSession ? 'live' : state.playerAuthStatus, playerAuthMessage: errorMessage(error) });
+    throw error;
+  }
+  // Confirmed switch: nothing from the previous account may be shown as the new one.
   playerSocket?.close();
   playerStateRequest++;
-  set({ playerSession: null, playerRecovery: null, playerTrades: [] });
+  set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: 'reconnecting', playerAuthMessage: '' });
   await refreshPlayerState();
   connectPlayerWs();
 }
@@ -1619,7 +1668,7 @@ export async function logoutPlayer(): Promise<void> {
   await api('/api/player/logout', { method: 'POST' });
   playerSocket?.close();
   playerStateRequest++;
-  set({ playerSession: null, playerRecovery: null, playerTrades: [] });
+  set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: 'signed-out', playerAuthMessage: 'Signed out', playerAccountSwitch: null });
 }
 
 let playerSocket: WebSocket | null = null;
