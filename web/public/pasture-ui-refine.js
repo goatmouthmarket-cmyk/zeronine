@@ -237,3 +237,21 @@
   // Expose for debugging/manual checks
   window.__pastureUiRefine = { applyLayout, placeAttached };
 })();
+// Rescue: saved HUD drag positions must not trap the cooldown timer under the header.
+(function rescueTimer(){
+  const t = document.getElementById('breakTimer');
+  if (!t) return;
+  const fix = () => {
+    if (document.body.classList.contains('hud-arranging')) return;
+    const headerH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pasture-header-h')) || 56;
+    const r = t.getBoundingClientRect();
+    if (r.top < headerH + 2 || r.bottom < 0 || r.top > innerHeight) {
+      t.style.removeProperty('left'); t.style.removeProperty('right'); t.style.removeProperty('bottom');
+      // keep top controlled by CSS !important; remove inline top if present
+      t.style.removeProperty('top'); t.style.removeProperty('transform');
+    }
+  };
+  new MutationObserver(fix).observe(t, { attributes: true, attributeFilter: ['style','class'] });
+  addEventListener('resize', fix);
+  setInterval(fix, 1500);
+})();
