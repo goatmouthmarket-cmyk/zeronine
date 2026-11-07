@@ -1,0 +1,149 @@
+/*
+ * Consolidated pasture UI refinement layer.
+ * Loaded last to resolve conflicting HUD/toast/overlay rules without scattered overrides.
+ * Preserves trading/settlement/automation behavior; visual/layout only.
+ */
+:root {
+  --pasture-safe-top: env(safe-area-inset-top, 0px);
+  --pasture-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --pasture-safe-left: env(safe-area-inset-left, 0px);
+  --pasture-safe-right: env(safe-area-inset-right, 0px);
+  --pasture-header-h: 56px; /* updated by parent postMessage; safe default */
+  --pasture-bottom-nav-h: 0px;
+  --pasture-z-game: 1;
+  --pasture-z-fx: 5;
+  --pasture-z-attached: 16;
+  --pasture-z-hud: 24;
+  --pasture-z-toast: 95;
+  --pasture-z-menu: 90;
+  --pasture-z-modal: 120;
+  --pasture-toast-bg: rgba(20, 37, 30, .96);
+  --pasture-toast-fg: #eff8e7;
+  --pasture-radius: 12px;
+}
+
+body { min-height: 100dvh; height: 100dvh; }
+
+/* Toast system: edge stack, never centered over gameplay. */
+#toast {
+  display: none !important; /* legacy node hidden; manager creates stack */
+}
+.pasture-toast-stack {
+  position: fixed;
+  z-index: var(--pasture-z-toast);
+  left: max(12px, var(--pasture-safe-left));
+  bottom: max(14px, calc(var(--pasture-safe-bottom) + var(--pasture-bottom-nav-h) + 8px));
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  width: min(340px, calc(100vw - 24px - var(--pasture-safe-left) - var(--pasture-safe-right)));
+  pointer-events: none;
+}
+.pasture-toast {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--pasture-toast-bg);
+  color: var(--pasture-toast-fg);
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  font: 600 12px/1.3 system-ui, sans-serif;
+  animation: pastureToastIn .18s ease-out;
+}
+.pasture-toast.exiting { opacity: 0; transform: translateY(6px); transition: opacity .18s ease, transform .18s ease; }
+.pasture-toast-icon { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 999px; font-size: 12px; font-weight: 900; }
+.pasture-toast[data-type="success"] .pasture-toast-icon, .pasture-toast[data-type="trade_result"] .pasture-toast-icon { background: #1f7a4a; color: #eafff2; }
+.pasture-toast[data-type="error"] .pasture-toast-icon { background: #9b3036; color: #fff1f2; }
+.pasture-toast[data-type="warning"] .pasture-toast-icon { background: #8a6520; color: #fff7df; }
+.pasture-toast[data-type="info"] .pasture-toast-icon, .pasture-toast[data-type="research"] .pasture-toast-icon { background: #2b5f84; color: #eef7ff; }
+.pasture-toast-body { min-width: 0; overflow-wrap: anywhere; }
+.pasture-toast-body strong { display: block; font-size: 11px; letter-spacing: .02em; margin-bottom: 1px; }
+.pasture-toast button.pasture-toast-close { border: 0; background: transparent; color: inherit; opacity: .75; cursor: pointer; padding: 0 0 0 6px; font-size: 16px; line-height: 1; }
+@keyframes pastureToastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 700px) {
+  .pasture-toast-stack {
+    left: max(8px, var(--pasture-safe-left));
+    right: max(8px, var(--pasture-safe-right));
+    width: auto;
+    bottom: max(10px, calc(var(--pasture-safe-bottom) + 8px));
+  }
+  .pasture-toast { font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pasture-toast, .pasture-toast.exiting { animation: none !important; transition: none !important; }
+}
+
+/* Cooldown timer: visible, never hidden behind parent header/balance. */
+#breakTimer.visible {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  position: fixed !important;
+  z-index: var(--pasture-z-hud) !important;
+  top: calc(var(--pasture-safe-top) + 10px) !important;
+  left: max(10px, var(--pasture-safe-left)) !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  width: auto !important;
+  max-width: calc(100vw - 20px - var(--pasture-safe-left) - var(--pasture-safe-right)) !important;
+  padding: 8px 12px !important;
+  border-radius: 999px !important;
+  background: rgba(21, 59, 44, .94) !important;
+  color: #fff4c6 !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,.28) !important;
+  pointer-events: none !important;
+  text-align: left !important;
+}
+#breakTimer .cooldown-icon { display: block !important; width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#breakTimer .cooldown-copy { display: grid; gap: 0; min-width: 0; }
+#breakTimer span, #breakTimer .cooldown-reason { position: static !important; width: auto !important; height: auto !important; overflow: visible !important; clip-path: none !important; display: block !important; font-size: 10px !important; line-height: 1.1; letter-spacing: .06em; text-transform: uppercase; opacity: .9; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; max-width: 42vw; }
+#breakTimer strong { font-size: clamp(16px, 4.2vw, 22px) !important; line-height: 1 !important; font-variant-numeric: tabular-nums; }
+@media (min-width: 1000px) {
+  /* Desktop: preserve centered-top timer behavior, but keep it below parent header when reported. */
+  #breakTimer.visible {
+    top: calc(var(--pasture-safe-top) + var(--pasture-header-h) + 8px) !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+  }
+}
+
+/* Attached overlays (hourglass / ranger bubble) follow Ranger; manager sets positions. */
+.live-ranger-wait, .paper-ranger-bet {
+  z-index: var(--pasture-z-attached) !important;
+  pointer-events: none !important;
+  transition: left .06s linear, top .06s linear, opacity .15s ease;
+}
+.ranger-bet.visible {
+  z-index: var(--pasture-z-attached) !important;
+  pointer-events: auto !important;
+  max-width: min(220px, calc(100vw - 16px));
+}
+@media (max-width: 700px) {
+  .ranger-bet.visible { max-width: min(180px, calc(100vw - 16px)); font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-ranger-wait, .paper-ranger-bet { transition: none !important; animation: none !important; }
+}
+
+/* Menus: constrain and keep readable on mobile; one major panel at a time is managed in JS. */
+@media (max-width: 999.98px) {
+  #rangerAutoHud:not([hidden]),
+  #ghostTraderPanel:not([hidden]),
+  #inspector .target-menu[open],
+  #rangerBrainPanel:not([hidden]) {
+    max-height: min(62dvh, calc(100dvh - var(--pasture-header-h) - var(--pasture-safe-bottom) - 96px)) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    font-size: 13px;
+  }
+  #rangerBrainPanel:not([hidden]) { z-index: var(--pasture-z-modal) !important; }
+}
+
+/* Brain glyph/bubble clustering with attached indicators (positioned by JS). */
+#rangerBrainGlyph { z-index: var(--pasture-z-attached) !important; }
+#rangerBrainBubble { z-index: calc(var(--pasture-z-attached) + 1) !important; max-width: min(240px, calc(100vw - 20px)); }

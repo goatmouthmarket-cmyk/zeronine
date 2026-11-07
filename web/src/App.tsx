@@ -1286,6 +1286,16 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     })),
   }), [digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.playerRecovery?.debt, s.session, s.signal, s.testRuns, s.testlab, usePlayerTrading]);
 
+  const postRoomLayout = useCallback(() => {
+    const header = document.querySelector('.app[data-page="home"] .view-home .header') as HTMLElement | null;
+    const rect = header?.getBoundingClientRect();
+    roomFrameRef.current?.contentWindow?.postMessage({
+      type: 'zeronine:room-layout',
+      headerHeight: rect ? Math.max(0, Math.round(rect.bottom)) : 56,
+      bottomNavHeight: 0,
+    }, window.location.origin);
+  }, []);
+
   const postRoomState = useCallback(() => {
     const frame = roomFrameRef.current;
     frame?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
@@ -1294,6 +1304,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       open: rangerAutoMenuOpen,
       controls: true,
     }, window.location.origin);
+    postRoomLayout();
     const stakeInput = frame?.contentDocument?.getElementById('cowStake') as HTMLInputElement | null;
     const stakeHint = frame?.contentDocument?.getElementById('stakeHint');
     if (!stakeInput || !stakeHint) return;
@@ -1330,7 +1341,13 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       }
     };
     updateStakeHint();
-  }, [rangerAutoMenuOpen, roomState]);
+  }, [rangerAutoMenuOpen, roomState, postRoomLayout]);
+
+  useEffect(() => {
+    postRoomLayout();
+    window.addEventListener("resize", postRoomLayout);
+    return () => window.removeEventListener("resize", postRoomLayout);
+  }, [postRoomLayout]);
 
   useEffect(() => {
     if (active && !marketChooserOpen) postRoomState();
@@ -1399,6 +1416,16 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       }
       if (message.type === 'zeronine:room-navigate' && message.page && ['history', 'account', 'howToPlay', 'backtest'].includes(message.page)) {
         onNavigate(message.page);
+        return;
+      }
+      if (message.type === 'zeronine:room-layout-request') {
+        const header = document.querySelector('.app[data-page="home"] .view-home .header') as HTMLElement | null;
+        const rect = header?.getBoundingClientRect();
+        roomFrameRef.current?.contentWindow?.postMessage({
+          type: 'zeronine:room-layout',
+          headerHeight: rect ? Math.max(0, Math.round(rect.bottom)) : 56,
+          bottomNavHeight: 0,
+        }, window.location.origin);
         return;
       }
       if (message.type === 'zeronine:room-auto-arm') {
