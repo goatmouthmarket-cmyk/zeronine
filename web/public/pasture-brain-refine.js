@@ -734,6 +734,100 @@
     else hideLearningBubble();
   });
 
+  /* ---------- late entry: a game beat instead of an error ---------- */
+  const REFLEX_KEY = 'ranger-brain-reflex-v1';
+  function reflexRead() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(REFLEX_KEY) || '{}');
+      return { saves: Number(raw.saves) || 0, streak: Number(raw.streak) || 0, best: Number(raw.best) || 0, points: Number(raw.points) || 0 };
+    } catch { return { saves: 0, streak: 0, best: 0, points: 0 }; }
+  }
+  function reflexWrite(state) {
+    try { localStorage.setItem(REFLEX_KEY, JSON.stringify(state)); } catch {}
+  }
+  function reflexGrade(ms) {
+    if (!Number.isFinite(ms) || ms <= 0) return { key: 'save', label: 'SAVED' };
+    if (ms <= 2500) return { key: 'snap', label: 'SNAP' };
+    if (ms <= 5500) return { key: 'quick', label: 'QUICK' };
+    if (ms <= 9500) return { key: 'late', label: 'LATE' };
+    return { key: 'slow', label: 'TOO SLOW' };
+  }
+  let reflexEl = null, reflexTimer = 0;
+  function ensureReflex() {
+    if (reflexEl && reflexEl.isConnected) return reflexEl;
+    reflexEl = document.createElement('div');
+    reflexEl.className = 'brain-reflex';
+    reflexEl.hidden = true;
+    reflexEl.setAttribute('role', 'status');
+    reflexEl.setAttribute('aria-live', 'polite');
+    document.body.appendChild(reflexEl);
+    return reflexEl;
+  }
+  function placeReflex() {
+    const chip = reflexEl;
+    if (!chip || chip.hidden) return;
+    const glyph = $('rangerBrainGlyph');
+    const rect = glyph ? glyph.getBoundingClientRect() : null;
+    const width = chip.offsetWidth || 250;
+    if (rect && rect.width) {
+      chip.style.left = Math.max(8, Math.min(innerWidth - width - 8, rect.left + rect.width / 2 - width / 2)) + 'px';
+      chip.style.top = Math.max(8, rect.top - (chip.offsetHeight || 92) - 12) + 'px';
+      chip.style.bottom = 'auto';
+    } else {
+      chip.style.left = '12px';
+      chip.style.top = 'auto';
+      chip.style.bottom = '110px';
+    }
+  }
+  const SHIELD_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 13 4v4.2c0 3-2.2 5.2-5 6-2.8-.8-5-3-5-6V4l5-2.2Z"/><path d="m5.8 8 1.6 1.7 2.8-3"/></svg>';
+  const CLOCK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.4 1.6"/></svg>';
+  function showReflex(detail) {
+    const code = String((detail && detail.code) || 'changed');
+    const saved = code !== 'held';
+    const grade = reflexGrade(Number(detail && detail.reactionMs));
+    const state = reflexRead();
+    let gain = 0;
+    if (saved) {
+      gain = 10 + (grade.key === 'snap' ? 5 : grade.key === 'quick' ? 3 : 0);
+      state.saves += 1;
+      state.streak += 1;
+      state.points += gain;
+      state.best = Math.max(state.best, state.streak);
+      reflexWrite(state);
+    }
+    const chip = ensureReflex();
+    const title = saved
+      ? (code === 'stale' ? 'FEED FLICKERED' : 'COW BOLTED')
+      : 'LATE ENTRY';
+    const line = saved
+      ? 'The setup flipped before your shot landed. Stake kept — that counts.'
+      : 'The setup held, so the shot went through. Quicker draws score higher.';
+    const score = saved
+      ? '<b>+' + gain + '</b> reflex · streak ' + state.streak + ' · best ' + state.best
+      : 'Grade ' + grade.label + ' · signal held';
+    chip.dataset.grade = grade.key;
+    chip.dataset.kind = saved ? 'save' : 'held';
+    chip.innerHTML = '<span class="brain-reflex-icon" aria-hidden="true">' + (saved ? SHIELD_SVG : CLOCK_SVG) + '</span><div class="brain-reflex-copy"><b>' + title + '</b><span>' + line + '</span><small>' + score + '</small></div><em class="brain-reflex-grade">' + grade.label + '</em>';
+    chip.hidden = false;
+    chip.classList.remove('show');
+    void chip.offsetWidth;
+    chip.classList.add('show');
+    placeReflex();
+    const glyph = $('rangerBrainGlyph');
+    if (glyph) {
+      glyph.classList.remove('late-pop');
+      void glyph.offsetWidth;
+      glyph.classList.add('late-pop');
+      setTimeout(() => glyph.classList.remove('late-pop'), 900);
+    }
+    clearTimeout(reflexTimer);
+    reflexTimer = setTimeout(() => { chip.classList.remove('show'); chip.hidden = true; }, saved ? 5200 : 4200);
+  }
+  window.addEventListener('zeronine:brain-late-entry', (event) => {
+    try { showReflex((event && event.detail) || {}); } catch {}
+  });
+  window.addEventListener('resize', placeReflex, { passive: true });
+
   function init() {
     mountScenes();
     compactTabLabels();

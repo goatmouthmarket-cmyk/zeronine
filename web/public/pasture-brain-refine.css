@@ -552,3 +552,93 @@ body.brain-zoomed #rangerBrainPanel { animation: brainPanelIn .22s ease; }
   #rangerBrainPanel .brain-activity li:nth-child(n+3) { display: none; }
   #rangerBrainPanel .brain-window-hours > * { height: 17px; }
 }
+
+
+/* tokens for the pieces drawn outside the panel */
+#brainSnipeOverlay,
+#rangerBrainGlyph {
+  --bg: #08090D;
+  --surface: #101116;
+  --surface-2: #12131A;
+  --surface-3: #16171F;
+  --border: rgba(255, 255, 255, .08);
+  --border-2: rgba(255, 255, 255, .14);
+  --text: #F5F5F7;
+  --muted: #B1B8C7;
+  --muted-2: #919AAA;
+  --purple: #8B5CF6;
+  --purple-light: #A78BFA;
+  --pink: #FF4D91;
+  --green: #22C55E;
+  --red: #FF5263;
+}
+
+/* ---------- late-entry reaction: a game beat, not an error ---------- */
+.brain-reflex {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  width: min(272px, calc(100vw - 24px));
+  padding: 10px 11px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: #0B0C11;
+  color: #F5F5F7;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, .62);
+  font-family: Inter, system-ui, sans-serif;
+  opacity: 0;
+  transform: translateY(6px) scale(.98);
+  transition: opacity .18s ease, transform .18s ease;
+  pointer-events: none;
+}
+.brain-reflex[hidden] { display: none; }
+.brain-reflex.show { opacity: 1; transform: none; }
+.brain-reflex-icon {
+  display: grid;
+  place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 9px;
+  background: rgba(139, 92, 246, .16);
+  color: #A78BFA;
+}
+.brain-reflex-icon svg { width: 15px; height: 15px; }
+.brain-reflex[data-kind="save"] .brain-reflex-icon { background: rgba(34, 197, 94, .16); color: #6FE39B; }
+.brain-reflex-copy { display: grid; gap: 2px; min-width: 0; }
+.brain-reflex-copy b {
+  font: 800 10.5px/1.1 Inter, system-ui, sans-serif;
+  letter-spacing: .07em;
+  color: #F5F5F7;
+}
+.brain-reflex-copy span { font: 500 10.5px/1.35 Inter, system-ui, sans-serif; color: #B1B8C7; }
+.brain-reflex-copy small { font: 700 10px/1.25 Inter, system-ui, sans-serif; color: #A78BFA; }
+.brain-reflex[data-kind="save"] .brain-reflex-copy small { color: #6FE39B; }
+.brain-reflex-grade {
+  align-self: start;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .1);
+  color: #F5F5F7;
+  font: 800 8.5px/1 Inter, system-ui, sans-serif;
+  letter-spacing: .08em;
+  font-style: normal;
+  white-space: nowrap;
+}
+.brain-reflex[data-grade="snap"] .brain-reflex-grade { background: rgba(34, 197, 94, .2); color: #8DF0B0; }
+.brain-reflex[data-grade="quick"] .brain-reflex-grade { background: rgba(139, 92, 246, .22); color: #C4B5FD; }
+.brain-reflex[data-grade="late"] .brain-reflex-grade { background: rgba(255, 77, 145, .18); color: #FFA6C4; }
+.brain-reflex[data-grade="slow"] .brain-reflex-grade { background: rgba(255, 82, 99, .2); color: #FFB3BB; }
+@keyframes brainLateWobble {
+  0% { rotate: 0deg; }
+  25% { rotate: -8deg; }
+  55% { rotate: 6deg; }
+  80% { rotate: -2deg; }
+  100% { rotate: 0deg; }
+}
+#rangerBrainGlyph.late-pop { animation: brainLateWobble .8s cubic-bezier(.3, 1.2, .4, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .brain-reflex { transition: none; }
+  #rangerBrainGlyph.late-pop { animation: none; }
+}
