@@ -154,3 +154,50 @@ body.brain-zoomed #rangerBrainPanel{animation:brainPanelIn .22s ease}
 .brain-snipe-factor[data-key="hit"] b{color:#ffd0a1}
 .brain-snipe-factor[data-key="rank"] .brain-snipe-factor-label{color:#9dbc8d}
 .brain-snipe-factor[data-key="rank"] b{color:#d8efc4;font-weight:800}
+
+/* Brain pick record on the suggestion card */
+.brain-snipe-card .brain-snipe-record{border-top:1px dashed #7fa96459;padding-top:4px;font:700 10px/1.3 system-ui,sans-serif;color:#d9ecc8}
+.brain-snipe-card .brain-snipe-record[data-tone="good"]{color:#b9f5c6}
+.brain-snipe-card .brain-snipe-record[data-tone="bad"]{color:#ffc3b8}
+.brain-snipe-card .brain-snipe-record[data-tone="new"]{color:#d0e0c2;font-style:italic}
+
+/* Auto review: animated, tappable risk cards */
+.risk-hero{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:6px 0 8px}
+.risk-hero-card{display:flex;flex-direction:column;gap:2px;padding:8px 9px;border-radius:11px;border:1px solid #e2cba8;background:linear-gradient(135deg,#fffdf7,#f7ecd9);box-shadow:0 2px 8px rgba(50,35,20,.06);animation:riskCardIn .32s cubic-bezier(.2,1.2,.4,1) both}
+.risk-hero-card:nth-child(2){animation-delay:.05s}
+.risk-hero-card:nth-child(3){animation-delay:.1s}
+.risk-hero-card span{font:800 8px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#7d6448}
+.risk-hero-card strong{font:900 15px/1.15 system-ui,sans-serif;color:#2b1f13;overflow-wrap:anywhere}
+.risk-hero-card[data-tone="win"] strong{color:#1c6a43}
+.risk-hero-card[data-tone="pause"] strong{color:#8a5a1f}
+@keyframes riskCardIn{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+.risk-settings{border-radius:10px;background:#fffefb;border:1px dashed #dcc4a1;padding:0;overflow:hidden}
+.risk-settings>summary{cursor:pointer;padding:7px 9px;font:900 9px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#6b4f2c}
+.risk-settings[open]>summary{border-bottom:1px solid #ecd9bd}
+.risk-settings .risk-config{padding:7px}
+.risk-step-cards{display:grid;gap:6px}
+.risk-step-card{position:relative;display:grid;gap:4px;padding:7px 9px;border-radius:11px;border:1px solid #e2cba8;background:linear-gradient(135deg,#fffdf8,#f8efdf);cursor:pointer;animation:riskCardIn .3s ease both;transition:border-color .15s ease,transform .15s ease}
+.risk-step-card:nth-child(2){animation-delay:.04s}
+.risk-step-card:nth-child(3){animation-delay:.08s}
+.risk-step-card:nth-child(4){animation-delay:.12s}
+.risk-step-card:nth-child(5){animation-delay:.16s}
+.risk-step-card:hover{transform:translateY(-1px);border-color:#bb9a6c}
+.risk-step-card:focus-visible{outline:2px solid #a4815a;outline-offset:1px}
+.risk-step-card[data-status="blocked"]{border-color:#d98b7f;background:linear-gradient(135deg,#fff6f4,#fbe7e2)}
+.risk-step-top{display:flex;align-items:baseline;gap:6px}
+.risk-step-top b{font:900 9px system-ui,sans-serif;letter-spacing:.06em;color:#6b4f2c}
+.risk-step-top strong{margin-left:auto;font:900 13px/1 system-ui,sans-serif;color:#2b1f13}
+.risk-step-top em{font:900 8px system-ui,sans-serif;font-style:normal;letter-spacing:.07em;padding:2px 5px;border-radius:999px;background:#e9f4e6;color:#1c6a43}
+.risk-step-card[data-status="blocked"] .risk-step-top em{background:#fde3de;color:#9c3a2c}
+.risk-step-meter{height:5px;border-radius:999px;background:#efe2cd;overflow:hidden}
+.risk-step-meter>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3f9e6a,#e0a83c);transition:width .5s cubic-bezier(.2,1,.3,1)}
+.risk-step-card[data-status="blocked"] .risk-step-meter>i{background:linear-gradient(90deg,#d1654f,#a83b2c)}
+.risk-step-meta{display:flex;justify-content:space-between;gap:8px;font:800 9px system-ui,sans-serif;color:#7d6448}
+.risk-step-why{display:none;margin:2px 0 0;font:600 9.5px/1.35 system-ui,sans-serif;color:#5a452c}
+.risk-step-card[data-open="true"] .risk-step-why{display:block}
+.risk-progress-value{display:block;margin:2px 0 4px;font:900 20px/1 system-ui,sans-serif;color:#1c6a43}
+@media (max-width:760px){.risk-hero{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (prefers-reduced-motion:reduce){
+  .risk-hero-card,.risk-step-card{animation:none!important}
+  .risk-step-meter>i,.risk-step-card{transition:none}
+}

@@ -271,7 +271,7 @@
     overlay = document.createElement('div');
     overlay.id = 'brainSnipeOverlay';
     overlay.hidden = true;
-    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe19a"/><stop offset="1" stop-color="#8ee6a7"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/><circle id="brainTetherPulse" r="5" fill="#ffe19a"/></svg><div class="brain-snipe-card" role="status" aria-live="polite"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Scanning the herd…</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><b class="brain-snipe-why-head">Why this cow</b><ul id="brainSnipeFactors" class="brain-snipe-factors" aria-label="Reasons the brain picked this cow"></ul><span id="brainSnipeExec" class="brain-snipe-exec"></span><span id="brainSnipeCount" class="brain-snipe-count"></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
+    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe19a"/><stop offset="1" stop-color="#8ee6a7"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/><circle id="brainTetherPulse" r="5" fill="#ffe19a"/></svg><div class="brain-snipe-card" role="status" aria-live="polite"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Scanning the herd…</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><b class="brain-snipe-why-head">Why this cow</b><ul id="brainSnipeFactors" class="brain-snipe-factors" aria-label="Reasons the brain picked this cow"></ul><span id="brainSnipeRecord" class="brain-snipe-record"></span><span id="brainSnipeExec" class="brain-snipe-exec"></span><span id="brainSnipeCount" class="brain-snipe-count"></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
     document.body.appendChild(overlay);
     tether = $('brainTetherPath');
     card = overlay.querySelector('.brain-snipe-card');
@@ -303,6 +303,17 @@
     if (line) line.textContent = `${snipe.market} · stake ${snipe.stake > 0 ? snipe.stake.toFixed(2) : 'blocked'} · enter in ${Math.max(1, snipe.enterAt - (snap.tickSeq?.[snipe.symbol] ?? snipe.tickSeq))} tick(s)`;
     if (why) why.textContent = `${(snipe.p * 100).toFixed(0)}% confidence · ${(snipe.edge >= 0 ? '+' : '')}${(snipe.edge * 100).toFixed(1)}% edge${snipe.limited ? ' · stake capped by risk limits' : ''}${snipe.reason ? ' · ' + snipe.reason : ''}`;
     renderFactors(snipe);
+    const record = snipe.record && typeof snipe.record === 'object' ? snipe.record : null;
+    const recordEl = $('brainSnipeRecord');
+    if (recordEl) {
+      const total = Number(record && record.total) || 0;
+      const wins = Number(record && record.w) || 0;
+      const losses = Number(record && record.l) || 0;
+      recordEl.dataset.tone = total ? (wins >= losses ? 'good' : 'bad') : 'new';
+      recordEl.textContent = total
+        ? 'My record here: ' + wins + 'W / ' + losses + 'L · ' + Math.round((Number(record.rate) || 0) * 100) + '%'
+        : 'First pick on this setup — no record yet';
+    }
     if (exec) exec.textContent = 'Kill this cow to confirm the brain\'s stake and tick.';
     if (count) count.textContent = `${left}s left`;
     if (fill) fill.style.width = Math.max(0, Math.min(100, (left / total) * 100)) + '%';
