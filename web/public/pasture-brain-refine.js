@@ -147,12 +147,11 @@
     else if (report.verdict === 'insufficient_evidence' || report.verdict === 'no_separable_edge') label = 'No reliable signal yet';
     state.textContent = label + ' · ' + friendlyMind(report);
     const parts = [];
-    if (best) parts.push(`Best practice hour: ${best.label} — ${plainVerdict(best.verdict)}${Number.isFinite(best.winRate) ? `, ${pct(best.winRate)} wins` : ''} over ${best.outcomes || 0} finished practice games.`);
-    if (cur) parts.push(`Right now (${cur.label}): ${plainVerdict(cur.verdict)} from ${cur.outcomes || 0} finished practice games.`);
-    if (Number.isFinite(report.winRate) && Number.isFinite(report.breakeven)) parts.push(`Overall practice win rate ${pct(report.winRate)} vs break-even ${pct(report.breakeven)}.`);
-    parts.push('This is a practice-game observation, not permission to trade.');
+    if (cur) parts.push(`Right now ${plainVerdict(cur.verdict)}.`);
+    else if (best) parts.push(`Best hour ${best.label}: ${plainVerdict(best.verdict)}.`);
+    if (Number.isFinite(report.winRate) && Number.isFinite(report.breakeven)) parts.push(`${pct(report.winRate)} wins vs ${pct(report.breakeven)} break-even.`);
     why.textContent = parts.join(' ');
-    if (ev) ev.textContent = `Evidence: ${outcomes} of ${target} finished practice games for ${report.market || 'this market'}.`;
+    if (ev) ev.textContent = `${outcomes} of ${target} practice games finished.`;
     card?.setAttribute('data-state', label.toLowerCase().includes('watch') ? 'watch' : label.toLowerCase().includes('wait') ? 'wait' : 'learning');
   }
 
@@ -539,6 +538,18 @@
     });
   }
 
+  function trimDuplicateNotes() {
+    const panel = $('rangerBrainPanel');
+    if (!panel) return;
+    let seen = false;
+    for (const note of panel.querySelectorAll('p')) {
+      const text = (note.textContent || '').trim().toLowerCase();
+      if (!/not (a )?(permission|trade permission|financial advice)|not permission to trade/.test(text)) continue;
+      if (seen) { note.hidden = true; continue; }
+      seen = true;
+    }
+  }
+
   function init() {
     mountScenes();
     ensureReplayBox();
@@ -546,6 +557,7 @@
     decorateLessons();
     refreshThinking();
     wireAutoSnipe();
+    trimDuplicateNotes();
     const root = $('rangerBrainPanel');
     if (root) {
       let t = 0;

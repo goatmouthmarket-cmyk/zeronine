@@ -201,3 +201,104 @@ body.brain-zoomed #rangerBrainPanel{animation:brainPanelIn .22s ease}
   .risk-hero-card,.risk-step-card{animation:none!important}
   .risk-step-meter>i,.risk-step-card{transition:none}
 }
+
+/* ============================================================
+   Solid, minimal, big-number pass. No gradients on surfaces:
+   every card is a flat colour with an animated dot field.
+   ============================================================ */
+#rangerBrainPanel{
+  --b-bg:#0e1411;--b-card:#17201a;--b-card2:#1d2820;--b-line:#2a382e;
+  --b-ink:#f1f6ee;--b-muted:#98ab9c;--b-accent:#d4f77f;--b-good:#72e6a0;--b-bad:#ff9089;--b-warn:#ffc463;
+  background:var(--b-bg)!important;color:var(--b-ink);border:1px solid var(--b-line);border-radius:20px;
+  box-shadow:0 26px 64px #00000099;overflow:hidden;
+}
+#rangerBrainPanel header{background:var(--b-card)!important;border-bottom:1px solid var(--b-line);padding:13px 15px}
+#rangerBrainPanel header strong{font:800 17px/1.1 system-ui,sans-serif;letter-spacing:.01em;color:var(--b-ink)}
+#rangerBrainPanel header small{font:500 11px/1.35 system-ui,sans-serif;color:var(--b-muted)}
+#rangerBrainClose{background:var(--b-card2);border:1px solid var(--b-line);color:var(--b-ink);border-radius:10px}
+#rangerBrainPanel .ranger-brain-tabs{
+  background:var(--b-bg);border-bottom:1px solid var(--b-line);
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px
+}
+#rangerBrainPanel .ranger-brain-tabs button{
+  flex-direction:column;justify-content:center;gap:6px;min-height:58px;padding:8px 4px;
+  background:var(--b-card);border:1px solid var(--b-line);border-radius:14px;
+  color:var(--b-muted);font:700 10.5px/1 system-ui,sans-serif;box-shadow:none!important;
+}
+#rangerBrainPanel .ranger-brain-tabs button .brain-tab-icon svg{width:19px;height:19px}
+#rangerBrainPanel .ranger-brain-tabs button[aria-selected="true"]{
+  background:var(--b-card2);border-color:var(--b-accent);color:var(--b-ink)
+}
+#rangerBrainPanel .ranger-brain-body{background:var(--b-bg)!important;padding:12px;display:grid;gap:10px}
+#rangerBrainPanel .brain-card-scene{height:120px;border-radius:14px;border:1px solid var(--b-line);margin:0 0 10px}
+#rangerBrainPanel .brain-hero,#rangerBrainPanel .brain-window,#rangerBrainPanel .brain-edge,
+#brainSuggestionCard,.brain-memory-card,.brain-learn-card,#rangerBrainPanel .brain-lessons li{
+  background:var(--b-card)!important;border:1px solid var(--b-line)!important;border-radius:16px!important;padding:12px!important
+}
+#rangerBrainPanel p,#rangerBrainPanel small,#rangerBrainPanel .brain-friendly-note,#rangerBrainPanel .brain-note{
+  color:var(--b-muted);font-size:12px;line-height:1.45
+}
+#rangerBrainPanel .brain-hero-copy strong{font:800 20px/1.15 system-ui,sans-serif;color:var(--b-ink)}
+#rangerBrainPanel .brain-hero-copy small{font-size:11.5px}
+#rangerBrainPanel .brain-lesson-chip{background:var(--b-card2);color:var(--b-accent);font-size:10px}
+#rangerBrainPanel .brain-edged span,#rangerBrainPanel .brain-activity strong{color:var(--b-ink)}
+.brain-learn-card b{font:900 10px/1 system-ui,sans-serif;letter-spacing:.1em}
+.brain-learn-card span{font:800 16px/1.2 system-ui,sans-serif;color:var(--b-ink)}
+.brain-learn-card small{font-size:10.5px}
+
+/* animated dot field inside cards (flat surface, moving texture) */
+#rangerBrainPanel .brain-hero,#rangerBrainPanel .brain-window,.brain-learn-card,
+#brainSuggestionCard,.risk-hero-card,.risk-step-card{position:relative;overflow:hidden;isolation:isolate}
+#rangerBrainPanel .brain-hero::after,#rangerBrainPanel .brain-window::after,.brain-learn-card::after,
+#brainSuggestionCard::after,.risk-hero-card::after,.risk-step-card::after{
+  content:"";position:absolute;inset:-40%;z-index:-1;pointer-events:none;opacity:.5;
+  background-image:radial-gradient(circle,rgba(212,247,127,.20) 1px,transparent 1.4px);
+  background-size:22px 22px;animation:brainCardDrift 16s linear infinite
+}
+@keyframes brainCardDrift{from{transform:translate3d(0,0,0)}to{transform:translate3d(22px,22px,0)}}
+
+/* snipe card: flat surface */
+.brain-snipe-card{background:var(--b-card,#17201a)!important;border:1px solid #d4f77f;border-radius:16px;box-shadow:0 20px 44px #0000008c}
+.brain-snipe-card b{color:var(--b-accent,#d4f77f);font-size:10.5px}
+.brain-snipe-card span{color:#f3f8ef;font-size:12.5px}
+.brain-snipe-card .brain-snipe-why{color:#a9bda9}
+
+/* ---------- Auto review: light, flat, oversized numbers ---------- */
+#rangerAutoRiskPreview{background:#f3ecdf!important;border:1px solid #d9c6a5;border-radius:20px}
+.risk-hero{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+.risk-hero-card{
+  background:#fffdf7!important;border:1px solid #e3d3b6!important;border-radius:16px!important;
+  padding:12px!important;gap:4px!important;box-shadow:none!important
+}
+.risk-hero-card svg{width:18px;height:18px;color:#a98a58;margin-bottom:2px}
+.risk-hero-card span{font:700 10px/1 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#8a7253}
+.risk-hero-card strong{font:900 27px/1.05 system-ui,sans-serif;color:#241a10;font-variant-numeric:tabular-nums}
+.risk-hero-card[data-tone="win"] strong{color:#1a7a4a}
+.risk-hero-card[data-tone="risk"] strong{color:#a8412f}
+.risk-hero-card[data-tone="pause"] strong{color:#8a5a1f}
+.risk-step-card{background:#fffdf7!important;border:1px solid #e3d3b6!important;border-radius:16px!important;padding:11px 13px!important;gap:6px!important;box-shadow:none!important}
+.risk-step-top b{font:800 10px/1 system-ui,sans-serif;letter-spacing:.09em;color:#8a7253}
+.risk-step-top strong{font:900 24px/1 system-ui,sans-serif;color:#241a10;font-variant-numeric:tabular-nums}
+.risk-step-top em{border-radius:8px;font-size:9px;padding:3px 6px}
+.risk-step-card[data-stop="true"]{border-color:#d98b7f!important;background:#fff6f2!important}
+.risk-step-card[data-stop="true"] .risk-step-top em{background:#a8412f;color:#fff}
+.risk-step-meta{font-size:10px;color:#8a7253}
+.risk-step-meter{height:6px;background:#efe2cd}
+.risk-step-meter>i{background:#3f9e6a!important}
+.risk-step-card[data-status="blocked"] .risk-step-meter>i{background:#c0503c!important}
+.risk-settings{background:#fffdf7;border:1px solid #e3d3b6}
+.risk-config-card{background:#fffdf7!important;border:1px solid #eee0c8;box-shadow:none}
+.risk-config-card strong{font-variant-numeric:tabular-nums}
+.risk-progress-value{font:900 30px/1 system-ui,sans-serif;color:#1a7a4a}
+.risk-bar>i{background:#3f9e6a!important}
+
+@media (max-width:700px){
+  #rangerBrainPanel .ranger-brain-tabs{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
+  #rangerBrainPanel .ranger-brain-tabs button span:last-child{font-size:9px}
+  .risk-hero-card strong{font-size:22px}
+  .risk-step-top strong{font-size:20px}
+}
+@media (prefers-reduced-motion:reduce){
+  #rangerBrainPanel .brain-hero::after,#rangerBrainPanel .brain-window::after,.brain-learn-card::after,
+  #brainSuggestionCard::after,.risk-hero-card::after,.risk-step-card::after{animation:none!important}
+}

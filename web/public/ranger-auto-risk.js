@@ -345,9 +345,18 @@ export function buildLossLadder(input = {}) {
     if (!(perWin > 0)) return null;
     return Math.max(1, Math.ceil(debt / perWin - 1e-9));
   })();
+  // A run-loss stop ends the ladder early, so the loss the card quotes must be
+  // the cumulative loss at that step - not the full requested ladder.
+  const stopStep = runLossStopAt ? steps[runLossStopAt - 1] : null;
+  const stopExposure = stopStep ? stopStep.cumulativeLoss : exposure;
+  const openingDebt = positive(startDebt);
   return {
     style,
     requestedLosses: count,
+    stopExposure,
+    stopLossNumber: runLossStopAt,
+    exposureWithDebt: roundStake(exposure + openingDebt),
+    stopExposureWithDebt: roundStake(stopExposure + openingDebt),
     steps,
     exposure,
     blockedAt,
