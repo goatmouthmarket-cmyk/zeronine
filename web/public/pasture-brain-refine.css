@@ -136,9 +136,21 @@ body.brain-zoomed #rangerBrainPanel{animation:brainPanelIn .22s ease}
 @keyframes brainPanelIn{from{opacity:.4;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
 
 @media (max-width:700px){
-  #brainSnipeOverlay .brain-snipe-card{width:min(200px,calc(100vw - 20px))}
+  #brainSnipeOverlay .brain-snipe-card{width:min(228px,calc(100vw - 20px))}
   #rangerBrainPanel .brain-card-scene{height:64px}
 }
 @media (prefers-reduced-motion:reduce){
   #brainSnipeOverlay .brain-tether path,#brainSnipeOverlay #brainTetherPulse,#rangerBrainGlyph.learned-pop,#rangerBrainGlyph.sniped,#rangerBrainGlyph.no-pick{animation:none!important}
 }
+
+/* why this cow: the factors behind the pick */
+.brain-snipe-card{width:238px}
+.brain-snipe-card .brain-snipe-why-head{margin-top:5px;color:#ffe7ac;font:900 9.5px/1.1 system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase}
+.brain-snipe-card .brain-snipe-factors{display:grid;gap:2px;margin:3px 0 2px;padding:0;list-style:none}
+.brain-snipe-card .brain-snipe-factors[hidden]{display:none}
+.brain-snipe-factor{display:flex;align-items:baseline;gap:6px;min-width:0;font:600 10.5px/1.3 system-ui,sans-serif;color:#e7f4d6}
+.brain-snipe-factor .brain-snipe-factor-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c6dfb3}
+.brain-snipe-factor b{flex:0 0 auto;font:900 10.5px/1.3 system-ui,sans-serif;color:#eaffc2;letter-spacing:0}
+.brain-snipe-factor[data-key="hit"] b{color:#ffd0a1}
+.brain-snipe-factor[data-key="rank"] .brain-snipe-factor-label{color:#9dbc8d}
+.brain-snipe-factor[data-key="rank"] b{color:#d8efc4;font-weight:800}

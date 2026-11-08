@@ -271,7 +271,7 @@
     overlay = document.createElement('div');
     overlay.id = 'brainSnipeOverlay';
     overlay.hidden = true;
-    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe19a"/><stop offset="1" stop-color="#8ee6a7"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/><circle id="brainTetherPulse" r="5" fill="#ffe19a"/></svg><div class="brain-snipe-card" role="status" aria-live="polite"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Scanning the herd…</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><span id="brainSnipeExec" class="brain-snipe-exec"></span><span id="brainSnipeCount" class="brain-snipe-count"></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
+    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe19a"/><stop offset="1" stop-color="#8ee6a7"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/><circle id="brainTetherPulse" r="5" fill="#ffe19a"/></svg><div class="brain-snipe-card" role="status" aria-live="polite"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Scanning the herd…</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><b class="brain-snipe-why-head">Why this cow</b><ul id="brainSnipeFactors" class="brain-snipe-factors" aria-label="Reasons the brain picked this cow"></ul><span id="brainSnipeExec" class="brain-snipe-exec"></span><span id="brainSnipeCount" class="brain-snipe-count"></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
     document.body.appendChild(overlay);
     tether = $('brainTetherPath');
     card = overlay.querySelector('.brain-snipe-card');
@@ -289,8 +289,9 @@
     tether.setAttribute('d', `M ${x1} ${y1} C ${x1 + mid} ${y1 - 46}, ${x2 - mid} ${y2 - 30}, ${x2} ${y2}`);
     const pulse = $('brainTetherPulse');
     if (pulse) { pulse.setAttribute('cx', String(x1)); pulse.setAttribute('cy', String(y1)); }
-    card.style.left = Math.max(6, Math.min(innerWidth - 220, target.sx + 26)) + 'px';
-    card.style.top = Math.max(6, Math.min(innerHeight - 130, target.sy - 118)) + 'px';
+    const cardW = card.offsetWidth || 238, cardH = card.offsetHeight || 160;
+    card.style.left = Math.max(6, Math.min(innerWidth - cardW - 8, target.sx + 26)) + 'px';
+    card.style.top = Math.max(6, Math.min(innerHeight - cardH - 8, target.sy - cardH - 16)) + 'px';
   }
 
   function renderSuggestion(snipe) {
@@ -301,11 +302,38 @@
     if (title) title.textContent = `Brain pick · ${snipe.kind} ${snipe.barrier}`;
     if (line) line.textContent = `${snipe.market} · stake ${snipe.stake > 0 ? snipe.stake.toFixed(2) : 'blocked'} · enter in ${Math.max(1, snipe.enterAt - (snap.tickSeq?.[snipe.symbol] ?? snipe.tickSeq))} tick(s)`;
     if (why) why.textContent = `${(snipe.p * 100).toFixed(0)}% confidence · ${(snipe.edge >= 0 ? '+' : '')}${(snipe.edge * 100).toFixed(1)}% edge${snipe.limited ? ' · stake capped by risk limits' : ''}${snipe.reason ? ' · ' + snipe.reason : ''}`;
+    renderFactors(snipe);
     if (exec) exec.textContent = 'Kill this cow to confirm the brain\'s stake and tick.';
     if (count) count.textContent = `${left}s left`;
     if (fill) fill.style.width = Math.max(0, Math.min(100, (left / total) * 100)) + '%';
     card?.classList.toggle('is-blocked', !(snipe.stake > 0));
     placeOverlay();
+  }
+
+  function renderFactors(snipe) {
+    const host = $('brainSnipeFactors');
+    if (!host) return;
+    const rows = Array.isArray(snipe.factors) ? snipe.factors : [];
+    const shown = rows.slice(0, 4);
+    const key = shown.map((f) => String(f.key) + ':' + String(f.value)).join('|');
+    if (host.dataset.key === key) return;
+    host.dataset.key = key;
+    host.replaceChildren();
+    if (!shown.length) { host.hidden = true; return; }
+    host.hidden = false;
+    for (const factor of shown) {
+      const row = document.createElement('li');
+      row.className = 'brain-snipe-factor';
+      row.dataset.key = String(factor.key || '');
+      if (factor.detail) row.title = String(factor.detail);
+      const label = document.createElement('span');
+      label.className = 'brain-snipe-factor-label';
+      label.textContent = String(factor.label || '');
+      const value = document.createElement('b');
+      value.textContent = String(factor.value || '');
+      row.append(label, value);
+      host.appendChild(row);
+    }
   }
 
   function clearSuggestion() {
