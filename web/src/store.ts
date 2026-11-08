@@ -1716,11 +1716,15 @@ export async function bootstrap(): Promise<void> {
     const cachedMarkets = readCachedPublicMarkets();
     if (cachedMarkets.length > 0) set({ markets: cachedMarkets, selected: cachedMarkets[0]?.symbol ?? null });
   }
+  // Start the player/session read alongside the core snapshot so a connected
+  // Deriv account is recognised after one round trip instead of two.
+  const playerState = refreshPlayerState().catch(() => {});
   try {
     await refreshCoreState();
   } catch (err) {
     // best-effort state load; the ws stream will repopulate
   }
+  void playerState;
   void loadAutoBacktestStatus();
   void loadAutoPaperStatus();
   connectWs();

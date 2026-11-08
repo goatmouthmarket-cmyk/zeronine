@@ -2426,8 +2426,12 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
     board.addEventListener(type, () => clearTimeout(pressTimer), true);
   }
 
-  function frame() {
-    setGlyphPosition();
+  let glyphFrameAt = 0;
+  function frame(now) {
+    if (now - glyphFrameAt >= 33) {
+      glyphFrameAt = now;
+      setGlyphPosition();
+    }
     requestAnimationFrame(frame);
   }
   glyph.hidden = false;

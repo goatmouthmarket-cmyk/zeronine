@@ -245,11 +245,22 @@
     }
   }
 
-  function loopScenes(now) {
+  let sceneRaf = 0, sceneLastPaint = 0, sceneDirty = true;
+  const SCENE_FRAME_MS = 50;
+
+  function scenesVisible() {
+    const panel = $('rangerBrainPanel');
+    return !!panel && !panel.hidden && !document.hidden;
+  }
+
+  function paintScenes(now) {
     for (const scene of scenes) {
-      const rect = scene.canvas.getBoundingClientRect();
-      const w = Math.max(120, Math.round(rect.width));
-      const h = Math.max(56, Math.round(rect.height));
+      if (sceneDirty || !scene.w || !scene.h) {
+        const rect = scene.canvas.getBoundingClientRect();
+        scene.w = Math.max(120, Math.round(rect.width));
+        scene.h = Math.max(56, Math.round(rect.height));
+      }
+      const w = scene.w, h = scene.h;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       if (scene.canvas.width !== w * dpr || scene.canvas.height !== h * dpr) {
         scene.canvas.width = w * dpr; scene.canvas.height = h * dpr;
@@ -259,8 +270,26 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       drawCowScene(ctx, w, h, now, scene.kind);
     }
-    requestAnimationFrame(loopScenes);
+    sceneDirty = false;
   }
+
+  // The card scenes are decoration: never spend a frame on them while the
+  // brain menu is closed or the tab is hidden.
+  function loopScenes(now) {
+    if (!scenesVisible()) { sceneRaf = 0; return; }
+    if (!sceneLastPaint || now - sceneLastPaint >= SCENE_FRAME_MS) {
+      sceneLastPaint = now;
+      paintScenes(now);
+    }
+    sceneRaf = requestAnimationFrame(loopScenes);
+  }
+
+  function startScenes(force) {
+    if (force) sceneDirty = true;
+    if (!sceneRaf && scenesVisible()) sceneRaf = requestAnimationFrame(loopScenes);
+  }
+
+  window.addEventListener('resize', () => { sceneDirty = true; startScenes(); }, { passive: true });
 
   /* ---------- sniper suggestion: tether + countdown + override info ---------- */
   let overlay = null, card = null, tether = null, snipeTimer = 0, snipeRaf = 0;
@@ -512,7 +541,6 @@
 
   function init() {
     mountScenes();
-    requestAnimationFrame(loopScenes);
     ensureReplayBox();
     renderMemoryReplay();
     decorateLessons();
@@ -536,7 +564,7 @@
       new MutationObserver(() => {
         const open = !panel.hidden;
         document.body?.classList?.toggle('brain-zoomed', open);
-        if (!open) clearSuggestion();
+        if (open) startScenes(true); else clearSuggestion();
       }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
     }
   }

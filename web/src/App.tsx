@@ -1297,6 +1297,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     }, window.location.origin);
   }, []);
 
+  const lastLayoutPostAt = useRef(0);
+
   const postRoomState = useCallback(() => {
     const frame = roomFrameRef.current;
     frame?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
@@ -1305,10 +1307,17 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       open: rangerAutoMenuOpen,
       controls: true,
     }, window.location.origin);
-    postRoomLayout();
+    const nowLayout = Date.now();
+    if (nowLayout - lastLayoutPostAt.current > 1000) {
+      lastLayoutPostAt.current = nowLayout;
+      postRoomLayout();
+    }
     const stakeInput = frame?.contentDocument?.getElementById('cowStake') as HTMLInputElement | null;
     const stakeHint = frame?.contentDocument?.getElementById('stakeHint');
     if (!stakeInput || !stakeHint) return;
+    const stakeSignature = `${roomState.accountMode}|${roomState.balance}|${roomState.currency}`;
+    if (stakeInput.dataset.stakeSync === stakeSignature) return;
+    stakeInput.dataset.stakeSync = stakeSignature;
 
     const connected = roomState.accountMode === 'demo' || roomState.accountMode === 'real';
     const balanceLimit = roomState.balance > 0 ? Math.floor(roomState.balance * 0.9 * 100) / 100 : 0;
