@@ -66,3 +66,79 @@
   #brainSuggestionCard,#brainReplayBox{animation:brainFadeIn .18s ease}
 }
 @keyframes brainFadeIn{from{opacity:.55;transform:translateY(2px)}to{opacity:1;transform:none}}
+
+/* ===== Visual Brain: animated cards, tether sniper, learning pulse ===== */
+#rangerBrainPanel{background:linear-gradient(180deg,#2c4526ee,#17281bee);color:#f4efdff2;border-color:#8fbd6a;box-shadow:0 22px 54px #0a160c66}
+#rangerBrainPanel header{background:linear-gradient(#33502bee,#223a20ee);border-bottom-color:#668b5199}
+#rangerBrainPanel header strong{color:#fff4cf}
+#rangerBrainPanel header small{color:#d6e6c3cc}
+#rangerBrainPanel .ranger-brain-tabs{gap:6px;padding:8px 9px;background:#1a2d1fcc;border-bottom:1px solid #6b945a66}
+#rangerBrainPanel .ranger-brain-tabs button{flex:1 1 auto;justify-content:center;background:#2f4a2acc;border:1px solid #7fae6573;color:#eaf4dd;border-radius:12px;min-height:42px}
+#rangerBrainPanel .ranger-brain-tabs button[aria-selected="true"]{background:#41682fd9;border-color:#c6e59a;box-shadow:inset 0 0 0 1px #e7ffcf33,0 4px 12px #0b170e4d}
+#rangerBrainPanel .ranger-brain-tabs button:active{transform:translateY(1px)}
+#rangerBrainPanel .ranger-brain-body{padding:10px 11px 12px;background:radial-gradient(120% 70% at 50% 0%,#395a2ecc,#1b2e1fee 70%)}
+#rangerBrainPanel .brain-card-scene{display:block;width:100%;height:84px;border-radius:12px;margin:0 0 8px;border:1px solid #9fce7d59;box-shadow:inset 0 -18px 28px #0d1a0b4d}
+#rangerBrainPanel .brain-friendly-note,#rangerBrainPanel .brain-note{color:#f2f6e6e6}
+#rangerBrainPanel .brain-hero{background:#253d24b3;border:1px solid #7fa96459;border-radius:14px;padding:8px}
+#rangerBrainPanel .brain-window,#rangerBrainPanel .brain-edge{background:#22371fb3;border:1px solid #7fa9644d;border-radius:12px;padding:7px}
+#rangerBrainPanel .brain-activity li{background:#2c482ab3;border:1px solid #7fa96440}
+#rangerBrainPanel .brain-activities span,#rangerBrainPanel .brain-lessons li{color:#eef6e2}
+#rangerBrainPanel .brain-lessons li{background:#2b452ab3;border:1px solid #7fa96440;border-radius:12px;padding:8px 9px;margin:0 0 7px;list-style:none}
+#rangerBrainPanel .brain-lessons{list-style:none;margin:0;padding:0}
+#rangerBrainPanel .brain-lesson-chip{background:#ffe19a26;color:#ffe7ac}
+#rangerBrainPanel details.brain-friendly-note summary{color:#e8f4d5}
+#rangerBrainPanel .brain-settings fieldset{border-color:#7fa96466}
+#rangerBrainPanel .brain-settings label{color:#eef6e2}
+
+/* learning strip */
+.brain-learn-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:7px;margin:8px 0 10px}
+.brain-learn-card{display:flex;flex-direction:column;gap:2px;padding:8px 9px;border-radius:11px;background:#2a462acc;border:1px solid #82b2685e;min-width:0}
+.brain-learn-card b{font:900 9px/1.1 system-ui,sans-serif;letter-spacing:.09em}
+.brain-learn-card.is-win b{color:#9df5b4}.brain-learn-card.is-loss b{color:#ffb2a8}
+.brain-learn-card span{font:700 11px/1.2 system-ui,sans-serif;color:#fff6d9;overflow-wrap:anywhere}
+.brain-learn-card small{font:600 9.5px/1.25 system-ui,sans-serif;color:#d7e6c8cc}
+
+/* brain glyph state + learned pulse */
+#rangerBrainGlyph{transition:color .2s ease,filter .2s ease,transform .18s ease}
+#rangerBrainGlyph.is-sniping{color:#d7ffb0;filter:drop-shadow(0 1px 1px #0d1a0c) drop-shadow(0 0 10px #b6ff8bd9)}
+#rangerBrainGlyph.learned-pop{animation:brainLearnPop .7s cubic-bezier(.2,1.4,.4,1)}
+#rangerBrainGlyph.sniped{animation:brainSnipePing .7s ease-out}
+#rangerBrainGlyph.no-pick{animation:brainNoPick .45s ease-in-out 2}
+#rangerBrainGlyph .brain-learn-pop{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%) scale(.7);padding:3px 7px;border-radius:999px;background:#22371fdd;border:1px solid #9fe077;color:#e6ffb8;font:900 9px/1 system-ui,sans-serif;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease}
+#rangerBrainGlyph .brain-learn-pop[data-win="false"]{border-color:#ff9b8f;color:#ffd3cc}
+#rangerBrainGlyph .brain-learn-pop.show{opacity:1;transform:translateX(-50%) scale(1)}
+@keyframes brainLearnPop{0%{transform:scale(1)}35%{transform:scale(1.45)}100%{transform:scale(1)}}
+@keyframes brainSnipePing{0%{transform:translate(-50%,-100%) scale(1)}40%{transform:translate(-50%,-100%) scale(1.5)}100%{transform:translate(-50%,-100%) scale(1)}}
+@keyframes brainNoPick{0%,100%{transform:translate(-50%,-100%)}50%{transform:translate(-50%,-100%) rotate(8deg)}}
+
+/* sniper tether + floating card */
+#brainSnipeOverlay{position:fixed;inset:0;z-index:24;pointer-events:none}
+#brainSnipeOverlay[hidden]{display:none}
+#brainSnipeOverlay .brain-tether{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+#brainSnipeOverlay .brain-tether path{stroke-dashoffset:0;animation:brainTetherFlow .7s linear infinite;filter:drop-shadow(0 0 6px #ffe19a88)}
+#brainSnipeOverlay #brainTetherPulse{filter:drop-shadow(0 0 8px #ffe19a);animation:brainPulseDot 1s ease-in-out infinite}
+@keyframes brainTetherFlow{to{stroke-dashoffset:-28}}
+@keyframes brainPulseDot{0%,100%{opacity:.5;r:4}50%{opacity:1;r:6}}
+.brain-snipe-card{position:absolute;display:flex;flex-direction:column;gap:2px;width:212px;padding:9px 11px;border-radius:13px;background:linear-gradient(180deg,#29451fe8,#152618f2);border:1px solid #a8d47f;color:#f6f2e0;box-shadow:0 16px 32px #06100866,inset 0 0 0 1px #eaffc71f;font-family:system-ui,sans-serif}
+.brain-snipe-card b{font:900 10px/1.15 system-ui,sans-serif;letter-spacing:.07em;color:#eaffc2}
+.brain-snipe-card span{font:700 11px/1.3 system-ui,sans-serif;color:#fff6dc;overflow-wrap:anywhere}
+.brain-snipe-card .brain-snipe-why{color:#cfe8bd;font-weight:600}
+.brain-snipe-card .brain-snipe-exec{color:#ffe7ac;font-size:10px;line-height:1.3}
+.brain-snipe-card .brain-snipe-count{font:800 10px/1 system-ui,sans-serif;color:#d6ffae}
+.brain-snipe-card.is-blocked{border-color:#ff9b8f}
+.brain-snipe-card.is-blocked .brain-snipe-count{color:#ffc7bf}
+.brain-snipe-bar{display:block;height:4px;margin-top:4px;border-radius:999px;background:#0d180f;overflow:hidden}
+.brain-snipe-bar>i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#8ee6a7,#ffe19a);transition:width .2s linear}
+
+/* zoomed-in brain view framing */
+body.brain-zoomed #game{filter:saturate(1.06) brightness(.97)}
+body.brain-zoomed #rangerBrainPanel{animation:brainPanelIn .22s ease}
+@keyframes brainPanelIn{from{opacity:.4;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
+
+@media (max-width:700px){
+  #brainSnipeOverlay .brain-snipe-card{width:min(200px,calc(100vw - 20px))}
+  #rangerBrainPanel .brain-card-scene{height:64px}
+}
+@media (prefers-reduced-motion:reduce){
+  #brainSnipeOverlay .brain-tether path,#brainSnipeOverlay #brainTetherPulse,#rangerBrainGlyph.learned-pop,#rangerBrainGlyph.sniped,#rangerBrainGlyph.no-pick{animation:none!important}
+}
