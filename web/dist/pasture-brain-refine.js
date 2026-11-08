@@ -22,6 +22,7 @@
   }
 
   /* ---------- learning log: one entry per settled bet ---------- */
+  let lastCall = null;
   let learned = [];
   try {
     const saved = JSON.parse(localStorage.getItem(LEARNING_KEY) || '[]');
@@ -34,29 +35,42 @@
     try { localStorage.setItem(LEARNING_KEY, JSON.stringify(learned.slice(0, 40))); } catch {}
   }
 
+  function verdictFor(trade, won) {
+    if (!lastCall || Date.now() - lastCall.at > 10 * 60 * 1000) return null;
+    const market = String(trade.market || trade.symbol || '');
+    const direction = String(trade.direction || trade.contract_type || '').toUpperCase();
+    const barrier = String(trade.barrier ?? trade.targetDigit ?? '');
+    const sameMarket = !lastCall.market || market === lastCall.market;
+    const sameDirection = !lastCall.kind || direction.includes(lastCall.kind);
+    const sameBarrier = lastCall.barrier === '' || barrier === lastCall.barrier;
+    return sameMarket && sameDirection && sameBarrier ? (won ? 'right' : 'wrong') : null;
+  }
+
   function noteLearning(trade) {
     const id = trade && trade.id != null ? String(trade.id) : '';
     if (!id || seenTrades.has(id)) return false;
     seenTrades.add(id);
     const won = String(trade.status).toLowerCase() === 'won';
     const profit = Number(trade.profit);
+    const verdict = verdictFor(trade, won);
     learned.unshift({
       id,
       market: trade.market || trade.symbol || 'Market',
       direction: String(trade.direction || trade.contract_type || '').toUpperCase(),
       barrier: trade.barrier ?? trade.targetDigit ?? '',
       status: won ? 'won' : 'lost',
+      verdict,
       profit: Number.isFinite(profit) ? profit : null,
       ts: Date.now(),
     });
     learned = learned.slice(0, 40);
     saveLearned();
     learnCount += 1;
-    pulseLearned(won);
+    pulseLearned(won, verdict);
     return true;
   }
 
-  function pulseLearned(won) {
+  function pulseLearned(won, verdict) {
     const glyph = $('rangerBrainGlyph');
     if (!glyph) return;
     glyph.classList.remove('learned-pop');
@@ -71,8 +85,13 @@
       pop.setAttribute('aria-hidden', 'true');
       glyph.appendChild(pop);
     }
-    pop.textContent = '+1 learned';
+    pop.textContent = verdict === 'right' ? 'CALLED IT' : verdict === 'wrong' ? 'MISSED · learned' : '+1 learned';
+    pop.dataset.verdict = verdict || '';
     pop.dataset.win = String(!!won);
+    glyph.classList.remove('called-right', 'called-wrong');
+    if (verdict === 'right') glyph.classList.add('called-right');
+    if (verdict === 'wrong') glyph.classList.add('called-wrong');
+    setTimeout(() => glyph.classList.remove('called-right', 'called-wrong'), 1900);
     pop.classList.remove('show');
     void pop.offsetWidth;
     pop.classList.add('show');
@@ -100,7 +119,8 @@
         card.className = 'brain-learn-card ' + (row.status === 'won' ? 'is-win' : 'is-loss');
         const state = row.status === 'won' ? 'WORKED' : 'DIDN\'T WORK';
         const money = Number.isFinite(row.profit) ? (row.profit >= 0 ? '+' : '') + row.profit.toFixed(2) : '--';
-        card.innerHTML = `<b>${state}</b><span>${row.market} ${row.direction} ${row.barrier}</span><small>${money} · learned from this bet</small>`;
+        const call = row.verdict === 'right' ? '<em class="brain-call-chip is-right">I called it</em>' : row.verdict === 'wrong' ? '<em class="brain-call-chip is-wrong">I missed</em>' : '';
+        card.innerHTML = `<b>${state}</b>${call}<span>${row.market} ${row.direction} ${row.barrier}</span><small>${money} · learned from this bet</small>`;
         box.appendChild(card);
       }
     }
@@ -392,6 +412,7 @@
     const snap = api?.snapshot?.();
     const cow = snap?.herd?.find((row) => row.index === snipe.cowId);
     activeSuggestion = { cowIndex: snipe.cowId, snipe, until: snipe.until };
+    lastCall = { market: String(snipe.market || ''), kind: String(snipe.kind || '').toUpperCase(), barrier: String(snipe.barrier ?? ''), at: Date.now() };
     if (overlay) overlay.hidden = false;
     $('rangerBrainGlyph')?.classList.add('is-sniping');
     renderSuggestion(snipe);
@@ -550,8 +571,48 @@
     }
   }
 
+  function hideLearningBubble() {
+    const bubble = $('rangerBrainBubble');
+    if (!bubble) return;
+    const text = (bubble.textContent || '').trim().toLowerCase();
+    if (/still learning|collecting paper|not loaded|watching and learning/.test(text)) {
+      bubble.hidden = true;
+      bubble.dataset.visible = 'false';
+    }
+  }
+
+  function wakeGlyph() {
+    const glyph = $('rangerBrainGlyph');
+    if (!glyph) return;
+    glyph.classList.add('brain-waking');
+    setTimeout(() => glyph.classList.remove('brain-waking'), 2600);
+  }
+
+  function showBrainBubble(text) {
+    if (!showBrainBubble.timer) showBrainBubble.timer = 0;
+    const bubble = $('rangerBrainBubble');
+    if (!bubble) return;
+    bubble.textContent = String(text);
+    bubble.dataset.visible = 'true';
+    bubble.hidden = false;
+    clearTimeout(showBrainBubble.timer);
+    showBrainBubble.timer = setTimeout(() => { bubble.hidden = true; bubble.dataset.visible = 'false'; }, 2600);
+  }
+
+  window.addEventListener('zeronine:brain-connection', (event) => {
+    const connected = Boolean(event && event.detail && event.detail.connected);
+    const glyph = $('rangerBrainGlyph');
+    if (glyph) glyph.classList.toggle('is-live', connected);
+    if (connected) showBrainBubble('Deriv connected');
+    else hideLearningBubble();
+  });
+
   function init() {
     mountScenes();
+    wakeGlyph();
+    hideLearningBubble();
+    const bubble = $('rangerBrainBubble');
+    if (bubble) new MutationObserver(hideLearningBubble).observe(bubble, { childList: true, characterData: true, subtree: true });
     ensureReplayBox();
     renderMemoryReplay();
     decorateLessons();
@@ -581,5 +642,8 @@
     }
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  function boot() {
+    try { init(); } catch (err) { console.warn('Ranger Brain visuals unavailable', err); }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
