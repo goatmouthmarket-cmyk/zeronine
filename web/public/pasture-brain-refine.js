@@ -203,16 +203,47 @@
   /* ---------- animated card scenes (game assets, drawn) ---------- */
   const scenes = [];
   function drawCowScene(ctx, w, h, t, kind) {
-    const grass = ctx.createLinearGradient(0, 0, 0, h);
-    grass.addColorStop(0, '#79ad66');
-    grass.addColorStop(0.62, '#5f9a54');
-    grass.addColorStop(0.62, '#6b5a3d');
-    grass.addColorStop(1, '#55462f');
-    ctx.fillStyle = grass; ctx.fillRect(0, 0, w, h);
-    // fence
-    ctx.strokeStyle = 'rgba(246,232,196,.45)'; ctx.lineWidth = 1.5;
+    // Night pasture: indigo sky, moonlit ridge, purple rim light.
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, '#0B0D14');
+    sky.addColorStop(0.55, '#131629');
+    sky.addColorStop(0.56, '#1B2340');
+    sky.addColorStop(1, '#101426');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
+    // stars
+    ctx.fillStyle = 'rgba(226,232,240,.8)';
+    for (let i = 0; i < 14; i += 1) {
+      const sx = (((i * 73) % 100) / 100) * w;
+      const sy = (((i * 37) % 44) / 100) * h;
+      ctx.globalAlpha = reduce() ? 0.65 : 0.4 + Math.abs(Math.sin(t / 900 + i)) * 0.55;
+      ctx.fillRect(sx, sy, 1.4, 1.4);
+    }
+    ctx.globalAlpha = 1;
+    // moon + halo
+    const moonX = w * 0.8, moonY = h * 0.2, moonR = Math.max(8, Math.min(14, w * 0.042));
+    const halo = ctx.createRadialGradient(moonX, moonY, 1, moonX, moonY, moonR * 3.6);
+    halo.addColorStop(0, 'rgba(196,181,253,.45)');
+    halo.addColorStop(1, 'rgba(139,92,246,0)');
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 3.6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#EDE9FE'; ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
+    // far ridge
+    ctx.fillStyle = '#141B2E';
+    ctx.beginPath(); ctx.moveTo(0, h * 0.6);
+    for (let x = 0; x <= w; x += 14) ctx.lineTo(x, h * 0.6 - Math.sin((x / Math.max(1, w)) * 5.4) * h * 0.05);
+    ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fill();
+    // pasture floor
+    const floor = ctx.createLinearGradient(0, h * 0.6, 0, h);
+    floor.addColorStop(0, '#1D3A31');
+    floor.addColorStop(1, '#0F1B18');
+    ctx.fillStyle = floor; ctx.fillRect(0, h * 0.6, w, h * 0.4);
+    // fence with rim light
+    ctx.strokeStyle = 'rgba(167,139,250,.4)'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(0, h * 0.68); ctx.lineTo(w, h * 0.68); ctx.stroke();
-    for (let x = 8; x < w; x += 26) { ctx.beginPath(); ctx.moveTo(x, h * 0.68); ctx.lineTo(x, h * 0.6); ctx.stroke(); }
+    ctx.strokeStyle = 'rgba(226,232,240,.3)';
+    for (let x = 8; x < w; x += 26) { ctx.beginPath(); ctx.moveTo(x, h * 0.68); ctx.lineTo(x, h * 0.58); ctx.stroke(); }
+    // ground shadow under the cow
+    ctx.fillStyle = 'rgba(0,0,0,.28)';
+    ctx.beginPath(); ctx.ellipse(w * 0.64, h * 0.785, Math.max(18, w * 0.09), Math.max(3, h * 0.022), 0, 0, Math.PI * 2); ctx.fill();
     const bob = reduce() ? 0 : Math.sin(t / 700) * 1.5;
     // cow
     ctx.save();
@@ -236,7 +267,7 @@
     ctx.fillStyle = '#4d3729'; ctx.beginPath(); ctx.arc(0, -21, 7, Math.PI, Math.PI * 2); ctx.fill();
     // brain glow above the head
     const glow = 0.35 + (reduce() ? 0 : Math.sin(t / 420) * 0.18);
-    ctx.strokeStyle = `rgba(255,225,154,${glow})`; ctx.lineWidth = 1.6;
+    ctx.strokeStyle = `rgba(167,139,250,${glow})`; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.arc(0, -31, 6, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
     // learning sparks
@@ -244,14 +275,108 @@
       for (let i = 0; i < 3; i += 1) {
         const p = ((t / 1400) + i / 3) % 1;
         ctx.globalAlpha = 1 - p;
-        ctx.fillStyle = '#ffe19a';
+        ctx.fillStyle = '#C4B5FD';
         ctx.beginPath(); ctx.arc(w * 0.17 + Math.sin(p * 6) * 4, h * 0.66 - 30 - p * 22, 1.7, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
     }
   }
 
+  /* Close-up portrait so the ranger is part of the menu, not the page behind it. */
+  function drawPortrait(ctx, size, t) {
+    const c = size / 2;
+    ctx.clearRect(0, 0, size, size);
+    const bg = ctx.createLinearGradient(0, 0, 0, size);
+    bg.addColorStop(0, '#151827');
+    bg.addColorStop(1, '#0B0D14');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, size, size);
+    // shoulders
+    ctx.fillStyle = '#2F6FB0';
+    ctx.beginPath(); ctx.ellipse(c, size * 1.02, size * 0.42, size * 0.30, 0, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#255B93';
+    ctx.beginPath(); ctx.ellipse(c, size * 1.02, size * 0.16, size * 0.20, 0, Math.PI, Math.PI * 2); ctx.fill();
+    // neck
+    ctx.fillStyle = '#B98A64';
+    ctx.fillRect(c - size * 0.07, size * 0.60, size * 0.14, size * 0.14);
+    // head
+    ctx.fillStyle = '#D8A87E';
+    ctx.beginPath(); ctx.arc(c, size * 0.47, size * 0.21, 0, Math.PI * 2); ctx.fill();
+    // hair + hat
+    ctx.fillStyle = '#3A2A1E';
+    ctx.beginPath(); ctx.arc(c, size * 0.44, size * 0.215, Math.PI * 1.02, Math.PI * 1.98); ctx.fill();
+    ctx.fillStyle = '#4A3524';
+    ctx.beginPath(); ctx.ellipse(c, size * 0.31, size * 0.27, size * 0.055, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(c, size * 0.25, size * 0.15, size * 0.10, 0, Math.PI, Math.PI * 2); ctx.fill();
+    // bandana
+    ctx.fillStyle = '#C0453C';
+    ctx.beginPath();
+    ctx.moveTo(c - size * 0.20, size * 0.57);
+    ctx.quadraticCurveTo(c, size * 0.67, c + size * 0.20, size * 0.57);
+    ctx.lineTo(c + size * 0.16, size * 0.63);
+    ctx.quadraticCurveTo(c, size * 0.71, c - size * 0.16, size * 0.63);
+    ctx.closePath(); ctx.fill();
+    // eyes, with a slow blink
+    const blink = reduce() ? 1 : (Math.sin(t / 1600) > 0.985 ? 0.15 : 1);
+    ctx.fillStyle = '#241A12';
+    for (const dx of [-0.075, 0.075]) {
+      ctx.beginPath(); ctx.ellipse(c + size * dx, size * 0.475, size * 0.022, size * 0.028 * blink, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // smile
+    ctx.strokeStyle = '#8A5B3F'; ctx.lineWidth = Math.max(1, size * 0.014); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(c, size * 0.51, size * 0.07, 0.3, Math.PI - 0.3); ctx.stroke();
+    // thinking glow above the hat
+    const glow = reduce() ? 0.5 : 0.32 + Math.sin(t / 520) * 0.2;
+    ctx.strokeStyle = `rgba(167,139,250,${glow})`; ctx.lineWidth = Math.max(1.2, size * 0.022);
+    ctx.beginPath(); ctx.arc(c, size * 0.13, size * 0.075, 0, Math.PI * 2); ctx.stroke();
+    // vignette
+    const vig = ctx.createRadialGradient(c, size * 0.5, size * 0.2, c, size * 0.5, size * 0.72);
+    vig.addColorStop(0, 'rgba(0,0,0,0)');
+    vig.addColorStop(1, 'rgba(0,0,0,.5)');
+    ctx.fillStyle = vig; ctx.fillRect(0, 0, size, size);
+  }
+
+  let portrait = null;
+  function mountPortrait() {
+    const panel = $('rangerBrainPanel');
+    if (!panel || panel.querySelector('.brain-portrait')) return;
+    const header = panel.querySelector('header');
+    if (!header) return;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'brain-portrait';
+    canvas.setAttribute('aria-hidden', 'true');
+    header.insertBefore(canvas, header.firstChild);
+    portrait = canvas;
+  }
+
+  function paintPortrait(now) {
+    if (!portrait) return;
+    const size = portrait.clientWidth || 42;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const px = Math.max(42, Math.round(size * dpr));
+    if (portrait.width !== px || portrait.height !== px) { portrait.width = px; portrait.height = px; }
+    const ctx = portrait.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawPortrait(ctx, size, now);
+  }
+
+  const TAB_LABELS = { mind: 'Brain', thinking: 'Think', learned: 'Learned', memory: 'Memory', settings: 'Setup' };
+  function compactTabLabels() {
+    const panel = $('rangerBrainPanel');
+    if (!panel) return;
+    for (const button of panel.querySelectorAll('[data-tab]')) {
+      const want = TAB_LABELS[button.dataset.tab];
+      if (!want) continue;
+      const label = button.querySelector('span:last-child');
+      if (!label) continue;
+      if (!button.title) button.title = (label.textContent || want).trim();
+      if (label.textContent.trim() !== want) label.textContent = want;
+    }
+  }
+
   function mountScenes() {
+    mountPortrait();
+    compactTabLabels();
     const panes = [$('brainPaneMind'), $('brainPaneThinking'), $('brainPaneLearned'), $('brainPaneMemory')].filter(Boolean);
     for (const pane of panes) {
       if (pane.querySelector('.brain-card-scene')) continue;
@@ -289,6 +414,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       drawCowScene(ctx, w, h, now, scene.kind);
     }
+    paintPortrait(now);
     sceneDirty = false;
   }
 
@@ -319,7 +445,7 @@
     overlay = document.createElement('div');
     overlay.id = 'brainSnipeOverlay';
     overlay.hidden = true;
-    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffe19a"/><stop offset="1" stop-color="#8ee6a7"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/><circle id="brainTetherPulse" r="5" fill="#ffe19a"/></svg><div class="brain-snipe-card" role="status" aria-live="polite"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Scanning the herd…</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><b class="brain-snipe-why-head">Why this cow</b><ul id="brainSnipeFactors" class="brain-snipe-factors" aria-label="Reasons the brain picked this cow"></ul><span id="brainSnipeRecord" class="brain-snipe-record"></span><span id="brainSnipeExec" class="brain-snipe-exec"></span><span id="brainSnipeCount" class="brain-snipe-count"></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
+    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#FF4D91"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/><circle id="brainTetherPulse" r="5" fill="#ffe19a"/></svg><div class="brain-snipe-card" role="status" aria-live="polite"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Scanning the herd…</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><b class="brain-snipe-why-head">Why this cow</b><ul id="brainSnipeFactors" class="brain-snipe-factors" aria-label="Reasons the brain picked this cow"></ul><span id="brainSnipeRecord" class="brain-snipe-record"></span><span id="brainSnipeExec" class="brain-snipe-exec"></span><span id="brainSnipeCount" class="brain-snipe-count"></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
     document.body.appendChild(overlay);
     tether = $('brainTetherPath');
     card = overlay.querySelector('.brain-snipe-card');
@@ -476,7 +602,8 @@
     box.id = 'brainReplayBox';
     box.className = 'brain-memory-card';
     box.innerHTML = '<strong>Memory replay (read-only)</strong><p class="brain-friendly-note" id="brainReplayNote">Pick a finished practice result to watch a short, read-only recap. This is a recap of a practice result — never a real trade.</p><div class="brain-memory-actions" id="brainReplayActions" role="list" aria-label="Finished practice results"></div><div class="brain-replay-stage" id="brainReplayStage" aria-label="Practice result visual recap" hidden><div class="brain-replay-ground"></div><div class="brain-replay-ranger" aria-hidden="true"><span class="brain-replay-label">Ranger</span></div><div class="brain-replay-cow" id="brainReplayCow" aria-hidden="true"><span class="brain-replay-label">Cow</span></div><div class="brain-replay-arrow" aria-hidden="true"></div><div class="brain-replay-result" id="brainReplayResult" hidden></div><div class="brain-replay-caption" id="brainReplayCaption"></div></div>';
-    pane.insertBefore(box, pane.firstChild);
+    const scene = pane.querySelector('.brain-card-scene');
+    pane.insertBefore(box, scene ? scene.nextSibling : pane.firstChild);
     return box;
   }
 
@@ -609,6 +736,7 @@
 
   function init() {
     mountScenes();
+    compactTabLabels();
     wakeGlyph();
     hideLearningBubble();
     const bubble = $('rangerBrainBubble');

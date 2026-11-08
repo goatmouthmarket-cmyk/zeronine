@@ -1,304 +1,554 @@
-/* Brain and menu refinement - visual/wording only, paper-research safeguards preserved. */
-#rangerBrainPanel .ranger-brain-tabs button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 10px; border-radius: 10px; font-size: 12px; font-weight: 800; }
-#rangerBrainPanel .ranger-brain-tabs button .brain-tab-icon { width: 16px; height: 16px; display: inline-grid; place-items: center; flex: 0 0 16px; }
-#rangerBrainPanel .ranger-brain-tabs button .brain-tab-icon svg { width: 16px; height: 16px; display: block; }
-#rangerBrainPanel { border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,.28); }
-#rangerBrainPanel header small { opacity: .9; }
-.brain-friendly-note { font-size: 12px; line-height: 1.35; margin: 8px 0; }
-.brain-suggestion-card, .brain-memory-card {
-  display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px;
-  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
-  min-width: 0; overflow: hidden;
+/* ============================================================
+   Ranger Brain — one coherent layer that matches the dashboard:
+   Inter, near-black surfaces (#08090D / #101116), white text,
+   purple accent, green/red only for outcomes.
+   ============================================================ */
+
+#rangerBrainPanel {
+  --bg: #08090D;
+  --surface: #101116;
+  --surface-2: #12131A;
+  --surface-3: #16171F;
+  --border: rgba(255, 255, 255, .08);
+  --border-2: rgba(255, 255, 255, .14);
+  --text: #F5F5F7;
+  --muted: #B1B8C7;
+  --muted-2: #919AAA;
+  --purple: #8B5CF6;
+  --purple-light: #A78BFA;
+  --pink: #FF4D91;
+  --green: #22C55E;
+  --red: #FF5263;
+
+  position: fixed;
+  z-index: 26;
+  top: 92px;
+  left: 12px;
+  width: min(404px, calc(100vw - 24px));
+  max-height: min(84dvh, 704px);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border-2);
+  border-radius: 22px;
+  box-shadow: 0 30px 72px rgba(0, 0, 0, .64);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  overflow: hidden;
 }
-.brain-suggestion-card p, .brain-memory-card p, .brain-suggestion-card strong { overflow-wrap: anywhere; }
-.brain-memory-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; align-items: stretch; margin-top: 6px; }
-.brain-memory-actions .brain-memory-tile, .brain-memory-actions button { min-height: 56px; padding: 8px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.07); color: inherit; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; }
-.brain-memory-tile-state { font: 900 10px/1.1 system-ui, sans-serif; letter-spacing: .08em; }
-.brain-memory-tile.is-win .brain-memory-tile-state { color: #8ee6a7; }
-.brain-memory-tile.is-loss .brain-memory-tile-state { color: #ffb0a8; }
-.brain-memory-tile-main { font: 700 12px/1.2 system-ui, sans-serif; color: #fffdf2; overflow-wrap: anywhere; }
-.brain-memory-tile-sub { font: 600 10px/1.2 system-ui, sans-serif; opacity: .78; }
-.brain-memory-actions .brain-memory-tile:hover, .brain-memory-actions button:hover { background: rgba(255,255,255,.11); border-color: rgba(255,255,255,.22); }
-.brain-memory-actions .brain-memory-tile:focus-visible, .brain-memory-actions button:focus-visible { outline: 2px solid rgba(255,238,170,.7); outline-offset: 1px; }
+#rangerBrainPanel[hidden] { display: none; }
+
+/* ---------- header ---------- */
+#rangerBrainPanel header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+#rangerBrainPanel header > div { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+#rangerBrainPanel header strong {
+  font: 700 13px/1.15 Inter, system-ui, sans-serif;
+  color: var(--text);
+  letter-spacing: .01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#rangerBrainPanel header small {
+  font: 500 10px/1.3 Inter, system-ui, sans-serif;
+  color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brain-portrait {
+  width: 42px; height: 42px; flex: 0 0 42px;
+  border-radius: 13px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  display: block;
+}
+#rangerBrainClose {
+  width: 26px; height: 26px; min-width: 26px;
+  display: grid; place-items: center;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 14px/1 Inter, system-ui, sans-serif;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+#rangerBrainClose:hover { background: var(--surface-3); border-color: rgba(139, 92, 246, .6); }
+
+/* ---------- tabs: compact, five across ---------- */
+#rangerBrainPanel .ranger-brain-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  padding: 7px 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+#rangerBrainPanel .ranger-brain-tabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 5px 2px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-2);
+  font: 600 9.5px/1 Inter, system-ui, sans-serif;
+  letter-spacing: .02em;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+#rangerBrainPanel .ranger-brain-tabs button .brain-tab-icon { display: grid; place-items: center; width: 16px; height: 16px; }
+#rangerBrainPanel .ranger-brain-tabs button .brain-tab-icon svg { width: 16px; height: 16px; stroke-width: 1.6; }
+#rangerBrainPanel .ranger-brain-tabs button span:last-child {
+  max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#rangerBrainPanel .ranger-brain-tabs button:hover { background: var(--surface); color: var(--text); }
+#rangerBrainPanel .ranger-brain-tabs button[aria-selected="true"] {
+  background: rgba(139, 92, 246, .14);
+  border-color: rgba(139, 92, 246, .55);
+  color: var(--purple-light);
+  box-shadow: none;
+}
+#rangerBrainPanel .brain-tab-gear span:last-child { font-size: 9.5px; }
+#rangerBrainPanel .brain-tab-gear .brain-tab-icon { font-size: 0; }
+
+/* ---------- body: no scrollbars, panes fit ---------- */
+#rangerBrainPanel .ranger-brain-body {
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+#rangerBrainPanel section[role="tabpanel"] {
+  display: grid;
+  gap: 9px;
+  align-content: start;
+  min-height: 0;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+#rangerBrainPanel section[role="tabpanel"][hidden] { display: none; }
+#rangerBrainPanel .ranger-brain-body::-webkit-scrollbar,
+#rangerBrainPanel section[role="tabpanel"]::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* ---------- banner art + merged metric card ---------- */
+#rangerBrainPanel .brain-card-scene {
+  display: block;
+  width: 100%;
+  height: clamp(96px, 17dvh, 152px);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #0B0D12;
+}
+#rangerBrainPanel section[role="tabpanel"] > .brain-card-scene + * {
+  margin: -44px 8px 0;
+  padding: 10px;
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, .52);
+}
+
+/* ---------- type + surfaces ---------- */
+#rangerBrainPanel p { color: var(--muted); font: 500 11px/1.45 Inter, system-ui, sans-serif; margin: 0; }
+#rangerBrainPanel small { color: var(--muted-2); font: 500 10px/1.35 Inter, system-ui, sans-serif; }
+#rangerBrainPanel strong, #rangerBrainPanel b { color: var(--text); }
+#rangerBrainPanel .brain-friendly-note, #rangerBrainPanel .brain-note { color: var(--muted); }
+#rangerBrainPanel .brain-note { display: none; }
+#rangerBrainPanel #brainHeadline {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#rangerBrainPanel .brain-hero,
+#rangerBrainPanel .brain-window,
+#rangerBrainPanel .brain-edge,
+#rangerBrainPanel .brain-activity li,
+#rangerBrainPanel .brain-lessons li,
+.brain-learn-card,
+.brain-memory-card,
+#brainSuggestionCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+/* ---------- state badge ---------- */
+#rangerBrainPanel .brain-state { display: flex; align-items: center; gap: 6px; padding: 0 2px; }
+#rangerBrainPanel #brainStateBadge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, .16);
+  color: var(--purple-light);
+  font: 700 9px/1 Inter, system-ui, sans-serif;
+  letter-spacing: .08em;
+}
+#rangerBrainPanel .brain-state small { color: var(--muted-2); }
+
+/* ---------- hero ring + pips ---------- */
+#rangerBrainPanel .brain-hero { display: flex; align-items: center; gap: 12px; padding: 10px; }
+#rangerBrainPanel .brain-ring {
+  position: relative;
+  width: 62px; height: 62px; flex: 0 0 62px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--surface-3);
+}
+#rangerBrainPanel .brain-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+#rangerBrainPanel .brain-ring-track { fill: none; stroke: rgba(255, 255, 255, .1); stroke-width: 6; }
+#rangerBrainPanel .brain-ring-fill { fill: none; stroke: var(--purple); stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset .5s ease; }
+#rangerBrainPanel .brain-ring-word { font: 700 9px/1 Inter, system-ui, sans-serif; letter-spacing: .07em; color: var(--text); text-transform: uppercase; }
+#rangerBrainPanel .brain-hero-copy { display: grid; gap: 2px; min-width: 0; }
+#rangerBrainPanel .brain-hero-copy strong { font: 700 15px/1.2 Inter, system-ui, sans-serif; }
+#rangerBrainPanel .brain-hero-copy small { font: 500 11px/1.3 Inter, system-ui, sans-serif; color: var(--muted); }
+#rangerBrainPanel .brain-pips { display: flex; gap: 3px; margin-top: 5px; }
+#rangerBrainPanel .brain-pips i, #rangerBrainPanel .brain-pips span { width: 6px; height: 6px; border-radius: 2px; background: rgba(255, 255, 255, .16); display: inline-block; }
+#rangerBrainPanel .brain-pips i.on, #rangerBrainPanel .brain-pips .on { background: var(--purple); }
+
+/* ---------- edge bar ---------- */
+#rangerBrainPanel .brain-edge { display: grid; gap: 6px; padding: 9px 10px; }
+#rangerBrainPanel .brain-edge-bar { position: relative; height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+#rangerBrainPanel .brain-edge-bar i { display: block; height: 100%; border-radius: 999px; background: var(--purple); transition: width .4s ease; }
+#rangerBrainPanel #brainEdgeText { font: 600 11px/1.35 Inter, system-ui, sans-serif; color: var(--muted); }
+
+/* ---------- day map ---------- */
+#rangerBrainPanel .brain-window { display: grid; gap: 6px; padding: 9px 10px; }
+#rangerBrainPanel .brain-window-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+#rangerBrainPanel .brain-window-head strong { font: 700 9.5px/1 Inter, system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); }
+#rangerBrainPanel .brain-window-head span { font: 600 10px/1 Inter, system-ui, sans-serif; color: var(--muted-2); }
+#rangerBrainPanel .brain-window-hours { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; }
+#rangerBrainPanel .brain-window-hours > * {
+  height: 20px; min-width: 0;
+  display: grid; place-items: center;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--muted-2);
+  font: 600 8px/1 Inter, system-ui, sans-serif;
+  overflow: hidden;
+}
+#rangerBrainPanel .brain-window-hours > *.on,
+#rangerBrainPanel .brain-window-hours > *[data-lit="true"] { background: rgba(139, 92, 246, .34); color: #EDE9FE; }
+
+/* ---------- activity + lessons ---------- */
+#rangerBrainPanel .brain-activity { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#rangerBrainPanel .brain-activity li { padding: 8px 10px; font: 500 11px/1.35 Inter, system-ui, sans-serif; color: var(--muted); }
+#rangerBrainPanel .brain-activity li:nth-child(n+4) { display: none; }
+#rangerBrainPanel .brain-lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+#rangerBrainPanel .brain-lessons li { padding: 9px 10px; font: 500 11.5px/1.4 Inter, system-ui, sans-serif; color: var(--text); }
+#rangerBrainPanel .brain-lessons li:nth-child(n+4) { display: none; }
+#rangerBrainPanel .brain-lesson-chip {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(139, 92, 246, .16);
+  color: var(--purple-light);
+  font: 700 9px/1.2 Inter, system-ui, sans-serif;
+  letter-spacing: .06em;
+}
+#rangerBrainPanel .brain-evidence-details { margin-top: 5px; }
+#rangerBrainPanel .brain-evidence-details summary { cursor: pointer; font: 600 10px Inter, system-ui, sans-serif; color: var(--muted); }
+#rangerBrainPanel .brain-evidence-details p { margin: 5px 0 0; font-size: 10px; color: var(--muted-2); }
+
+/* ---------- suggestion card ---------- */
+#brainSuggestionCard { display: grid; gap: 5px; padding: 10px; }
+#brainSuggestionCard strong { font: 700 13px/1.25 Inter, system-ui, sans-serif; }
+#brainSuggestionCard[data-state="watch"] { border-color: rgba(139, 92, 246, .5); }
+#brainSuggestionCard[data-state="wait"] { border-color: rgba(255, 77, 145, .4); }
+
+/* ---------- learned strip ---------- */
+.brain-learn-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.brain-learn-card { display: grid; gap: 2px; padding: 9px 10px; min-width: 0; }
+.brain-learn-card b { font: 700 9px/1 Inter, system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); }
+.brain-learn-card.is-win b { color: var(--green); }
+.brain-learn-card.is-loss b { color: var(--red); }
+.brain-learn-card span { font: 700 13px/1.25 Inter, system-ui, sans-serif; color: var(--text); overflow-wrap: anywhere; }
+.brain-learn-card small { font: 500 10px/1.3 Inter, system-ui, sans-serif; color: var(--muted-2); }
+.brain-call-chip { display: inline-block; justify-self: start; margin-top: 3px; padding: 2px 6px; border-radius: 7px; font: 700 9px/1.2 Inter, system-ui, sans-serif; font-style: normal; letter-spacing: .05em; }
+.brain-call-chip.is-right { background: rgba(34, 197, 94, .18); color: #7EE2A8; }
+.brain-call-chip.is-wrong { background: rgba(255, 82, 99, .18); color: #FFA3AD; }
+
+/* ---------- memory replay ---------- */
+.brain-memory-card { display: grid; gap: 7px; padding: 10px; }
+.brain-memory-card strong { font: 700 12px/1.2 Inter, system-ui, sans-serif; }
+.brain-memory-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.brain-memory-tile {
+  display: grid; gap: 2px; padding: 8px 9px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-3);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  transition: border-color .15s ease, background .15s ease;
+}
+.brain-memory-tile:hover { background: #1A1C24; border-color: rgba(139, 92, 246, .5); }
+.brain-memory-tile-state { font: 700 9px/1 Inter, system-ui, sans-serif; letter-spacing: .07em; }
+.brain-memory-tile.is-win .brain-memory-tile-state { color: var(--green); }
+.brain-memory-tile.is-loss .brain-memory-tile-state { color: var(--red); }
+.brain-memory-tile-main { font: 700 11.5px/1.25 Inter, system-ui, sans-serif; overflow-wrap: anywhere; }
+.brain-memory-tile-sub { font: 500 9.5px/1.2 Inter, system-ui, sans-serif; color: var(--muted-2); }
 .brain-replay-stage {
-  position: relative; overflow: hidden; border-radius: 14px; min-height: 150px; margin-top: 8px;
-  background: linear-gradient(180deg, #5a9150 0%, #4f8448 55%, #6a5638 55%, #5a4830 100%);
-  border: 1px solid rgba(255,255,255,.12);
+  position: relative; overflow: hidden;
+  min-height: clamp(120px, 22dvh, 170px);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #0C0E13;
 }
-.brain-replay-ground { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; }
-.brain-replay-ranger, .brain-replay-cow, .brain-replay-arrow, .brain-replay-result { position: absolute; line-height: 1; filter: drop-shadow(0 3px 4px rgba(0,0,0,.25)); }
-.brain-replay-ranger { left: 10%; bottom: 24%; }
-.brain-replay-cow { right: 12%; bottom: 22%; transition: transform .25s ease, opacity .25s ease; }
-.brain-replay-label { display: inline-flex; align-items: center; justify-content: center; min-width: 52px; padding: 6px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,.18); background: rgba(17,34,24,.58); color: #fffdf2; font: 800 10px/1 system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
-.brain-replay-arrow { left: 24%; bottom: 35%; opacity: 0; width: 46%; height: 2px; background: rgba(255,248,220,.9); border-radius: 2px; }
-.brain-replay-arrow::after { content: ''; position: absolute; right: -1px; top: 50%; width: 8px; height: 8px; border-top: 2px solid rgba(255,248,220,.95); border-right: 2px solid rgba(255,248,220,.95); transform: translateY(-50%) rotate(45deg); }
-.brain-replay-caption { position: absolute; left: 10px; right: 10px; bottom: 8px; font: 700 11px/1.25 system-ui, sans-serif; color: #fffdf2; text-shadow: 0 1px 3px rgba(0,0,0,.45); }
-.brain-replay-result { left: 50%; top: 12px; transform: translateX(-50%); font-size: 12px; font-weight: 900; padding: 6px 10px; border-radius: 999px; background: rgba(17,34,24,.78); color: #fff; white-space: nowrap; }
+.brain-replay-ground { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: #141B16; }
+.brain-replay-ranger, .brain-replay-cow, .brain-replay-arrow, .brain-replay-result { position: absolute; }
+.brain-replay-ranger { left: 9%; bottom: 22%; }
+.brain-replay-cow { right: 11%; bottom: 20%; transition: transform .25s ease, opacity .25s ease; }
+.brain-replay-label {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 56px; padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border-2);
+  background: rgba(16, 17, 22, .82);
+  color: var(--text);
+  font: 700 9px/1 Inter, system-ui, sans-serif;
+  letter-spacing: .05em; text-transform: uppercase;
+}
+.brain-replay-arrow { left: 24%; bottom: 33%; opacity: 0; width: 46%; height: 2px; border-radius: 2px; background: var(--purple-light); }
+.brain-replay-arrow::after { content: ""; position: absolute; right: -1px; top: 50%; width: 8px; height: 8px; border-top: 2px solid var(--purple-light); border-right: 2px solid var(--purple-light); transform: translateY(-50%) rotate(45deg); }
+.brain-replay-caption { position: absolute; left: 10px; right: 10px; bottom: 8px; font: 600 10px/1.3 Inter, system-ui, sans-serif; color: var(--muted); }
+.brain-replay-result { left: 50%; top: 10px; transform: translateX(-50%); font: 700 10px/1 Inter, system-ui, sans-serif; padding: 6px 10px; border-radius: 999px; background: rgba(16, 17, 22, .9); border: 1px solid var(--border-2); color: var(--text); white-space: nowrap; }
 .brain-replay-stage.playing .brain-replay-arrow { animation: brainArrow 1.1s ease-in forwards; }
 .brain-replay-stage.hit .brain-replay-cow { transform: translateY(4px) scale(.96); }
 @keyframes brainArrow { 0% { opacity: 0; left: 22%; } 15% { opacity: 1; } 85% { opacity: 1; left: 68%; } 100% { opacity: 0; left: 72%; } }
-@media (max-width: 700px) {
-  #rangerBrainPanel { left: 8px !important; right: 8px !important; width: auto !important; bottom: max(10px, env(safe-area-inset-bottom)) !important; top: auto !important; max-height: min(72dvh, calc(100dvh - 72px)) !important; }
-  .ranger-brain-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ---------- glyph states ---------- */
+#rangerBrainGlyph { transition: color .2s ease, filter .2s ease, transform .18s ease; }
+#rangerBrainGlyph.is-sniping { color: var(--purple-light); }
+#rangerBrainGlyph.is-live::after { content: ""; position: absolute; right: 2px; top: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(34, 197, 94, .5); }
+#rangerBrainGlyph.learned-pop { animation: brainLearnPop .7s cubic-bezier(.2, 1.4, .4, 1); }
+#rangerBrainGlyph.sniped { animation: brainSnipePing .7s ease-out; }
+#rangerBrainGlyph.no-pick { animation: brainNoPick .45s ease-in-out 2; }
+#rangerBrainGlyph.brain-waking { animation: brainWakeGlow 2.6s ease-out 1; }
+#rangerBrainGlyph.called-right { animation: brainRightGlow .9s ease-out; }
+#rangerBrainGlyph.called-wrong { animation: brainWrongGlow .9s ease-out; }
+#rangerBrainGlyph .brain-learn-pop {
+  position: absolute; left: 50%; bottom: calc(100% + 6px);
+  transform: translateX(-50%) scale(.7);
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #101116;
+  border: 1px solid var(--border-2);
+  color: var(--text);
+  font: 700 9px/1 Inter, system-ui, sans-serif;
+  white-space: nowrap; opacity: 0; pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
 }
-@media (prefers-reduced-motion: reduce) {
-  .brain-replay-stage.playing .brain-replay-arrow { animation: none; opacity: 1; left: 68%; }
+#rangerBrainGlyph .brain-learn-pop[data-verdict="right"] { border-color: rgba(34, 197, 94, .6); color: #9BF0BB; }
+#rangerBrainGlyph .brain-learn-pop[data-verdict="wrong"] { border-color: rgba(255, 82, 99, .55); color: #FFB3BB; }
+#rangerBrainGlyph .brain-learn-pop.show { opacity: 1; transform: translateX(-50%) scale(1); }
+@keyframes brainLearnPop { 0% { transform: scale(1); } 35% { transform: scale(1.45); } 100% { transform: scale(1); } }
+@keyframes brainSnipePing { 0% { transform: translate(-50%, -100%) scale(1); } 40% { transform: translate(-50%, -100%) scale(1.5); } 100% { transform: translate(-50%, -100%) scale(1); } }
+@keyframes brainNoPick { 0%, 100% { transform: translate(-50%, -100%); } 50% { transform: translate(-50%, -100%) rotate(8deg); } }
+@keyframes brainWakeGlow { 0%, 100% { filter: none; } 18% { filter: drop-shadow(0 0 13px var(--purple)); } 38% { filter: drop-shadow(0 0 4px var(--purple)); } 58% { filter: drop-shadow(0 0 15px var(--purple-light)); } 80% { filter: drop-shadow(0 0 5px var(--purple)); } }
+@keyframes brainRightGlow { 0% { filter: none; } 28% { filter: drop-shadow(0 0 15px #22C55E); } 100% { filter: none; } }
+@keyframes brainWrongGlow { 0% { filter: none; } 28% { filter: drop-shadow(0 0 15px #FF5263); } 100% { filter: none; } }
+
+/* ---------- snipe overlay ---------- */
+#brainSnipeOverlay { position: fixed; inset: 0; z-index: 24; pointer-events: none; }
+#brainSnipeOverlay[hidden] { display: none; }
+#brainSnipeOverlay .brain-tether { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+#brainSnipeOverlay .brain-tether path { stroke-dashoffset: 0; animation: brainTetherFlow .7s linear infinite; }
+#brainSnipeOverlay #brainTetherPulse { fill: var(--purple-light); animation: brainPulseDot 1s ease-in-out infinite; }
+@keyframes brainTetherFlow { to { stroke-dashoffset: -28; } }
+@keyframes brainPulseDot { 0%, 100% { opacity: .5; r: 4; } 50% { opacity: 1; r: 6; } }
+.brain-snipe-card {
+  position: absolute;
+  display: grid;
+  gap: 3px;
+  width: 246px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  background: #0B0C11;
+  border: 1px solid rgba(139, 92, 246, .55);
+  color: var(--text);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, .6);
+  font-family: Inter, system-ui, sans-serif;
 }
-/* 4-section Brain refinement */
-.brain-tab-gear span:last-child{font-size:0}.brain-tab-gear .brain-tab-icon{font-size:15px}
-.brain-lesson-chip{display:inline-block;margin:0 0 4px;padding:2px 7px;border-radius:999px;background:rgba(255,255,255,.1);font:800 10px/1.2 system-ui,sans-serif}
-.brain-evidence-details{margin-top:6px}
-.brain-evidence-details summary{cursor:pointer;font:700 11px system-ui,sans-serif;opacity:.92}
-.brain-evidence-details p{margin:6px 0 0;font:11px/1.35 system-ui,sans-serif;opacity:.9}
-#brainSuggestionCard[data-state="watch"]{border-color:rgba(104,232,145,.35);box-shadow:inset 0 0 0 1px rgba(104,232,145,.08)}
-#brainSuggestionCard[data-state="wait"]{border-color:rgba(255,207,112,.28)}
-#brainSuggestionCard strong::before{content:none;}
-#rangerBrainPanel header small{font-size:11px;line-height:1.25}
-#rangerBrainPanel .brain-note{font-size:12px;line-height:1.35}
-@media (max-width:700px){
-  #rangerBrainPanel{display:flex;flex-direction:column}
-  #rangerBrainPanel .ranger-brain-body{overflow:auto;-webkit-overflow-scrolling:touch;max-height:calc(72dvh - 110px)}
-  .ranger-brain-tabs button{font-size:11px;padding:8px 8px}
-  .ranger-brain-tabs button span:last-child{white-space:nowrap}
-}
-@media (prefers-reduced-motion:no-preference){
-  #brainRingFill{transition:stroke-dashoffset .45s ease}
-  #brainSuggestionCard,#brainReplayBox{animation:brainFadeIn .18s ease}
-}
-@keyframes brainFadeIn{from{opacity:.55;transform:translateY(2px)}to{opacity:1;transform:none}}
+.brain-snipe-card b { font: 700 10px/1.2 Inter, system-ui, sans-serif; letter-spacing: .07em; color: var(--purple-light); }
+.brain-snipe-card span { font: 600 12px/1.35 Inter, system-ui, sans-serif; color: var(--text); overflow-wrap: anywhere; }
+.brain-snipe-card .brain-snipe-why { color: var(--muted); font-weight: 500; font-size: 11px; }
+.brain-snipe-card .brain-snipe-why-head { margin-top: 5px; color: var(--muted); font: 700 9px/1 Inter, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+.brain-snipe-factors { display: grid; gap: 3px; margin: 2px 0; padding: 0; list-style: none; }
+.brain-snipe-factors[hidden] { display: none; }
+.brain-snipe-factor { display: flex; align-items: baseline; gap: 8px; min-width: 0; font: 500 11px/1.3 Inter, system-ui, sans-serif; color: var(--muted); }
+.brain-snipe-factor-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brain-snipe-factor b { flex: 0 0 auto; font: 700 11px/1.3 Inter, system-ui, sans-serif; color: var(--text); letter-spacing: 0; }
+.brain-snipe-factor[data-key="hit"] b { color: var(--pink); }
+.brain-snipe-factor[data-key="rank"] b { color: var(--muted); font-weight: 600; }
+.brain-snipe-record { border-top: 1px solid var(--border); padding-top: 5px; font: 600 10.5px/1.3 Inter, system-ui, sans-serif; color: var(--muted); }
+.brain-snipe-record[data-tone="good"] { color: #7EE2A8; }
+.brain-snipe-record[data-tone="bad"] { color: #FFA3AD; }
+.brain-snipe-record[data-tone="new"] { color: var(--muted-2); font-style: italic; }
+.brain-snipe-card .brain-snipe-exec { color: var(--purple-light); font-size: 10.5px; }
+.brain-snipe-card .brain-snipe-count { font: 700 10px/1 Inter, system-ui, sans-serif; color: var(--text); }
+.brain-snipe-card.is-blocked { border-color: rgba(255, 82, 99, .6); }
+.brain-snipe-bar { display: block; height: 4px; margin-top: 5px; border-radius: 999px; background: #1B1D26; overflow: hidden; }
+.brain-snipe-bar > i { display: block; height: 100%; width: 100%; background: var(--purple); transition: width .2s linear; }
 
-/* ===== Visual Brain: animated cards, tether sniper, learning pulse ===== */
-#rangerBrainPanel{background:linear-gradient(180deg,#2c4526ee,#17281bee);color:#f4efdff2;border-color:#8fbd6a;box-shadow:0 22px 54px #0a160c66}
-#rangerBrainPanel header{background:linear-gradient(#33502bee,#223a20ee);border-bottom-color:#668b5199}
-#rangerBrainPanel header strong{color:#fff4cf}
-#rangerBrainPanel header small{color:#d6e6c3cc}
-#rangerBrainPanel .ranger-brain-tabs{gap:6px;padding:8px 9px;background:#1a2d1fcc;border-bottom:1px solid #6b945a66}
-#rangerBrainPanel .ranger-brain-tabs button{flex:1 1 auto;justify-content:center;background:#2f4a2acc;border:1px solid #7fae6573;color:#eaf4dd;border-radius:12px;min-height:42px}
-#rangerBrainPanel .ranger-brain-tabs button[aria-selected="true"]{background:#41682fd9;border-color:#c6e59a;box-shadow:inset 0 0 0 1px #e7ffcf33,0 4px 12px #0b170e4d}
-#rangerBrainPanel .ranger-brain-tabs button:active{transform:translateY(1px)}
-#rangerBrainPanel .ranger-brain-body{padding:10px 11px 12px;background:radial-gradient(120% 70% at 50% 0%,#395a2ecc,#1b2e1fee 70%)}
-#rangerBrainPanel .brain-card-scene{display:block;width:100%;height:84px;border-radius:12px;margin:0 0 8px;border:1px solid #9fce7d59;box-shadow:inset 0 -18px 28px #0d1a0b4d}
-#rangerBrainPanel .brain-friendly-note,#rangerBrainPanel .brain-note{color:#f2f6e6e6}
-#rangerBrainPanel .brain-hero{background:#253d24b3;border:1px solid #7fa96459;border-radius:14px;padding:8px}
-#rangerBrainPanel .brain-window,#rangerBrainPanel .brain-edge{background:#22371fb3;border:1px solid #7fa9644d;border-radius:12px;padding:7px}
-#rangerBrainPanel .brain-activity li{background:#2c482ab3;border:1px solid #7fa96440}
-#rangerBrainPanel .brain-activities span,#rangerBrainPanel .brain-lessons li{color:#eef6e2}
-#rangerBrainPanel .brain-lessons li{background:#2b452ab3;border:1px solid #7fa96440;border-radius:12px;padding:8px 9px;margin:0 0 7px;list-style:none}
-#rangerBrainPanel .brain-lessons{list-style:none;margin:0;padding:0}
-#rangerBrainPanel .brain-lesson-chip{background:#ffe19a26;color:#ffe7ac}
-#rangerBrainPanel details.brain-friendly-note summary{color:#e8f4d5}
-#rangerBrainPanel .brain-settings fieldset{border-color:#7fa96466}
-#rangerBrainPanel .brain-settings label{color:#eef6e2}
-
-/* learning strip */
-.brain-learn-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:7px;margin:8px 0 10px}
-.brain-learn-card{display:flex;flex-direction:column;gap:2px;padding:8px 9px;border-radius:11px;background:#2a462acc;border:1px solid #82b2685e;min-width:0}
-.brain-learn-card b{font:900 9px/1.1 system-ui,sans-serif;letter-spacing:.09em}
-.brain-learn-card.is-win b{color:#9df5b4}.brain-learn-card.is-loss b{color:#ffb2a8}
-.brain-learn-card span{font:700 11px/1.2 system-ui,sans-serif;color:#fff6d9;overflow-wrap:anywhere}
-.brain-learn-card small{font:600 9.5px/1.25 system-ui,sans-serif;color:#d7e6c8cc}
-
-/* brain glyph state + learned pulse */
-#rangerBrainGlyph{transition:color .2s ease,filter .2s ease,transform .18s ease}
-#rangerBrainGlyph.is-sniping{color:#d7ffb0;filter:drop-shadow(0 1px 1px #0d1a0c) drop-shadow(0 0 10px #b6ff8bd9)}
-#rangerBrainGlyph.learned-pop{animation:brainLearnPop .7s cubic-bezier(.2,1.4,.4,1)}
-#rangerBrainGlyph.sniped{animation:brainSnipePing .7s ease-out}
-#rangerBrainGlyph.no-pick{animation:brainNoPick .45s ease-in-out 2}
-#rangerBrainGlyph .brain-learn-pop{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%) scale(.7);padding:3px 7px;border-radius:999px;background:#22371fdd;border:1px solid #9fe077;color:#e6ffb8;font:900 9px/1 system-ui,sans-serif;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease}
-#rangerBrainGlyph .brain-learn-pop[data-win="false"]{border-color:#ff9b8f;color:#ffd3cc}
-#rangerBrainGlyph .brain-learn-pop.show{opacity:1;transform:translateX(-50%) scale(1)}
-@keyframes brainLearnPop{0%{transform:scale(1)}35%{transform:scale(1.45)}100%{transform:scale(1)}}
-@keyframes brainSnipePing{0%{transform:translate(-50%,-100%) scale(1)}40%{transform:translate(-50%,-100%) scale(1.5)}100%{transform:translate(-50%,-100%) scale(1)}}
-@keyframes brainNoPick{0%,100%{transform:translate(-50%,-100%)}50%{transform:translate(-50%,-100%) rotate(8deg)}}
-
-/* sniper tether + floating card */
-#brainSnipeOverlay{position:fixed;inset:0;z-index:24;pointer-events:none}
-#brainSnipeOverlay[hidden]{display:none}
-#brainSnipeOverlay .brain-tether{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-#brainSnipeOverlay .brain-tether path{stroke-dashoffset:0;animation:brainTetherFlow .7s linear infinite;filter:drop-shadow(0 0 6px #ffe19a88)}
-#brainSnipeOverlay #brainTetherPulse{filter:drop-shadow(0 0 8px #ffe19a);animation:brainPulseDot 1s ease-in-out infinite}
-@keyframes brainTetherFlow{to{stroke-dashoffset:-28}}
-@keyframes brainPulseDot{0%,100%{opacity:.5;r:4}50%{opacity:1;r:6}}
-.brain-snipe-card{position:absolute;display:flex;flex-direction:column;gap:2px;width:212px;padding:9px 11px;border-radius:13px;background:linear-gradient(180deg,#29451fe8,#152618f2);border:1px solid #a8d47f;color:#f6f2e0;box-shadow:0 16px 32px #06100866,inset 0 0 0 1px #eaffc71f;font-family:system-ui,sans-serif}
-.brain-snipe-card b{font:900 10px/1.15 system-ui,sans-serif;letter-spacing:.07em;color:#eaffc2}
-.brain-snipe-card span{font:700 11px/1.3 system-ui,sans-serif;color:#fff6dc;overflow-wrap:anywhere}
-.brain-snipe-card .brain-snipe-why{color:#cfe8bd;font-weight:600}
-.brain-snipe-card .brain-snipe-exec{color:#ffe7ac;font-size:10px;line-height:1.3}
-.brain-snipe-card .brain-snipe-count{font:800 10px/1 system-ui,sans-serif;color:#d6ffae}
-.brain-snipe-card.is-blocked{border-color:#ff9b8f}
-.brain-snipe-card.is-blocked .brain-snipe-count{color:#ffc7bf}
-.brain-snipe-bar{display:block;height:4px;margin-top:4px;border-radius:999px;background:#0d180f;overflow:hidden}
-.brain-snipe-bar>i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#8ee6a7,#ffe19a);transition:width .2s linear}
-
-/* zoomed-in brain view framing */
-body.brain-zoomed #game{filter:saturate(1.06) brightness(.97)}
-body.brain-zoomed #rangerBrainPanel{animation:brainPanelIn .22s ease}
-@keyframes brainPanelIn{from{opacity:.4;transform:translateY(4px) scale(.985)}to{opacity:1;transform:none}}
-
-@media (max-width:700px){
-  #brainSnipeOverlay .brain-snipe-card{width:min(228px,calc(100vw - 20px))}
-  #rangerBrainPanel .brain-card-scene{height:64px}
-}
-@media (prefers-reduced-motion:reduce){
-  #brainSnipeOverlay .brain-tether path,#brainSnipeOverlay #brainTetherPulse,#rangerBrainGlyph.learned-pop,#rangerBrainGlyph.sniped,#rangerBrainGlyph.no-pick{animation:none!important}
-}
-
-/* why this cow: the factors behind the pick */
-.brain-snipe-card{width:238px}
-.brain-snipe-card .brain-snipe-why-head{margin-top:5px;color:#ffe7ac;font:900 9.5px/1.1 system-ui,sans-serif;letter-spacing:.09em;text-transform:uppercase}
-.brain-snipe-card .brain-snipe-factors{display:grid;gap:2px;margin:3px 0 2px;padding:0;list-style:none}
-.brain-snipe-card .brain-snipe-factors[hidden]{display:none}
-.brain-snipe-factor{display:flex;align-items:baseline;gap:6px;min-width:0;font:600 10.5px/1.3 system-ui,sans-serif;color:#e7f4d6}
-.brain-snipe-factor .brain-snipe-factor-label{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#c6dfb3}
-.brain-snipe-factor b{flex:0 0 auto;font:900 10.5px/1.3 system-ui,sans-serif;color:#eaffc2;letter-spacing:0}
-.brain-snipe-factor[data-key="hit"] b{color:#ffd0a1}
-.brain-snipe-factor[data-key="rank"] .brain-snipe-factor-label{color:#9dbc8d}
-.brain-snipe-factor[data-key="rank"] b{color:#d8efc4;font-weight:800}
-
-/* Brain pick record on the suggestion card */
-.brain-snipe-card .brain-snipe-record{border-top:1px dashed #7fa96459;padding-top:4px;font:700 10px/1.3 system-ui,sans-serif;color:#d9ecc8}
-.brain-snipe-card .brain-snipe-record[data-tone="good"]{color:#b9f5c6}
-.brain-snipe-card .brain-snipe-record[data-tone="bad"]{color:#ffc3b8}
-.brain-snipe-card .brain-snipe-record[data-tone="new"]{color:#d0e0c2;font-style:italic}
-
-/* Auto review: animated, tappable risk cards */
-.risk-hero{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:6px 0 8px}
-.risk-hero-card{display:flex;flex-direction:column;gap:2px;padding:8px 9px;border-radius:11px;border:1px solid #e2cba8;background:linear-gradient(135deg,#fffdf7,#f7ecd9);box-shadow:0 2px 8px rgba(50,35,20,.06);animation:riskCardIn .32s cubic-bezier(.2,1.2,.4,1) both}
-.risk-hero-card:nth-child(2){animation-delay:.05s}
-.risk-hero-card:nth-child(3){animation-delay:.1s}
-.risk-hero-card span{font:800 8px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#7d6448}
-.risk-hero-card strong{font:900 15px/1.15 system-ui,sans-serif;color:#2b1f13;overflow-wrap:anywhere}
-.risk-hero-card[data-tone="win"] strong{color:#1c6a43}
-.risk-hero-card[data-tone="pause"] strong{color:#8a5a1f}
-@keyframes riskCardIn{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
-.risk-settings{border-radius:10px;background:#fffefb;border:1px dashed #dcc4a1;padding:0;overflow:hidden}
-.risk-settings>summary{cursor:pointer;padding:7px 9px;font:900 9px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#6b4f2c}
-.risk-settings[open]>summary{border-bottom:1px solid #ecd9bd}
-.risk-settings .risk-config{padding:7px}
-.risk-step-cards{display:grid;gap:6px}
-.risk-step-card{position:relative;display:grid;gap:4px;padding:7px 9px;border-radius:11px;border:1px solid #e2cba8;background:linear-gradient(135deg,#fffdf8,#f8efdf);cursor:pointer;animation:riskCardIn .3s ease both;transition:border-color .15s ease,transform .15s ease}
-.risk-step-card:nth-child(2){animation-delay:.04s}
-.risk-step-card:nth-child(3){animation-delay:.08s}
-.risk-step-card:nth-child(4){animation-delay:.12s}
-.risk-step-card:nth-child(5){animation-delay:.16s}
-.risk-step-card:hover{transform:translateY(-1px);border-color:#bb9a6c}
-.risk-step-card:focus-visible{outline:2px solid #a4815a;outline-offset:1px}
-.risk-step-card[data-status="blocked"]{border-color:#d98b7f;background:linear-gradient(135deg,#fff6f4,#fbe7e2)}
-.risk-step-top{display:flex;align-items:baseline;gap:6px}
-.risk-step-top b{font:900 9px system-ui,sans-serif;letter-spacing:.06em;color:#6b4f2c}
-.risk-step-top strong{margin-left:auto;font:900 13px/1 system-ui,sans-serif;color:#2b1f13}
-.risk-step-top em{font:900 8px system-ui,sans-serif;font-style:normal;letter-spacing:.07em;padding:2px 5px;border-radius:999px;background:#e9f4e6;color:#1c6a43}
-.risk-step-card[data-status="blocked"] .risk-step-top em{background:#fde3de;color:#9c3a2c}
-.risk-step-meter{height:5px;border-radius:999px;background:#efe2cd;overflow:hidden}
-.risk-step-meter>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3f9e6a,#e0a83c);transition:width .5s cubic-bezier(.2,1,.3,1)}
-.risk-step-card[data-status="blocked"] .risk-step-meter>i{background:linear-gradient(90deg,#d1654f,#a83b2c)}
-.risk-step-meta{display:flex;justify-content:space-between;gap:8px;font:800 9px system-ui,sans-serif;color:#7d6448}
-.risk-step-why{display:none;margin:2px 0 0;font:600 9.5px/1.35 system-ui,sans-serif;color:#5a452c}
-.risk-step-card[data-open="true"] .risk-step-why{display:block}
-.risk-progress-value{display:block;margin:2px 0 4px;font:900 20px/1 system-ui,sans-serif;color:#1c6a43}
-@media (max-width:760px){.risk-hero{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (prefers-reduced-motion:reduce){
-  .risk-hero-card,.risk-step-card{animation:none!important}
-  .risk-step-meter>i,.risk-step-card{transition:none}
-}
+/* ---------- zoom framing ---------- */
+body.brain-zoomed #game { filter: saturate(1.05) brightness(.96); }
+body.brain-zoomed #rangerBrainPanel { animation: brainPanelIn .22s ease; }
+@keyframes brainPanelIn { from { opacity: .5; transform: translateY(4px) scale(.99); } to { opacity: 1; transform: none; } }
 
 /* ============================================================
-   Solid, minimal, big-number pass. No gradients on surfaces:
-   every card is a flat colour with an animated dot field.
+   Auto review — light card sheet, oversized metrics
    ============================================================ */
-#rangerBrainPanel{
-  --b-bg:#0e1411;--b-card:#17201a;--b-card2:#1d2820;--b-line:#2a382e;
-  --b-ink:#f1f6ee;--b-muted:#98ab9c;--b-accent:#d4f77f;--b-good:#72e6a0;--b-bad:#ff9089;--b-warn:#ffc463;
-  background:var(--b-bg)!important;color:var(--b-ink);border:1px solid var(--b-line);border-radius:20px;
-  box-shadow:0 26px 64px #00000099;overflow:hidden;
-}
-#rangerBrainPanel header{background:var(--b-card)!important;border-bottom:1px solid var(--b-line);padding:13px 15px}
-#rangerBrainPanel header strong{font:800 17px/1.1 system-ui,sans-serif;letter-spacing:.01em;color:var(--b-ink)}
-#rangerBrainPanel header small{font:500 11px/1.35 system-ui,sans-serif;color:var(--b-muted)}
-#rangerBrainClose{background:var(--b-card2);border:1px solid var(--b-line);color:var(--b-ink);border-radius:10px}
-#rangerBrainPanel .ranger-brain-tabs{
-  background:var(--b-bg);border-bottom:1px solid var(--b-line);
-  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px
-}
-#rangerBrainPanel .ranger-brain-tabs button{
-  flex-direction:column;justify-content:center;gap:6px;min-height:58px;padding:8px 4px;
-  background:var(--b-card);border:1px solid var(--b-line);border-radius:14px;
-  color:var(--b-muted);font:700 10.5px/1 system-ui,sans-serif;box-shadow:none!important;
-}
-#rangerBrainPanel .ranger-brain-tabs button .brain-tab-icon svg{width:19px;height:19px}
-#rangerBrainPanel .ranger-brain-tabs button[aria-selected="true"]{
-  background:var(--b-card2);border-color:var(--b-accent);color:var(--b-ink)
-}
-#rangerBrainPanel .ranger-brain-body{background:var(--b-bg)!important;padding:12px;display:grid;gap:10px}
-#rangerBrainPanel .brain-card-scene{height:120px;border-radius:14px;border:1px solid var(--b-line);margin:0 0 10px}
-#rangerBrainPanel .brain-hero,#rangerBrainPanel .brain-window,#rangerBrainPanel .brain-edge,
-#brainSuggestionCard,.brain-memory-card,.brain-learn-card,#rangerBrainPanel .brain-lessons li{
-  background:var(--b-card)!important;border:1px solid var(--b-line)!important;border-radius:16px!important;padding:12px!important
-}
-#rangerBrainPanel p,#rangerBrainPanel small,#rangerBrainPanel .brain-friendly-note,#rangerBrainPanel .brain-note{
-  color:var(--b-muted);font-size:12px;line-height:1.45
-}
-#rangerBrainPanel .brain-hero-copy strong{font:800 20px/1.15 system-ui,sans-serif;color:var(--b-ink)}
-#rangerBrainPanel .brain-hero-copy small{font-size:11.5px}
-#rangerBrainPanel .brain-lesson-chip{background:var(--b-card2);color:var(--b-accent);font-size:10px}
-#rangerBrainPanel .brain-edged span,#rangerBrainPanel .brain-activity strong{color:var(--b-ink)}
-.brain-learn-card b{font:900 10px/1 system-ui,sans-serif;letter-spacing:.1em}
-.brain-learn-card span{font:800 16px/1.2 system-ui,sans-serif;color:var(--b-ink)}
-.brain-learn-card small{font-size:10.5px}
+#rangerAutoRiskPreview { background: #F3ECDF; border: 1px solid #D9C6A5; border-radius: 20px; }
+.risk-block { background: #FFFDF7; border: 1px solid #E3D3B6; border-radius: 16px; }
+.risk-hero { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 6px 0 8px; }
+.risk-hero-card { display: grid; gap: 3px; padding: 12px; border-radius: 16px; background: #FFFDF7; border: 1px solid #E3D3B6; }
+.risk-hero-card svg { width: 18px; height: 18px; color: #A98A58; }
+.risk-hero-card span { font: 700 10px/1 Inter, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #8A7253; }
+.risk-hero-card strong { font: 800 27px/1.05 Inter, system-ui, sans-serif; color: #241A10; font-variant-numeric: tabular-nums; }
+.risk-hero-card[data-tone="win"] strong { color: #1A7A4A; }
+.risk-hero-card[data-tone="risk"] strong { color: #A8412F; }
+.risk-hero-card[data-tone="pause"] strong { color: #8A5A1F; }
+.risk-step-cards { display: grid; gap: 6px; }
+.risk-step-card { display: grid; gap: 6px; padding: 11px 13px; border-radius: 16px; background: #FFFDF7; border: 1px solid #E3D3B6; cursor: pointer; }
+.risk-step-card:focus-visible { outline: 2px solid #A4815A; outline-offset: 1px; }
+.risk-step-card[data-status="blocked"] { border-color: #D98B7F; background: #FFF6F2; }
+.risk-step-card[data-stop="true"] { border-color: #D98B7F; background: #FFF6F2; }
+.risk-step-top { display: flex; align-items: baseline; gap: 8px; }
+.risk-step-top b { font: 700 10px/1 Inter, system-ui, sans-serif; letter-spacing: .08em; color: #8A7253; }
+.risk-step-top strong { margin-left: auto; font: 800 24px/1 Inter, system-ui, sans-serif; color: #241A10; font-variant-numeric: tabular-nums; }
+.risk-step-top em { font: 700 9px/1 Inter, system-ui, sans-serif; font-style: normal; letter-spacing: .06em; padding: 3px 6px; border-radius: 8px; background: #E9F4E6; color: #1A7A4A; }
+.risk-step-card[data-status="blocked"] .risk-step-top em,
+.risk-step-card[data-stop="true"] .risk-step-top em { background: #A8412F; color: #fff; }
+.risk-step-meter { height: 6px; border-radius: 999px; background: #EFE2CD; overflow: hidden; }
+.risk-step-meter > i { display: block; height: 100%; border-radius: 999px; background: #3F9E6A; transition: width .5s ease; }
+.risk-step-card[data-status="blocked"] .risk-step-meter > i { background: #C0503C; }
+.risk-step-meta { display: flex; justify-content: space-between; gap: 8px; font: 600 10px/1.2 Inter, system-ui, sans-serif; color: #8A7253; }
+.risk-step-why { display: none; margin: 0; font: 500 10px/1.4 Inter, system-ui, sans-serif; color: #5A452C; }
+.risk-step-card[data-open="true"] .risk-step-why { display: block; }
+.risk-settings { background: #FFFDF7; border: 1px dashed #DCC4A1; border-radius: 12px; }
+.risk-settings > summary { cursor: pointer; padding: 8px 10px; font: 700 9px/1 Inter, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #6B4F2C; }
+.risk-settings .risk-config { padding: 8px; }
+.risk-config-card { background: #FFFDF7; border: 1px solid #EEE0C8; border-radius: 10px; }
+.risk-config-card strong { font-variant-numeric: tabular-nums; }
+.risk-progress-value { display: block; margin: 2px 0 4px; font: 800 30px/1 Inter, system-ui, sans-serif; color: #1A7A4A; }
+.risk-bar > i { background: #3F9E6A; }
 
-/* animated dot field inside cards (flat surface, moving texture) */
-#rangerBrainPanel .brain-hero,#rangerBrainPanel .brain-window,.brain-learn-card,
-#brainSuggestionCard,.risk-hero-card,.risk-step-card{position:relative;overflow:hidden;isolation:isolate}
-#rangerBrainPanel .brain-hero::after,#rangerBrainPanel .brain-window::after,.brain-learn-card::after,
-#brainSuggestionCard::after,.risk-hero-card::after,.risk-step-card::after{
-  content:"";position:absolute;inset:-40%;z-index:-1;pointer-events:none;opacity:.5;
-  background-image:radial-gradient(circle,rgba(212,247,127,.20) 1px,transparent 1.4px);
-  background-size:22px 22px;animation:brainCardDrift 16s linear infinite
+/* ---------- responsive ---------- */
+@media (max-width: 520px) {
+  #rangerBrainPanel {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    max-height: min(80dvh, 660px);
+    border-radius: 20px;
+  }
+  #rangerBrainPanel .ranger-brain-tabs button { min-height: 40px; font-size: 9px; }
+  #rangerBrainPanel .brain-card-scene { height: clamp(84px, 14dvh, 116px); }
+  #rangerBrainPanel .brain-hero-copy strong { font-size: 14px; }
+  .brain-learn-strip { grid-template-columns: 1fr 1fr; }
 }
-@keyframes brainCardDrift{from{transform:translate3d(0,0,0)}to{transform:translate3d(22px,22px,0)}}
-
-/* snipe card: flat surface */
-.brain-snipe-card{background:var(--b-card,#17201a)!important;border:1px solid #d4f77f;border-radius:16px;box-shadow:0 20px 44px #0000008c}
-.brain-snipe-card b{color:var(--b-accent,#d4f77f);font-size:10.5px}
-.brain-snipe-card span{color:#f3f8ef;font-size:12.5px}
-.brain-snipe-card .brain-snipe-why{color:#a9bda9}
-
-/* ---------- Auto review: light, flat, oversized numbers ---------- */
-#rangerAutoRiskPreview{background:#f3ecdf!important;border:1px solid #d9c6a5;border-radius:20px}
-.risk-hero{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
-.risk-hero-card{
-  background:#fffdf7!important;border:1px solid #e3d3b6!important;border-radius:16px!important;
-  padding:12px!important;gap:4px!important;box-shadow:none!important
+@media (min-width: 1200px) {
+  #rangerBrainPanel { width: min(430px, calc(100vw - 24px)); }
 }
-.risk-hero-card svg{width:18px;height:18px;color:#a98a58;margin-bottom:2px}
-.risk-hero-card span{font:700 10px/1 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#8a7253}
-.risk-hero-card strong{font:900 27px/1.05 system-ui,sans-serif;color:#241a10;font-variant-numeric:tabular-nums}
-.risk-hero-card[data-tone="win"] strong{color:#1a7a4a}
-.risk-hero-card[data-tone="risk"] strong{color:#a8412f}
-.risk-hero-card[data-tone="pause"] strong{color:#8a5a1f}
-.risk-step-card{background:#fffdf7!important;border:1px solid #e3d3b6!important;border-radius:16px!important;padding:11px 13px!important;gap:6px!important;box-shadow:none!important}
-.risk-step-top b{font:800 10px/1 system-ui,sans-serif;letter-spacing:.09em;color:#8a7253}
-.risk-step-top strong{font:900 24px/1 system-ui,sans-serif;color:#241a10;font-variant-numeric:tabular-nums}
-.risk-step-top em{border-radius:8px;font-size:9px;padding:3px 6px}
-.risk-step-card[data-stop="true"]{border-color:#d98b7f!important;background:#fff6f2!important}
-.risk-step-card[data-stop="true"] .risk-step-top em{background:#a8412f;color:#fff}
-.risk-step-meta{font-size:10px;color:#8a7253}
-.risk-step-meter{height:6px;background:#efe2cd}
-.risk-step-meter>i{background:#3f9e6a!important}
-.risk-step-card[data-status="blocked"] .risk-step-meter>i{background:#c0503c!important}
-.risk-settings{background:#fffdf7;border:1px solid #e3d3b6}
-.risk-config-card{background:#fffdf7!important;border:1px solid #eee0c8;box-shadow:none}
-.risk-config-card strong{font-variant-numeric:tabular-nums}
-.risk-progress-value{font:900 30px/1 system-ui,sans-serif;color:#1a7a4a}
-.risk-bar>i{background:#3f9e6a!important}
-
-@media (max-width:700px){
-  #rangerBrainPanel .ranger-brain-tabs{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
-  #rangerBrainPanel .ranger-brain-tabs button span:last-child{font-size:9px}
-  .risk-hero-card strong{font-size:22px}
-  .risk-step-top strong{font-size:20px}
+@media (prefers-reduced-motion: reduce) {
+  #rangerBrainPanel .brain-ring-fill,
+  .risk-step-meter > i,
+  .brain-snipe-bar > i { transition: none; }
+  #rangerBrainGlyph.learned-pop,
+  #rangerBrainGlyph.sniped,
+  #rangerBrainGlyph.no-pick,
+  #rangerBrainGlyph.brain-waking,
+  #rangerBrainGlyph.called-right,
+  #rangerBrainGlyph.called-wrong,
+  #brainSnipeOverlay .brain-tether path,
+  #brainSnipeOverlay #brainTetherPulse,
+  .brain-replay-stage.playing .brain-replay-arrow { animation: none !important; }
 }
-@media (prefers-reduced-motion:reduce){
-  #rangerBrainPanel .brain-hero::after,#rangerBrainPanel .brain-window::after,.brain-learn-card::after,
-  #brainSuggestionCard::after,.risk-hero-card::after,.risk-step-card::after{animation:none!important}
+
+/* ---------- settings + disclosure, same dark surfaces ---------- */
+#rangerBrainPanel .brain-settings { display: grid; gap: 9px; }
+#rangerBrainPanel .brain-settings fieldset {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+#rangerBrainPanel .brain-settings legend {
+  padding: 0 6px;
+  font: 700 9.5px/1 Inter, system-ui, sans-serif;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+#rangerBrainPanel .brain-settings label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  font: 600 12px/1.2 Inter, system-ui, sans-serif;
+  color: var(--text);
+}
+#rangerBrainPanel .brain-settings input[type="radio"] {
+  width: 14px; height: 14px; margin: 0;
+  accent-color: var(--purple);
+}
+#rangerBrainPanel .brain-settings p { color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+#rangerBrainPanel details {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+#rangerBrainPanel details > summary {
+  padding: 9px 11px;
+  cursor: pointer;
+  list-style: none;
+  font: 600 11px/1.2 Inter, system-ui, sans-serif;
+  color: var(--text);
+}
+#rangerBrainPanel details > summary::-webkit-details-marker { display: none; }
+#rangerBrainPanel details[open] > summary { border-bottom: 1px solid var(--border); }
+#rangerBrainPanel details p,
+#rangerBrainPanel details > div {
+  padding: 8px 11px;
+  color: var(--muted);
+  font: 500 10.5px/1.45 Inter, system-ui, sans-serif;
+}
+#rangerBrainPanel #brainHourGrid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 3px;
+}
+#rangerBrainPanel .brain-pips > * { width: 6px; height: 6px; border-radius: 2px; background: rgba(255, 255, 255, .16); display: inline-block; }
+#rangerBrainPanel .brain-pips > .on { background: var(--purple); }
+
+/* ---------- short viewports: shrink art, never scroll ---------- */
+@media (max-height: 780px) {
+  #rangerBrainPanel { top: 72px; max-height: min(90dvh, 620px); }
+  #rangerBrainPanel .brain-card-scene { height: clamp(76px, 12dvh, 108px); }
+  #rangerBrainPanel section[role="tabpanel"] > .brain-card-scene + * { margin-top: -34px; }
+  #rangerBrainPanel .brain-hero { padding: 8px; gap: 10px; }
+  #rangerBrainPanel .brain-ring { width: 52px; height: 52px; flex-basis: 52px; }
+  #rangerBrainPanel .brain-activity li:nth-child(n+3) { display: none; }
+  #rangerBrainPanel .brain-window-hours > * { height: 17px; }
 }
