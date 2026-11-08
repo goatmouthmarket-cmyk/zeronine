@@ -36,7 +36,11 @@ test('pasture header controls bracket navigation on desktop and mobile', () => {
   assert.match(room, /mode==='demo'\|\|mode==='real'/);
   assert.match(room, /page:'howToPlay'/);
   assert.match(room, /event\.origin!==location\.origin\|\|event\.source!==parent/);
-  assert.match(room, /<span><strong>Guest play<\/strong><\/span><button type="button" id="connectDeriv">Connect Deriv<\/button>/);
+  assert.match(room, /data-auth-state="checking" role="status" aria-live="polite"/);
+  assert.match(room, /Checking your Deriv account/);
+  assert.match(room, /state\.authStatus==='signed-out'/);
+  assert.match(room, /Deriv account connected/);
+  assert.match(app, /authStatus: base\.playerAuthStatus/);
   assert.doesNotMatch(room, /No bets are placed/);
   assert.match(room, /#guestHowToPlay\{border:1px solid #e7c778;background:linear-gradient\(#a92c3f,#681c2b\);color:#fff0bd/);
   assert.match(room, /canvas\.addEventListener\('contextmenu', \(event\) =>/);
