@@ -1643,7 +1643,7 @@ function rangerRiskRenderPreview(){
     const blocked=ladder.steps[ladder.blockedAt-1];
     payoutWarnings.push((blocked&&blocked.reason)||'A projected wager breaches a risk limit and is not executable.');
   }else{
-    stepsBlock.append(rangerRiskLine('Projected loss before the first cooldown: ',rangerRiskAmount(ladder.exposure,currency)+(ladder.illustrative?' (illustrative)':''),true));
+    stepsBlock.append(rangerRiskLine('Projected loss before the first cooldown: ',rangerRiskAmount(Number.isFinite(ladder.stopExposure)?ladder.stopExposure:ladder.exposure,currency)+(ladder.illustrative?' (illustrative)':''),true));
   }
   if(ladder.runLossStopAt)stepsBlock.append(rangerRiskNode('p','risk-note','The maximum run loss boundary is crossed by loss '+ladder.runLossStopAt+'; that trade still settles before new entries are blocked.'));
   if(ladder.payoutBlocked){
