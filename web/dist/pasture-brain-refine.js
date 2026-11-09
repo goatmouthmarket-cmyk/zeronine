@@ -55,6 +55,8 @@
     const verdict = verdictFor(trade, won);
     learned.unshift({
       id,
+      account: currentAccount(),
+      kind: 'trade_review',
       market: trade.market || trade.symbol || 'Market',
       direction: String(trade.direction || trade.contract_type || '').toUpperCase(),
       barrier: trade.barrier ?? trade.targetDigit ?? '',
@@ -85,7 +87,9 @@
       pop.setAttribute('aria-hidden', 'true');
       glyph.appendChild(pop);
     }
-    pop.textContent = verdict === 'right' ? 'CALLED IT' : verdict === 'wrong' ? 'MISSED · learned' : '+1 learned';
+    // A settled trade is a review, not a new finding. Only a changed lesson
+    // from the paper report may claim "New lesson".
+    pop.textContent = verdict === 'right' ? 'Trade reviewed · called it' : verdict === 'wrong' ? 'Trade reviewed · missed' : 'Trade reviewed';
     pop.dataset.verdict = verdict || '';
     pop.dataset.win = String(!!won);
     glyph.classList.remove('called-right', 'called-wrong');
@@ -96,39 +100,81 @@
     void pop.offsetWidth;
     pop.classList.add('show');
     clearTimeout(pop._timer);
-    pop._timer = setTimeout(() => pop.classList.remove('show'), 2200);
+    pop._timer = setTimeout(() => pop.classList.remove('show'), 2400);
     renderLearnedCards();
+    syncOverview();
+  }
+
+  let lessonSig = '';
+  function lessonSignature() {
+    const list = $('brainLessons');
+    if (!list) return '';
+    return Array.from(list.children).map((li) => (li.textContent || '').trim()).join('|');
+  }
+  function noteLessonChange(force) {
+    const sig = lessonSignature();
+    if (!sig || sig === lessonSig) {
+      if (force) syncOverview();
+      return false;
+    }
+    const first = !lessonSig;
+    lessonSig = sig;
+    syncOverview();
+    if (!first) {
+      const glyph = $('rangerBrainGlyph');
+      const pop = glyph && $('brainLearnPop');
+      if (pop) {
+        pop.textContent = 'New lesson';
+        pop.dataset.verdict = '';
+        pop.classList.remove('show');
+        void pop.offsetWidth;
+        pop.classList.add('show');
+        clearTimeout(pop._timer);
+        pop._timer = setTimeout(() => pop.classList.remove('show'), 2400);
+      }
+    }
+    return true;
   }
 
   let learnedSig = '';
   function renderLearnedCards(force) {
-    const list = $('brainLessons');
-    if (!list) return;
-    const sig = learned.slice(0, 4).map((row) => row.id + ':' + row.status).join('|');
+    const host = $('brainTradeReviewHost') || $('brainLearnHost');
+    if (!host) return;
+    const account = currentAccount();
+    const rows = learned.filter((row) => !account || !row.account || String(row.account) === account).slice(0, 4);
+    const sig = rows.map((row) => row.id + ':' + row.status).join('|');
     if (!force && sig === learnedSig) return;
     learnedSig = sig;
     const box = document.createElement('div');
     box.className = 'brain-learn-strip';
-    box.setAttribute('aria-label', 'Newest things the ranger learned from its own bets');
-    const newest = learned.slice(0, 4);
-    if (!newest.length) {
-      box.innerHTML = '<p class="brain-friendly-note">No practice bets yet. Every bet that finishes becomes a lesson here.</p>';
+    box.setAttribute('aria-label', 'Newest reviewed trades');
+    if (!rows.length) {
+      const empty = document.createElement('p');
+      empty.className = 'brain-friendly-note';
+      empty.textContent = 'No reviewed trades yet. Each settled trade is checked here once.';
+      box.appendChild(empty);
     } else {
-      for (const row of newest) {
-        const card = document.createElement('article');
-        card.className = 'brain-learn-card ' + (row.status === 'won' ? 'is-win' : 'is-loss');
-        const state = row.status === 'won' ? 'WORKED' : 'DIDN\'T WORK';
+      for (const row of rows) {
+        const cardEl = document.createElement('article');
+        cardEl.className = 'brain-learn-card ' + (row.status === 'won' ? 'is-win' : 'is-loss');
+        const state = document.createElement('b');
+        state.textContent = row.status === 'won' ? 'WIN' : 'LOSS';
+        cardEl.appendChild(state);
+        if (row.verdict === 'right' || row.verdict === 'wrong') {
+          const chip = document.createElement('em');
+          chip.className = 'brain-call-chip ' + (row.verdict === 'right' ? 'is-right' : 'is-wrong');
+          chip.textContent = row.verdict === 'right' ? 'Called it' : 'Missed';
+          cardEl.appendChild(chip);
+        }
+        const name = document.createElement('span');
+        name.textContent = [row.market, row.direction, row.barrier].filter((part) => part !== '' && part != null).join(' ');
+        cardEl.appendChild(name);
         const money = Number.isFinite(row.profit) ? (row.profit >= 0 ? '+' : '') + row.profit.toFixed(2) : '--';
-        const call = row.verdict === 'right' ? '<em class="brain-call-chip is-right">I called it</em>' : row.verdict === 'wrong' ? '<em class="brain-call-chip is-wrong">I missed</em>' : '';
-        card.innerHTML = `<b>${state}</b>${call}<span>${row.market} ${row.direction} ${row.barrier}</span><small>${money} · learned from this bet</small>`;
-        box.appendChild(card);
+        const meta = document.createElement('small');
+        meta.textContent = money + ' · trade reviewed';
+        cardEl.appendChild(meta);
+        box.appendChild(cardEl);
       }
-    }
-    let host = $('brainLearnHost');
-    if (!host) {
-      host = document.createElement('div');
-      host.id = 'brainLearnHost';
-      list.parentNode.insertBefore(host, list);
     }
     host.replaceChildren(box);
   }
@@ -203,80 +249,146 @@
   /* ---------- animated card scenes (game assets, drawn) ---------- */
   const scenes = [];
   function drawCowScene(ctx, w, h, t, kind) {
-    // Night pasture: indigo sky, moonlit ridge, purple rim light.
+    // Warm daylight pasture in the same hand as the game art.
     const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, '#0B0D14');
-    sky.addColorStop(0.55, '#131629');
-    sky.addColorStop(0.56, '#1B2340');
-    sky.addColorStop(1, '#101426');
+    sky.addColorStop(0, '#F8E8C6');
+    sky.addColorStop(0.5, '#F1DCAE');
+    sky.addColorStop(0.51, '#CFDFA9');
+    sky.addColorStop(1, '#8FBF7C');
     ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h);
-    // stars
-    ctx.fillStyle = 'rgba(226,232,240,.8)';
-    for (let i = 0; i < 14; i += 1) {
-      const sx = (((i * 73) % 100) / 100) * w;
-      const sy = (((i * 37) % 44) / 100) * h;
-      ctx.globalAlpha = reduce() ? 0.65 : 0.4 + Math.abs(Math.sin(t / 900 + i)) * 0.55;
-      ctx.fillRect(sx, sy, 1.4, 1.4);
-    }
-    ctx.globalAlpha = 1;
-    // moon + halo
-    const moonX = w * 0.8, moonY = h * 0.2, moonR = Math.max(8, Math.min(14, w * 0.042));
-    const halo = ctx.createRadialGradient(moonX, moonY, 1, moonX, moonY, moonR * 3.6);
-    halo.addColorStop(0, 'rgba(196,181,253,.45)');
-    halo.addColorStop(1, 'rgba(139,92,246,0)');
-    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 3.6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#EDE9FE'; ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
-    // far ridge
-    ctx.fillStyle = '#141B2E';
-    ctx.beginPath(); ctx.moveTo(0, h * 0.6);
-    for (let x = 0; x <= w; x += 14) ctx.lineTo(x, h * 0.6 - Math.sin((x / Math.max(1, w)) * 5.4) * h * 0.05);
+    // low sun
+    const sunX = w * 0.82, sunY = h * 0.22;
+    const halo = ctx.createRadialGradient(sunX, sunY, 2, sunX, sunY, Math.max(30, w * 0.22));
+    halo.addColorStop(0, 'rgba(255, 246, 214, .95)');
+    halo.addColorStop(1, 'rgba(255, 246, 214, 0)');
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(sunX, sunY, Math.max(30, w * 0.22), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#F4D287'; ctx.beginPath(); ctx.arc(sunX, sunY, Math.max(8, w * 0.036), 0, Math.PI * 2); ctx.fill();
+    // hedge line
+    ctx.fillStyle = '#A6CC92';
+    ctx.beginPath(); ctx.moveTo(0, h * 0.55);
+    for (let x = 0; x <= w; x += 12) ctx.lineTo(x, h * 0.55 - Math.abs(Math.sin(x / 44)) * h * 0.035);
     ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.fill();
-    // pasture floor
-    const floor = ctx.createLinearGradient(0, h * 0.6, 0, h);
-    floor.addColorStop(0, '#1D3A31');
-    floor.addColorStop(1, '#0F1B18');
-    ctx.fillStyle = floor; ctx.fillRect(0, h * 0.6, w, h * 0.4);
-    // fence with rim light
-    ctx.strokeStyle = 'rgba(167,139,250,.4)'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(0, h * 0.68); ctx.lineTo(w, h * 0.68); ctx.stroke();
-    ctx.strokeStyle = 'rgba(226,232,240,.3)';
-    for (let x = 8; x < w; x += 26) { ctx.beginPath(); ctx.moveTo(x, h * 0.68); ctx.lineTo(x, h * 0.58); ctx.stroke(); }
-    // ground shadow under the cow
-    ctx.fillStyle = 'rgba(0,0,0,.28)';
-    ctx.beginPath(); ctx.ellipse(w * 0.64, h * 0.785, Math.max(18, w * 0.09), Math.max(3, h * 0.022), 0, 0, Math.PI * 2); ctx.fill();
-    const bob = reduce() ? 0 : Math.sin(t / 700) * 1.5;
+    // field
+    const field = ctx.createLinearGradient(0, h * 0.6, 0, h);
+    field.addColorStop(0, '#8FBF7C');
+    field.addColorStop(1, '#6EAD68');
+    ctx.fillStyle = field; ctx.fillRect(0, h * 0.6, w, h * 0.4);
+    // fence
+    ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, h * 0.66); ctx.lineTo(w, h * 0.66); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, h * 0.6); ctx.lineTo(w, h * 0.6); ctx.stroke();
+    ctx.strokeStyle = '#A7784A'; ctx.lineWidth = 2.6;
+    for (let x = 7; x < w; x += 32) { ctx.beginPath(); ctx.moveTo(x, h * 0.575); ctx.lineTo(x, h * 0.715); ctx.stroke(); }
+    // grass tufts
+    ctx.strokeStyle = 'rgba(33, 88, 58, .38)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 18; i += 1) {
+      const gx = (((i * 67) % 100) / 100) * w, gy = h * 0.71 + (((i * 29) % 24) / 100) * h;
+      ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + 1.6, gy - 4.5); ctx.stroke();
+    }
+    const bob = reduce() ? 0 : Math.sin(t / 760) * 1.4;
+    if (kind === 'learned') {
+      // Collected knowledge: an open field journal with pressed finds.
+      const bw = Math.min(w * 0.42, 190), bh = Math.min(h * 0.74, 92);
+      const bx = Math.min(w * 0.46, w - bw - 10), by = h * 0.13;
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(-0.03);
+      ctx.fillStyle = 'rgba(48, 30, 10, .16)'; ctx.beginPath(); ctx.roundRect(4, 5, bw, bh, 6); ctx.fill();
+      ctx.fillStyle = '#FFFDF4'; ctx.beginPath(); ctx.roundRect(0, 0, bw, bh, 6); ctx.fill();
+      ctx.strokeStyle = 'rgba(90, 67, 38, .3)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.roundRect(0, 0, bw, bh, 6); ctx.stroke();
+      ctx.strokeStyle = 'rgba(33, 88, 58, .28)'; ctx.lineWidth = 1;
+      for (let line = 0; line < 4; line += 1) {
+        const y = 20 + line * ((bh - 30) / 4);
+        ctx.beginPath(); ctx.moveTo(14, y); ctx.lineTo(bw - 16, y); ctx.stroke();
+      }
+      ctx.fillStyle = '#6EAD68';
+      for (let line = 0; line < 3; line += 1) { ctx.beginPath(); ctx.arc(9, 20 + line * ((bh - 30) / 4), 2, 0, Math.PI * 2); ctx.fill(); }
+      // pressed leaf tucked into the page
+      ctx.fillStyle = '#6EAD68';
+      ctx.beginPath(); ctx.ellipse(bw - 34, bh - 24, 8, 4.5, -0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#21583A'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(bw - 41, bh - 19); ctx.lineTo(bw - 27, bh - 29); ctx.stroke();
+      ctx.restore();
+      // ranger reading at the left
+      ctx.save(); ctx.translate(w * 0.15, h * 0.74 + bob);
+      ctx.fillStyle = 'rgba(33, 88, 58, .18)'; ctx.beginPath(); ctx.ellipse(0, 5, 12, 3.6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#393a3d'; ctx.fillRect(-6.5, -2, 4.6, 11); ctx.fillRect(2, -2, 4.6, 11);
+      ctx.fillStyle = '#21583A'; ctx.beginPath(); ctx.roundRect(-8, -15, 16, 14, 3); ctx.fill();
+      ctx.fillStyle = '#D8A87E'; ctx.beginPath(); ctx.arc(0, -21, 6.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8C6636'; ctx.beginPath(); ctx.arc(0, -23, 6.6, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#B98B55'; ctx.beginPath(); ctx.ellipse(0, -25, 9, 1.8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      return;
+    }
+    if (kind === 'memory') {
+      // A framed recap of a finished paper result.
+      const fw = Math.min(w * 0.4, 180), fh = Math.min(h * 0.78, 100);
+      const fx = Math.min(w * 0.44, w - fw - 12), fy = h * 0.1;
+      ctx.save(); ctx.translate(fx, fy);
+      ctx.fillStyle = 'rgba(48, 30, 10, .16)'; ctx.beginPath(); ctx.roundRect(4, 5, fw, fh, 8); ctx.fill();
+      ctx.fillStyle = '#FFFDF4'; ctx.beginPath(); ctx.roundRect(0, 0, fw, fh, 8); ctx.fill();
+      ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(0, 0, fw, fh, 8); ctx.stroke();
+      ctx.save(); ctx.beginPath(); ctx.roundRect(6, 6, fw - 12, fh - 12, 5); ctx.clip();
+      ctx.fillStyle = '#CFDFA9'; ctx.fillRect(6, 6, fw - 12, fh - 12);
+      ctx.fillStyle = '#8FBF7C'; ctx.fillRect(6, fh * 0.56, fw - 12, fh);
+      ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(6, fh * 0.64); ctx.lineTo(fw - 6, fh * 0.64); ctx.stroke();
+      // cow inside the frame
+      ctx.save(); ctx.translate(fw * 0.6, fh * 0.58);
+      ctx.fillStyle = '#FFF9E9'; ctx.beginPath(); ctx.ellipse(0, 0, 12, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#B98B55'; ctx.beginPath(); ctx.ellipse(-4, -4, 5.5, 3, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#EADFC5'; ctx.beginPath(); ctx.ellipse(10, -3, 5.4, 4.6, -0.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#393a3d'; ctx.fillRect(-7, 4, 3, 6.5); ctx.fillRect(4, 4, 3, 6.5);
+      ctx.restore();
+      ctx.restore();
+      // replay stamp stays inside the frame's coordinate space
+      ctx.fillStyle = 'rgba(33, 88, 58, .92)';
+      ctx.beginPath(); ctx.roundRect(fw - 52, fh - 24, 44, 16, 4); ctx.fill();
+      ctx.fillStyle = '#FFF9E9'; ctx.font = '700 8px Inter, system-ui, sans-serif'; ctx.textBaseline = 'middle'; ctx.fillText('REPLAY', fw - 45, fh - 16);
+      ctx.restore();
+      // ranger watching the old result
+      ctx.save(); ctx.translate(w * 0.16, h * 0.75 + bob);
+      ctx.fillStyle = '#393a3d'; ctx.fillRect(-6.5, -2, 4.6, 11); ctx.fillRect(2, -2, 4.6, 11);
+      ctx.fillStyle = '#21583A'; ctx.beginPath(); ctx.roundRect(-8, -15, 16, 14, 3); ctx.fill();
+      ctx.fillStyle = '#D8A87E'; ctx.beginPath(); ctx.arc(0, -21, 6.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8C6636'; ctx.beginPath(); ctx.arc(0, -23, 6.6, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#B98B55'; ctx.beginPath(); ctx.ellipse(0, -25, 9, 1.8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      return;
+    }
+    // ---------- observation scene: ranger + cow ----------
     // cow
     ctx.save();
-    ctx.translate(w * (kind === 'learned' ? 0.62 : 0.66), h * 0.6 + bob);
-    ctx.fillStyle = '#f0e4ce';
-    ctx.beginPath(); ctx.ellipse(0, -6, 20, 12, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#765140';
-    ctx.beginPath(); ctx.ellipse(-7, -12, 9, 5, -0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#e9ddc6';
-    ctx.beginPath(); ctx.ellipse(17, -10, 9, 8, -0.2, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#b9ac97'; ctx.fillRect(-13, 3, 5, 12); ctx.fillRect(8, 3, 5, 12);
-    ctx.fillStyle = '#2a2823'; ctx.beginPath(); ctx.arc(15, -13, 1.4, 0, Math.PI * 2); ctx.arc(20, -13, 1.4, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(w * (kind === 'mind' ? 0.68 : 0.66), h * 0.62 + bob);
+    ctx.fillStyle = 'rgba(48, 30, 10, .2)'; ctx.beginPath(); ctx.ellipse(0, 12, 22, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFF9E9'; ctx.beginPath(); ctx.ellipse(0, -8, 21, 12, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(0, -8, 21, 12, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#B98B55'; ctx.beginPath(); ctx.ellipse(-7, -14, 9, 5, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#F3E8CF'; ctx.beginPath(); ctx.ellipse(17, -12, 9, 8, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#B98B55'; ctx.beginPath(); ctx.ellipse(17, -12, 9, 8, -0.2, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#D9C9A6'; ctx.fillRect(-13, 1, 5, 12); ctx.fillRect(8, 1, 5, 12);
+    ctx.fillStyle = '#3B2A18'; ctx.beginPath(); ctx.arc(15, -15, 1.5, 0, Math.PI * 2); ctx.arc(20, -15, 1.5, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-    // ranger
+    // ranger with a notebook
     ctx.save();
-    ctx.translate(w * 0.17, h * 0.66);
-    ctx.fillStyle = '#14362570'; ctx.beginPath(); ctx.ellipse(0, 14, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#393a3d'; ctx.fillRect(-7, 2, 5, 12); ctx.fillRect(2, 2, 5, 12);
-    ctx.fillStyle = '#326db1'; ctx.beginPath(); ctx.roundRect(-9, -12, 18, 16, 3); ctx.fill();
-    ctx.fillStyle = '#cba17d'; ctx.beginPath(); ctx.arc(0, -19, 7, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#4d3729'; ctx.beginPath(); ctx.arc(0, -21, 7, Math.PI, Math.PI * 2); ctx.fill();
-    // brain glow above the head
-    const glow = 0.35 + (reduce() ? 0 : Math.sin(t / 420) * 0.18);
-    ctx.strokeStyle = `rgba(167,139,250,${glow})`; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.arc(0, -31, 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.translate(w * (kind === 'memory' ? 0.2 : 0.18), h * 0.7 + bob);
+    ctx.fillStyle = 'rgba(33, 88, 58, .22)'; ctx.beginPath(); ctx.ellipse(0, 8, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#393a3d'; ctx.fillRect(-7, -1, 5, 12); ctx.fillRect(2, -1, 5, 12);
+    ctx.fillStyle = '#21583A'; ctx.beginPath(); ctx.roundRect(-9, -15, 18, 16, 3); ctx.fill();
+    ctx.fillStyle = '#D8A87E'; ctx.beginPath(); ctx.arc(0, -22, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8C6636'; ctx.beginPath(); ctx.arc(0, -24, 7.2, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#B98B55'; ctx.beginPath(); ctx.ellipse(0, -27, 10, 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#B3684D'; ctx.beginPath(); ctx.roundRect(-6, -18, 12, 3, 1.5); ctx.fill();
+    // notebook in hand
+    ctx.save(); ctx.translate(11, -12); ctx.rotate(-0.22);
+    ctx.fillStyle = '#FFFDF4'; ctx.beginPath(); ctx.roundRect(0, 0, 13, 10, 2); ctx.fill();
+    ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(0, 0, 13, 10, 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(33, 88, 58, .55)'; ctx.beginPath(); ctx.moveTo(2.5, 3.5); ctx.lineTo(10.5, 3.5); ctx.moveTo(2.5, 6.5); ctx.lineTo(8.5, 6.5); ctx.stroke();
     ctx.restore();
-    // learning sparks
-    if (!reduce()) {
-      for (let i = 0; i < 3; i += 1) {
-        const p = ((t / 1400) + i / 3) % 1;
-        ctx.globalAlpha = 1 - p;
-        ctx.fillStyle = '#C4B5FD';
-        ctx.beginPath(); ctx.arc(w * 0.17 + Math.sin(p * 6) * 4, h * 0.66 - 30 - p * 22, 1.7, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // soft attention sparks between ranger and cow
+    if (!reduce() && kind === 'mind') {
+      for (let i = 0; i < 2; i += 1) {
+        const p = ((t / 1600) + i / 2) % 1;
+        ctx.globalAlpha = (1 - p) * 0.7;
+        ctx.fillStyle = '#C9973F';
+        ctx.beginPath(); ctx.arc(w * 0.44 + p * w * 0.1, h * 0.5 - Math.sin(p * Math.PI) * 8, 1.8, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
     }
@@ -360,7 +472,7 @@
     drawPortrait(ctx, size, now);
   }
 
-  const TAB_LABELS = { mind: 'Brain', thinking: 'Think', learned: 'Learned', memory: 'Memory', settings: 'Setup' };
+  const TAB_LABELS = { mind: 'My Brain', learned: 'Lessons', memory: 'Memories' };
   function compactTabLabels() {
     const panel = $('rangerBrainPanel');
     if (!panel) return;
@@ -377,7 +489,7 @@
   function mountScenes() {
     mountPortrait();
     compactTabLabels();
-    const panes = [$('brainPaneMind'), $('brainPaneThinking'), $('brainPaneLearned'), $('brainPaneMemory')].filter(Boolean);
+    const panes = [$('brainPaneMind'), $('brainPaneLearned'), $('brainPaneMemory')].filter(Boolean);
     for (const pane of panes) {
       if (pane.querySelector('.brain-card-scene')) continue;
       const canvas = document.createElement('canvas');
@@ -399,11 +511,9 @@
 
   function paintScenes(now) {
     for (const scene of scenes) {
-      if (sceneDirty || !scene.w || !scene.h) {
-        const rect = scene.canvas.getBoundingClientRect();
-        scene.w = Math.max(120, Math.round(rect.width));
-        scene.h = Math.max(56, Math.round(rect.height));
-      }
+      const rect = scene.canvas.getBoundingClientRect();
+      scene.w = Math.max(120, Math.round(rect.width));
+      scene.h = Math.max(56, Math.round(rect.height));
       const w = scene.w, h = scene.h;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       if (scene.canvas.width !== w * dpr || scene.canvas.height !== h * dpr) {
@@ -445,10 +555,21 @@
     overlay = document.createElement('div');
     overlay.id = 'brainSnipeOverlay';
     overlay.hidden = true;
-    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#FF4D91"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 7"/><circle id="brainTetherPulse" r="5" fill="#ffe19a"/></svg><div class="brain-snipe-card" role="status" aria-live="polite"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Scanning the herd…</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><b class="brain-snipe-why-head">Why this cow</b><ul id="brainSnipeFactors" class="brain-snipe-factors" aria-label="Reasons the brain picked this cow"></ul><span id="brainSnipeRecord" class="brain-snipe-record"></span><span id="brainSnipeExec" class="brain-snipe-exec"></span><span id="brainSnipeCount" class="brain-snipe-count"></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
+    overlay.innerHTML = '<svg class="brain-tether" aria-hidden="true"><defs><linearGradient id="brainTetherGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#C9973F"/><stop offset="1" stop-color="#6EAD68"/></linearGradient></defs><path id="brainTetherPath" d="" fill="none" stroke="url(#brainTetherGrad)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="6 6"/><circle id="brainTetherPulse" r="4.5"/></svg><div class="brain-snipe-card" role="status" aria-live="polite" data-open="false"><b id="brainSnipeTitle">Brain pick</b><span id="brainSnipeLine">Reading the herd...</span><span id="brainSnipeCount" class="brain-snipe-count">Scanning</span><span id="brainSnipeWhy" class="brain-snipe-why"></span><span id="brainSnipeRecord" class="brain-snipe-record"></span><button type="button" id="brainSnipeDetails" class="brain-snipe-details" aria-expanded="false">Why this cow</button><b class="brain-snipe-why-head">Why this cow</b><ul id="brainSnipeFactors" class="brain-snipe-factors" hidden></ul><span id="brainSnipeExec" class="brain-snipe-exec" hidden></span><i class="brain-snipe-bar"><i id="brainSnipeBarFill"></i></i></div>';
     document.body.appendChild(overlay);
     tether = $('brainTetherPath');
     card = overlay.querySelector('.brain-snipe-card');
+    const details = $('brainSnipeDetails');
+    if (details) {
+      details.addEventListener('click', () => {
+        const open = !card || card.dataset.open !== 'true';
+        if (card) card.dataset.open = String(open);
+        details.setAttribute('aria-expanded', String(open));
+        details.textContent = open ? 'Hide reasons' : 'Why this cow';
+        const host = $('brainSnipeFactors');
+        if (host) host.hidden = false;
+      });
+    }
     return overlay;
   }
 
@@ -458,40 +579,69 @@
     const snap = api.snapshot();
     const target = snap.herd.find((cow) => cow.index === activeSuggestion.cowIndex);
     if (!target) { clearSuggestion(); return; }
-    const x1 = snap.head.x, y1 = snap.head.y + 6, x2 = target.sx, y2 = target.sy - 34;
-    const mid = Math.max(30, Math.min(120, Math.abs(x2 - x1) * 0.32));
-    tether.setAttribute('d', `M ${x1} ${y1} C ${x1 + mid} ${y1 - 46}, ${x2 - mid} ${y2 - 30}, ${x2} ${y2}`);
+    const x1 = snap.head.x, y1 = snap.head.y + 4, x2 = target.sx, y2 = target.sy - 28;
+    const mid = Math.max(28, Math.min(110, Math.abs(x2 - x1) * 0.3));
+    tether?.setAttribute('d', `M ${x1} ${y1} C ${x1 + mid} ${y1 - 40}, ${x2 - mid} ${y2 - 24}, ${x2} ${y2}`);
     const pulse = $('brainTetherPulse');
     if (pulse) { pulse.setAttribute('cx', String(x1)); pulse.setAttribute('cy', String(y1)); }
-    const cardW = card.offsetWidth || 238, cardH = card.offsetHeight || 160;
-    card.style.left = Math.max(6, Math.min(innerWidth - cardW - 8, target.sx + 26)) + 'px';
-    card.style.top = Math.max(6, Math.min(innerHeight - cardH - 8, target.sy - cardH - 16)) + 'px';
+    if (!card) return;
+    const cardW = card.offsetWidth || 224, cardH = card.offsetHeight || 132;
+    const panel = $('rangerBrainPanel');
+    const panelRect = panel && !panel.hidden ? panel.getBoundingClientRect() : null;
+    // A phone journal is a bottom sheet: keep the whole card in the sky above it.
+    const sheet = !!panelRect && panelRect.top > innerHeight * 0.3 && panelRect.width > innerWidth * 0.7;
+    if (sheet) {
+      const left = Math.max(8, Math.min(innerWidth - cardW - 8, snap.head.x - cardW / 2));
+      const top = Math.max(8, panelRect.top - cardH - 10);
+      card.style.left = left + 'px';
+      card.style.top = top + 'px';
+      return;
+    }
+    // Sit the card beside the ranger's head, clear of the open journal.
+    let left = snap.head.x + 30;
+    if (left + cardW > innerWidth - 8) left = snap.head.x - cardW - 30;
+    if (panelRect && left + cardW > panelRect.left - 10 && left < panelRect.right + 10) {
+      if (innerWidth - panelRect.right >= cardW + 24) {
+        left = panelRect.right + 12;
+      } else if (panelRect.left >= cardW + 24) {
+        left = panelRect.left - cardW - 12;
+      } else {
+        // No room beside the journal: hover it above instead of over the text.
+        card.style.left = Math.max(8, Math.min(innerWidth - cardW - 8, snap.head.x - cardW / 2)) + 'px';
+        card.style.top = Math.max(8, panelRect.top - cardH - 10) + 'px';
+        return;
+      }
+    }
+    card.style.left = Math.max(8, Math.min(innerWidth - cardW - 8, left)) + 'px';
+    card.style.top = Math.max(8, Math.min(innerHeight - cardH - 8, snap.head.y - cardH - 22)) + 'px';
   }
 
+  function suggestionReason(snipe) {
+    if (snipe.reason) return String(snipe.reason);
+    if (snipe.limited) return 'Stake capped by the account risk limits.';
+    if (Number(snipe.edge) > 0) return 'Fresh tick and the payout sits ahead of the chance.';
+    return 'Paper evidence backs this setup.';
+  }
   function renderSuggestion(snipe) {
-    const snap = bridge()?.snapshot?.() || {};
     const left = Math.max(0, Math.ceil((snipe.until - performance.now()) / 1000));
-    const total = 12;
-    const title = $('brainSnipeTitle'), line = $('brainSnipeLine'), why = $('brainSnipeWhy'), exec = $('brainSnipeExec'), count = $('brainSnipeCount'), fill = $('brainSnipeBarFill');
-    if (title) title.textContent = `Brain pick · ${snipe.kind} ${snipe.barrier}`;
-    if (line) line.textContent = `${snipe.market} · stake ${snipe.stake > 0 ? snipe.stake.toFixed(2) : 'blocked'} · enter in ${Math.max(1, snipe.enterAt - (snap.tickSeq?.[snipe.symbol] ?? snipe.tickSeq))} tick(s)`;
-    if (why) why.textContent = `${(snipe.p * 100).toFixed(0)}% confidence · ${(snipe.edge >= 0 ? '+' : '')}${(snipe.edge * 100).toFixed(1)}% edge${snipe.limited ? ' · stake capped by risk limits' : ''}${snipe.reason ? ' · ' + snipe.reason : ''}`;
-    renderFactors(snipe);
-    const record = snipe.record && typeof snipe.record === 'object' ? snipe.record : null;
-    const recordEl = $('brainSnipeRecord');
-    if (recordEl) {
-      const total = Number(record && record.total) || 0;
-      const wins = Number(record && record.w) || 0;
-      const losses = Number(record && record.l) || 0;
-      recordEl.dataset.tone = total ? (wins >= losses ? 'good' : 'bad') : 'new';
-      recordEl.textContent = total
-        ? 'My record here: ' + wins + 'W / ' + losses + 'L · ' + Math.round((Number(record.rate) || 0) * 100) + '%'
-        : 'First pick on this setup — no record yet';
+    const title = $('brainSnipeTitle'), line = $('brainSnipeLine'), meta = $('brainSnipeCount'), why = $('brainSnipeWhy'), record = $('brainSnipeRecord'), fill = $('brainSnipeBarFill'), exec = $('brainSnipeExec');
+    if (title) title.textContent = String(snipe.kind || '') + ' ' + String(snipe.barrier ?? '');
+    if (line) line.textContent = String(snipe.market || snipe.symbol || 'Market');
+    const stake = Number(snipe.stake);
+    if (meta) meta.textContent = (stake > 0 ? 'Stake ' + stake.toFixed(2) : 'Stake blocked') + ' · ' + left + 's left';
+    if (why) why.textContent = suggestionReason(snipe);
+    if (record) {
+      const row = snipe.record && typeof snipe.record === 'object' ? snipe.record : null;
+      const total = Number(row && row.total) || 0;
+      record.dataset.tone = total ? (Number(row.w) >= Number(row.l) ? 'good' : 'bad') : 'new';
+      record.textContent = 'Modeled ' + (Number(snipe.p) * 100).toFixed(0) + '% · ' + (total
+        ? 'observed ' + row.w + 'W/' + row.l + 'L here'
+        : 'no finished games here yet');
     }
-    if (exec) exec.textContent = 'Kill this cow to confirm the brain\'s stake and tick.';
-    if (count) count.textContent = `${left}s left`;
-    if (fill) fill.style.width = Math.max(0, Math.min(100, (left / total) * 100)) + '%';
-    card?.classList.toggle('is-blocked', !(snipe.stake > 0));
+    if (exec) { exec.hidden = true; exec.textContent = ''; }
+    if (fill) fill.style.width = Math.max(0, Math.min(100, (left / 12) * 100)) + '%';
+    card?.classList.toggle('is-blocked', !(stake > 0));
+    renderFactors(snipe);
     placeOverlay();
   }
 
@@ -562,18 +712,11 @@
   }
 
   function suggest() {
-    const api = bridge();
-    const snipe = api?.suggest?.();
-    if (!snipe) {
-      const glyph = $('rangerBrainGlyph');
-      glyph?.classList.remove('no-pick');
-      void glyph?.offsetWidth;
-      glyph?.classList.add('no-pick');
-      return null;
-    }
-    showSuggestion(snipe);
-    return snipe;
+    const result = bridge()?.suggest?.();
+    runCapture(result);
+    return result;
   }
+
   window.__zeronineBrainSuggest = suggest;
 
   /* ---------- room state: learning + replay ---------- */
@@ -582,6 +725,7 @@
     if (e.origin !== location.origin || e.source !== parent) return;
     const m = e.data || {};
     if (m.type !== 'zeronine:room-state') return;
+    syncAccount();
     const s = m.state || {};
     const trades = Array.isArray(s.trades) ? s.trades : [];
     for (const trade of trades) {
@@ -828,8 +972,163 @@
   });
   window.addEventListener('resize', placeReflex, { passive: true });
 
+  /* ---------- capture scan ---------- */
+  let scanEl = null, scanNote = null;
+  const scanTimers = new Set();
+  function scanLater(fn, ms) { const id = setTimeout(() => { scanTimers.delete(id); try { fn(); } catch {} }, ms); scanTimers.add(id); return id; }
+  function clearScanTimers() { for (const id of scanTimers) clearTimeout(id); scanTimers.clear(); }
+  function ensureScan() {
+    if (scanEl && scanEl.isConnected) return scanEl;
+    scanEl = document.createElement('div');
+    scanEl.className = 'brain-scan';
+    scanEl.hidden = true;
+    scanEl.setAttribute('aria-hidden', 'true');
+    scanEl.innerHTML = '<span class="scan-frame"></span><span class="scan-ring"></span><span class="scan-line"></span><span class="scan-dot"></span><span class="scan-corner tl"></span><span class="scan-corner tr"></span><span class="scan-corner bl"></span><span class="scan-corner br"></span>';
+    document.body.appendChild(scanEl);
+    scanNote = document.createElement('div');
+    scanNote.id = 'brainScanNote';
+    scanNote.hidden = true;
+    scanNote.setAttribute('role', 'status');
+    const title = document.createElement('b');
+    const body = document.createElement('span');
+    scanNote.append(title, body);
+    document.body.appendChild(scanNote);
+    return scanEl;
+  }
+  function glyphPoint() {
+    const glyph = $('rangerBrainGlyph');
+    const rect = glyph ? glyph.getBoundingClientRect() : null;
+    if (rect && rect.width) return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    return { x: innerWidth / 2, y: innerHeight * 0.6 };
+  }
+  function scanOrigin() {
+    const panel = $('rangerBrainPanel');
+    const rect = panel && !panel.hidden ? panel.getBoundingClientRect() : null;
+    if (!rect) return glyphPoint();
+    if (innerWidth > 900) {
+      // Sideways journal: sweep the open pasture beside it.
+      return { x: Math.min(innerWidth - 70, Math.max(rect.right + 60, innerWidth * 0.68)), y: innerHeight * 0.42 };
+    }
+    // Phone sheet: sweep the sky above the sheet.
+    return { x: innerWidth / 2, y: Math.max(56, Math.min(rect.top - 58, innerHeight * 0.28)) };
+  }
+  function placeScan(point, size) {
+    const el = ensureScan();
+    el.style.left = point.x + 'px';
+    el.style.top = point.y + 'px';
+    if (Number.isFinite(size)) { el.style.width = size + 'px'; el.style.height = size + 'px'; }
+    return el;
+  }
+  function showScanNote(title, text) {
+    const el = ensureScan();
+    if (!el || !scanNote) return;
+    scanNote.querySelector('b').textContent = title;
+    scanNote.querySelector('span').textContent = text;
+    scanNote.dataset.tone = 'empty';
+    scanNote.hidden = false;
+    const at = scanOrigin();
+    const width = scanNote.offsetWidth || 248;
+    scanNote.style.left = Math.max(8, Math.min(innerWidth - width - 8, at.x - width / 2)) + 'px';
+    scanNote.style.top = Math.max(8, Math.min(innerHeight - 96, at.y + 26)) + 'px';
+    scanNote.classList.remove('show');
+    void scanNote.offsetWidth;
+    scanNote.classList.add('show');
+    scanLater(() => { scanNote.classList.remove('show'); scanNote.hidden = true; }, 5200);
+  }
+  function hideScan(delay) {
+    const el = ensureScan();
+    scanLater(() => { el.classList.remove('show'); el.hidden = true; el.dataset.phase = ''; }, delay || 380);
+  }
+  function runCapture(result) {
+    const api = bridge();
+    const el = ensureScan();
+    clearScanTimers();
+    const find = $('brainFindCow');
+    if (find) find.dataset.scanning = 'true';
+    if (scanNote) { scanNote.classList.remove('show'); scanNote.hidden = true; }
+    el.style.width = '56px';
+    el.style.height = '56px';
+    el.dataset.phase = 'sweep';
+    placeScan(scanOrigin());
+    el.hidden = false;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    scanLater(() => {
+      if (find) delete find.dataset.scanning;
+      if (result && result.status === 'target') {
+        const snap = api?.snapshot?.() || { herd: [] };
+        const target = (snap.herd || []).find((cow) => cow.index === result.cowId);
+        if (target) placeScan({ x: target.sx, y: target.sy - 16 }, 104);
+        el.dataset.phase = 'lock';
+        showSuggestion(result);
+        hideScan(1100);
+      } else {
+        // A fresh scan that finds nothing must not leave the old pick on screen.
+        clearSuggestion();
+        el.dataset.phase = 'empty';
+        showScanNote('No qualifying cow', (result && result.reason) || 'The brain has no defensible pick right now.');
+        const glyph = $('rangerBrainGlyph');
+        if (glyph) { glyph.classList.remove('no-pick'); void glyph.offsetWidth; glyph.classList.add('no-pick'); }
+        hideScan(1200);
+      }
+    }, reduce() ? 0 : 420);
+  }
+
+  /* ---------- overview mirror + account scoping ---------- */
+  function syncOverview() {
+    const host = $('brainOverviewLessons');
+    if (!host) return;
+    const list = $('brainLessons');
+    const rows = list ? Array.from(list.children).slice(0, 2) : [];
+    host.replaceChildren();
+    if (!rows.length) {
+      const empty = document.createElement('p');
+      empty.className = 'brain-overview-empty';
+      empty.textContent = 'No validated lesson yet. Finished paper games come first.';
+      host.appendChild(empty);
+      return;
+    }
+    for (const row of rows) {
+      const item = document.createElement('div');
+      item.className = 'brain-overview-lesson';
+      const text = document.createElement('b');
+      text.textContent = (row.childNodes[0]?.textContent || row.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 150);
+      item.appendChild(text);
+      const metaEl = row.querySelector('small');
+      if (metaEl) {
+        const meta = document.createElement('small');
+        meta.textContent = (metaEl.textContent || '').split('|').map((part) => part.trim()).slice(0, 2).filter(Boolean).join(' · ');
+        if (meta.textContent) item.appendChild(meta);
+      }
+      host.appendChild(item);
+    }
+  }
+  function currentAccount() {
+    try { return String(bridge()?.account?.() ?? ''); } catch { return ''; }
+  }
+  let learnedAccount = null;
+  function syncAccount() {
+    const account = currentAccount();
+    if (account === learnedAccount) return;
+    learnedAccount = account;
+    renderLearnedCards(true);
+    syncOverview();
+  }
+  function wireFindCow() {
+    $('brainFindCow')?.addEventListener('click', () => { suggest(); });
+    $('brainOverviewLessonsButton')?.addEventListener('click', () => $('brainTabLearned')?.click());
+  }
+
   function init() {
     mountScenes();
+    wireFindCow();
+    syncOverview();
+    syncAccount();
+    renderLearnedCards(true);
+    noteLessonChange(true);
+    const lessonsList = $('brainLessons');
+    if (lessonsList) new MutationObserver(() => noteLessonChange()).observe(lessonsList, { childList: true, subtree: true, characterData: true });
     compactTabLabels();
     wakeGlyph();
     hideLearningBubble();
@@ -859,7 +1158,7 @@
       new MutationObserver(() => {
         const open = !panel.hidden;
         document.body?.classList?.toggle('brain-zoomed', open);
-        if (open) startScenes(true); else clearSuggestion();
+        if (open) { startScenes(true); syncAccount(); noteLessonChange(); syncOverview(); } else clearSuggestion();
       }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
     }
   }
