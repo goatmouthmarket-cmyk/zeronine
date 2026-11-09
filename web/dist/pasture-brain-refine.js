@@ -585,6 +585,12 @@
     const pulse = $('brainTetherPulse');
     if (pulse) { pulse.setAttribute('cx', String(x1)); pulse.setAttribute('cy', String(y1)); }
     if (!card) return;
+    const sharedUi = window.DerivCowsUI;
+    if (sharedUi && sharedUi.placeFloating && sharedUi.placeFloating(card, { x: target.sx, y: target.sy - 26 }, {
+      gap: 12,
+      padding: 10,
+      avoid: ['#rangerBrainPanel', '#breakTimer', '#rangerBrainGlyph', '#mobileControls', '#playerHud', '#healthDock'],
+    })) return;
     const cardW = card.offsetWidth || 224, cardH = card.offsetHeight || 132;
     const panel = $('rangerBrainPanel');
     const panelRect = panel && !panel.hidden ? panel.getBoundingClientRect() : null;

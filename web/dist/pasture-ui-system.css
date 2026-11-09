@@ -1,0 +1,658 @@
+/*
+ * Deriv Cows design system.
+ * Loaded after the legacy layers so it owns theme tokens, stacking order,
+ * shared menu geometry and the single notification lane.
+ * Behaviour lives in pasture-ui-system.js.
+ */
+:root {
+  --dc-parchment: #FFF9E9;
+  --dc-card: #FFFDF6;
+  --dc-card-soft: #FFF4DE;
+  --dc-forest: #21583A;
+  --dc-forest-deep: #173E28;
+  --dc-grass: #6EAD68;
+  --dc-wood: #B98B55;
+  --dc-ink: #42301F;
+  --dc-muted: #806C51;
+  --dc-gold: #E7B858;
+  --dc-success: #328854;
+  --dc-warning: #BE842D;
+  --dc-danger: #B84E43;
+  --dc-rule: rgba(90, 67, 38, .22);
+  --dc-rule-soft: rgba(90, 67, 38, .12);
+
+  --dc-radius: 16px;
+  --dc-radius-sm: 10px;
+  --dc-radius-xs: 7px;
+  --dc-border: 1.5px solid rgba(185, 139, 85, .55);
+  --dc-shadow: 0 14px 34px rgba(48, 30, 10, .2), 0 2px 0 rgba(90, 67, 38, .1);
+  --dc-shadow-soft: 0 6px 18px rgba(48, 30, 10, .14);
+  --dc-font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --dc-serif: Georgia, "Times New Roman", serif;
+
+  /* One stacking order for the whole pasture. */
+  --dc-z-world: 1;
+  --dc-z-fx: 4;
+  --dc-z-attached: 20;
+  --dc-z-hud: 24;
+  --dc-z-notify: 70;
+  --dc-z-panel: 100;
+  --dc-z-critical: 130;
+  --dc-z-modal: 140;
+  --dc-z-critical-modal: 150;
+
+  /* Legacy names mapped onto the same order. */
+  --pasture-z-game: var(--dc-z-world);
+  --pasture-z-fx: var(--dc-z-fx);
+  --pasture-z-attached: var(--dc-z-attached);
+  --pasture-z-hud: var(--dc-z-hud);
+  --pasture-z-toast: var(--dc-z-notify);
+  --pasture-z-menu: var(--dc-z-panel);
+  --pasture-z-modal: var(--dc-z-modal);
+  --pasture-toast-bg: var(--dc-card);
+  --pasture-toast-fg: var(--dc-ink);
+
+  --pasture-safe-top: env(safe-area-inset-top, 0px);
+  --pasture-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --pasture-safe-left: env(safe-area-inset-left, 0px);
+  --pasture-safe-right: env(safe-area-inset-right, 0px);
+  --pasture-header-h: 56px;
+  --dc-header-h: 56px;
+  --pasture-bottom-nav-h: 0px;
+  --dc-bottom-nav-h: 0px;
+
+  --dc-motion-fast: 120ms;
+  --dc-motion-menu: 200ms;
+  --dc-motion-slow: 240ms;
+  --dc-ease: cubic-bezier(.2, .8, .2, 1);
+}
+
+body { font-family: var(--dc-font); }
+
+/* The legacy centered toast is retired; the manager owns one lane. */
+#toast { display: none !important; }
+
+/* ---------- shared menu shell ---------- */
+.dc-menu {
+  font-family: var(--dc-font);
+  color: var(--dc-ink);
+}
+.dc-menu:not([hidden]) {
+  animation: dcMenuIn var(--dc-motion-menu) var(--dc-ease) both;
+}
+@keyframes dcMenuIn {
+  from { opacity: 0; transform: translateY(10px) scale(.992); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Desktop: every major journal docks to the same right-hand edge. */
+@media (min-width: 1000px) {
+  #rangerBrainPanel:not([hidden]),
+  #rangerAutoHud:not([hidden]),
+  #ghostTraderPanel:not([hidden]),
+  #chatPanel:not([hidden]) {
+    position: fixed;
+    top: calc(var(--dc-header-h) + 14px);
+    right: max(14px, var(--pasture-safe-right));
+    bottom: auto;
+    left: auto;
+    width: min(420px, 34vw);
+    max-height: calc(100dvh - var(--dc-header-h) - 28px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: var(--dc-z-panel);
+    border: var(--dc-border);
+    border-radius: var(--dc-radius);
+    box-shadow: var(--dc-shadow);
+    background: var(--dc-card);
+  }
+}
+
+/* Phone: one bottom sheet for every major menu. */
+@media (max-width: 999.98px) {
+  #rangerBrainPanel:not([hidden]),
+  #rangerAutoHud:not([hidden]),
+  #ghostTraderPanel:not([hidden]),
+  #chatPanel:not([hidden]) {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: min(66dvh, calc(100dvh - var(--dc-header-h) - 56px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: var(--dc-z-panel);
+    border: var(--dc-border);
+    border-bottom: 0;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -10px 34px rgba(48, 30, 10, .24);
+    background: var(--dc-card);
+    padding-bottom: calc(10px + var(--pasture-safe-bottom));
+  }
+  @keyframes dcSheetIn {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: none; }
+  }
+  .dc-menu:not([hidden]) { animation-name: dcSheetIn; }
+}
+
+/* Short landscape: a side sheet, never a tall bottom sheet. */
+@media (max-height: 560px) and (orientation: landscape) {
+  #rangerBrainPanel:not([hidden]),
+  #rangerAutoHud:not([hidden]),
+  #ghostTraderPanel:not([hidden]),
+  #chatPanel:not([hidden]) {
+    top: calc(var(--dc-header-h) + 8px);
+    right: max(8px, var(--pasture-safe-right));
+    bottom: calc(8px + var(--pasture-safe-bottom));
+    left: auto;
+    width: min(430px, 58vw);
+    max-height: none;
+    border-radius: var(--dc-radius);
+  }
+}
+
+/* Shared header rhythm, whatever markup a panel shipped with. */
+.dc-menu > header,
+.dc-menu .ranger-auto-heading,
+.dc-menu .risk-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--dc-rule);
+  background: linear-gradient(180deg, var(--dc-card), var(--dc-card-soft));
+}
+.dc-menu > header strong,
+.dc-menu .ranger-auto-heading strong,
+.dc-menu .risk-preview-head strong {
+  font: 700 17px/1.2 var(--dc-serif);
+  letter-spacing: -.01em;
+  color: var(--dc-forest);
+}
+.dc-menu > header small,
+.dc-menu .ranger-auto-heading span {
+  color: var(--dc-muted);
+  font: 600 10px/1.3 var(--dc-font);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.dc-menu > header button,
+.dc-menu .risk-preview-close,
+.dc-menu #ghostPanelClose {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  border: 1px solid var(--dc-rule);
+  background: var(--dc-parchment);
+  color: var(--dc-forest);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dc-menu > header button:hover { background: var(--dc-card-soft); }
+
+/* Menu body typography and controls, in brand colors. */
+.dc-menu :is(p, label, span, small, li, dd, dt) { color: var(--dc-muted); }
+.dc-menu :is(h1, h2, h3, h4, strong, b, legend) { color: var(--dc-forest); }
+.dc-menu input,
+.dc-menu select,
+.dc-menu textarea {
+  background: var(--dc-parchment);
+  color: var(--dc-ink);
+  border: 1px solid rgba(185, 139, 85, .6);
+  border-radius: var(--dc-radius-xs);
+  font-family: var(--dc-font);
+}
+.dc-menu input:focus-visible,
+.dc-menu select:focus-visible,
+.dc-menu textarea:focus-visible,
+.dc-menu button:focus-visible {
+  outline: 2px solid var(--dc-grass);
+  outline-offset: 2px;
+}
+.dc-menu button:not(.risk-preview-close):not(#ghostPanelClose) {
+  border-radius: var(--dc-radius-xs);
+}
+.dc-menu [data-tone="danger"],
+.dc-menu .risk-preview-actions button:last-child {
+  background: var(--dc-danger);
+  color: #FFF9E9;
+}
+.dc-menu [data-tone="danger"]:hover { filter: brightness(.95); }
+
+/* ---------- notification lane ---------- */
+.dc-toast-lane {
+  position: fixed;
+  z-index: var(--dc-z-notify);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(330px, calc(100vw - 24px - var(--pasture-safe-left) - var(--pasture-safe-right)));
+  max-height: min(48dvh, 380px);
+  overflow: hidden;
+  pointer-events: none;
+}
+.dc-toast-lane[data-side="right"] { right: max(12px, var(--pasture-safe-right)); left: auto; align-items: flex-end; }
+.dc-toast-lane[data-side="left"] { left: max(12px, var(--pasture-safe-left)); right: auto; align-items: flex-start; }
+.dc-toast-lane[data-side="center"] { left: 50%; transform: translateX(-50%); align-items: center; }
+
+.dc-toast {
+  pointer-events: auto;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: start;
+  padding: 10px 11px;
+  background: var(--dc-card);
+  color: var(--dc-ink);
+  border: var(--dc-border);
+  border-radius: 12px;
+  box-shadow: var(--dc-shadow-soft);
+  font: 600 12px/1.35 var(--dc-font);
+  animation: dcToastIn var(--dc-motion-menu) var(--dc-ease) both;
+}
+.dc-toast.exiting { opacity: 0; transform: translateY(6px); transition: opacity 160ms ease, transform 160ms ease; }
+@keyframes dcToastIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.dc-toast-icon {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font: 800 13px/1 var(--dc-font);
+  background: var(--dc-card-soft);
+  color: var(--dc-forest);
+}
+.dc-toast[data-type="success"] .dc-toast-icon,
+.dc-toast[data-type="trade_result"] .dc-toast-icon { background: var(--dc-success); color: #FFF9E9; }
+.dc-toast[data-type="paper_result"] .dc-toast-icon { background: var(--dc-forest); color: #FFF9E9; }
+.dc-toast[data-type="warning"] .dc-toast-icon { background: var(--dc-warning); color: #FFF9E9; }
+.dc-toast[data-type="error"] .dc-toast-icon { background: var(--dc-danger); color: #FFF9E9; }
+.dc-toast[data-type="research"] .dc-toast-icon { background: var(--dc-grass); color: #FFF9E9; }
+.dc-toast[data-type="automation"] .dc-toast-icon { background: var(--dc-wood); color: #FFF9E9; }
+.dc-toast-body { min-width: 0; overflow-wrap: anywhere; color: var(--dc-ink); }
+.dc-toast-body strong {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--dc-forest);
+  font: 700 9.5px/1.2 var(--dc-font);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.dc-toast-close {
+  border: 0;
+  background: transparent;
+  color: var(--dc-muted);
+  font-size: 17px;
+  line-height: 1;
+  padding: 0 0 0 2px;
+  cursor: pointer;
+}
+.dc-toast-detail { color: var(--dc-muted); font-weight: 600; }
+
+/* Critical notices stay reachable above a modal, but never look like a modal. */
+.dc-critical-lane {
+  position: fixed;
+  z-index: var(--dc-z-critical);
+  top: calc(var(--dc-header-h) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - 20px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+body[data-dc-modal="true"] .dc-critical-lane { z-index: var(--dc-z-critical-modal); }
+.dc-critical {
+  pointer-events: auto;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 9px 12px;
+  border: 1.5px solid var(--dc-danger);
+  border-radius: var(--dc-radius-sm);
+  background: #FFF3EE;
+  color: var(--dc-ink);
+  box-shadow: var(--dc-shadow-soft);
+  font: 700 12px/1.35 var(--dc-font);
+}
+
+@media (max-width: 999.98px) {
+  .dc-toast-lane {
+    left: max(8px, var(--pasture-safe-left));
+    right: max(8px, var(--pasture-safe-right));
+    width: auto;
+  }
+  .dc-toast-lane[data-side="left"],
+  .dc-toast-lane[data-side="right"],
+  .dc-toast-lane[data-side="center"] {
+    left: max(8px, var(--pasture-safe-left));
+    right: max(8px, var(--pasture-safe-right));
+    transform: none;
+  }
+  .dc-toast { font-size: 12.5px; padding: 9px 10px; }
+  .dc-critical-lane { top: auto; bottom: calc(var(--pasture-safe-bottom) + 96px); }
+}
+
+/* ---------- Brain integration ---------- */
+#rangerBrainPanel:not([hidden]) { background: var(--dc-card); color: var(--dc-ink); }
+#rangerBrainPanel .brain-snipe-card,
+#brainSnipeOverlay .brain-snipe-card {
+  background: var(--dc-card);
+  color: var(--dc-ink);
+  border: var(--dc-border);
+  border-radius: 13px;
+  box-shadow: var(--dc-shadow);
+}
+#brainSnipeOverlay { z-index: var(--dc-z-panel); }
+.brain-scan { z-index: var(--dc-z-attached); }
+#brainScanNote { z-index: calc(var(--dc-z-attached) + 1); }
+
+/* ---------- status chips shared by menus ---------- */
+.dc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--dc-rule);
+  background: var(--dc-card-soft);
+  color: var(--dc-forest);
+  font: 700 9px/1.4 var(--dc-font);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.dc-chip[data-tone="warning"] { color: var(--dc-warning); border-color: rgba(190, 132, 45, .5); }
+.dc-chip[data-tone="danger"] { color: var(--dc-danger); border-color: rgba(184, 78, 67, .5); }
+.dc-chip[data-tone="success"] { color: var(--dc-success); border-color: rgba(50, 136, 84, .5); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-menu:not([hidden]),
+  .dc-toast,
+  .dc-toast.exiting,
+  .brain-scan,
+  .brain-scan::after { animation: none !important; transition: none !important; }
+}
+
+/* -------------------------------------------------------------------------
+ * Geometry authority.
+ * The legacy panels ship their own scattered position/z-index !important
+ * rules. These three blocks are the single place that resolves them; the
+ * compatibility layer no longer escalates any of these properties.
+ * ---------------------------------------------------------------------- */
+@media (min-width: 1000px) {
+  #rangerBrainPanel:not([hidden]),
+  #rangerAutoHud:not([hidden]),
+  #ghostTraderPanel:not([hidden]),
+  #chatPanel:not([hidden]) {
+    position: fixed !important;
+    top: calc(var(--dc-header-h) + 14px) !important;
+    right: max(14px, var(--pasture-safe-right)) !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: min(420px, 34vw) !important;
+    max-height: calc(100dvh - var(--dc-header-h) - 28px) !important;
+    overflow-y: auto !important;
+    transform: none !important;
+    z-index: var(--dc-z-panel) !important;
+    border: var(--dc-border) !important;
+    border-radius: var(--dc-radius) !important;
+    box-shadow: var(--dc-shadow) !important;
+    background: var(--dc-card) !important;
+  }
+}
+
+@media (max-width: 999.98px) {
+  #rangerBrainPanel:not([hidden]),
+  #rangerAutoHud:not([hidden]),
+  #ghostTraderPanel:not([hidden]),
+  #chatPanel:not([hidden]) {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: auto !important;
+    max-height: min(66dvh, calc(100dvh - var(--dc-header-h) - 56px)) !important;
+    overflow-y: auto !important;
+    transform: none !important;
+    z-index: var(--dc-z-panel) !important;
+    border: var(--dc-border) !important;
+    border-bottom: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    box-shadow: 0 -10px 34px rgba(48, 30, 10, .24) !important;
+    background: var(--dc-card) !important;
+    padding-bottom: calc(10px + var(--pasture-safe-bottom)) !important;
+  }
+}
+
+@media (max-height: 560px) and (orientation: landscape) {
+  #rangerBrainPanel:not([hidden]),
+  #rangerAutoHud:not([hidden]),
+  #ghostTraderPanel:not([hidden]),
+  #chatPanel:not([hidden]) {
+    position: fixed !important;
+    top: calc(var(--dc-header-h) + 8px) !important;
+    right: max(8px, var(--pasture-safe-right)) !important;
+    bottom: calc(8px + var(--pasture-safe-bottom)) !important;
+    left: auto !important;
+    width: min(430px, 58vw) !important;
+    max-height: none !important;
+    border-radius: var(--dc-radius) !important;
+    transform: none !important;
+  }
+}
+
+/* Critical trade confirmation: the only dialog layer above panels. */
+#rangerAutoRiskPreview:not([hidden]),
+#rangerAutoRunReport:not([hidden]),
+#confirm.active {
+  z-index: var(--dc-z-modal) !important;
+}
+#rangerAutoRiskPreview:not([hidden]) {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(430px, calc(100vw - 24px));
+  max-height: min(82dvh, 620px);
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  background: var(--dc-card);
+  border: var(--dc-border);
+  border-radius: var(--dc-radius);
+  box-shadow: var(--dc-shadow);
+  color: var(--dc-ink);
+}
+body[data-dc-modal="true"] #rangerAutoRiskPreview:not([hidden]) { display: block; }
+
+/* Chosen tab labels must stay readable against the forest pill. */
+#rangerBrainPanel .brain-tabs button[aria-selected="true"],
+#rangerBrainPanel .brain-tabs button[aria-selected="true"] span { color: var(--dc-parchment) !important; }
+
+@media (max-width: 999.98px) {
+  /* Keep a clear strip for the round help button and the left-side HUD. */
+  .dc-toast-lane,
+  .dc-toast-lane[data-side="center"],
+  .dc-toast-lane[data-side="left"],
+  .dc-toast-lane[data-side="right"] {
+    left: auto;
+    right: max(8px, var(--pasture-safe-right));
+    width: min(340px, calc(100vw - 76px));
+    transform: none;
+    align-items: stretch;
+  }
+  .dc-toast-lane[data-room="false"] { display: none; }
+}
+
+/* ---------- close affordance for every major sheet ---------- */
+.dc-menu-close {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid rgba(33, 88, 58, .38) !important;
+  border-radius: 9px !important;
+  background: var(--dc-parchment) !important;
+  color: var(--dc-forest) !important;
+  font: 700 19px/1 var(--dc-font) !important;
+  cursor: pointer;
+}
+.dc-menu-close:hover { background: #F4E7CC !important; }
+#rangerAutoHud .ranger-auto-heading { display: flex; align-items: center; gap: 8px; padding-right: 6px; }
+#rangerAutoHud .ranger-auto-heading #rangerAutoState { margin-left: auto; }
+#chatPanel > header { display: flex; align-items: center; gap: 8px; }
+#chatPanel > header #chatStatus { margin-left: auto; text-align: right; }
+#chatPanel > header .dc-menu-close { width: 28px; height: 28px; font-size: 17px !important; }
+
+/* ---------- critical notices ---------- */
+.dc-critical {
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px 8px 10px;
+  font-size: 11.5px;
+}
+.dc-critical-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--dc-danger);
+  color: var(--dc-parchment);
+  font: 800 12px/1 var(--dc-font);
+}
+.dc-critical-body { min-width: 0; display: grid; gap: 1px; }
+.dc-critical-body strong {
+  color: var(--dc-danger);
+  font: 700 9.5px/1.2 var(--dc-font);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.dc-critical-body span { color: var(--dc-ink); font-weight: 600; overflow-wrap: anywhere; }
+.dc-critical-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--dc-muted);
+  font: 700 17px/1 var(--dc-font);
+  padding: 2px 2px 2px 4px;
+  cursor: pointer;
+}
+.dc-critical.exiting { opacity: 0; transform: translateY(-4px); transition: opacity 150ms ease, transform 150ms ease; }
+
+@media (max-width: 999.98px) {
+  .dc-critical-lane {
+    top: calc(var(--dc-header-h) + 6px) !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: max(8px, var(--pasture-safe-right));
+    width: min(340px, calc(100vw - 76px));
+    transform: none !important;
+  }
+}
+
+/* ---------- confirmation / report modals ---------- */
+#rangerAutoRiskPreview:not([hidden]),
+#rangerAutoRunReport:not([hidden]) {
+  color: var(--dc-ink);
+  background: var(--dc-card);
+  border: var(--dc-border);
+  border-radius: var(--dc-radius);
+  box-shadow: var(--dc-shadow);
+}
+#rangerAutoRunReport:not([hidden]) {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(82dvh, 640px);
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+}
+#rangerAutoRiskPreview .risk-preview-head,
+#rangerAutoRunReport .risk-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--dc-rule-soft);
+}
+#rangerAutoRiskPreview .risk-preview-head strong,
+#rangerAutoRunReport .risk-preview-head strong {
+  color: var(--dc-forest);
+  font: 700 11px/1.3 var(--dc-font);
+  letter-spacing: .09em;
+}
+#rangerAutoRiskPreview .risk-preview-close,
+#rangerAutoRunReport .risk-preview-close {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  border: 1.5px solid rgba(33, 88, 58, .3);
+  border-radius: 8px;
+  background: var(--dc-parchment);
+  color: var(--dc-forest);
+  font-size: 17px;
+}
+#rangerAutoRiskPreview #rangerRiskPreviewBody,
+#rangerAutoRunReport #rangerAutoReportBody { padding: 12px 14px; color: var(--dc-muted); }
+#rangerAutoRiskPreview .risk-preview-actions,
+#rangerAutoRunReport .risk-preview-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--dc-rule-soft);
+}
+#rangerAutoRiskPreview .risk-preview-actions button,
+#rangerAutoRunReport .risk-preview-actions button {
+  flex: 1;
+  min-height: 38px;
+  border: 1.5px solid var(--dc-forest);
+  border-radius: var(--dc-radius-xs);
+  background: var(--dc-parchment);
+  color: var(--dc-forest);
+  font: 700 10px/1.2 var(--dc-font);
+  letter-spacing: .06em;
+}
+#rangerAutoRiskPreview #rangerRiskPreviewConfirm { background: var(--dc-forest); color: var(--dc-parchment); }
+#confirm.active { z-index: var(--dc-z-critical-modal) !important; }
+
+/* The persistent auth chip belongs under panels, never over a journal. */
+#guestBanner { z-index: var(--dc-z-notify) !important; }
+body[data-dc-menu]:not([data-dc-menu=""]) #guestBanner { visibility: hidden; }
+
+/* Cooldown stays visible while Auto's sheet is open on a phone. */
+@media (max-width: 999.98px) {
+  body[data-dc-menu="auto"] #breakTimer.visible {
+    position: fixed !important;
+    top: calc(var(--dc-header-h) + 8px) !important;
+    left: max(8px, var(--pasture-safe-left)) !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: var(--dc-z-notify) !important;
+  }
+}
+
+/* Markets drawer: legacy pale-green labels washed out on cream. */
+#inspector .manual-controls-head strong,
+#inspector .stake-control strong { color: var(--dc-forest) !important; }
+#inspector .manual-controls-head span,
+#inspector .stake-control small,
+#inspector .bet-state small { color: var(--dc-muted) !important; }
+#inspector .target-menu summary { background: var(--dc-card-soft) !important; color: var(--dc-forest) !important; }
+#inspector .paper-mini { background: #EAF3E4 !important; color: var(--dc-forest) !important; }
+#inspector .paper-mini strong { color: var(--dc-forest) !important; }

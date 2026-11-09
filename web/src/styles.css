@@ -6816,3 +6816,44 @@ button.activity-row {
 
 .player-reconnect { position: fixed; z-index: 34; top: 88px; left: 50%; transform: translateX(-50%); max-width: calc(100vw - 24px); padding: 6px 12px; border: 1px solid #6e7f8f; border-radius: 999px; background: #121820ea; color: #dfe8f1; font-size: 11px; font-weight: 700; letter-spacing: .01em; }
 @media (max-width: 700px) { .player-reconnect { top: 72px; width: max-content; font-size: 10px; } }
+
+/* =========================================================
+   DERIV COWS — active pasture room frame
+   The game is parchment/forest: the shell around it must not
+   read as a near-black fintech terminal while the room is open.
+========================================================= */
+body:has(.trading-room-frame-shell) .header {
+    background: linear-gradient(180deg, #FFF9E9, #F6EAD1);
+    border-bottom: 1px solid rgba(33, 88, 58, .2);
+    box-shadow: 0 6px 20px rgba(48, 30, 10, .08);
+    color: #42301F;
+}
+body:has(.trading-room-frame-shell) .header .subtitle {
+    color: #806C51;
+}
+body:has(.trading-room-frame-shell) .header .nav-link,
+body:has(.trading-room-frame-shell) .header .header-nav-toggle,
+body:has(.trading-room-frame-shell) .header .room-header-how-to {
+    color: #21583A;
+    background: #FFFDF6;
+    border: 1px solid rgba(185, 139, 85, .45);
+}
+body:has(.trading-room-frame-shell) .header .nav-link.active {
+    color: #FFF9E9;
+    background: #21583A;
+    border-color: #173E28;
+}
+body:has(.trading-room-frame-shell) .header .nav-link svg,
+body:has(.trading-room-frame-shell) .header .header-nav-toggle svg {
+    color: currentColor;
+}
+body:has(.trading-room-frame-shell) .header .room-header-play {
+    color: #FFF9E9;
+    background: #21583A;
+    border: 1px solid #173E28;
+}
+body:has(.trading-room-frame-shell) .header .room-header-play.is-open {
+    color: #42301F;
+    background: #E7B858;
+    border-color: #B98B55;
+}
