@@ -102,36 +102,27 @@
     clearTimeout(pop._timer);
     pop._timer = setTimeout(() => pop.classList.remove('show'), 2400);
     renderLearnedCards();
-    syncOverview();
   }
 
   let lessonSig = '';
-  function lessonSignature() {
-    const list = $('brainLessons');
-    if (!list) return '';
-    return Array.from(list.children).map((li) => (li.textContent || '').trim()).join('|');
-  }
-  function noteLessonChange(force) {
-    const sig = lessonSignature();
-    if (!sig || sig === lessonSig) {
-      if (force) syncOverview();
-      return false;
-    }
+  function noteLessonChange(signature, force) {
+    const sig = typeof signature === 'string' ? signature : '';
+    if (!sig) return false;
+    if (sig === lessonSig) return false;
     const first = !lessonSig;
     lessonSig = sig;
-    syncOverview();
-    if (!first) {
-      const glyph = $('rangerBrainGlyph');
-      const pop = glyph && $('brainLearnPop');
-      if (pop) {
-        pop.textContent = 'New lesson';
-        pop.dataset.verdict = '';
-        pop.classList.remove('show');
-        void pop.offsetWidth;
-        pop.classList.add('show');
-        clearTimeout(pop._timer);
-        pop._timer = setTimeout(() => pop.classList.remove('show'), 2400);
-      }
+    if (first && !force) return true;
+    if (first && force) return true;
+    const glyph = $('rangerBrainGlyph');
+    const pop = glyph && $('brainLearnPop');
+    if (pop) {
+      pop.textContent = 'New lesson';
+      pop.dataset.verdict = '';
+      pop.classList.remove('show');
+      void pop.offsetWidth;
+      pop.classList.add('show');
+      clearTimeout(pop._timer);
+      pop._timer = setTimeout(() => pop.classList.remove('show'), 2400);
     }
     return true;
   }
@@ -221,34 +212,9 @@
     card?.setAttribute('data-state', label.toLowerCase().includes('watch') ? 'watch' : label.toLowerCase().includes('wait') ? 'wait' : 'learning');
   }
 
-  function decorateLessons() {
-    const list = $('brainLessons');
-    if (!list) return;
-    list.querySelectorAll('li').forEach((li) => {
-      if (li.dataset.refined) return;
-      li.dataset.refined = '1';
-      const small = li.querySelector('small');
-      const meta = small ? small.textContent || '' : '';
-      const chip = document.createElement('span');
-      chip.className = 'brain-lesson-chip';
-      const lower = meta.toLowerCase();
-      chip.textContent = /validated/.test(lower) ? 'Checked many times' : /provisional/.test(lower) ? 'Still checking' : 'Just started learning';
-      li.insertBefore(chip, small || null);
-      if (small) {
-        const det = document.createElement('details');
-        det.className = 'brain-evidence-details';
-        const sum = document.createElement('summary'); sum.textContent = 'How do I know?';
-        const p = document.createElement('p'); p.textContent = meta.replace(/\s*\|\s*/g, ' · ');
-        det.append(sum, p);
-        small.replaceWith(det);
-      }
-    });
-    renderLearnedCards();
-  }
-
   /* ---------- animated card scenes (game assets, drawn) ---------- */
   const scenes = [];
-  function drawCowScene(ctx, w, h, t, kind) {
+  function drawCowScene(ctx, w, h, t, kind, data) {
     // Warm daylight pasture in the same hand as the game art.
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, '#F8E8C6');
@@ -284,6 +250,41 @@
     for (let i = 0; i < 18; i += 1) {
       const gx = (((i * 67) % 100) / 100) * w, gy = h * 0.71 + (((i * 29) % 24) / 100) * h;
       ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + 1.6, gy - 4.5); ctx.stroke();
+    }
+    if (kind === 'mind') {
+      ctx.fillStyle = '#8FBF7C';
+      ctx.beginPath(); ctx.ellipse(w * 0.5, h * 0.41, w * 0.52, h * 0.13, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(90, 67, 38, .18)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, h * 0.41); ctx.lineTo(w, h * 0.41); ctx.stroke();
+    }
+    if (kind === 'timing') {
+      const hours = data && Array.isArray(data.hours) ? data.hours : [];
+      const pad = 5;
+      ctx.fillStyle = 'rgba(255, 253, 244, .88)';
+      ctx.beginPath(); ctx.roundRect(pad, pad, w - pad * 2, h - pad * 2, 8); ctx.fill();
+      ctx.strokeStyle = 'rgba(185, 139, 85, .45)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(pad, pad, w - pad * 2, h - pad * 2, 8); ctx.stroke();
+      const left = pad + 8, bottom = h - pad - 8, chartW = Math.max(10, w - pad * 2 - 16), chartH = Math.max(8, bottom - pad - 12);
+      ctx.strokeStyle = 'rgba(33, 88, 58, .12)'; ctx.lineWidth = 1;
+      for (let line = 0; line < 3; line += 1) {
+        const y = pad + 8 + line * chartH / 2;
+        ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + chartW, y); ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(90, 67, 38, .28)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(left, bottom + 1); ctx.lineTo(left + chartW, bottom + 1); ctx.stroke();
+      const count = hours.length || 12;
+      const step = chartW / count;
+      for (let i = 0; i < count; i += 1) {
+        const hour = hours[i] || { key: i, winRate: 0.5, verdict: 'insufficient_evidence' };
+        const rate = Number.isFinite(hour.winRate) ? hour.winRate : 0.5;
+        const bh = Math.max(4, chartH * Math.max(0.08, Math.min(1, (rate - 0.25) / 0.55)));
+        const x = left + i * step;
+        ctx.fillStyle = hour.verdict === 'favorable' ? '#5C9B58' : hour.verdict === 'unfavorable' ? '#B3684D' : '#B98B55';
+        ctx.globalAlpha = hour.key === (data && data.currentHour && data.currentHour.key) ? 1 : 0.66;
+        ctx.beginPath(); ctx.roundRect(x + Math.max(1, step * 0.12), bottom - bh, Math.max(2, step * 0.68), bh, 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      return;
     }
     const bob = reduce() ? 0 : Math.sin(t / 760) * 1.4;
     if (kind === 'learned') {
@@ -355,7 +356,8 @@
     // ---------- observation scene: ranger + cow ----------
     // cow
     ctx.save();
-    ctx.translate(w * (kind === 'mind' ? 0.68 : 0.66), h * 0.62 + bob);
+    ctx.translate(w * (kind === 'mind' ? 0.74 : 0.66), h * (kind === 'mind' ? 0.24 : 0.62) + bob);
+    if (kind === 'mind') ctx.scale(2, 2);
     ctx.fillStyle = 'rgba(48, 30, 10, .2)'; ctx.beginPath(); ctx.ellipse(0, 12, 22, 5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#FFF9E9'; ctx.beginPath(); ctx.ellipse(0, -8, 21, 12, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(0, -8, 21, 12, 0, 0, Math.PI * 2); ctx.stroke();
@@ -367,7 +369,8 @@
     ctx.restore();
     // ranger with a notebook
     ctx.save();
-    ctx.translate(w * (kind === 'memory' ? 0.2 : 0.18), h * 0.7 + bob);
+    ctx.translate(w * (kind === 'mind' ? 0.14 : kind === 'memory' ? 0.2 : 0.18), h * (kind === 'mind' ? 0.27 : 0.7) + bob);
+    if (kind === 'mind') ctx.scale(2, 2);
     ctx.fillStyle = 'rgba(33, 88, 58, .22)'; ctx.beginPath(); ctx.ellipse(0, 8, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#393a3d'; ctx.fillRect(-7, -1, 5, 12); ctx.fillRect(2, -1, 5, 12);
     ctx.fillStyle = '#21583A'; ctx.beginPath(); ctx.roundRect(-9, -15, 18, 16, 3); ctx.fill();
@@ -382,6 +385,28 @@
     ctx.strokeStyle = 'rgba(33, 88, 58, .55)'; ctx.beginPath(); ctx.moveTo(2.5, 3.5); ctx.lineTo(10.5, 3.5); ctx.moveTo(2.5, 6.5); ctx.lineTo(8.5, 6.5); ctx.stroke();
     ctx.restore();
     ctx.restore();
+    if (kind === 'mind' && !reduce()) {
+      const cx = w * 0.74, cy = h * 0.22;
+      const half = Math.min(w, h) * 0.18;
+      ctx.strokeStyle = 'rgba(201, 151, 63, .85)';
+      ctx.lineWidth = 1.4;
+      for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const x = cx + sx * half, y = cy + sy * half * 0.75;
+        ctx.beginPath();
+        ctx.moveTo(x, y + sy * -6);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x + sx * -6, y);
+        ctx.stroke();
+      }
+      const sweep = ((t / 1400) % 1);
+      ctx.strokeStyle = 'rgba(110, 173, 104, .45)';
+      ctx.beginPath();
+      ctx.moveTo(cx - half, cy - half * 0.75 + sweep * half * 1.5);
+      ctx.lineTo(cx + half, cy - half * 0.75 + sweep * half * 1.5);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(33, 88, 58, .9)';
+      ctx.beginPath(); ctx.arc(cx + half - 2, cy - half * 0.75 + 2, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
     // soft attention sparks between ranger and cow
     if (!reduce() && kind === 'mind') {
       for (let i = 0; i < 2; i += 1) {
@@ -489,15 +514,18 @@
   function mountScenes() {
     mountPortrait();
     compactTabLabels();
-    const panes = [$('brainPaneMind'), $('brainPaneLearned'), $('brainPaneMemory')].filter(Boolean);
-    for (const pane of panes) {
-      if (pane.querySelector('.brain-card-scene')) continue;
-      const canvas = document.createElement('canvas');
-      canvas.className = 'brain-card-scene';
+    scenes.length = 0;
+    const defs = [
+      ['brainHeroScene', 'mind'],
+      ['brainLearnScene', 'learned'],
+      ['brainPatternScene', 'timing'],
+      ['brainMemoryScene', 'memory'],
+    ];
+    for (const [id, kind] of defs) {
+      const canvas = $(id);
+      if (!canvas) continue;
       canvas.setAttribute('aria-hidden', 'true');
-      const kind = pane.id === 'brainPaneLearned' ? 'learned' : pane.id === 'brainPaneMemory' ? 'memory' : 'mind';
-      pane.insertBefore(canvas, pane.firstChild);
-      scenes.push({ canvas, kind });
+      scenes.push({ canvas, kind, data: null });
     }
   }
 
@@ -506,14 +534,17 @@
 
   function scenesVisible() {
     const panel = $('rangerBrainPanel');
-    return !!panel && !panel.hidden && !document.hidden;
+    if (!panel || panel.hidden || document.hidden) return false;
+    return scenes.some((scene) => scene.canvas.isConnected && scene.canvas.getClientRects().length > 0);
   }
 
   function paintScenes(now) {
     for (const scene of scenes) {
+      if (!scene.canvas.isConnected || !scene.canvas.getClientRects().length) continue;
       const rect = scene.canvas.getBoundingClientRect();
-      scene.w = Math.max(120, Math.round(rect.width));
-      scene.h = Math.max(56, Math.round(rect.height));
+      if (!rect.width || !rect.height) continue;
+      scene.w = Math.max(1, Math.round(rect.width));
+      scene.h = Math.max(1, Math.round(rect.height));
       const w = scene.w, h = scene.h;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       if (scene.canvas.width !== w * dpr || scene.canvas.height !== h * dpr) {
@@ -522,14 +553,12 @@
       const ctx = scene.canvas.getContext('2d');
       if (!ctx) continue;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCowScene(ctx, w, h, now, scene.kind);
+      drawCowScene(ctx, w, h, now, scene.kind, scene.data);
     }
     paintPortrait(now);
     sceneDirty = false;
   }
 
-  // The card scenes are decoration: never spend a frame on them while the
-  // brain menu is closed or the tab is hidden.
   function loopScenes(now) {
     if (!scenesVisible()) { sceneRaf = 0; return; }
     if (!sceneLastPaint || now - sceneLastPaint >= SCENE_FRAME_MS) {
@@ -544,6 +573,15 @@
     if (!sceneRaf && scenesVisible()) sceneRaf = requestAnimationFrame(loopScenes);
   }
 
+  window.addEventListener('zeronine:brain-report', (event) => {
+    const data = (event && event.detail) || {};
+    for (const scene of scenes) {
+      if (scene.kind === 'timing') scene.data = { hours: data.hours || [], currentHour: data.currentHour || null };
+    }
+    const signature = (data.lessons || []).map((lesson) => String(lesson.id || lesson.topic || '') + ':' + String(lesson.outcomes || 0) + ':' + String(lesson.validity || '')).join('|');
+    noteLessonChange(signature);
+    startScenes(true);
+  });
   window.addEventListener('resize', () => { sceneDirty = true; startScenes(); }, { passive: true });
 
   /* ---------- sniper suggestion: tether + countdown + override info ---------- */
@@ -751,7 +789,7 @@
     const box = document.createElement('section');
     box.id = 'brainReplayBox';
     box.className = 'brain-memory-card';
-    box.innerHTML = '<strong>Memory replay (read-only)</strong><p class="brain-friendly-note" id="brainReplayNote">Pick a finished practice result to watch a short, read-only recap. This is a recap of a practice result — never a real trade.</p><div class="brain-memory-actions" id="brainReplayActions" role="list" aria-label="Finished practice results"></div><div class="brain-replay-stage" id="brainReplayStage" aria-label="Practice result visual recap" hidden><div class="brain-replay-ground"></div><div class="brain-replay-ranger" aria-hidden="true"><span class="brain-replay-label">Ranger</span></div><div class="brain-replay-cow" id="brainReplayCow" aria-hidden="true"><span class="brain-replay-label">Cow</span></div><div class="brain-replay-arrow" aria-hidden="true"></div><div class="brain-replay-result" id="brainReplayResult" hidden></div><div class="brain-replay-caption" id="brainReplayCaption"></div></div>';
+    box.innerHTML = '<strong>Memory replay (read-only)</strong><p class="brain-friendly-note" id="brainReplayNote">Pick a finished practice result to watch a short, read-only recap. This is a recap of a practice result — never a real trade.</p><div class="brain-memory-actions" id="brainReplayActions" role="list" aria-label="Finished practice results"></div><div class="brain-replay-stage" id="brainReplayStage" aria-label="Practice result visual recap" hidden><canvas class="brain-replay-scene" id="brainReplayScene" aria-hidden="true"></canvas><div class="brain-replay-ground"></div><div class="brain-replay-ranger" aria-hidden="true"><span class="brain-replay-label">Ranger</span></div><div class="brain-replay-cow" id="brainReplayCow" aria-hidden="true"><span class="brain-replay-label">Cow</span></div><div class="brain-replay-arrow" aria-hidden="true"></div><div class="brain-replay-result" id="brainReplayResult" hidden></div><div class="brain-replay-caption" id="brainReplayCaption"></div></div>';
     const scene = pane.querySelector('.brain-card-scene');
     pane.insertBefore(box, scene ? scene.nextSibling : pane.firstChild);
     return box;
@@ -772,6 +810,7 @@
     const t = mem.updated_at || mem.exitEpoch || mem.opened_at || mem.ts;
     const when = t ? new Date(Number(t) < 2e10 ? Number(t) * 1000 : Number(t)).toLocaleString() : 'time unavailable';
     cap.textContent = `Practice recap · ${market} ${dir} ${barrier} · ${when}. Virtual only.`;
+    paintReplayScene(stage);
     void stage.offsetWidth;
     stage.classList.add('playing');
     replayTimer = setTimeout(() => {
@@ -781,6 +820,42 @@
       cap.textContent += won ? ' I will keep studying setups like this.' : ' I will keep checking whether this setup holds up.';
       replayTimer = setTimeout(() => { stage.classList.remove('playing'); }, 1200);
     }, reduce() ? 0 : 900);
+  }
+
+  function paintMemoryThumb(canvas, won) {
+    const size = 36;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = size * dpr; canvas.height = size * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#CFDFA9'; ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#8FBF7C'; ctx.fillRect(0, size * 0.58, size, size * 0.42);
+    ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(0, size * 0.66); ctx.lineTo(size, size * 0.66); ctx.stroke();
+    ctx.fillStyle = '#FFF9E9';
+    ctx.beginPath(); ctx.ellipse(size * 0.55, size * 0.48, 9, 5.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#B98B55';
+    ctx.beginPath(); ctx.ellipse(size * 0.5, size * 0.44, 4.5, 2.5, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#D9C9A6';
+    ctx.fillRect(size * 0.43, size * 0.5, 2, 6); ctx.fillRect(size * 0.62, size * 0.5, 2, 6);
+    ctx.fillStyle = won ? '#21583A' : '#B3684D';
+    ctx.beginPath(); ctx.arc(size - 6, 6, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFF9E9'; ctx.font = '700 5px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(won ? 'W' : 'L', size - 6, 6.4);
+  }
+
+  function paintReplayScene(stage) {
+    const canvas = $('brainReplayScene');
+    if (!stage || !canvas) return;
+    const w = Math.max(240, Math.round(stage.clientWidth || 280));
+    const h = Math.max(120, Math.round(stage.clientHeight || 150));
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawCowScene(ctx, w, h, 0, 'memory');
   }
 
   function renderMemoryReplay() {
@@ -804,6 +879,11 @@
       const market = mem.market || mem.symbol || 'Market';
       const barrier = mem.barrier ?? mem.targetDigit ?? '';
       b.innerHTML = `<span class="brain-memory-tile-state">${won ? 'WIN' : 'LOSS'}</span><span class="brain-memory-tile-main">${market} ${dir} ${barrier}</span><span class="brain-memory-tile-sub">Practice recap</span>`;
+      const thumb = document.createElement('canvas');
+      thumb.className = 'brain-memory-thumb';
+      thumb.setAttribute('aria-hidden', 'true');
+      b.insertBefore(thumb, b.firstChild);
+      paintMemoryThumb(thumb, won);
       b.setAttribute('aria-label', `${won ? 'Practice win' : 'Practice loss'}, ${market} ${dir} ${barrier}. Play read-only visual recap.`);
       b.addEventListener('click', () => playReplay(mem));
       actions.appendChild(b);
@@ -1081,35 +1161,94 @@
     }, reduce() ? 0 : 420);
   }
 
-  /* ---------- overview mirror + account scoping ---------- */
-  function syncOverview() {
-    const host = $('brainOverviewLessons');
-    if (!host) return;
-    const list = $('brainLessons');
-    const rows = list ? Array.from(list.children).slice(0, 2) : [];
-    host.replaceChildren();
-    if (!rows.length) {
-      const empty = document.createElement('p');
-      empty.className = 'brain-overview-empty';
-      empty.textContent = 'No validated lesson yet. Finished paper games come first.';
-      host.appendChild(empty);
-      return;
-    }
-    for (const row of rows) {
-      const item = document.createElement('div');
-      item.className = 'brain-overview-lesson';
-      const text = document.createElement('b');
-      text.textContent = (row.childNodes[0]?.textContent || row.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 150);
-      item.appendChild(text);
-      const metaEl = row.querySelector('small');
-      if (metaEl) {
-        const meta = document.createElement('small');
-        meta.textContent = (metaEl.textContent || '').split('|').map((part) => part.trim()).slice(0, 2).filter(Boolean).join(' · ');
-        if (meta.textContent) item.appendChild(meta);
-      }
-      host.appendChild(item);
-    }
+  /* ---------- overview card interactions ---------- */
+  function setSuggestionOpen(open) {
+    const cardEl = $('brainSuggestionCard');
+    const button = $('brainHeroWhyToggle');
+    if (!cardEl || !button) return;
+    cardEl.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    button.textContent = open ? 'Hide reason' : 'Why this state?';
   }
+
+  function toggleLessonCard(cardEl, force) {
+    if (!cardEl) return;
+    const button = cardEl.querySelector('.brain-lesson-summary');
+    const body = cardEl.querySelector('.brain-lesson-body');
+    if (!button || !body) return;
+    const open = typeof force === 'boolean' ? force : body.hidden;
+    body.hidden = !open;
+    cardEl.dataset.open = String(open);
+    button.setAttribute('aria-expanded', String(open));
+    const see = button.querySelector('.brain-lesson-see');
+    if (see) see.textContent = open ? 'Hide why' : 'See why';
+  }
+
+  function openLessons(lessonIndex) {
+    $('brainTabLearned')?.click();
+    if (lessonIndex == null || lessonIndex === '') return;
+    requestAnimationFrame(() => {
+      const cardEl = document.querySelector('.brain-lesson-card[data-lesson-index="' + String(lessonIndex) + '"]');
+      if (!cardEl) return;
+      toggleLessonCard(cardEl, true);
+      cardEl.scrollIntoView({ block: 'nearest', behavior: reduce() ? 'auto' : 'smooth' });
+    });
+  }
+
+  function showHourDetail(barEl) {
+    const host = $('brainHourDetail');
+    if (!host || !barEl) return;
+    const outcomes = Number(barEl.dataset.outcomes) || 0;
+    const rate = barEl.dataset.winRate === '' ? null : Number(barEl.dataset.winRate);
+    const heading = document.createElement('b');
+    heading.textContent = (barEl.dataset.label || 'This hour') + ' · ' + outcomes + ' settled paper result' + (outcomes === 1 ? '' : 's');
+    const line = document.createElement('span');
+    if (!outcomes) {
+      line.textContent = ' No finished practice games in this hour yet.';
+    } else {
+      const verdict = plainVerdict(barEl.dataset.verdict);
+      line.textContent = ' ' + (Number.isFinite(rate) ? pct(rate) + ' paper wins. ' : '') + verdict + '. ' + (barEl.dataset.reason || 'Each hour is judged only on its own results.');
+    }
+    host.replaceChildren(heading, line);
+    host.hidden = false;
+    for (const button of document.querySelectorAll('#brainWindowHours .brain-hour-bar')) {
+      button.setAttribute('aria-pressed', 'false');
+    }
+    barEl.setAttribute('aria-pressed', 'true');
+  }
+
+  function wireOverviewInteractions() {
+    $('brainHeroWhyToggle')?.addEventListener('click', () => {
+      setSuggestionOpen($('brainSuggestionCard')?.hidden !== false);
+    });
+    $('brainLearningCard')?.addEventListener('click', () => openLessons(null));
+    $('brainLearningCard')?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      openLessons(null);
+    });
+    $('brainDiscoveryCard')?.addEventListener('click', () => {
+      const index = $('brainDiscoveryCard')?.dataset.lessonIndex;
+      openLessons(index === '' ? null : index);
+    });
+    $('brainDiscoveryCard')?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      const index = $('brainDiscoveryCard')?.dataset.lessonIndex;
+      openLessons(index === '' ? null : index);
+    });
+    $('brainPatternsMore')?.addEventListener('click', () => openLessons(null));
+    $('brainWindowHours')?.addEventListener('click', (event) => {
+      const barEl = event.target.closest && event.target.closest('.brain-hour-bar');
+      if (barEl) showHourDetail(barEl);
+    });
+    $('brainLessons')?.addEventListener('click', (event) => {
+      const button = event.target.closest && event.target.closest('.brain-lesson-summary');
+      if (!button) return;
+      toggleLessonCard(button.closest('.brain-lesson-card'));
+    });
+  }
+
   function currentAccount() {
     try { return String(bridge()?.account?.() ?? ''); } catch { return ''; }
   }
@@ -1119,22 +1258,17 @@
     if (account === learnedAccount) return;
     learnedAccount = account;
     renderLearnedCards(true);
-    syncOverview();
   }
   function wireFindCow() {
     $('brainFindCow')?.addEventListener('click', () => { suggest(); });
-    $('brainOverviewLessonsButton')?.addEventListener('click', () => $('brainTabLearned')?.click());
   }
 
   function init() {
     mountScenes();
     wireFindCow();
-    syncOverview();
+    wireOverviewInteractions();
     syncAccount();
     renderLearnedCards(true);
-    noteLessonChange(true);
-    const lessonsList = $('brainLessons');
-    if (lessonsList) new MutationObserver(() => noteLessonChange()).observe(lessonsList, { childList: true, subtree: true, characterData: true });
     compactTabLabels();
     wakeGlyph();
     hideLearningBubble();
@@ -1142,15 +1276,9 @@
     if (bubble) new MutationObserver(hideLearningBubble).observe(bubble, { childList: true, characterData: true, subtree: true });
     ensureReplayBox();
     renderMemoryReplay();
-    decorateLessons();
     refreshThinking();
     wireAutoSnipe();
     trimDuplicateNotes();
-    const root = $('rangerBrainPanel');
-    if (root) {
-      let t = 0;
-      new MutationObserver(() => { clearTimeout(t); t = setTimeout(() => { decorateLessons(); }, 80); }).observe(root, { childList: true, subtree: true, characterData: true });
-    }
     document.addEventListener('click', (e) => {
       const t = e.target;
       if (t && t.closest && (t.closest('#rangerBrainGlyph') || t.closest('#brainTabThinking') || t.closest('[data-tab="thinking"]'))) {
@@ -1161,10 +1289,24 @@
     // runtime handles that, so only keep the menu state in sync here.
     const panel = $('rangerBrainPanel');
     if (panel) {
+      for (const button of panel.querySelectorAll('[data-tab]')) {
+        button.addEventListener('click', () => {
+          const bodyEl = panel.querySelector('.ranger-brain-body');
+          if (bodyEl) bodyEl.scrollTop = 0;
+          startScenes(true);
+          if (button.dataset.tab === 'memory') renderMemoryReplay();
+        });
+      }
       new MutationObserver(() => {
         const open = !panel.hidden;
         document.body?.classList?.toggle('brain-zoomed', open);
-        if (open) { startScenes(true); syncAccount(); noteLessonChange(); syncOverview(); } else clearSuggestion();
+        if (open) {
+          startScenes(true);
+          syncAccount();
+          renderMemoryReplay();
+        } else {
+          clearSuggestion();
+        }
       }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
     }
   }
