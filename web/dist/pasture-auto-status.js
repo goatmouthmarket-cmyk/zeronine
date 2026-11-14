@@ -17,8 +17,10 @@
     }
     chip.hidden = !lastState.running;
     if (lastState.running) {
-      chip.textContent = lastState.status || 'Running';
-      chip.title = lastState.status || 'Ranger Auto running';
+      const label = lastState.status || 'Running';
+      const title = lastState.status || 'Ranger Auto running';
+      if (chip.textContent !== label) chip.textContent = label;
+      if (chip.title !== title) chip.title = title;
     }
   }
 
