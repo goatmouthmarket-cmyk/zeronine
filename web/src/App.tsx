@@ -1110,7 +1110,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
       setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, manualPreview.account.currency)} · payout ${fmtMoney(result.trade.payout, manualPreview.account.currency)}`);
       roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-review-purchased' }, window.location.origin);
-      await refreshTrades();
+      void refreshTrades();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setManualError(true);
