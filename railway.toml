@@ -2,7 +2,7 @@
 
 [build]
 builder = "NIXPACKS"
-buildCommand = "echo \"web bundle prebuilt locally and uploaded\""
+buildCommand = "npm run build:web"
 
 [deploy]
 startCommand = "node src/main.ts"
