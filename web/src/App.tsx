@@ -15,8 +15,6 @@ import {
   unlockDashboard,
   oauthStart,
   logout,
-  arm,
-  disarmRangerAutomation,
   stopAutomation,
   selectMarket,
   manualTrade,
@@ -1536,13 +1534,26 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           respond(false, undefined, 'Connect an owner-authorized real account before arming ranger automation.');
           return;
         }
-        void arm().then((armedUntil) => respond(true, armedUntil)).catch((error) => {
+        void fetch('/api/player/automation/arm', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ confirmRealFunds: true }),
+        }).then(async (response) => {
+          const body = await response.json().catch(() => ({})) as { armedUntil?: number; error?: string };
+          if (!response.ok) throw new Error(body.error || 'The server did not arm Ranger Auto.');
+          respond(true, Number(body.armedUntil));
+        }).catch((error) => {
           respond(false, undefined, error instanceof Error ? error.message : String(error));
         });
         return;
       }
       if (message.type === 'zeronine:room-auto-disarm') {
-        void disarmRangerAutomation().then(() => {
+        void Promise.all([
+          fetch('/api/player/automation/stop', { method: 'POST', credentials: 'same-origin' }),
+          fetch('/api/player/automation/disarm', { method: 'POST', credentials: 'same-origin' }),
+        ]).then(async ([stopResponse, disarmResponse]) => {
+          const body = await disarmResponse.json().catch(() => ({})) as { error?: string };
+          if (!stopResponse.ok || !disarmResponse.ok) throw new Error(body.error || 'Railway could not disarm Ranger Auto.');
           roomFrameRef.current?.contentWindow?.postMessage({
             type: 'zeronine:room-auto-disarm-result',
             ok: true,
