@@ -974,7 +974,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for settlement' });
       setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, preview.account.currency)} · payout ${fmtMoney(result.trade.payout, preview.account.currency)}`);
       roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-review-purchased' }, window.location.origin);
-      void refreshTrades();
+      if (!usePlayerTrading) void refreshTrades();
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1041,7 +1041,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           const result = await confirmManualTrade(preview.previewId, crypto.randomUUID());
           setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for settlement' });
           setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, preview.account.currency)} · payout ${fmtMoney(result.trade.payout, preview.account.currency)}`);
-          void refreshTrades();
+          if (!usePlayerTrading) void refreshTrades();
           return true;
         }
         setManualPreview(preview);
@@ -1110,7 +1110,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       setManualExecution({ stage: 'purchased', trade: result.trade, message: 'Purchase confirmed · waiting for the settlement digit' });
       setManualMsg(`Contract purchased @ ${fmtMoney(result.trade.ask, manualPreview.account.currency)} · payout ${fmtMoney(result.trade.payout, manualPreview.account.currency)}`);
       roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-review-purchased' }, window.location.origin);
-      void refreshTrades();
+      if (!usePlayerTrading) void refreshTrades();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setManualError(true);
