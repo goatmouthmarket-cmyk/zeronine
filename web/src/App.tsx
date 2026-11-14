@@ -1589,6 +1589,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         <iframe
           ref={roomFrameRef}
           class="trading-room-frame"
+          style={{ display: 'block', width: '100%', height: '100%', minWidth: 0, minHeight: 0, border: 0 }}
           src={`/trading-room.html${pastureRoom ? `?room=${encodeURIComponent(pastureRoom)}` : ''}`}
           title="Deriv Cows interactive trading pasture"
           onLoad={() => { postRoomState(); syncDetailHud(); }}
