@@ -12,7 +12,7 @@ import { registerPlayerTrading } from './api/playerTrading.ts';
 import { MarketRegistry } from './core/marketState.ts';
 import { DerivPublicFeed } from './deriv/publicFeed.ts';
 import { DerivPrivateClient } from './deriv/privateClient.ts';
-import { MultiplayerStore } from './execution/multiplayerStore.ts';
+import { MultiplayerStore, multiplayerConnectionString } from './execution/multiplayerStore.ts';
 import { Automation } from './strategy/automation.ts';
 import { DecisionMemory } from './intelligence/decisionMemory.ts';
 import {
@@ -137,7 +137,8 @@ async function main(): Promise<void> {
   await app.register(fastifyCookie, { secret: config.sessionSecret });
 
   const hub = new Hub();
-  const telemetry = new TelemetryService(path.join(config.dataDir, 'telemetry.db'), config.telemetryRetentionDays, config.telemetryEnabled);
+  const telemetryDatabaseUrl = process.env.MULTIPLAYER_DATABASE_URL ? multiplayerConnectionString(process.env.MULTIPLAYER_DATABASE_URL, process.env.MULTIPLAYER_POOLER_HOST, process.env.MULTIPLAYER_POOLER_USER) : '';
+  const telemetry = new TelemetryService(path.join(config.dataDir, 'telemetry.db'), config.telemetryRetentionDays, config.telemetryEnabled, telemetryDatabaseUrl, config.telemetryTickIntervalMs, config.telemetryScanIntervalMs);
   hub.on((event) => telemetry.record(event));
   let lastProvenDigitsMode = '';
   let entrySnapshot: ReturnType<EntryResearchRuntime['state']> | null = null;
