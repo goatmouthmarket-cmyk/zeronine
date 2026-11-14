@@ -216,7 +216,6 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (!risk.ok) return fail(reply, 409, `trade blocked: ${risk.reason}`);
       const client = await clients.connect(user.accountId, user.token);
       if (await reconcile(user.accountId, client)) return fail(reply, 409, 'account has an open or uncertain contract');
-      if ((await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'Deriv account already has an open contract');
       const offered = await quote(client, order, info.currency);
       if (offered.askPrice > preview.ask * 1.02 || offered.payout < preview.payout * .98 || offered.askPrice > info.balance || !Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice) return fail(reply, 409, 'quote changed; review again');
       if ((order.minEdge > 0 && modelEdge(order, offered.askPrice, offered.payout) < order.minEdge) || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'market no longer meets entry conditions');
