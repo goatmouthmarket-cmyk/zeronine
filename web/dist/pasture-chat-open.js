@@ -20,7 +20,14 @@
   visibility.className = 'chat-visibility-control';
   visibility.setAttribute('aria-controls', 'chatMessages chatForm');
   visibility.setAttribute('aria-expanded', 'true');
-  visibility.textContent = 'Hold to hide';
+  visibility.setAttribute('aria-label', 'Hide chat');
+  visibility.title = 'Hide chat';
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('aria-hidden', 'true');
+  const iconPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  icon.append(iconPath);
+  visibility.append(icon);
   panel.append(visibility);
   let collapsed = false;
   let fadeTimer = 0;
@@ -43,8 +50,9 @@
   function setCollapsed(next) {
     collapsed = !!next;
     panel.classList.toggle('chat-collapsed', collapsed);
-    visibility.textContent = collapsed ? 'Hold to show chat' : 'Hold to hide';
+    iconPath.setAttribute('d', collapsed ? 'M4 5h16v11H9l-5 4V5Zm4 5h8M8 13h5' : 'M4 5h16v11H9l-5 4V5Zm4 6h8');
     visibility.setAttribute('aria-label', collapsed ? 'Show chat' : 'Hide chat');
+    visibility.title = collapsed ? 'Show chat' : 'Hide chat';
     visibility.setAttribute('aria-expanded', String(!collapsed));
     if (messages) messages.hidden = collapsed;
     if (form) form.hidden = collapsed;
@@ -75,6 +83,7 @@
   form?.addEventListener('submit', wakeHistory);
   coarse?.addEventListener?.('change', updatePrompt);
   window.addEventListener('resize', updatePrompt, { passive: true });
+  setCollapsed(false);
   updatePrompt();
   wakeHistory();
 

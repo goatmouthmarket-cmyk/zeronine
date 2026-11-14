@@ -1,0 +1,9 @@
+#rangerBrainPanel .brain-recorded-replays { display: grid; gap: 8px; min-width: 0; padding: 10px; border: 1px solid #c59b6c; border-radius: 10px; background: #fff3dc; }
+#rangerBrainPanel .brain-recorded-replays h3 { margin: 0; color: #254e32; font: 800 14px/1.2 Inter, system-ui, sans-serif; }
+#rangerBrainPanel .brain-recorded-description, #rangerBrainPanel .brain-recorded-state, #rangerBrainPanel .brain-recorded-caption { margin: 0; color: #59432f; font: 600 11px/1.4 Inter, system-ui, sans-serif; }
+#rangerBrainPanel .brain-recorded-list { display: grid; gap: 5px; }
+#rangerBrainPanel .brain-recorded-item { min-height: 40px; padding: 7px 9px; border: 1px solid #b79269; border-radius: 7px; background: #fffaf0; color: #254e32; font: 700 11px/1.35 Inter, system-ui, sans-serif; text-align: left; cursor: pointer; }
+#rangerBrainPanel .brain-recorded-item:focus-visible { outline: 3px solid #266c40; outline-offset: 2px; }
+#rangerBrainPanel .brain-recorded-viewer { display: grid; gap: 6px; min-width: 0; }
+#rangerBrainPanel .brain-recorded-viewer[hidden] { display: none; }
+#rangerBrainPanel #brainRecordedVideo { display: block; width: 100%; max-height: min(46vh, 310px); background: #193526; object-fit: contain; }

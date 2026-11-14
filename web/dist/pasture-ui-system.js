@@ -395,15 +395,19 @@
     if (paperTrade) {
       const won = paperTrade.status === 'won';
       const lost = paperTrade.status === 'lost';
-      const profit = Number(paperTrade.profit);
-      const detail = Number.isFinite(profit) ? (profit >= 0 ? '+' : '') + profit.toFixed(2) : '';
+      const profit = paperTrade.profit;
+      const market = String(paperTrade.market || paperTrade.symbol || '').trim();
+      const direction = String(paperTrade.direction || '').toUpperCase();
+      const side = direction === 'OVER' || direction === 'UNDER' ? direction : '';
+      const barrier = Number.isInteger(paperTrade.barrier) && paperTrade.barrier >= 0 && paperTrade.barrier <= 9 ? String(paperTrade.barrier) : '';
+      const detail = typeof profit === 'number' && Number.isFinite(profit) ? 'Virtual P&L ' + (profit >= 0 ? '+' : '') + profit.toFixed(2) : 'Virtual P&L unavailable';
       return {
         type: 'paper_result',
-        title: won ? 'Paper win' : lost ? 'Paper loss' : 'Paper result',
-        message: text || 'Practice result recorded.',
+        title: won ? 'PAPER · WIN' : lost ? 'PAPER · LOSS' : 'PAPER · RESULT',
+        message: [market, [side, barrier].filter(Boolean).join(' ')].filter(Boolean).join(' · ') || 'Practice result recorded',
         detail,
         ms: 5200,
-        key: 'paper:' + (paperTrade.id || text),
+        key: 'paper:' + (paperTrade.id || text) + ':' + String(paperTrade.status || ''),
       };
     }
     if (/won|win\b|\+\$|profit/i.test(text)) return { type: 'trade_result', title: 'Trade won', ms: 5200 };
@@ -593,6 +597,8 @@
 
   function notifyLegacy(message, paperTrade) {
     const text = String(message || '');
+    // The paper hourglass already shows an open trade; keep the result as one notice.
+    if (paperTrade?.status === 'open') return;
     // Routine background refreshes belong in history, not on screen.
     if (/^(refresh|refreshed|sync|synced|updated|saved)\b/i.test(text)) {
       notifications.history.push({ type: 'info', title: 'Background', message: text, at: Date.now() });
@@ -608,7 +614,7 @@
       }
     }
     const base = classifyLegacy(message, paperTrade);
-    enqueue(normalize({ ...base, message: text }, text));
+    enqueue(normalize(paperTrade ? base : { ...base, message: text }, text));
   }
 
   const legacyNotify = typeof window.notify === 'function' ? window.notify : null;

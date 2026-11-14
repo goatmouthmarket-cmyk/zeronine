@@ -1,0 +1,18 @@
+/* Keep primary actions readable without removing their disabled states. */
+#rangerAutoHud #rangerAutoStart:not(:disabled),
+#rangerAutoRiskPreview #rangerRiskPreviewConfirm:not(:disabled) {
+  background: #175b36 !important; color: #fff !important; border-color: #10482a !important;
+}
+#rangerAutoHud #rangerAutoStart[data-active="true"]:not(:disabled) { background: #8b2732 !important; border-color: #6b1c25 !important; }
+#rangerAutoHud #rangerAutoStart:not(:disabled) :is(span, svg),
+#rangerAutoRiskPreview #rangerRiskPreviewConfirm:not(:disabled) :is(span, svg) { color: #fff !important; }
+#rangerAutoHud #rangerAutoStart:disabled,
+#rangerAutoRiskPreview #rangerRiskPreviewConfirm:disabled {
+  background: #e5d9c6 !important; color: #514436 !important; border-color: #a9957d !important; opacity: 1 !important; cursor: not-allowed;
+}
+#rangerAutoHud #rangerAutoStart:disabled :is(span, svg),
+#rangerAutoRiskPreview #rangerRiskPreviewConfirm:disabled :is(span, svg) { color: #514436 !important; }
+#rangerBrainPanel #brainFindCow:not(:disabled),
+#rangerBrainPanel #brainFindCow:not(:disabled) :is(span, svg) { color: #fff !important; }
+.dc-toast[data-type="paper_result"] .dc-toast-body strong { color: #174d30; }
+.dc-toast[data-type="paper_result"] .dc-toast-detail { display: block; color: #4e4031; }

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../web/public/pasture-brain-refine.css', import.meta.url), 'utf8');
 const journal = readFileSync(new URL('../web/public/pasture-brain-refine.js', import.meta.url), 'utf8');
+const recordedReplay = readFileSync(new URL('../web/public/brain-recorded-replay.js', import.meta.url), 'utf8');
 
 test('the Brain overview owns four visual cards and no duplicate data view', () => {
   for (const id of ['brainHeroCard', 'brainLearningCard', 'brainPatternsCard', 'brainDiscoveryCard']) {
@@ -53,10 +54,12 @@ test('card scenes only paint while visible and honor reduced motion', () => {
   assert.ok(css.includes('@media (max-width: 999.98px)'));
 });
 
-test('lessons and memories are graphical, read-only interactions', () => {
+test('lessons and recorded memories are read-only interactions', () => {
   assert.ok(journal.includes('toggleLessonCard('));
   assert.ok(journal.includes('See why'));
-  assert.ok(journal.includes('brain-memory-thumb'));
-  assert.ok(journal.includes('paintMemoryThumb('));
-  assert.ok(journal.includes('Read-only') || html.includes('Read-only'));
+  assert.ok(recordedReplay.includes('window.__pastureReplay?.get(row.id)'));
+  assert.ok(recordedReplay.includes('Earlier plays without recordings cannot be replayed'));
+  assert.equal(journal.includes('paintMemoryThumb('), false);
+  assert.equal(journal.includes('function playReplay('), false);
 });
+

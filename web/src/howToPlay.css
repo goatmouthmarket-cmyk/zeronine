@@ -28,6 +28,9 @@ html:has(.view-how-to-play), body:has(.view-how-to-play) { height: 100%; overflo
 .guide-demo-panel { position: absolute; z-index: 4; top: 130px; right: max(14px,env(safe-area-inset-right)); width: min(240px,calc(100% - 28px)); padding: 10px; border: 2px solid #a66b42; border-radius: 12px; background: #f7e4c8f7; box-shadow: 0 4px #765039,0 8px 22px #17351f55; color: #503722; font-size: 10px; }
 .guide-demo-panel > div:first-child { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }.guide-demo-panel > div:first-child button { border: 0; background: transparent; color: #69432a; font-size: 20px; cursor: pointer; }
 .guide-demo-panel p { margin: 5px 0; line-height: 1.35; }.guide-demo-panel small { display: block; margin-top: 5px; color: #82674b; font-size: 9px; }
+.guide-deriv-example svg { display: block; width: 100%; max-height: 112px; margin-top: 6px; }
+.guide-brain-scene { display: block; width: 100%; height: 68px; object-fit: contain; margin: 5px 0; border-radius: 6px; background: #dceccc; }
+.guide-brain-journal-link { min-height: 34px; padding: 5px 8px; border: 1px solid #2f7447; border-radius: 6px; color: #fff9e8; background: #276d46; font: 800 10px system-ui; cursor: pointer; }
 .guide-demo-settings { display: flex; flex-wrap: wrap; gap: 4px; }.guide-demo-settings span { padding: 4px 5px; border-radius: 5px; background: #eed4b0; }.guide-demo-settings b { color: #225f3c; }
 .guide-demo-start { width: 100%; margin-top: 8px; padding: 7px; border: 1px solid #3c7d50; border-radius: 7px; background: #2d794c; color: white; font-weight: 800; cursor: pointer; }
 .guide-paper-accessible { position: absolute; left: max(14px,env(safe-area-inset-left)); top: 76px; z-index: 3; padding: 8px 10px; border: 2px solid #b88c61; border-radius: 8px; background: #fff0d6; color: #31543b; font: 800 11px system-ui; cursor: pointer; }

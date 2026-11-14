@@ -720,7 +720,6 @@
   window.__zeronineBrainSuggest = suggest;
 
   /* ---------- room state: learning + replay ---------- */
-  let paperMemories = [];
   window.addEventListener('message', (e) => {
     if (e.origin !== location.origin || e.source !== parent) return;
     const m = e.data || {};
@@ -732,119 +731,8 @@
       if (!trade || !['won', 'lost'].includes(String(trade.status))) continue;
       noteLearning(trade);
     }
-    const fromSim = (s.paperSimulation && Array.isArray(s.paperSimulation.recentTrades)) ? s.paperSimulation.recentTrades : [];
-    const fromList = Array.isArray(s.paperTrades) ? s.paperTrades : [];
-    const merged = [...fromSim, ...fromList].filter(t => t && (t.status === 'won' || t.status === 'lost'));
-    if (merged.length) paperMemories = merged.slice(0, 12);
-    renderMemoryReplay();
+
   });
-
-  function ensureReplayBox() {
-    const pane = $('brainPaneMemory');
-    if (!pane || $('brainReplayBox')) return $('brainReplayBox');
-    const box = document.createElement('section');
-    box.id = 'brainReplayBox';
-    box.className = 'brain-memory-card';
-    box.innerHTML = '<strong>Memory replay (read-only)</strong><p class="brain-friendly-note" id="brainReplayNote">Pick a finished practice result to watch a short, read-only recap. This is a recap of a practice result — never a real trade.</p><div class="brain-memory-actions" id="brainReplayActions" role="list" aria-label="Finished practice results"></div><div class="brain-replay-stage" id="brainReplayStage" aria-label="Practice result visual recap" hidden><canvas class="brain-replay-scene" id="brainReplayScene" aria-hidden="true"></canvas><div class="brain-replay-ground"></div><div class="brain-replay-ranger" aria-hidden="true"><span class="brain-replay-label">Ranger</span></div><div class="brain-replay-cow" id="brainReplayCow" aria-hidden="true"><span class="brain-replay-label">Cow</span></div><div class="brain-replay-arrow" aria-hidden="true"></div><div class="brain-replay-result" id="brainReplayResult" hidden></div><div class="brain-replay-caption" id="brainReplayCaption"></div></div>';
-    const scene = pane.querySelector('.brain-card-scene');
-    pane.insertBefore(box, scene ? scene.nextSibling : pane.firstChild);
-    return box;
-  }
-
-  let replayTimer = 0;
-  function playReplay(mem) {
-    const stage = $('brainReplayStage'), cow = $('brainReplayCow'), res = $('brainReplayResult'), cap = $('brainReplayCaption');
-    if (!stage || !cow || !res || !cap) return;
-    clearTimeout(replayTimer);
-    stage.hidden = false;
-    stage.classList.remove('playing', 'hit');
-    res.hidden = true; cow.style.opacity = '1'; cow.style.transform = '';
-    const market = mem.market || mem.symbol || 'Market';
-    const dir = String(mem.direction || mem.contract_type || '').toUpperCase().replace('DIGITOVER', 'OVER').replace('DIGITUNDER', 'UNDER');
-    const barrier = mem.barrier != null ? mem.barrier : (mem.targetDigit != null ? mem.targetDigit : '?');
-    const won = mem.status === 'won';
-    const t = mem.updated_at || mem.exitEpoch || mem.opened_at || mem.ts;
-    const when = t ? new Date(Number(t) < 2e10 ? Number(t) * 1000 : Number(t)).toLocaleString() : 'time unavailable';
-    cap.textContent = `Practice recap · ${market} ${dir} ${barrier} · ${when}. Virtual only.`;
-    paintReplayScene(stage);
-    void stage.offsetWidth;
-    stage.classList.add('playing');
-    replayTimer = setTimeout(() => {
-      stage.classList.add('hit');
-      res.hidden = false;
-      res.textContent = won ? 'Practice win' : 'Practice loss';
-      cap.textContent += won ? ' I will keep studying setups like this.' : ' I will keep checking whether this setup holds up.';
-      replayTimer = setTimeout(() => { stage.classList.remove('playing'); }, 1200);
-    }, reduce() ? 0 : 900);
-  }
-
-  function paintMemoryThumb(canvas, won) {
-    const size = 36;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = size * dpr; canvas.height = size * dpr;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#CFDFA9'; ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = '#8FBF7C'; ctx.fillRect(0, size * 0.58, size, size * 0.42);
-    ctx.strokeStyle = '#B98B55'; ctx.lineWidth = 1.2;
-    ctx.beginPath(); ctx.moveTo(0, size * 0.66); ctx.lineTo(size, size * 0.66); ctx.stroke();
-    ctx.fillStyle = '#FFF9E9';
-    ctx.beginPath(); ctx.ellipse(size * 0.55, size * 0.48, 9, 5.5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#B98B55';
-    ctx.beginPath(); ctx.ellipse(size * 0.5, size * 0.44, 4.5, 2.5, -0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#D9C9A6';
-    ctx.fillRect(size * 0.43, size * 0.5, 2, 6); ctx.fillRect(size * 0.62, size * 0.5, 2, 6);
-    ctx.fillStyle = won ? '#21583A' : '#B3684D';
-    ctx.beginPath(); ctx.arc(size - 6, 6, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFF9E9'; ctx.font = '700 5px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(won ? 'W' : 'L', size - 6, 6.4);
-  }
-
-  function paintReplayScene(stage) {
-    const canvas = $('brainReplayScene');
-    if (!stage || !canvas) return;
-    const w = Math.max(240, Math.round(stage.clientWidth || 280));
-    const h = Math.max(120, Math.round(stage.clientHeight || 150));
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = w * dpr; canvas.height = h * dpr;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawCowScene(ctx, w, h, 0, 'memory');
-  }
-
-  function renderMemoryReplay() {
-    ensureReplayBox();
-    const actions = $('brainReplayActions'), note = $('brainReplayNote');
-    if (!actions) return;
-    actions.replaceChildren();
-    const memories = paperMemories.filter(m => m && (m.status === 'won' || m.status === 'lost')).slice(0, 5);
-    if (!memories.length) {
-      if (note) note.textContent = 'Pick a finished practice result to watch a short, read-only recap once practice outcomes exist. Never a real trade.';
-      return;
-    }
-    if (note) note.textContent = 'Pick a finished practice result to watch a short, read-only recap. The scene illustrates the stored result; it never places a trade.';
-    memories.forEach((mem) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'brain-memory-tile' + (mem.status === 'won' ? ' is-win' : ' is-loss');
-      b.setAttribute('role', 'listitem');
-      const won = mem.status === 'won';
-      const dir = String(mem.direction || mem.contract_type || '').toUpperCase().replace('DIGITOVER', 'OVER').replace('DIGITUNDER', 'UNDER');
-      const market = mem.market || mem.symbol || 'Market';
-      const barrier = mem.barrier ?? mem.targetDigit ?? '';
-      b.innerHTML = `<span class="brain-memory-tile-state">${won ? 'WIN' : 'LOSS'}</span><span class="brain-memory-tile-main">${market} ${dir} ${barrier}</span><span class="brain-memory-tile-sub">Practice recap</span>`;
-      const thumb = document.createElement('canvas');
-      thumb.className = 'brain-memory-thumb';
-      thumb.setAttribute('aria-hidden', 'true');
-      b.insertBefore(thumb, b.firstChild);
-      paintMemoryThumb(thumb, won);
-      b.setAttribute('aria-label', `${won ? 'Practice win' : 'Practice loss'}, ${market} ${dir} ${barrier}. Play read-only visual recap.`);
-      b.addEventListener('click', () => playReplay(mem));
-      actions.appendChild(b);
-    });
-  }
 
   async function refreshThinking() {
     if ($('brainPaneThinking')?.hidden === false || ($('rangerBrainPanel') && !$('rangerBrainPanel').hidden)) {
@@ -1152,8 +1040,6 @@
     hideLearningBubble();
     const bubble = $('rangerBrainBubble');
     if (bubble) new MutationObserver(hideLearningBubble).observe(bubble, { childList: true, characterData: true, subtree: true });
-    ensureReplayBox();
-    renderMemoryReplay();
     refreshThinking();
     wireAutoSnipe();
     trimDuplicateNotes();
@@ -1172,7 +1058,6 @@
           const bodyEl = panel.querySelector('.ranger-brain-body');
           if (bodyEl) bodyEl.scrollTop = 0;
           startScenes(true);
-          if (button.dataset.tab === 'memory') renderMemoryReplay();
         });
       }
       new MutationObserver(() => {
@@ -1181,7 +1066,6 @@
         if (open) {
           startScenes(true);
           syncAccount();
-          renderMemoryReplay();
         } else {
           clearSuggestion();
         }
