@@ -413,7 +413,10 @@
       const direction = String(paperTrade.direction || '').toUpperCase();
       const side = direction === 'OVER' || direction === 'UNDER' ? direction : '';
       const barrier = Number.isInteger(paperTrade.barrier) && paperTrade.barrier >= 0 && paperTrade.barrier <= 9 ? String(paperTrade.barrier) : '';
-      const detail = typeof profit === 'number' && Number.isFinite(profit) ? 'Virtual P&L ' + (profit >= 0 ? '+' : '') + profit.toFixed(2) : 'Virtual P&L unavailable';
+      const currency = String(paperTrade.virtualCurrency || 'USD');
+      const detail = typeof profit === 'number' && Number.isFinite(profit)
+        ? 'Virtual P&L ' + (profit >= 0 ? '+' : '−') + Math.abs(profit).toFixed(2) + ' ' + currency + (paperTrade.virtualPayoutModelled ? ' · simulated 1:1' : '')
+        : 'Virtual practice result';
       return {
         type: 'paper_result',
         title: won ? 'PAPER · WIN' : lost ? 'PAPER · LOSS' : 'PAPER · RESULT',
@@ -439,10 +442,18 @@
     el.dataset.type = item.type;
     el.tabIndex = 0;
 
-    const icon = document.createElement('span');
+    const icon = document.createElement(item.type === 'paper_result' ? 'div' : 'span');
     icon.className = 'dc-toast-icon';
-    icon.textContent = TYPES[item.type].icon;
     icon.setAttribute('aria-hidden', 'true');
+    if (item.type === 'paper_result') {
+      const art = document.createElement('img');
+      art.className = 'dc-toast-game-art';
+      art.src = '/brain-pasture-scene.svg';
+      art.alt = '';
+      icon.appendChild(art);
+    } else {
+      icon.textContent = TYPES[item.type].icon;
+    }
 
     const body = document.createElement('div');
     body.className = 'dc-toast-body';
