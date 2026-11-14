@@ -937,14 +937,10 @@ export class Automation {
       return 50;
     }
 
-    if (Date.now() - finalQuoteStartedAt > 1_500) {
-      this.confirmation.reset(requiredConfirmations);
-      this.phase = 'observing';
-      this.emit({ type: HOLD, ts: Date.now(), reason: 'selected quote became stale before purchase; recalculating' });
-      this.emit({ type: 'status', ts: Date.now(), state: this.state() });
-      return 50;
-    }
-
+    // Do not discard a valid, freshly requested proposal just because the
+    // network round trip took longer than an arbitrary wall-clock threshold.
+    // Its price, payout, edge and stake are validated above, and Deriv checks
+    // the proposal ID again when placeBuy submits it.
     // A stop can arrive while the final quote request is in flight.
     if (!canBuy()) {
       if (!this.running) this.phase = 'standby';
