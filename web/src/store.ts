@@ -1604,40 +1604,61 @@ function playerTradeRow(raw: Record<string, unknown>): TradeRow {
 }
 
 let playerStateRequest = 0;
+let playerStateRefresh: Promise<void> | null = null;
+let playerStateRefreshQueued = false;
 export async function refreshPlayerState(): Promise<void> {
+  if (playerStateRefresh) {
+    playerStateRefreshQueued = true;
+    await playerStateRefresh;
+    return;
+  }
   const request = ++playerStateRequest;
-  try {
-    const response = await api<{ session: SessionInfo; risk?: Omit<Recovery, 'last_win_epoch' | 'updated_at'>; trades: Array<Record<string, unknown>> }>('/api/player/trading/state');
-    // A slower response must never overwrite a newer account snapshot.
-    if (request !== playerStateRequest) return;
-    if (state.owner && state.multiplayerEnabled && state.session?.loginid !== response.session.loginid) return;
-    set({
-      playerSession: response.session,
-      playerRecovery: response.risk ? { ...response.risk, last_win_epoch: 0, updated_at: 0 } : null,
-      playerTrades: response.trades.map(playerTradeRow),
-      playerAuthStatus: 'live',
-      playerAuthMessage: '',
-      playerAccountSwitch: state.playerAccountSwitch?.status === 'switching' ? { ...state.playerAccountSwitch, status: 'verified' } : null,
-    });
-  } catch (error) {
-    if (request !== playerStateRequest) return;
-    const decision = classifyPlayerStateFailure(error);
-    if (decision.clearSession) {
-      // Verified 401/revocation: the backend no longer honours this session.
-      set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: decision.status, playerAuthMessage: decision.message, playerAccountSwitch: null });
-      return;
+  const refresh = (async () => {
+    try {
+      const response = await api<{ session: SessionInfo; risk?: Omit<Recovery, 'last_win_epoch' | 'updated_at'>; trades: Array<Record<string, unknown>> }>('/api/player/trading/state');
+      // A slower response must never overwrite a newer account snapshot.
+      if (request !== playerStateRequest) return;
+      if (state.owner && state.multiplayerEnabled && state.session?.loginid !== response.session.loginid) return;
+      set({
+        playerSession: response.session,
+        playerRecovery: response.risk ? { ...response.risk, last_win_epoch: 0, updated_at: 0 } : null,
+        playerTrades: response.trades.map(playerTradeRow),
+        playerAuthStatus: 'live',
+        playerAuthMessage: '',
+        playerAccountSwitch: state.playerAccountSwitch?.status === 'switching' ? { ...state.playerAccountSwitch, status: 'verified' } : null,
+      });
+    } catch (error) {
+      if (request !== playerStateRequest) return;
+      const decision = classifyPlayerStateFailure(error);
+      if (decision.clearSession) {
+        // Verified 401/revocation: the backend no longer honours this session.
+        set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: decision.status, playerAuthMessage: decision.message, playerAccountSwitch: null });
+        return;
+      }
+      // Outage or transport failure: keep the last verified session on screen so a
+      // 503 never looks like a logout, and let authorization stay server-side.
+      const pendingSwitch = state.playerAccountSwitch;
+      set({
+        playerSession: state.playerSession,
+        playerRecovery: state.playerRecovery,
+        playerTrades: state.playerTrades,
+        playerAuthStatus: state.playerSession ? decision.status : 'reconnecting',
+        playerAuthMessage: decision.message,
+        playerAccountSwitch: pendingSwitch?.status === 'switching' ? { ...pendingSwitch, status: 'failed' } : pendingSwitch,
+      });
     }
-    // Outage or transport failure: keep the last verified session on screen so a
-    // 503 never looks like a logout, and let authorization stay server-side.
-    const pendingSwitch = state.playerAccountSwitch;
-    set({
-      playerSession: state.playerSession,
-      playerRecovery: state.playerRecovery,
-      playerTrades: state.playerTrades,
-      playerAuthStatus: state.playerSession ? decision.status : 'reconnecting',
-      playerAuthMessage: decision.message,
-      playerAccountSwitch: pendingSwitch?.status === 'switching' ? { ...pendingSwitch, status: 'failed' } : pendingSwitch,
-    });
+  })();
+  playerStateRefresh = refresh;
+  try {
+    await refresh;
+  } finally {
+    if (playerStateRefresh === refresh) {
+      playerStateRefresh = null;
+      if (playerStateRefreshQueued) {
+        playerStateRefreshQueued = false;
+        void refreshPlayerState();
+      }
+    }
   }
 }
 
@@ -1673,14 +1694,17 @@ export async function logoutPlayer(): Promise<void> {
 
 let playerSocket: WebSocket | null = null;
 function connectPlayerWs(): void {
-  if (playerSocket || typeof WebSocket !== 'function') return;
+  if (!state.playerSession || playerSocket || typeof WebSocket !== 'function') return;
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/player-ws`);
   playerSocket = socket;
   socket.onmessage = (message) => {
     try { const event = JSON.parse(String(message.data)); if (event.type === 'balance' || event.type === 'trade') void refreshPlayerState(); }
     catch { /* Ignore malformed events. */ }
   };
-  socket.onclose = () => { if (playerSocket === socket) playerSocket = null; window.setTimeout(connectPlayerWs, 5000); };
+  socket.onclose = () => {
+    if (playerSocket === socket) playerSocket = null;
+    if (state.playerSession) window.setTimeout(connectPlayerWs, 5000);
+  };
   socket.onerror = () => socket.close();
 }
 
@@ -1724,11 +1748,10 @@ export async function bootstrap(): Promise<void> {
   } catch (err) {
     // best-effort state load; the ws stream will repopulate
   }
-  void playerState;
+  void playerState.then(() => { if (state.playerSession) connectPlayerWs(); });
   void loadAutoBacktestStatus();
   void loadAutoPaperStatus();
   connectWs();
-  connectPlayerWs();
 }
 
 export async function loadAutoBacktestStatus(): Promise<void> {
@@ -2164,7 +2187,9 @@ export async function previewPlayerTrade(order: ManualOrder): Promise<ManualTrad
 export async function confirmPlayerTrade(previewId: string, confirmRealFunds: boolean): Promise<ManualTradeResult> {
   const result = await api<{ ok: true; contractId: string; reservationId: string; ask: number; payout: number }>(
     '/api/player/trade/confirm', { method: 'POST', body: JSON.stringify({ previewId, idempotencyKey: crypto.randomUUID(), confirmRealFunds }) }, 45_000);
-  void refreshPlayerState();
+  // The server emits a trade event after persisting; use it when the socket is
+  // live and fall back to an HTTP refresh when it is disconnected.
+  if (!playerSocket || typeof WebSocket !== 'function' || playerSocket.readyState !== WebSocket.OPEN) void refreshPlayerState();
   return { ok: true, trade: { id: playerTradeId(result.reservationId), contractId: result.contractId, ask: result.ask, payout: result.payout, estimatedWin: 0, breakeven: result.ask / result.payout, edge: 0 } };
 }
 
