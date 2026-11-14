@@ -238,7 +238,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
           { direction: 'under' as Direction, barrier: run.config.barrier },
         ];
     const pick = pickSignal(registry, run.config.minWin, -1, (symbol, count) => registry.snapshot(symbol).recentDigits.slice(-count), 500, allowed);
-    const snapshots = new Map(registry.allSnapshots().map(snapshot => [snapshot.symbol, snapshot]));
+    const snapshots = new Map(registry.allSnapshots().map(snapshot => [snapshot.symbol, snapshot] as const));
     const candidates: RangerPick[] = [];
     for (const candidate of pick.candidates) {
       const snapshot = snapshots.get(candidate.market);
@@ -364,6 +364,12 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         if (!run.running || (run.mode === 'real' && (rangerArms.get(run.accountId) ?? 0) <= Date.now())) {
           await store.cancelBeforeBuy(run.accountId, reservationId);
           if (run.running) stopRangerRun(run, 'Real-money authorization expired.');
+          return;
+        }
+        const buyAuthorization = await runnerAuthorized(run, true);
+        if (!run.running || !buyAuthorization) {
+          await store.cancelBeforeBuy(run.accountId, reservationId);
+          if (run.running) stopRangerRun(run, 'Deriv session expired or changed.');
           return;
         }
         if (client.connectedAccountId !== run.accountId || (await client.getOpenContractIds()).size > 0) {
