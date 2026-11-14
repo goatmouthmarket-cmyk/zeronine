@@ -483,11 +483,13 @@ async function main(): Promise<void> {
     });
     app.setErrorHandler((error, req, reply) => {
       req.log.error({ err: error }, 'Request failed');
-      const status = Number.isInteger(error.statusCode) && error.statusCode >= 400
-        ? error.statusCode
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error
+        ? Number((error as { statusCode?: unknown }).statusCode)
         : 500;
+      const status = Number.isInteger(statusCode) && statusCode >= 400 ? statusCode : 500;
+      const message = error instanceof Error ? error.message : 'Request failed';
       if (req.url.startsWith('/api/') || req.url.startsWith('/health')) {
-        reply.code(status).send({ error: status >= 500 ? 'Internal server error' : error.message });
+        reply.code(status).send({ error: status >= 500 ? 'Internal server error' : message });
         return;
       }
       reply.code(status).sendFile(status === 404 ? '404.html' : '500.html');
