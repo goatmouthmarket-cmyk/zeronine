@@ -8,6 +8,8 @@ export interface AppConfig {
   dbPath: string;
   telemetryEnabled: boolean;
   telemetryRetentionDays: number;
+  telemetryTickIntervalMs: number;
+  telemetryScanIntervalMs: number;
   derivPublicUrl: string;
   derivAuthUrl: string;
   derivAppId: string;
@@ -102,7 +104,9 @@ export function loadConfig(): AppConfig {
     dataDir,
     dbPath: path.join(dataDir, 'overunder.db'),
     telemetryEnabled: process.env.TELEMETRY_ENABLED !== '0',
-    telemetryRetentionDays: Math.max(0, Math.min(3650, Math.floor(num('TELEMETRY_RETENTION_DAYS', 30)))),
+    telemetryRetentionDays: Math.max(1, Math.min(30, Math.floor(num('TELEMETRY_RETENTION_DAYS', 7)))),
+    telemetryTickIntervalMs: Math.max(1000, Math.min(60_000, Math.floor(num('TELEMETRY_TICK_INTERVAL_MS', 10_000)))),
+    telemetryScanIntervalMs: Math.max(5000, Math.min(300_000, Math.floor(num('TELEMETRY_SCAN_INTERVAL_MS', 60_000)))),
     derivPublicUrl: process.env.DERIV_PUBLIC_URL || 'wss://api.derivws.com/trading/v1/options/ws/public',
     derivAuthUrl: process.env.DERIV_AUTH_URL || 'wss://ws.deriv.com/websockets/v3',
     derivAppId: process.env.DERIV_APP_ID || '1089',
