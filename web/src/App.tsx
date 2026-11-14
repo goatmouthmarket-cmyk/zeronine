@@ -1251,23 +1251,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   };
 
   const roomMarketState = useMemo(() => ({
-  }), [s.markets, s.signal, s.displaySignal, s.marketScout, s.digitTradeEvidence, s.paperTrades]);
-
-  const roomState = useMemo(() => ({
-    balance: s.session?.balance ?? 0,
-    currency: s.session?.currency ?? 'USD',
-    profit: performance.profit,
-    feedConnected: s.feed?.connected ?? false,
-    owner: Boolean(s.owner),
-    accountMode: s.session?.mode ?? null,
-    accountId: s.session?.loginid ?? null,
-    authStatus: base.playerAuthStatus,
-    wsStatus: s.ws,
-    remainingLoss: usePlayerTrading ? { amount: s.playerRecovery?.debt ?? 0, lastSettledTradeId: null } : s.digitRemainingLoss,
-    selected: market?.symbol ?? '',
-    busy: manualBusy,
-    status: manualMsg,
-    canTrade: Boolean(s.session && s.feed?.connected && !openAccountTrade && !manualBusy),
     markets: s.markets.map((item) => ({
       symbol: item.symbol,
       display: item.display,
@@ -1289,6 +1272,23 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       status: trade.status,
       profit: trade.profit,
     })),
+  }), [s.markets, s.signal, s.displaySignal, s.marketScout, s.digitTradeEvidence, s.paperTrades]);
+
+  const roomState = useMemo(() => ({
+    balance: s.session?.balance ?? 0,
+    currency: s.session?.currency ?? 'USD',
+    profit: performance.profit,
+    feedConnected: s.feed?.connected ?? false,
+    owner: Boolean(s.owner),
+    accountMode: s.session?.mode ?? null,
+    accountId: s.session?.loginid ?? null,
+    authStatus: base.playerAuthStatus,
+    wsStatus: s.ws,
+    remainingLoss: usePlayerTrading ? { amount: s.playerRecovery?.debt ?? 0, lastSettledTradeId: null } : s.digitRemainingLoss,
+    selected: market?.symbol ?? '',
+    busy: manualBusy,
+    status: manualMsg,
+    canTrade: Boolean(s.session && s.feed?.connected && !openAccountTrade && !manualBusy),
     research: { latest: s.testRuns.find((run) => run.kind === 'backtest') ?? null, active: s.testlab?.kind === 'backtest' ? s.testlab : null, canRun: Boolean(s.owner && s.session) },
     paperSimulation: s.paperSimulation ? {
       phase: s.paperSimulation.phase,
