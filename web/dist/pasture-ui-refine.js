@@ -98,12 +98,34 @@
     try { window.__pasturePlaceBubble(el); } catch {}
   };
 
-  (function frame() {
-    try {
-      placeAttached();
-    } catch {}
-    requestAnimationFrame(frame);
-  })();
+  let attachedFrame = 0;
+  function attachedBubbleVisible() {
+    const element = document.querySelector('.live-ranger-wait');
+    return !!element && !element.hidden && !document.hidden;
+  }
+  function stopAttachedFrame() {
+    if (attachedFrame) cancelAnimationFrame(attachedFrame);
+    attachedFrame = 0;
+  }
+  function scheduleAttachedFrame() {
+    if (!attachedFrame && attachedBubbleVisible()) attachedFrame = requestAnimationFrame(runAttachedFrame);
+  }
+  function runAttachedFrame() {
+    attachedFrame = 0;
+    if (!attachedBubbleVisible()) return;
+    try { placeAttached(); } catch {}
+    scheduleAttachedFrame();
+  }
+  const attachedWait = document.querySelector('.live-ranger-wait');
+  if (attachedWait) new MutationObserver(() => {
+    if (attachedBubbleVisible()) scheduleAttachedFrame();
+    else stopAttachedFrame();
+  }).observe(attachedWait, { attributes: true, attributeFilter: ['hidden'] });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopAttachedFrame();
+    else scheduleAttachedFrame();
+  });
+  scheduleAttachedFrame();
 
   window.__pastureUiRefine = { applyLayout, placeAttached };
 

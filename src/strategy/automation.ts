@@ -491,6 +491,7 @@ export class Automation {
     // Quote every shortlist candidate across markets. Real ratios (payout/ask)
     // give the actual breakeven / edge / EV that drive the pick.
     this.phase = 'quoting';
+    const quoteCycleStartedAt = Date.now();
     const quotes: QuotedOption[] = [];
     let quoteRateLimited = false;
     for (const c of signal.candidates) {
@@ -534,6 +535,7 @@ export class Automation {
           estWin,
           realEdge: estWin - (ratio > 0 ? 1 / ratio : 0),
           researchCalibration: calibration,
+          roundTripMs: q.roundTripMs,
         });
       } catch (err) {
         this.emit({ type: 'quote_error', ts: Date.now(), option: { ...c }, message: String(err) });
@@ -894,6 +896,46 @@ export class Automation {
       durationUnit: 't',
       symbol: decision.market,
     });
+
+    const finalQuoteAsk = Number(finalQuote.askPrice);
+    const finalQuotePayout = Number(finalQuote.payout);
+    const finalQuoteWin = Number(decision.estWin);
+    const finalQuoteRatio = finalQuoteAsk > 0 ? finalQuotePayout / finalQuoteAsk : 0;
+    const finalQuoteEdge = finalQuotePayout > 0 ? finalQuoteWin - finalQuoteAsk / finalQuotePayout : Number.NEGATIVE_INFINITY;
+    const finalQuoteEV = finalQuoteWin * finalQuoteRatio - 1;
+    const finalQuoteValid = Number.isFinite(finalQuoteAsk) && finalQuoteAsk > 0 &&
+      Number.isFinite(finalQuotePayout) && finalQuotePayout > 0 &&
+      Number.isFinite(decision.stake) && decision.stake > 0 &&
+      finalQuoteAsk <= decision.stake + 0.01 &&
+      Number.isFinite(finalQuoteWin) && finalQuoteWin > 0 && finalQuoteWin < 1;
+    const finalQuoteSensible = conservative || (finalQuoteValid && finalQuoteWin >= minWin && finalQuoteEdge >= minEdge &&
+      isSensibleDigitCandidate({
+        baseWin: theoreticalDigitWinRate(decision.direction, decision.barrier),
+        estWin: finalQuoteWin,
+        edge: finalQuoteEdge,
+        expectedROI: finalQuoteEV,
+      }));
+    if (process.env.AUTOMATION_TIMING === '1') {
+      console.info('[automation.quote-timing]', {
+        market: decision.market,
+        candidateQuotes: quotes.length,
+        quoteCycleMs: Date.now() - quoteCycleStartedAt,
+        finalProposalMs: finalQuote.roundTripMs ?? Date.now() - finalQuoteStartedAt,
+      });
+    }
+    if (!finalQuoteValid || !finalQuoteSensible) {
+      this.confirmation.reset(requiredConfirmations);
+      this.phase = 'observing';
+      this.emit({
+        type: HOLD,
+        ts: Date.now(),
+        reason: !finalQuoteValid
+          ? 'final proposal is invalid or exceeds the approved stake; recalculating'
+          : 'final proposal no longer meets the configured edge gate; recalculating',
+      });
+      this.emit({ type: 'status', ts: Date.now(), state: this.state() });
+      return 50;
+    }
 
     if (Date.now() - finalQuoteStartedAt > 1_500) {
       this.confirmation.reset(requiredConfirmations);

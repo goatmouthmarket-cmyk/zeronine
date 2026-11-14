@@ -668,6 +668,30 @@
   }
 
   const floatingPlacements = new WeakMap();
+  const floatingSizes = new WeakMap();
+  const floatingSizeObservers = new WeakMap();
+  function floatingSize(element) {
+    let size = floatingSizes.get(element);
+    if (!size || typeof ResizeObserver === 'undefined') {
+      const rect = element.getBoundingClientRect();
+      size = { width: rect.width, height: rect.height };
+      floatingSizes.set(element, size);
+      return size;
+    }
+    if (!floatingSizeObservers.has(element)) {
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const raw = entry.borderBoxSize;
+        const border = Array.isArray(raw) ? raw[0] : raw;
+        size.width = border?.inlineSize ?? entry.contentRect.width;
+        size.height = border?.blockSize ?? entry.contentRect.height;
+      });
+      observer.observe(element);
+      floatingSizeObservers.set(element, observer);
+    }
+    return size;
+  }
   function placeFloating(element, anchor, options) {
     if (!element || !anchor) return null;
     const opts = options || {};
@@ -677,8 +701,9 @@
       .map(rectOf)
       .filter(Boolean);
 
-    const width = element.offsetWidth || 236;
-    const height = element.offsetHeight || 130;
+    const size = floatingSize(element);
+    const width = size.width || 236;
+    const height = size.height || 130;
     const topLimit = Math.max(pad, state.headerH + 8);
     const bottomLimit = innerHeight - pad;
     const rightLimit = innerWidth - pad;
@@ -716,12 +741,14 @@
     const hysteresis = Math.max(0, Number(opts.hysteresis) || 0);
     if (hysteresis && previous && previous.score <= best.score + hysteresis) best = previous;
     if (hysteresis) floatingPlacements.set(element, best.rank);
-    element.style.left = best.left + 'px';
-    element.style.top = best.top + 'px';
-    element.style.transform = 'none';
-    element.style.right = 'auto';
-    element.style.bottom = 'auto';
-    element.dataset.dcPlaced = 'true';
+    const left = best.left + 'px';
+    const top = best.top + 'px';
+    if (element.style.left !== left) element.style.left = left;
+    if (element.style.top !== top) element.style.top = top;
+    if (element.style.transform !== 'none') element.style.transform = 'none';
+    if (element.style.right !== 'auto') element.style.right = 'auto';
+    if (element.style.bottom !== 'auto') element.style.bottom = 'auto';
+    if (element.dataset.dcPlaced !== 'true') element.dataset.dcPlaced = 'true';
     return { left: best.left, top: best.top, width, height };
   }
 
