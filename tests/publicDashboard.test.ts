@@ -181,6 +181,20 @@ test('public dashboard exposes global market data but protects the connected acc
   const oldSweep = await app.inject({ method: 'POST', url: '/api/test/paper', headers: { cookie: cookieHeader } });
   assert.equal(oldSweep.statusCode, 410);
 
+  const epoch = Math.floor(Date.now() / 1000);
+  store.appendPaperLedgerEntry({ id: 991, runId: 'memory-route-test', market: 'R_75', direction: 'over', barrier: 0, stake: 1, payoutRatio: 1.9, status: 'won', entryEpoch: epoch - 3, entryQuote: 100, entryDigit: 1, exitEpoch: epoch - 2, exitQuote: 101, exitDigit: 2, profit: .9, estWin: .9 }, 'settled');
+  store.getDb().exec("CREATE TRIGGER fail_brain_memory BEFORE INSERT ON brain_memory_events BEGIN SELECT RAISE(FAIL, 'test write failure'); END");
+  const memoryFailure = await app.inject({ method: 'GET', url: '/api/ranger-brain/status?market=R_75&lookbackDays=30' });
+  assert.equal(memoryFailure.statusCode, 200, 'memory persistence failure must not prevent a paper report');
+  assert.equal(memoryFailure.json().memoryAvailable, false);
+  assert.equal(memoryFailure.json().report.mode, 'paper');
+  store.getDb().exec('DROP TRIGGER fail_brain_memory');
+  const memoryRecovered = await app.inject({ method: 'GET', url: '/api/ranger-brain/status?market=R_75' });
+  assert.equal(memoryRecovered.statusCode, 200);
+  assert.equal(memoryRecovered.json().memoryAvailable, true);
+  assert.ok(memoryRecovered.json().memoryHistory.length > 0);
+  assert.doesNotMatch(memoryRecovered.body, /loginid|balance|token/i);
+
   automation.dispose();
   await telemetry.close();
   await app.close();

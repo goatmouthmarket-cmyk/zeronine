@@ -457,6 +457,9 @@ async function main(): Promise<void> {
           res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         } else if (filePath.endsWith('.html')) {
           res.setHeader('Cache-Control', 'no-cache, max-age=0, must-revalidate');
+        } else if (/\.(?:avif|gif|ico|jpe?g|png|svg|webp)$/i.test(filePath)) {
+          // Reuse artwork while the browser checks for updates in the background.
+          res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
         } else {
           res.setHeader('Cache-Control', 'public, max-age=3600');
         }

@@ -1,0 +1,7 @@
+/* One quiet arrival cue, without animating normal balance updates. */
+.balance-just-loaded { animation: pasture-balance-arrival 800ms ease-out both; }
+@keyframes pasture-balance-arrival {
+  from { opacity: .55; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) { .balance-just-loaded { animation: none; } }

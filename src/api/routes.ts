@@ -36,6 +36,7 @@ import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
 import { buildBrainReport } from '../brain/service.ts';
+import { observeBrainMemory, type BrainMemoryEvent } from '../brain/memory.ts';
 import {
   type TradeRow,
   clearSession,
@@ -1916,7 +1917,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   // Paper research only: the report carries no balance, token or account id, so
   // every pasture visitor reads the same brain. Memoised for ten seconds so a
   // public route cannot be used to rescan the paper ledger on every request.
-  const brainCache = new Map<string, { at: number; report: ReturnType<typeof buildBrainReport> }>();
+  const brainCache = new Map<string, { at: number; report: ReturnType<typeof buildBrainReport>; memoryHistory: BrainMemoryEvent[]; memoryAvailable: boolean }>();
   app.get('/api/ranger-brain/status', async (req, reply) => {
     reply.header('cache-control', 'no-store');
     const query = req.query as { market?: string; lookbackDays?: string };
@@ -1926,11 +1927,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const key = `${market ?? 'auto'}|${lookback ?? 'default'}`;
     const now = Date.now();
     const cached = brainCache.get(key);
-    if (cached && now - cached.at < 10_000) return { report: cached.report };
+    if (cached && now - cached.at < 10_000) return { report: cached.report, memoryHistory: cached.memoryHistory, memoryAvailable: cached.memoryAvailable };
     const report = buildBrainReport({ market, lookbackDays: lookback });
-    brainCache.set(key, { at: now, report });
+    let memoryHistory: BrainMemoryEvent[] = [];
+    let memoryAvailable = true;
+    try { memoryHistory = observeBrainMemory(report, now); } catch { memoryAvailable = false; }
+    brainCache.set(key, { at: now, report, memoryHistory, memoryAvailable });
     while (brainCache.size > 8) brainCache.delete(String(brainCache.keys().next().value));
-    return { report };
+    return { report, memoryHistory, memoryAvailable };
   });
 
   app.get('/api/paper/trades/:contractRef', async (req, reply) => {

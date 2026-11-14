@@ -40,8 +40,11 @@
     const text = cd ? String(cd.textContent || '') : '';
     if (/s\s+/i.test(text) || /\d+s/i.test(text)) {
       const trimmed = text.replace(/^\d+s\s*/i, '').trim();
-      reason.textContent = trimmed || 'Cooldown';
-    } else if (timer.classList.contains('visible')) {
+      const next = trimmed || 'Cooldown';
+      if (reason.textContent !== next) reason.textContent = next;
+    } else if (!timer.classList.contains('visible') && reason.textContent !== 'Cooldown') {
+      // State updates can temporarily write READY while a cooldown is active.
+      // Keep its actual reason until the countdown has ended.
       reason.textContent = 'Cooldown';
     }
   }

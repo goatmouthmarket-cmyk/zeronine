@@ -905,8 +905,7 @@
     const connected = Boolean(event && event.detail && event.detail.connected);
     const glyph = $('rangerBrainGlyph');
     if (glyph) glyph.classList.toggle('is-live', connected);
-    if (connected && typeof window.notify === 'function') window.notify('Deriv connected');
-    else hideLearningBubble();
+    if (!connected) hideLearningBubble();
   });
 
   /* ---------- late entry: a game beat instead of an error ---------- */
