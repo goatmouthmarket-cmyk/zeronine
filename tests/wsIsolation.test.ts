@@ -129,8 +129,10 @@ test('signed players automatically share pasture presence, chat, and cow kills',
     bob.socket.send(JSON.stringify({ type: 'kill', x: 120, y: 240 }));
     assert.equal((await waitFor(alice.events, 'kill')).playerId, bobWelcome.id);
     guest = open();
-    const closed = await new Promise<number>((resolve, reject) => { guest!.socket.once('close', resolve); guest!.socket.once('error', reject); });
-    assert.equal(closed, 1008);
+    const guestWelcome = await waitFor(guest.events, 'welcome');
+    assert.match(guestWelcome.id, /^g-/);
+    assert.equal(guestWelcome.players.length, 3, 'guest shares the main pasture with both Deriv players');
+    assert.equal(guestWelcome.players.find(player => player.id === guestWelcome.id)?.guest, true);
   } finally {
     alice.socket.terminate(); bob?.socket.terminate(); guest?.socket.terminate();
     await app.close();
