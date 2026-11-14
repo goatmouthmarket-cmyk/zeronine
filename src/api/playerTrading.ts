@@ -8,6 +8,7 @@ import type { MarketRegistry } from '../core/marketState.ts';
 import { buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { getSettings } from '../db/store.ts';
 import { estimateWinRate, winDigits } from '../core/digitMath.ts';
+import { pickSignal, type SignalCandidate } from '../strategy/signal.ts';
 import { isOwner } from './access.ts';
 import { getSession } from '../db/store.ts';
 import { resolveStoredToken } from '../deriv/oauth.ts';
@@ -23,7 +24,15 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
   const publish = (event: Event): void => { for (const send of listeners.get(event.accountId) ?? []) send(event); };
   const clients = new PlayerClients((accountId, balance) => publish({ type: 'balance', accountId, balance }));
   const monitors = new Map<string, NodeJS.Timeout>();
-  app.addHook('onClose', async () => { for (const timer of monitors.values()) clearInterval(timer); clients.disconnectAll(); });
+  const rangerArms = new Map<string, number>();
+  const rangerRuns = new Map<string, RangerRun>();
+  app.addHook('onClose', async () => {
+    for (const timer of monitors.values()) clearInterval(timer);
+    for (const run of rangerRuns.values()) if (run.timer) clearInterval(run.timer);
+    rangerRuns.clear();
+    rangerArms.clear();
+    clients.disconnectAll();
+  });
   const validOrigin = (req: FastifyRequest): boolean => {
     const origin = req.headers.origin;
     if (!origin) return true;
@@ -81,6 +90,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (result.settled && (result.status === 'won' || result.status === 'lost')) {
         await store.recordSettlement(accountId, active.provider_contract_id, result.status, result.profit);
         publish({ type: 'trade', accountId, contractId: active.provider_contract_id, status: result.status, profit: result.profit });
+        const rangerRun = rangerRuns.get(accountId);
+        if (rangerRun?.pendingContractId === active.provider_contract_id) settleRangerRun(rangerRun, result.status, result.profit);
         return null;
       }
     } catch { /* Keep the reservation until the broker can be checked. */ }
@@ -100,7 +111,382 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     timer.unref();
     monitors.set(accountId, timer);
   };
+
+  type RangerRunConfig = {
+    stake: number;
+    maxStake: number;
+    minEdge: number;
+    minWin: number;
+    maxTrades: number;
+    maxRunLoss: number;
+    takeProfit: number;
+    lossLimit: number;
+    cooldownSeconds: number;
+    shots: number;
+    direction: Direction | null;
+    barrier: number | null;
+    market: string | null;
+    green: boolean;
+    gold: boolean;
+    red: boolean;
+  };
+  type RangerPick = SignalCandidate & { p: number; score: number; digitSamples: number; riseSamples: number; hitSignal: boolean; epoch: number };
+  type RangerRun = {
+    accountId: string;
+    mode: 'demo' | 'real';
+    armedUntil: number;
+    source: 'owner' | 'player';
+    sessionSecret: string | null;
+    ownerAuthorized: () => boolean;
+    token: string;
+    config: RangerRunConfig;
+    running: boolean;
+    phase: string;
+    reason: string | null;
+    startedAt: number;
+    updatedAt: number;
+    tradesDone: number;
+    wins: number;
+    losses: number;
+    lossStreak: number;
+    runProfit: number;
+    candidate: { market: string; direction: Direction; barrier: number } | null;
+    confirmKey: string;
+    confirmEpoch: number;
+    confirmations: number;
+    lastAttemptEpoch: number;
+    cooldownUntil: number;
+    pendingContractId: string | null;
+    timer: NodeJS.Timeout | null;
+    busy: boolean;
+  };
+  const RANGER_ARM_MS = 10 * 60 * 1000;
+  const RANGER_AUTH_CHECK_MS = 15_000;
+  const RANGER_RUN_INTERVAL_MS = 750;
+  const rangerAuthCheckedAt = new Map<string, number>();
+
+  function rangerRunState(run: RangerRun | undefined, accountId: string, armedUntil = 0): Record<string, unknown> {
+    if (!run) return { running: false, phase: 'idle', startedAt: null, tradesDone: 0, wins: 0, losses: 0, runProfit: 0, reason: null, candidate: null, account: { loginid: accountId }, armedUntil: armedUntil || null };
+    return {
+      running: run.running, phase: run.phase, startedAt: run.startedAt, updatedAt: run.updatedAt,
+      tradesDone: run.tradesDone, wins: run.wins, losses: run.losses, runProfit: run.runProfit,
+      reason: run.reason, candidate: run.candidate, config: run.config,
+      account: { loginid: run.accountId, mode: run.mode },
+      armedUntil: run.mode === 'real' ? rangerArms.get(run.accountId) ?? null : null,
+      cooldownUntil: run.cooldownUntil || null,
+    };
+  }
+
+  function stopRangerRun(run: RangerRun, reason: string): void {
+    if (!run.running) return;
+    run.running = false;
+    run.phase = 'stopped';
+    run.reason = reason;
+    run.updatedAt = Date.now();
+    if (run.timer) clearInterval(run.timer);
+    run.timer = null;
+  }
+
+  function settleRangerRun(run: RangerRun, status: 'won' | 'lost', profit: number): void {
+    if (!run.running || !Number.isFinite(profit)) return;
+    run.pendingContractId = null;
+    run.tradesDone += 1;
+    run.runProfit += profit;
+    if (status === 'won') { run.wins += 1; run.lossStreak = 0; }
+    else { run.losses += 1; run.lossStreak += 1; }
+    run.updatedAt = Date.now();
+    if (run.config.maxTrades > 0 && run.tradesDone >= run.config.maxTrades) { stopRangerRun(run, 'Maximum trade count reached.'); return; }
+    if (run.config.takeProfit > 0 && run.runProfit >= run.config.takeProfit) { stopRangerRun(run, 'Take-profit limit reached.'); return; }
+    if (run.config.maxRunLoss > 0 && run.runProfit <= -run.config.maxRunLoss) { stopRangerRun(run, 'Maximum run loss reached.'); return; }
+    if (run.config.lossLimit > 0 && run.lossStreak >= run.config.lossLimit) {
+      run.lossStreak = 0;
+      run.cooldownUntil = Date.now() + run.config.cooldownSeconds * 1000;
+      run.phase = 'cooldown';
+    } else run.phase = 'scanning';
+  }
+
+  function parseRangerConfig(input: unknown): RangerRunConfig {
+    const body = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+    const number = (key: string, fallback: number): number => body[key] === undefined ? fallback : Number(body[key]);
+    const stake = number('stake', NaN), maxStake = number('maxStake', stake);
+    const minEdge = number('minEdge', 0), minWin = number('minWin', 0.7);
+    const maxTrades = number('maxTrades', 0), maxRunLoss = number('maxRunLoss', 0);
+    const takeProfit = number('takeProfit', 0), lossLimit = number('lossLimit', 0);
+    const cooldownSeconds = number('cooldownSeconds', 60), shots = number('shots', 3);
+    if (!Number.isFinite(stake) || stake <= 0 || !Number.isFinite(maxStake) || maxStake <= 0 || stake > maxStake) throw new Error('invalid Ranger Auto stake or maximum stake');
+    if (![minEdge, minWin, maxTrades, maxRunLoss, takeProfit, lossLimit, cooldownSeconds, shots].every(Number.isFinite)) throw new Error('invalid Ranger Auto configuration');
+    if (minEdge < 0 || minEdge > 1 || minWin < 0.7 || minWin > 0.99 || maxTrades < 0 || maxTrades > 1000 || maxRunLoss < 0 || takeProfit < 0 || lossLimit < 0 || lossLimit > 100 || cooldownSeconds < 1 || cooldownSeconds > 3600 || shots < 1 || shots > 5 || !Number.isInteger(maxTrades) || !Number.isInteger(lossLimit) || !Number.isInteger(cooldownSeconds) || !Number.isInteger(shots)) throw new Error('Ranger Auto settings are outside the allowed range');
+    const direction = body.direction === 'over' || body.direction === 'under' ? body.direction : null;
+    const barrierValue = body.barrier === undefined || body.barrier === null ? null : Number(body.barrier);
+    if (barrierValue !== null && (!Number.isInteger(barrierValue) || (direction === 'over' ? barrierValue < 0 || barrierValue > 8 : barrierValue < 1 || barrierValue > 9))) throw new Error('invalid Ranger Auto barrier');
+    const market = typeof body.market === 'string' && registry.has(body.market) ? body.market : null;
+    if (body.market !== undefined && body.market !== null && !market) throw new Error('invalid Ranger Auto market');
+    const green = body.green === undefined ? true : body.green === true;
+    const gold = body.gold === undefined ? true : body.gold === true;
+    const red = body.red === undefined ? true : body.red === true;
+    if (!green && !gold && !red) throw new Error('enable at least one Ranger Auto ring');
+    return { stake, maxStake, minEdge, minWin, maxTrades, maxRunLoss, takeProfit, lossLimit, cooldownSeconds, shots, direction, barrier: barrierValue, market, green, gold, red };
+  }
+
+  function rangerCandidates(run: RangerRun): RangerPick[] {
+    const allowed = run.config.direction
+      ? run.config.barrier === null
+        ? Array.from({ length: 9 }, (_, index) => ({ direction: run.config.direction as Direction, barrier: run.config.direction === 'over' ? index : index + 1 }))
+        : [{ direction: run.config.direction, barrier: run.config.barrier }]
+      : run.config.barrier === null ? null : [
+          { direction: 'over' as Direction, barrier: run.config.barrier },
+          { direction: 'under' as Direction, barrier: run.config.barrier },
+        ];
+    const pick = pickSignal(registry, run.config.minWin, -1, (symbol, count) => registry.snapshot(symbol).recentDigits.slice(-count), 500, allowed);
+    const snapshots = new Map(registry.allSnapshots().map(snapshot => [snapshot.symbol, snapshot] as const));
+    const candidates: RangerPick[] = [];
+    for (const candidate of pick.candidates) {
+      const snapshot = snapshots.get(candidate.market);
+      if (!snapshot || !snapshot.fresh || (run.config.market && candidate.market !== run.config.market)) continue;
+      const digits = snapshot.recentDigits;
+      const quotes = snapshot.recentQuotes;
+      const high = digits.filter(digit => digit >= 5).length;
+      const wins = digits.filter(digit => candidate.direction === 'over' ? digit > candidate.barrier : digit < candidate.barrier).length;
+      const alignedRate = digits.length ? wins / digits.length : 0.5;
+      const empiricalP = digits.length ? (wins + candidate.estWin * 10) / (digits.length + 10) : candidate.estWin;
+      const empiricalWeight = digits.length ? Math.min(0.3, digits.length / (digits.length + 18) * 0.3) : 0;
+      const alignedQuotes: number[] = [];
+      for (let index = 1; index < quotes.length; index++) {
+        if (candidate.direction === 'over' ? quotes[index] > quotes[index - 1] : quotes[index] < quotes[index - 1]) alignedQuotes.push(quotes[index]);
+      }
+      const riseSamples = Math.max(0, quotes.length - 1);
+      const alignedRise = riseSamples ? alignedQuotes.length / riseSamples : 0.5;
+      const rawP = candidate.estWin;
+      const hlAdjustment = digits.length >= 20 ? ((candidate.direction === 'over' ? high : digits.length - high) / digits.length - 0.5) * 0.12 : 0;
+      const riseAdjustment = riseSamples >= 8 ? (alignedRise - 0.5) * 0.1 : 0;
+      const p = Math.max(0.01, Math.min(0.99, rawP * (1 - empiricalWeight) + empiricalP * empiricalWeight + hlAdjustment + riseAdjustment));
+      const ratio = candidate.estPayout;
+      const edge = p - (ratio > 0 ? 1 / ratio : candidate.baseWin);
+      const score = p * ratio - 1;
+      const hitSignal = digits.length >= 30 && riseSamples >= 12 && alignedRise >= 0.65 && alignedRate >= 0.55 && p >= 0.7 && edge > 0;
+      if (p < run.config.minWin || edge <= 0 || edge < run.config.minEdge) continue;
+      candidates.push({ ...candidate, p, edge, score, digitSamples: digits.length, riseSamples, hitSignal, epoch: snapshot.lastEpoch });
+    }
+    if (!candidates.length) return [];
+    const bestEdge = [...candidates].sort((a, b) => b.edge - a.edge || b.score - a.score)[0];
+    const bestScore = [...candidates].sort((a, b) => b.score - a.score || b.edge - a.edge)[0];
+    return candidates.filter(candidate =>
+      (run.config.green && candidate === bestEdge) ||
+      (run.config.gold && candidate === bestScore) ||
+      (run.config.red && candidate.hitSignal)
+    ).sort((a, b) => b.score - a.score || b.edge - a.edge || b.p - a.p);
+  }
+
+  async function runnerAuthorized(run: RangerRun, force = false): Promise<string | null> {
+    const now = Date.now();
+    const checkedAt = rangerAuthCheckedAt.get(run.accountId) ?? 0;
+    if (!force && now - checkedAt < RANGER_AUTH_CHECK_MS) return run.token;
+    rangerAuthCheckedAt.set(run.accountId, now);
+    if (run.source === 'owner') {
+      const session = getSession();
+      if (!run.ownerAuthorized() || !session || session.loginid !== run.accountId) return null;
+      try { return await resolveStoredToken(); } catch { return null; }
+    }
+    try {
+      const current = await store.resolveSession(run.sessionSecret);
+      if (!current || current.accountId !== run.accountId || current.expiresAt <= now) return null;
+      run.token = current.token;
+      return current.token;
+    } catch { return null; }
+  }
+
+  async function tickRangerRun(run: RangerRun): Promise<void> {
+    if (!run.running || run.busy) return;
+    run.busy = true;
+    try {
+      const now = Date.now();
+      if (run.mode === 'real') {
+        const armedUntil = rangerArms.get(run.accountId) ?? 0;
+        if (armedUntil <= now || armedUntil !== run.armedUntil) { stopRangerRun(run, 'Real-money authorization expired.'); return; }
+      }
+      const token = await runnerAuthorized(run);
+      if (!token) { stopRangerRun(run, 'Deriv session expired or changed.'); return; }
+      const info = await account(run.accountId, token);
+      if (info.mode !== run.mode) { stopRangerRun(run, 'Deriv account mode changed.'); return; }
+      if (run.pendingContractId) { run.phase = 'waiting-settlement'; return; }
+      const active = await store.activeContract(run.accountId);
+      if (active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing')) {
+        run.pendingContractId = active.provider_contract_id ?? null;
+        run.phase = 'waiting-settlement';
+        if (active.provider_contract_id) monitor(run.accountId, await clients.connect(run.accountId, token));
+        return;
+      }
+      if (run.cooldownUntil > now) { run.phase = 'cooldown'; run.updatedAt = now; return; }
+      if (run.cooldownUntil) { run.cooldownUntil = 0; run.phase = 'scanning'; }
+      const picks = rangerCandidates(run);
+      if (!picks.length) {
+        run.candidate = null; run.confirmKey = ''; run.confirmEpoch = 0; run.confirmations = 0;
+        run.phase = 'waiting-signal'; run.updatedAt = now; return;
+      }
+      const selected = picks[0];
+      const key = selected.market + '|' + selected.direction + '|' + selected.barrier;
+      run.candidate = { market: selected.market, direction: selected.direction, barrier: selected.barrier };
+      if (key !== run.confirmKey) { run.confirmKey = key; run.confirmEpoch = 0; run.confirmations = 0; run.lastAttemptEpoch = 0; }
+      if (selected.epoch > run.confirmEpoch) { run.confirmEpoch = selected.epoch; run.confirmations += 1; }
+      if (run.confirmations < run.config.shots) { run.phase = 'confirming-signal'; run.updatedAt = now; return; }
+      if (selected.epoch <= run.lastAttemptEpoch) { run.phase = 'waiting-next-tick'; run.updatedAt = now; return; }
+      run.lastAttemptEpoch = selected.epoch;
+      run.phase = 'quoting'; run.updatedAt = now;
+      const order: Order = { market: selected.market, direction: selected.direction, barrier: selected.barrier, stake: run.config.stake, minEdge: run.config.minEdge };
+      if (!registry.snapshot(order.market).fresh) { run.phase = 'waiting-feed'; return; }
+      const riskSettings = getSettings();
+      const riskState = await store.riskSnapshot(run.accountId, info.balance);
+      const risk = riskCheck({ stake: order.stake, settings: riskSettings, balance: info.balance,
+        context: buildRecoveryContext(riskSettings, undefined, riskState), lastTradeAt: 0,
+        tradeGapMs: 0, now, accountId: 'deriv:' + run.accountId,
+        skipStrategyCaps: false, lane: 'digit' });
+      if (!risk.ok) { stopRangerRun(run, 'Trade blocked by account risk: ' + risk.reason); return; }
+      const client = await clients.connect(run.accountId, token);
+      if (await reconcile(run.accountId, client)) { run.phase = 'waiting-settlement'; return; }
+      if ((await client.getOpenContractIds()).size > 0) { run.phase = 'waiting-settlement'; return; }
+      const offered = await quote(client, order, info.currency);
+      if (!Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice || offered.askPrice > info.balance) { run.phase = 'waiting-quote'; return; }
+      const liveEdge = modelEdge(order, offered.askPrice, offered.payout);
+      if (order.minEdge > 0 && liveEdge < order.minEdge) { run.phase = 'waiting-edge'; return; }
+      if (!registry.snapshot(order.market).fresh) { run.phase = 'waiting-feed'; return; }
+      const stillAuthorized = await runnerAuthorized(run, true);
+      if (!run.running || !stillAuthorized) { if (run.running) stopRangerRun(run, 'Deriv session expired or changed.'); return; }
+      const confirmRiskState = await store.riskSnapshot(run.accountId, info.balance);
+      const confirmRisk = riskCheck({ stake: order.stake, settings: riskSettings, balance: info.balance,
+        context: buildRecoveryContext(riskSettings, undefined, confirmRiskState), lastTradeAt: 0,
+        tradeGapMs: 0, now: Date.now(), accountId: 'deriv:' + run.accountId,
+        skipStrategyCaps: false, lane: 'digit' });
+      if (!confirmRisk.ok) { stopRangerRun(run, 'Trade blocked by account risk: ' + confirmRisk.reason); return; }
+      const reservationId = await store.reserve(run.accountId, randomUUID(), { ...order, mode: info.mode });
+      let buyAttempted = false;
+      let boughtContractId: string | null = null;
+      try {
+        if (!run.running || (run.mode === 'real' && (rangerArms.get(run.accountId) ?? 0) <= Date.now())) {
+          await store.cancelBeforeBuy(run.accountId, reservationId);
+          if (run.running) stopRangerRun(run, 'Real-money authorization expired.');
+          return;
+        }
+        const buyAuthorization = await runnerAuthorized(run, true);
+        if (!run.running || !buyAuthorization) {
+          await store.cancelBeforeBuy(run.accountId, reservationId);
+          if (run.running) stopRangerRun(run, 'Deriv session expired or changed.');
+          return;
+        }
+        if (client.connectedAccountId !== run.accountId || (await client.getOpenContractIds()).size > 0) {
+          await store.cancelBeforeBuy(run.accountId, reservationId);
+          run.phase = 'waiting-settlement';
+          return;
+        }
+        buyAttempted = true;
+        const bought = await client.placeBuy(offered.id, offered.askPrice);
+        boughtContractId = bought.contractId;
+        await store.markPurchased(run.accountId, reservationId, bought.contractId, bought.buyPrice, bought.payout);
+        run.pendingContractId = bought.contractId;
+        run.phase = 'waiting-settlement'; run.updatedAt = Date.now();
+        publish({ type: 'trade', accountId: run.accountId, contractId: bought.contractId, status: 'open' });
+        monitor(run.accountId, client);
+      } catch (error) {
+        if (buyAttempted) {
+          try { await store.markUnknown(run.accountId, reservationId, boughtContractId); } catch { /* reservation remains fail-closed */ }
+          stopRangerRun(run, 'Purchase outcome uncertain; account locked for reconciliation.');
+        } else {
+          await store.cancelBeforeBuy(run.accountId, reservationId);
+          run.phase = 'waiting-quote'; run.updatedAt = Date.now();
+        }
+      }
+    } catch (error) {
+      run.phase = 'error'; run.reason = error instanceof Error ? error.message : 'Ranger Auto cycle failed';
+      run.updatedAt = Date.now();
+    } finally {
+      run.busy = false;
+    }
+  }
+
+  function startRangerTimer(run: RangerRun): void {
+    if (run.timer) clearInterval(run.timer);
+    run.timer = setInterval(() => { void tickRangerRun(run); }, RANGER_RUN_INTERVAL_MS);
+    void tickRangerRun(run);
+  }
+
   const fail = (reply: { code: (code: number) => unknown }, status: number, message: string, extra?: Record<string, unknown>) => { reply.code(status); return { error: message, ...extra }; };
+
+
+  app.post('/api/player/automation/arm', async (req, reply) => {
+    if (!validOrigin(req)) return fail(reply, 403, 'origin rejected');
+    const user = await principal(req);
+    if (!user) return fail(reply, 401, 'player session required');
+    if ((req.body as { confirmRealFunds?: unknown } | undefined)?.confirmRealFunds !== true) return fail(reply, 403, 'explicit real-money confirmation required');
+    try {
+      const info = await account(user.accountId, user.token, 'state');
+      if (info.mode !== 'real') return fail(reply, 409, 'real-money arm is only available for a real account');
+      const armedUntil = Date.now() + RANGER_ARM_MS;
+      rangerArms.set(user.accountId, armedUntil);
+      const run = rangerRuns.get(user.accountId);
+      if (run?.running) run.armedUntil = armedUntil;
+      return { ok: true, armedUntil, account: { loginid: user.accountId, mode: info.mode } };
+    } catch { return fail(reply, 503, 'Deriv account could not be verified'); }
+  });
+
+  app.post('/api/player/automation/disarm', async (req, reply) => {
+    if (!validOrigin(req)) return fail(reply, 403, 'origin rejected');
+    const user = await principal(req);
+    if (!user) return fail(reply, 401, 'player session required');
+    rangerArms.delete(user.accountId);
+    const run = rangerRuns.get(user.accountId);
+    if (run?.running && run.mode === 'real') stopRangerRun(run, 'Real-money automation disarmed.');
+    return { ok: true, state: rangerRunState(run, user.accountId) };
+  });
+
+  app.post('/api/player/automation/start', async (req, reply) => {
+    if (!validOrigin(req)) return fail(reply, 403, 'origin rejected');
+    const user = await principal(req);
+    if (!user) return fail(reply, 401, 'player session required');
+    let config: RangerRunConfig;
+    try { config = parseRangerConfig(req.body); } catch (error) { return fail(reply, 400, error instanceof Error ? error.message : 'invalid Ranger Auto settings'); }
+    try {
+      const info = await account(user.accountId, user.token);
+      if (info.mode === 'real') {
+        const armedUntil = rangerArms.get(user.accountId) ?? 0;
+        if (armedUntil <= Date.now()) return fail(reply, 403, 'arm real-money automation for 10 minutes before starting');
+      }
+      const current = rangerRuns.get(user.accountId);
+      if (current?.running) return fail(reply, 409, 'Ranger Auto is already running', { state: rangerRunState(current, user.accountId) });
+      const active = await store.activeContract(user.accountId);
+      const client = await clients.connect(user.accountId, user.token);
+      if (active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing') || (await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'account has an open or uncertain contract');
+      if (!(listeners.get(user.accountId)?.size)) return fail(reply, 409, 'keep the authenticated player connection open to run Ranger Auto');
+      const sessionSecret = user.source === 'player' ? secretFor(req) : null;
+      const run: RangerRun = {
+        accountId: user.accountId, mode: info.mode, source: user.source, sessionSecret,
+        ownerAuthorized: () => isOwner(req), token: user.token, config,
+        running: true, phase: 'starting', reason: null, startedAt: Date.now(), updatedAt: Date.now(),
+        tradesDone: 0, wins: 0, losses: 0, lossStreak: 0, runProfit: 0,
+        candidate: null, confirmKey: '', confirmEpoch: 0, confirmations: 0, lastAttemptEpoch: 0,
+        cooldownUntil: 0, pendingContractId: null, timer: null, busy: false,
+        armedUntil: info.mode === 'real' ? rangerArms.get(user.accountId) ?? 0 : 0,
+      };
+      rangerRuns.set(user.accountId, run);
+      startRangerTimer(run);
+      return { ok: true, state: rangerRunState(run, user.accountId) };
+    } catch (error) {
+      return fail(reply, 503, error instanceof Error ? error.message : 'Ranger Auto could not start');
+    }
+  });
+
+  app.post('/api/player/automation/stop', async (req, reply) => {
+    if (!validOrigin(req)) return fail(reply, 403, 'origin rejected');
+    const user = await principal(req);
+    if (!user) return fail(reply, 401, 'player session required');
+    const run = rangerRuns.get(user.accountId);
+    if (run) stopRangerRun(run, 'Stopped by user.');
+    return { ok: true, state: rangerRunState(run, user.accountId, rangerArms.get(user.accountId) ?? 0) };
+  });
+
+  app.get('/api/player/automation/state', async (req, reply) => {
+    const user = await principal(req);
+    if (!user) return fail(reply, 401, 'player session required');
+    return { state: rangerRunState(rangerRuns.get(user.accountId), user.accountId, rangerArms.get(user.accountId) ?? 0) };
+  });
 
   app.get('/api/player/trading/state', async (req, reply) => {
     const user = await principal(req);
@@ -111,7 +497,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const client = await clients.connect(user.accountId, user.token);
       const active = await reconcile(user.accountId, client);
       if (active?.status === 'open' || (active?.status === 'unknown' && active.provider_contract_id)) monitor(user.accountId, client);
-      return { session: { loginid: user.accountId, ...info }, risk, active, trades: await store.listTrades(user.accountId) };
+      return { session: { loginid: user.accountId, ...info }, risk, active, trades: await store.listTrades(user.accountId), rangerAutomation: rangerRunState(rangerRuns.get(user.accountId), user.accountId, rangerArms.get(user.accountId) ?? 0) };
     } catch {
       // The player session itself is still valid; only the Deriv/account services
       // are unavailable. Report that distinctly so the browser shows
@@ -258,7 +644,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (!bucket) { bucket = new Set(); listeners.set(accountId, bucket); }
       bucket.add(send);
       const heartbeat = setInterval(() => { void stillAuthorized().then(ok => { if (!ok) socket.close(1008, 'session expired'); }).catch(() => socket.close(1011, 'session unavailable')); }, 15_000);
-      const cleanup = () => { clearInterval(heartbeat); bucket!.delete(send); if (bucket!.size === 0) listeners.delete(accountId); };
+      const cleanup = () => { clearInterval(heartbeat); bucket!.delete(send); if (bucket!.size === 0) { listeners.delete(accountId); const run = rangerRuns.get(accountId); if (run?.running) stopRangerRun(run, 'Player connection closed.'); } };
       socket.on('close', cleanup); socket.on('error', cleanup);
       socket.send(JSON.stringify({ type: 'hello', accountId }));
     })().catch(() => socket.close(1011, 'session unavailable'));
