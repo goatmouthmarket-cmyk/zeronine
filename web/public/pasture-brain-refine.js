@@ -74,33 +74,12 @@
 
   function pulseLearned(won, verdict) {
     const glyph = $('rangerBrainGlyph');
-    if (!glyph) return;
-    glyph.classList.remove('learned-pop');
-    void glyph.offsetWidth;
-    glyph.classList.add('learned-pop');
-    setTimeout(() => glyph.classList.remove('learned-pop'), 1700);
-    let pop = $('brainLearnPop');
-    if (!pop) {
-      pop = document.createElement('span');
-      pop.id = 'brainLearnPop';
-      pop.className = 'brain-learn-pop';
-      pop.setAttribute('aria-hidden', 'true');
-      glyph.appendChild(pop);
+    if (glyph) {
+      glyph.classList.remove('called-right', 'called-wrong');
+      if (verdict === 'right') glyph.classList.add('called-right');
+      if (verdict === 'wrong') glyph.classList.add('called-wrong');
+      setTimeout(() => glyph.classList.remove('called-right', 'called-wrong'), 1900);
     }
-    // A settled trade is a review, not a new finding. Only a changed lesson
-    // from the paper report may claim "New lesson".
-    pop.textContent = verdict === 'right' ? 'Trade reviewed · called it' : verdict === 'wrong' ? 'Trade reviewed · missed' : 'Trade reviewed';
-    pop.dataset.verdict = verdict || '';
-    pop.dataset.win = String(!!won);
-    glyph.classList.remove('called-right', 'called-wrong');
-    if (verdict === 'right') glyph.classList.add('called-right');
-    if (verdict === 'wrong') glyph.classList.add('called-wrong');
-    setTimeout(() => glyph.classList.remove('called-right', 'called-wrong'), 1900);
-    pop.classList.remove('show');
-    void pop.offsetWidth;
-    pop.classList.add('show');
-    clearTimeout(pop._timer);
-    pop._timer = setTimeout(() => pop.classList.remove('show'), 2400);
     renderLearnedCards();
   }
 
@@ -113,17 +92,7 @@
     lessonSig = sig;
     if (first && !force) return true;
     if (first && force) return true;
-    const glyph = $('rangerBrainGlyph');
-    const pop = glyph && $('brainLearnPop');
-    if (pop) {
-      pop.textContent = 'New lesson';
-      pop.dataset.verdict = '';
-      pop.classList.remove('show');
-      void pop.offsetWidth;
-      pop.classList.add('show');
-      clearTimeout(pop._timer);
-      pop._timer = setTimeout(() => pop.classList.remove('show'), 2400);
-    }
+    if (typeof window.notify === 'function') window.notify('New Brain lesson');
     return true;
   }
 
@@ -932,22 +901,11 @@
     setTimeout(() => glyph.classList.remove('brain-waking'), 2600);
   }
 
-  function showBrainBubble(text) {
-    if (!showBrainBubble.timer) showBrainBubble.timer = 0;
-    const bubble = $('rangerBrainBubble');
-    if (!bubble) return;
-    bubble.textContent = String(text);
-    bubble.dataset.visible = 'true';
-    bubble.hidden = false;
-    clearTimeout(showBrainBubble.timer);
-    showBrainBubble.timer = setTimeout(() => { bubble.hidden = true; bubble.dataset.visible = 'false'; }, 2600);
-  }
-
   window.addEventListener('zeronine:brain-connection', (event) => {
     const connected = Boolean(event && event.detail && event.detail.connected);
     const glyph = $('rangerBrainGlyph');
     if (glyph) glyph.classList.toggle('is-live', connected);
-    if (connected) showBrainBubble('Deriv connected');
+    if (connected && typeof window.notify === 'function') window.notify('Deriv connected');
     else hideLearningBubble();
   });
 
@@ -969,35 +927,6 @@
     if (ms <= 9500) return { key: 'late', label: 'LATE' };
     return { key: 'slow', label: 'TOO SLOW' };
   }
-  let reflexEl = null, reflexTimer = 0;
-  function ensureReflex() {
-    if (reflexEl && reflexEl.isConnected) return reflexEl;
-    reflexEl = document.createElement('div');
-    reflexEl.className = 'brain-reflex';
-    reflexEl.hidden = true;
-    reflexEl.setAttribute('role', 'status');
-    reflexEl.setAttribute('aria-live', 'polite');
-    document.body.appendChild(reflexEl);
-    return reflexEl;
-  }
-  function placeReflex() {
-    const chip = reflexEl;
-    if (!chip || chip.hidden) return;
-    const glyph = $('rangerBrainGlyph');
-    const rect = glyph ? glyph.getBoundingClientRect() : null;
-    const width = chip.offsetWidth || 250;
-    if (rect && rect.width) {
-      chip.style.left = Math.max(8, Math.min(innerWidth - width - 8, rect.left + rect.width / 2 - width / 2)) + 'px';
-      chip.style.top = Math.max(8, rect.top - (chip.offsetHeight || 92) - 12) + 'px';
-      chip.style.bottom = 'auto';
-    } else {
-      chip.style.left = '12px';
-      chip.style.top = 'auto';
-      chip.style.bottom = '110px';
-    }
-  }
-  const SHIELD_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 1.8 13 4v4.2c0 3-2.2 5.2-5 6-2.8-.8-5-3-5-6V4l5-2.2Z"/><path d="m5.8 8 1.6 1.7 2.8-3"/></svg>';
-  const CLOCK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.6V8l2.4 1.6"/></svg>';
   function showReflex(detail) {
     const code = String((detail && detail.code) || 'changed');
     const saved = code !== 'held';
@@ -1012,38 +941,17 @@
       state.best = Math.max(state.best, state.streak);
       reflexWrite(state);
     }
-    const chip = ensureReflex();
-    const title = saved
-      ? (code === 'stale' ? 'FEED FLICKERED' : 'COW BOLTED')
-      : 'LATE ENTRY';
-    const line = saved
-      ? 'The setup flipped before your shot landed. Stake kept — that counts.'
-      : 'The setup held, so the shot went through. Quicker draws score higher.';
-    const score = saved
-      ? '<b>+' + gain + '</b> reflex · streak ' + state.streak + ' · best ' + state.best
-      : 'Grade ' + grade.label + ' · signal held';
-    chip.dataset.grade = grade.key;
-    chip.dataset.kind = saved ? 'save' : 'held';
-    chip.innerHTML = '<span class="brain-reflex-icon" aria-hidden="true">' + (saved ? SHIELD_SVG : CLOCK_SVG) + '</span><div class="brain-reflex-copy"><b>' + title + '</b><span>' + line + '</span><small>' + score + '</small></div><em class="brain-reflex-grade">' + grade.label + '</em>';
-    chip.hidden = false;
-    chip.classList.remove('show');
-    void chip.offsetWidth;
-    chip.classList.add('show');
-    placeReflex();
-    const glyph = $('rangerBrainGlyph');
-    if (glyph) {
-      glyph.classList.remove('late-pop');
-      void glyph.offsetWidth;
-      glyph.classList.add('late-pop');
-      setTimeout(() => glyph.classList.remove('late-pop'), 900);
+    // Rejected entries already have a safety notice from the game. Emit only
+    // the held-entry result here to avoid displaying the same event twice.
+    if (!saved && typeof window.notify === 'function') {
+      const message = 'Late entry: the setup held and the shot went through. Grade ' + grade.label + '.';
+      if (typeof window.notify.event === 'function') window.notify.event({ type: 'info', title: 'Late entry', message });
+      else window.notify(message);
     }
-    clearTimeout(reflexTimer);
-    reflexTimer = setTimeout(() => { chip.classList.remove('show'); chip.hidden = true; }, saved ? 5200 : 4200);
   }
   window.addEventListener('zeronine:brain-late-entry', (event) => {
     try { showReflex((event && event.detail) || {}); } catch {}
   });
-  window.addEventListener('resize', placeReflex, { passive: true });
 
   /* ---------- capture scan ---------- */
   let scanEl = null, scanNote = null;
@@ -1093,20 +1001,9 @@
     return el;
   }
   function showScanNote(title, text) {
-    const el = ensureScan();
-    if (!el || !scanNote) return;
-    scanNote.querySelector('b').textContent = title;
-    scanNote.querySelector('span').textContent = text;
-    scanNote.dataset.tone = 'empty';
-    scanNote.hidden = false;
-    const at = scanOrigin();
-    const width = scanNote.offsetWidth || 248;
-    scanNote.style.left = Math.max(8, Math.min(innerWidth - width - 8, at.x - width / 2)) + 'px';
-    scanNote.style.top = Math.max(8, Math.min(innerHeight - 96, at.y + 26)) + 'px';
-    scanNote.classList.remove('show');
-    void scanNote.offsetWidth;
-    scanNote.classList.add('show');
-    scanLater(() => { scanNote.classList.remove('show'); scanNote.hidden = true; }, 5200);
+    if (typeof window.notify !== 'function') return;
+    if (typeof window.notify.event === 'function') window.notify.event({ type: 'research', title, message: text, ms: 5200 });
+    else window.notify(title + ': ' + text);
   }
   function hideScan(delay) {
     const el = ensureScan();

@@ -1,0 +1,71 @@
+/* Shared type palette for the dashboard and the pasture iframe. */
+:root {
+  --pasture-body-font: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pasture-display-font: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  --dc-font: var(--pasture-body-font);
+  --dc-serif: var(--pasture-display-font);
+  --dc-muted: #67523a;
+}
+
+html, body { font-family: var(--pasture-body-font); }
+/* Keep controls and prose consistent even in legacy menu style layers. */
+body :where(button, input, select, textarea, p, label, small, span, strong, b, em, h1, h2, h3, h4, summary, a, li) {
+  font-family: var(--pasture-body-font) !important;
+}
+body :where(h1, h2, h3, h4, .ranger-auto-heading strong, #rangerBrainTitle, .brain-eyebrow, .hud-kicker) {
+  font-family: var(--pasture-display-font) !important;
+  letter-spacing: .01em;
+}
+
+/* Preserve the warm parchment palette while keeping secondary copy legible. */
+#rangerBrainPanel, .brain-scan, .brain-snipe-card, .brain-reflex, #brainScanNote {
+  --sans: var(--pasture-body-font);
+  --serif: var(--pasture-display-font);
+  --ink-faint: #695137;
+  --wood-dark: #704a24;
+}
+#rangerBrainPanel :where(p, label, .brain-note, .brain-friendly-note, .brain-learning-copy small, .brain-lesson-meta) {
+  font-size: 12px;
+  line-height: 1.4;
+}
+#rangerBrainPanel :where(.brain-eyebrow, .brain-chip, .brain-lesson-topic, .brain-lesson-see) {
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+#rangerBrainPanel .ranger-brain-tabs button[aria-selected="true"] :where(span, svg),
+#rangerBrainPanel #brainFindCow :where(span, svg) { color: #fff9e8 !important; }
+#inspector .target-menu[open] :where(label, .manual-shots-hint, .inspector-note),
+#rangerAutoHud :where(label, p, small),
+#healthPanel :where(p, small) {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* The play control is just the icon, while keyboard focus remains visible. */
+#rangerAutoToggle,
+#rangerAutoToggle[aria-expanded="true"] {
+  color: #ffd34e !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+#rangerAutoToggle svg { filter: drop-shadow(0 1px 2px #182a1d); }
+#rangerAutoToggle:focus-visible { outline: 2px solid #fff4c5 !important; outline-offset: 2px; }
+.app[data-page="home"] .room-header-play,
+.app[data-page="home"] .room-header-play.is-open {
+  color: #ffd34e !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.app[data-page="home"] .room-header-play .room-auto-icon {
+  fill: currentColor;
+  filter: drop-shadow(0 1px 2px #182a1d);
+}
+.app[data-page="home"] .room-header-play:focus-visible {
+  outline: 2px solid #fff4c5 !important;
+  outline-offset: 2px;
+}
+

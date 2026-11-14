@@ -84,6 +84,7 @@
     ui().placeFloating(el, { x: head.x, y: head.y - (head.r || 11) }, {
       gap: 10,
       padding: 8,
+      hysteresis: 12000,
       avoid: ['#rangerBrainGlyph', '#rangerBrainBubble', '#breakTimer', '#liveRangerWait', '#rangerAutoHud', '#rangerBrainPanel'],
     });
   };

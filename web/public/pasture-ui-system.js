@@ -269,6 +269,7 @@
   register({
     id: 'chat',
     root: 'chatPanel',
+    major: false,
     open: () => {
       const panel = $('chatPanel');
       if (panel && panel.hidden) $('chatToggle')?.click();
@@ -645,6 +646,7 @@
     return x * y;
   }
 
+  const floatingPlacements = new WeakMap();
   function placeFloating(element, anchor, options) {
     if (!element || !anchor) return null;
     const opts = options || {};
@@ -670,6 +672,8 @@
     ];
 
     let best = null;
+    let previous = null;
+    const previousRank = floatingPlacements.get(element);
     for (const candidate of candidates) {
       const box = {
         left: Math.max(pad, Math.min(rightLimit - width, candidate.left)),
@@ -680,10 +684,17 @@
       for (const zone of avoid) score += overlapArea(rect, zone) * 40;
       const rawPenalty = Math.abs(candidate.left - box.left) + Math.abs(candidate.top - box.top);
       score += rawPenalty * 6;
-      if (!best || score < best.score) best = { ...box, score };
+      const placement = { ...box, score, rank: candidate.rank };
+      if (candidate.rank === previousRank) previous = placement;
+      if (!best || score < best.score) best = placement;
     }
 
     if (!best) return null;
+    // Keep an attached bubble on the same side through small scoring changes;
+    // switch when another placement avoids a meaningful obstruction.
+    const hysteresis = Math.max(0, Number(opts.hysteresis) || 0);
+    if (hysteresis && previous && previous.score <= best.score + hysteresis) best = previous;
+    if (hysteresis) floatingPlacements.set(element, best.rank);
     element.style.left = best.left + 'px';
     element.style.top = best.top + 'px';
     element.style.transform = 'none';

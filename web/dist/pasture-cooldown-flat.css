@@ -1,0 +1,90 @@
+/* A compact, readable cooldown indicator without a surrounding card. */
+#breakTimer.visible {
+  display: flex;
+  align-items: center;
+  gap: 6px !important;
+  padding: 4px 6px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #fff4d7 !important;
+  text-shadow: 0 1px 3px #14281e, 0 1px 6px #14281e;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+#breakTimer .cooldown-icon {
+  flex: 0 0 16px;
+  width: 16px !important;
+  height: 16px !important;
+  stroke: currentColor;
+}
+#breakTimer .cooldown-copy {
+  position: static;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  color: inherit;
+}
+#breakTimer .cooldown-reason {
+  position: static;
+  display: inline;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  color: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+#breakTimer #breakSeconds {
+  display: inline;
+  color: inherit;
+  font-size: 16px !important;
+  font-weight: 900;
+  line-height: 1 !important;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 360px) {
+  #breakTimer.visible { gap: 4px !important; }
+  #breakTimer .cooldown-copy { gap: 4px; }
+  #breakTimer .cooldown-reason { font-size: 9px; }
+  #breakTimer #breakSeconds { font-size: 14px !important; }
+}
+body.cooldown-header-connected #breakTimer.visible { visibility: hidden !important; }
+.app[data-page="home"] .room-cooldown-indicator:not([hidden]) {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 190px;
+  margin-inline: auto;
+  color: #fff4d7;
+  text-shadow: 0 1px 3px #14281e, 0 1px 6px #14281e;
+  font: 800 10px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.room-cooldown-indicator .room-cooldown-reason {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.room-cooldown-indicator .room-cooldown-time {
+  flex: none;
+  font-size: 16px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 360px) {
+  .app[data-page="home"] .room-cooldown-indicator:not([hidden]) { gap: 4px; font-size: 9px; }
+  .room-cooldown-indicator .room-cooldown-time { font-size: 14px; }
+}
