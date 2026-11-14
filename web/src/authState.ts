@@ -25,10 +25,8 @@ export function classifyPlayerStateFailure(error: unknown): PlayerStateFailure {
 }
 
 /**
- * The pasture room is derived from a confirmed identity, never from a
- * transient refresh. A login switches to the private room; a confirmed logout
- * switches back; anything else keeps the room already joined so the iframe is
- * not remounted (which would spawn a second Ranger connection).
+ * All players use the shared pasture room. Identity and trading permissions
+ * are resolved separately, so login changes do not remount the Ranger.
  */
 export function nextPastureRoom(_previous: string | null, _loginId: string | null, _status: PlayerAuthStatus): string {
   // Guests and Deriv-connected players share one pasture; trading permissions
