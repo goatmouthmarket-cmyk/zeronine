@@ -479,6 +479,7 @@
       setTimeout(() => {
         el.remove();
         notifications.active = notifications.active.filter((row) => row !== record);
+        positionLane();
         emit('toast', { action: 'dismiss', type: item.type });
         flush();
       }, reduceMotion() ? 0 : 170);
@@ -494,6 +495,7 @@
 
     lane.appendChild(el);
     notifications.active.push(record);
+    positionLane();
     emit('toast', { action: 'show', type: item.type });
   }
 
