@@ -1250,6 +1250,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     }
   };
 
+  const roomMarketState = useMemo(() => ({
+  }), [s.markets, s.signal, s.displaySignal, s.marketScout, s.digitTradeEvidence, s.paperTrades]);
+
   const roomState = useMemo(() => ({
     balance: s.session?.balance ?? 0,
     currency: s.session?.currency ?? 'USD',
@@ -1296,7 +1299,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       openContract: s.paperSimulation.openContract,
       lastSettled: s.paperSimulation.lastSettled,
       recentTrades: s.paperSimulation.recentTrades ?? [],
-      lastTick: s.paperSimulation.lastTick,
     } : null,
     trades: digitTrades.slice(0, 30).map((trade) => ({
       id: trade.id,
@@ -1311,7 +1313,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [base.playerAuthStatus, digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.displaySignal, s.feed?.connected, s.marketScout, s.digitTradeEvidence, s.digitRemainingLoss, s.markets, s.owner, s.paperSimulation, s.paperTrades, s.playerRecovery?.debt, s.session, s.signal, s.testRuns, s.testlab, usePlayerTrading]);
+  }), [base.playerAuthStatus, digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.feed?.connected, s.digitRemainingLoss, s.owner, s.paperSimulation?.phase, s.paperSimulation?.totalTrades, s.paperSimulation?.wins, s.paperSimulation?.losses, s.paperSimulation?.netPnl, s.paperSimulation?.openContract, s.paperSimulation?.lastSettled, s.paperSimulation?.recentTrades, s.playerRecovery?.debt, s.session, s.testRuns, s.testlab, usePlayerTrading]);
 
   const postRoomLayout = useCallback(() => {
     const header = document.querySelector('.app[data-page="home"] .view-home .header') as HTMLElement | null;
@@ -1328,11 +1330,6 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const postRoomState = useCallback(() => {
     const frame = roomFrameRef.current;
     frame?.contentWindow?.postMessage({ type: 'zeronine:room-state', state: roomState }, window.location.origin);
-    frame?.contentWindow?.postMessage({
-      type: 'zeronine:room-auto-menu',
-      open: rangerAutoMenuOpen,
-      controls: true,
-    }, window.location.origin);
     const nowLayout = Date.now();
     if (nowLayout - lastLayoutPostAt.current > 1000) {
       lastLayoutPostAt.current = nowLayout;
@@ -1377,7 +1374,19 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       }
     };
     updateStakeHint();
-  }, [rangerAutoMenuOpen, roomState, postRoomLayout]);
+  }, [roomState, postRoomLayout]);
+
+  const postRoomMarketState = useCallback(() => {
+    roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-market-state', state: roomMarketState }, window.location.origin);
+  }, [roomMarketState]);
+
+  const postRoomAutoMenu = useCallback(() => {
+    roomFrameRef.current?.contentWindow?.postMessage({
+      type: 'zeronine:room-auto-menu',
+      open: rangerAutoMenuOpen,
+      controls: true,
+    }, window.location.origin);
+  }, [rangerAutoMenuOpen]);
 
   useEffect(() => {
     postRoomLayout();
@@ -1388,6 +1397,14 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   useEffect(() => {
     if (active && !marketChooserOpen) postRoomState();
   }, [active, marketChooserOpen, postRoomState]);
+
+  useEffect(() => {
+    if (active && !marketChooserOpen) postRoomMarketState();
+  }, [active, marketChooserOpen, postRoomMarketState]);
+
+  useEffect(() => {
+    if (active && !marketChooserOpen) postRoomAutoMenu();
+  }, [active, marketChooserOpen, postRoomAutoMenu]);
 
   useEffect(() => {
     if (!active || marketChooserOpen) {
@@ -1411,6 +1428,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       }
       if (message.type === 'zeronine:room-ready') {
         postRoomState();
+        postRoomMarketState();
+        postRoomAutoMenu();
         return;
       }
       if (message.type === 'zeronine:room-research-replay') {
