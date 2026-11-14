@@ -420,7 +420,7 @@ export function App(): JSX.Element {
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
           {page === 'howToPlay' && <div class="view view-how-to-play"><HowToPlayPage onBack={() => navigate('home')} onConnect={() => navigate('account')} /></div>}
         </div>
-        {(page === 'history' || page === 'account') && <aside class="pasture-detail-panel" aria-label={page === 'history' ? 'Trade history' : 'Account'}>
+        {(page === 'history' || page === 'account') && <aside class={`pasture-detail-panel${page === 'account' ? ' account-theme' : ''}`} aria-label={page === 'history' ? 'Trade history' : 'Account'}>
           <header class="pasture-detail-heading"><div><small>DERIV COWS</small><h2>{page === 'history' ? 'Trade history' : 'Account'}</h2></div><button type="button" aria-label="Close details" onClick={() => navigate('home')}><Icon name="x" size={19} /></button></header>
           <div class="pasture-detail-content">{page === 'history' ? <PastureHistory /> : <AccountPage onConnected={enterPasture} />}</div>
         </aside>}
