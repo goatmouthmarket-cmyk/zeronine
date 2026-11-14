@@ -1624,6 +1624,24 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     };
   }, [arm, onNavigate, playArenaTarget, postRoomState, s.markets, s.owner, s.session, s.testlab]);
 
+  useEffect(() => {
+    if (!rangerAutoRunning) return;
+    const poll = (): void => {
+      void fetch('/api/player/automation/state', { credentials: 'same-origin' }).then(async (response) => {
+        if (!response.ok) return;
+        const body = await response.json().catch(() => ({})) as { state?: unknown; running?: boolean };
+        const state = body.state ?? body;
+        const running = Boolean((state as { running?: boolean })?.running);
+        setRangerAutoRunning(running);
+        roomFrameRef.current?.contentWindow?.postMessage({
+          type: 'zeronine:room-auto-server-status', ok: true, state, running,
+        }, window.location.origin);
+      }).catch(() => {});
+    };
+    const timer = window.setInterval(poll, 2_000);
+    return () => window.clearInterval(timer);
+  }, [rangerAutoRunning]);
+
   return (
     <>
       <header class="header">
