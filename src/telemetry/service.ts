@@ -64,12 +64,17 @@ export class TelemetryService {
   private dropped = 0;
   private failures = 0;
   private state: 'disabled' | 'starting' | 'running' | 'failed';
+  private readonly tickIntervalMs: number;
+  private readonly scanIntervalMs: number;
+  private readonly lastSampledAt = new Map<string, number>();
 
-  constructor(path: string, retentionDays: number, enabled = true) {
+  constructor(path: string, retentionDays: number, enabled = true, connectionString = '', tickIntervalMs = 10_000, scanIntervalMs = 60_000) {
     this.state = enabled ? 'starting' : 'disabled';
+    this.tickIntervalMs = Math.max(1000, tickIntervalMs);
+    this.scanIntervalMs = Math.max(5000, scanIntervalMs);
     if (!enabled) return;
     try {
-      this.worker = new Worker(new URL('./worker.mjs', import.meta.url), { workerData: { path, retentionDays } });
+      this.worker = new Worker(new URL('./worker.mjs', import.meta.url), { workerData: { path, retentionDays, connectionString } });
       this.worker.on('message', (message: Record<string, unknown>) => this.onMessage(message));
       this.worker.on('error', () => this.fail());
       this.worker.on('exit', (code) => { if (code !== 0 || this.state === 'starting' || this.state === 'running') this.fail(); });
@@ -107,8 +112,32 @@ export class TelemetryService {
   record(event: AutomationEvent): void {
     if (this.state === 'disabled' || this.state === 'failed') return;
     try {
-      for (const item of telemetryFromHub(event)) this.recordResearch(item);
+      for (const item of telemetryFromHub(event)) {
+        if (this.shouldSample(item)) this.recordResearch(item);
+      }
     } catch { this.failures++; }
+  }
+
+  private shouldSample(item: TelemetryEvent): boolean {
+    let interval = 0;
+    let key = '';
+    if (item.type === 'tick') { interval = this.tickIntervalMs; key = `tick:${item.market ?? ''}`; }
+    else if (item.type === 'signal_candidate') {
+      interval = this.scanIntervalMs;
+      key = `candidate:${item.market ?? ''}:${String(item.data.direction ?? '')}:${String(item.data.barrier ?? '')}`;
+    } else if (item.type === 'market_intelligence') {
+      interval = this.scanIntervalMs;
+      key = `market:${item.market ?? ''}`;
+    }
+    if (!interval) return true;
+    const previous = this.lastSampledAt.get(key);
+    if (previous !== undefined && item.observedAt - previous < interval) return false;
+    this.lastSampledAt.set(key, item.observedAt);
+    if (this.lastSampledAt.size > 4096) {
+      const cutoff = item.observedAt - 24 * 60 * 60 * 1000;
+      for (const [sampleKey, timestamp] of this.lastSampledAt) if (timestamp < cutoff) this.lastSampledAt.delete(sampleKey);
+    }
+    return true;
   }
 
   recordResearch(item: TelemetryEvent): void {
