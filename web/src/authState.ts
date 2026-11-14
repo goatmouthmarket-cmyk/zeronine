@@ -30,10 +30,10 @@ export function classifyPlayerStateFailure(error: unknown): PlayerStateFailure {
  * switches back; anything else keeps the room already joined so the iframe is
  * not remounted (which would spawn a second Ranger connection).
  */
-export function nextPastureRoom(previous: string | null, loginId: string | null, status: PlayerAuthStatus): string | null {
-  if (loginId) return 'main';
-  if (status === 'signed-out') return null;
-  return previous;
+export function nextPastureRoom(_previous: string | null, _loginId: string | null, _status: PlayerAuthStatus): string {
+  // Guests and Deriv-connected players share one pasture; trading permissions
+  // remain enforced separately by authenticated trading APIs.
+  return 'main';
 }
 
 /**
