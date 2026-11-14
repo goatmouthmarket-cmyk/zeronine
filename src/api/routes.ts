@@ -2558,6 +2558,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         reason: `${entryLabel} | ${evidence}`,
         origin: 'manual',
       });
+      // Publish the durable purchasing row before waiting for Deriv's buy response.
+      // Clients can show the transaction as pending immediately; the later trade event
+      // replaces it with the confirmed contract.
+      hub.emit({ type: 'trade', ts: Date.now(), trade, manual: true, pending: true });
       const bought = await accountCoordinator.runCommand('manual_open', session.loginid, async () => {
         if (getSession()?.loginid !== session.loginid || client.connectedAccountId !== session.loginid) throw new ManualRequestError(409, 'Selected account changed before purchase. No trade was submitted.');
         const conflict = listOpenTrades(accountId).find((open) => open.id !== trade.id && (open.contract_type === 'DIGITOVER' || open.contract_type === 'DIGITUNDER'));
@@ -2589,6 +2593,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (recordedTrade) {
         if (buyAttempted && !buyConfirmed) markTradePurchaseOutcomeUnknown(recordedTrade.id, recordedTrade.account_id);
         else resolveTrade(recordedTrade.id, 'error', 0, recordedTrade.contract_id || '', undefined, recordedTrade.account_id);
+        const updatedTrade = getTrade(recordedTrade.id, recordedTrade.account_id);
+        if (updatedTrade) hub.emit({ type: 'trade', ts: Date.now(), trade: updatedTrade, manual: true, pending: false });
       }
       if (error instanceof ManualRequestError) throw error;
       console.warn(`[manual] order failed: ${error instanceof Error ? error.message : String(error)}`);
