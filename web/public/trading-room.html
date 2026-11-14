@@ -82,9 +82,9 @@
 }
 @media(max-width:400px){#inspector:not(:has(.target-menu[open])){left:116px!important}}
 </style><style id="ranger-bet-send-animation">
-.ranger-bet.visible.submitting{animation:none!important;outline:1px solid #ffe27c66;box-shadow:0 3px 10px #142f2750}
+.ranger-bet.visible.submitting{overflow:hidden;animation:none!important;outline:1px solid #ffe27c66;box-shadow:0 3px 10px #142f2750}
 .ranger-bet.visible.submitting:after{content:'';position:absolute;inset:0 auto 0 0;left:0!important;width:30%;background:linear-gradient(90deg,transparent,#fff5,transparent);transform:translate3d(-140%,0,0) skewX(-16deg);animation:rangerBetSweep 1.8s ease-in-out infinite!important;pointer-events:none}
-.ranger-bet.visible.submitting .bet-caption{display:inline-flex;align-items:center;gap:6px}
+.ranger-bet.visible.submitting .bet-caption,.ranger-bet.visible.open .bet-caption{display:inline-flex;align-items:center;gap:6px}
 .ranger-bet.visible.submitting .bet-caption:before,.ranger-bet.visible.open .bet-caption:before{content:'';width:9px;height:9px;flex:none;border:2px solid #fff7;border-top-color:#ffe27c;border-radius:50%;animation:rangerBetSpin .8s linear infinite}
 .ranger-bet.visible.submitting .bet-caption:after{content:' …';display:inline-block;animation:rangerBetDots .8s steps(3,end) infinite}
 @keyframes rangerBetSweep{to{transform:translate3d(550%,0,0) skewX(-16deg);opacity:0}}
