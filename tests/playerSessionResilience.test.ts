@@ -61,14 +61,12 @@ test('HTTP errors keep their status, code and transport kind', () => {
   assert.notEqual(timeout.kind, http.kind, 'timeouts stay distinguishable from HTTP errors');
 });
 
-test('the pasture iframe keeps its authenticated room through transient failures', () => {
+test('guests and Deriv players stay in the shared pasture across auth changes', () => {
   assert.equal(nextPastureRoom(null, 'CR1234', 'live'), 'main');
-  assert.equal(nextPastureRoom(null, 'CR1234', 'reconnecting'), 'main', 'a login always opens the private room');
-  assert.equal(nextPastureRoom('main', null, 'reconnecting'), 'main', 'a refresh failure must not remount the pasture into the public room');
-  assert.equal(nextPastureRoom('main', null, 'idle'), 'main');
-  assert.equal(nextPastureRoom('main', null, 'signed-out'), null, 'a confirmed logout leaves the private room');
-  assert.equal(nextPastureRoom(null, null, 'signed-out'), null);
-  assert.equal(nextPastureRoom(null, null, 'reconnecting'), null);
+  assert.equal(nextPastureRoom(null, 'CR1234', 'reconnecting'), 'main');
+  assert.equal(nextPastureRoom(null, null, 'idle'), 'main');
+  assert.equal(nextPastureRoom('main', null, 'signed-out'), 'main', 'logout keeps the Ranger in the shared pasture');
+  assert.equal(nextPastureRoom(null, null, 'reconnecting'), 'main');
 });
 
 test('the pasture client reconnects with bounded backoff and stops on auth rejection', () => {
