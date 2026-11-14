@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
-import { listDerivAccounts } from '../deriv/privateClient.ts';
 import type { DerivPrivateClient } from '../deriv/privateClient.ts';
 import { PlayerClients } from '../execution/playerClients.ts';
 import { MultiplayerStore } from '../execution/multiplayerStore.ts';
@@ -46,13 +45,13 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     return player ? { ...player, source: 'player' as const } : null;
   };
   const account = async (accountId: string, token: string, purpose: 'state' | 'trade' = 'trade') => {
-    const info = (await listDerivAccounts(token)).find(item => String(item.account_id) === accountId);
-    if (!info) throw new Error('Deriv account unavailable; sign in again');
-    const balance = Number(info.balance);
-    // Empty accounts must remain selectable and visible, but all quote and buy
-    // paths retain the positive-balance requirement before any order request.
-    if (info.balance == null || !Number.isFinite(balance) || balance < 0 || (purpose === 'trade' && balance === 0)) throw new Error('Deriv balance unavailable');
-    return { balance, currency: info.currency || 'USD', mode: String(info.account_type ?? '').toLowerCase().includes('demo') ? 'demo' as const : 'real' as const };
+    // Reuse the authenticated private socket session. Its balance subscription
+    // keeps this snapshot current, avoiding a second REST /accounts request for
+    // every preview and purchase.
+    const { session } = await clients.connectWithSession(accountId, token);
+    const balance = Number(session.balance);
+    if (!Number.isFinite(balance) || balance < 0 || (purpose === 'trade' && balance === 0)) throw new Error('Deriv balance unavailable');
+    return { balance, currency: session.currency || 'USD', mode: session.mode };
   };
   const parseOrder = (input: unknown): Order => {
     const body = input && typeof input === 'object' ? input as Record<string, unknown> : {};
