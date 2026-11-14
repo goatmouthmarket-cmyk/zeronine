@@ -156,7 +156,9 @@ export async function registerWs(app: FastifyInstance, hub: Hub, registry: Marke
         const session = await multiplayerStore.resolveSession(secret);
         accountId = session?.accountId ?? null;
       }
-      if (!accountId || (roomId !== 'main' && (!multiplayerStore || !await multiplayerStore.isRoomMember(accountId, roomId)))) { socket.close(1008, 'pasture access required'); return; }
+      const sharedRoom = roomId === 'main' || roomId === 'public';
+      if (!accountId && !sharedRoom) { socket.close(1008, 'pasture access required'); return; }
+      if (accountId && !sharedRoom && (!multiplayerStore || !await multiplayerStore.isRoomMember(accountId, roomId))) { socket.close(1008, 'pasture access required'); return; }
     }
     if (socket.readyState !== socket.OPEN) return;
     // Identity is decided here, from verified credentials only. A browser can
