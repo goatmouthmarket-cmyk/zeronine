@@ -43,7 +43,7 @@ function appearance(input: unknown): Appearance {
   return { outfit: choose('outfit', ['classic', 'vest', 'scout', 'jacket', 'hoodie'], 'classic'), color: colors(value.color, initialAppearance.color), accent: colors(value.accent, initialAppearance.accent), headwear: choose('headwear', ['none', 'cap', 'bandana', 'hat', 'hood'], 'none'), accessory: choose('accessory', ['none', 'scarf', 'badge', 'glasses', 'cape'], 'none') };
 }
 function cleanText(value: unknown, limit: number): string { return typeof value === 'string' ? Array.from(value.replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, limit).join('') : ''; }
-function publicPlayer(player: Player): Record<string, unknown> { return { id: player.id, name: player.name, x: player.x, y: player.y, facing: player.facing, headFacing: player.headFacing, lookX: player.lookX, lookY: player.lookY, action: player.action, appearance: player.appearance }; }
+function publicPlayer(player: Player): Record<string, unknown> { return { id: player.id, name: player.name, guest: player.id.startsWith('g-'), x: player.x, y: player.y, facing: player.facing, headFacing: player.headFacing, lookX: player.lookX, lookY: player.lookY, action: player.action, appearance: player.appearance }; }
 const VALID_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
