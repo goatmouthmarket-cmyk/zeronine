@@ -1699,8 +1699,17 @@ function connectPlayerWs(): void {
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/player-ws`);
   playerSocket = socket;
   socket.onmessage = (message) => {
-    try { const event = JSON.parse(String(message.data)); if (event.type === 'balance' || event.type === 'trade') void refreshPlayerState(true); }
-    catch { /* Ignore malformed events. */ }
+    try {
+      const event = JSON.parse(String(message.data));
+      if (event.type === 'balance') {
+        const balance = Number(event.balance);
+        if (state.playerSession?.loginid === event.accountId && Number.isFinite(balance) && balance >= 0) {
+          set({ playerSession: { ...state.playerSession, balance } });
+        }
+      } else if (event.type === 'trade' && state.playerSession?.loginid === event.accountId) {
+        void refreshPlayerState(true);
+      }
+    } catch { /* Ignore malformed events. */ }
   };
   socket.onclose = () => {
     if (playerSocket === socket) playerSocket = null;
