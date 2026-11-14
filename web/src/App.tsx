@@ -734,9 +734,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [showRealCowNotice, setShowRealCowNotice] = useState(false);
   const sessionRef = useRef(s.session);
   sessionRef.current = s.session;
-  // The embedded pasture room follows confirmed authentication only. A 503 or
-  // a reconnect must never flip the iframe to the public room (which would
-  // remount it and spawn a second Ranger connection).
+  // Guests and signed-in players share the same room, so auth refreshes
+  // never remount the iframe or create a duplicate Ranger presence.
   const resolvedLoginId = s.session?.loginid ?? null;
   const [pastureRoom, setPastureRoom] = useState<string | null>(() => nextPastureRoom(null, resolvedLoginId, base.playerAuthStatus));
   useEffect(() => {
