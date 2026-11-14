@@ -1415,7 +1415,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   useEffect(() => {
     const receiveRoomAction = (event: MessageEvent): void => {
       if (event.origin !== window.location.origin || event.source !== roomFrameRef.current?.contentWindow) return;
-      const message = event.data as { type?: string; page?: Page; running?: boolean; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string; rangerAutomation?: boolean; minEdge?: number | null; replayAttemptId?: string } } | null;
+      const message = event.data as { type?: string; page?: Page; running?: boolean; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string; rangerAutomation?: boolean; minEdge?: number | null; replayAttemptId?: string; minWin?: number; maxTrades?: number; takeProfit?: number; maxRunLoss?: number; lossLimit?: number; cooldownSeconds?: number; green?: boolean; gold?: boolean; red?: boolean } } | null;
       if (!message?.type) return;
       if (message.type === 'zeronine:room-auto-dismiss') {
         setRangerAutoMenuOpen(false);
@@ -1425,10 +1425,51 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         setRangerAutoRunning(message.running);
         return;
       }
+      if (message.type === 'zeronine:room-auto-start') {
+        void fetch('/api/player/automation/start', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(message.payload ?? {}),
+        }).then(async (response) => {
+          const body = await response.json().catch(() => ({})) as { state?: unknown; error?: string; message?: string };
+          roomFrameRef.current?.contentWindow?.postMessage({
+            type: 'zeronine:room-auto-server-status', ok: response.ok,
+            state: body.state, message: body.error ?? body.message ?? (response.ok ? '' : 'Railway could not start Ranger Auto.'),
+          }, window.location.origin);
+          if (response.ok) setRangerAutoRunning(true);
+        }).catch(() => roomFrameRef.current?.contentWindow?.postMessage({
+          type: 'zeronine:room-auto-server-status', ok: false, message: 'Could not reach Railway to start Ranger Auto.',
+        }, window.location.origin));
+        return;
+      }
+      if (message.type === 'zeronine:room-auto-stop') {
+        void fetch('/api/player/automation/stop', { method: 'POST', credentials: 'same-origin' })
+          .then(async (response) => {
+            const body = await response.json().catch(() => ({})) as { state?: unknown; error?: string };
+            roomFrameRef.current?.contentWindow?.postMessage({
+              type: 'zeronine:room-auto-server-status', ok: response.ok,
+              state: body.state, message: body.error ?? (response.ok ? '' : 'Railway could not stop Ranger Auto.'),
+            }, window.location.origin);
+            if (response.ok) setRangerAutoRunning(false);
+          }).catch(() => roomFrameRef.current?.contentWindow?.postMessage({
+            type: 'zeronine:room-auto-server-status', ok: false, message: 'Could not reach Railway to stop Ranger Auto.',
+          }, window.location.origin));
+        return;
+      }
       if (message.type === 'zeronine:room-ready') {
         postRoomState();
         postRoomMarketState();
         postRoomAutoMenu();
+        void fetch('/api/player/automation/state', { credentials: 'same-origin' }).then(async (response) => {
+          if (!response.ok) return;
+          const body = await response.json().catch(() => ({})) as { state?: unknown; running?: boolean };
+          const state = body.state ?? body;
+          const running = Boolean((state as { running?: boolean })?.running);
+          setRangerAutoRunning(running);
+          roomFrameRef.current?.contentWindow?.postMessage({
+            type: 'zeronine:room-auto-server-status', ok: true, state, running,
+          }, window.location.origin);
+        }).catch(() => {});
         return;
       }
       if (message.type === 'zeronine:room-research-replay') {
