@@ -1374,6 +1374,7 @@ window.addEventListener('message',event=>{
   if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='zeronine:room-market-state')return;
   const state=Object.assign({},lastRoomState||{},event.data.state||{});
   lastRoomState=state;
+  rangerRiskOnRoomState(state);
   applyMarkets(state.markets||[],state.candidates||[],state.paperTrades||[],state.marketScout||[],state.digitTradeEvidence||[]);
   renderDigitFlow(state);
   syncGhostPaper(state);
