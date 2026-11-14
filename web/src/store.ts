@@ -1606,9 +1606,9 @@ function playerTradeRow(raw: Record<string, unknown>): TradeRow {
 let playerStateRequest = 0;
 let playerStateRefresh: Promise<void> | null = null;
 let playerStateRefreshQueued = false;
-export async function refreshPlayerState(): Promise<void> {
+export async function refreshPlayerState(refreshAfterPending = false): Promise<void> {
   if (playerStateRefresh) {
-    playerStateRefreshQueued = true;
+    if (refreshAfterPending) playerStateRefreshQueued = true;
     await playerStateRefresh;
     if (playerStateRefreshQueued) {
       playerStateRefreshQueued = false;
@@ -1681,7 +1681,7 @@ export async function selectPlayerAccount(accountId: string): Promise<void> {
   playerSocket?.close();
   playerStateRequest++;
   set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: 'reconnecting', playerAuthMessage: '' });
-  await refreshPlayerState();
+  await refreshPlayerState(true);
   connectPlayerWs();
 }
 
@@ -1699,7 +1699,7 @@ function connectPlayerWs(): void {
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/player-ws`);
   playerSocket = socket;
   socket.onmessage = (message) => {
-    try { const event = JSON.parse(String(message.data)); if (event.type === 'balance' || event.type === 'trade') void refreshPlayerState(); }
+    try { const event = JSON.parse(String(message.data)); if (event.type === 'balance' || event.type === 'trade') void refreshPlayerState(true); }
     catch { /* Ignore malformed events. */ }
   };
   socket.onclose = () => {
@@ -2190,7 +2190,7 @@ export async function confirmPlayerTrade(previewId: string, confirmRealFunds: bo
     '/api/player/trade/confirm', { method: 'POST', body: JSON.stringify({ previewId, idempotencyKey: crypto.randomUUID(), confirmRealFunds }) }, 45_000);
   // The server emits a trade event after persisting; use it when the socket is
   // live and fall back to an HTTP refresh when it is disconnected.
-  if (!playerSocket || typeof WebSocket !== 'function' || playerSocket.readyState !== WebSocket.OPEN) void refreshPlayerState();
+  if (!playerSocket || typeof WebSocket !== 'function' || playerSocket.readyState !== WebSocket.OPEN) void refreshPlayerState(true);
   return { ok: true, trade: { id: playerTradeId(result.reservationId), contractId: result.contractId, ask: result.ask, payout: result.payout, estimatedWin: 0, breakeven: result.ask / result.payout, edge: 0 } };
 }
 
