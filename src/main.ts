@@ -470,7 +470,27 @@ async function main(): Promise<void> {
         reply.code(404).send({ error: 'not found' });
         return;
       }
-      reply.sendFile('index.html');
+      const pathname = new URL(req.url, 'http://localhost').pathname.replace(/\\/+$/, '') || '/';
+      const appPaths = new Set([
+        '/', '/history', '/lab', '/account', '/privacy', '/how-to-play',
+        '/terms', '/refunds', '/cookies', '/gold', '/bot',
+      ]);
+      if (appPaths.has(pathname)) {
+        reply.sendFile('index.html');
+        return;
+      }
+      reply.code(404).sendFile('404.html');
+    });
+    app.setErrorHandler((error, req, reply) => {
+      req.log.error({ err: error }, 'Request failed');
+      const status = Number.isInteger(error.statusCode) && error.statusCode >= 400
+        ? error.statusCode
+        : 500;
+      if (req.url.startsWith('/api/') || req.url.startsWith('/health')) {
+        reply.code(status).send({ error: status >= 500 ? 'Internal server error' : error.message });
+        return;
+      }
+      reply.code(status).sendFile(status === 404 ? '404.html' : '500.html');
     });
   } else if (config.nodeEnv !== 'development') {
     console.warn('[server] web/dist missing — run `npm run build:web` (dashboard will not be served)');

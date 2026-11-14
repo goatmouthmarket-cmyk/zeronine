@@ -354,17 +354,30 @@
   function positionLane() {
     state.viewport = { w: innerWidth, h: innerHeight };
     const anchor = rectOf('#inspector .target-icon');
-    const width = Math.min(330, Math.max(0, innerWidth - 24));
-    const left = Math.max(8, Math.min(innerWidth - width - 8, anchor ? anchor.left : 8));
-    const below = anchor && anchor.top < state.headerH + 150;
-    const floor = Math.max(state.headerH + 90, anchor ? anchor.top - 8 : bottomChromeTop());
+    const desktopInline = innerWidth > 999 && Boolean(anchor);
+    const rightSpace = anchor ? innerWidth - anchor.right - 16 : innerWidth - 24;
+    const flipLeft = desktopInline && rightSpace < 210;
+    const width = desktopInline
+      ? Math.min(330, Math.max(180, flipLeft ? anchor.left - 18 : rightSpace))
+      : Math.min(330, Math.max(0, innerWidth - 24));
+    const left = desktopInline
+      ? (flipLeft ? Math.max(8, anchor.left - width - 8) : Math.min(innerWidth - width - 8, anchor.right + 8))
+      : Math.max(8, Math.min(innerWidth - width - 8, anchor ? anchor.left : 8));
+    const below = !desktopInline && anchor && anchor.top < state.headerH + 150;
+    const floor = desktopInline
+      ? innerHeight - state.headerH - 8
+      : Math.max(state.headerH + 90, anchor ? anchor.top - 8 : bottomChromeTop());
     lane.dataset.side = 'left';
     lane.style.left = left + 'px';
     lane.style.right = 'auto';
-    lane.style.top = below ? (anchor.bottom + 8) + 'px' : 'auto';
-    lane.style.bottom = below ? 'auto' : Math.max(8, innerHeight - floor) + 'px';
-    const available = below ? innerHeight - anchor.bottom - 16 : floor - state.headerH - 16;
-    lane.style.maxHeight = Math.max(80, Math.min(innerHeight * 0.38, available)) + 'px';
+    lane.style.width = desktopInline ? width + 'px' : '';
+    lane.style.maxHeight = Math.max(80, Math.min(innerHeight * 0.38, desktopInline ? floor - state.headerH - 16 : below ? innerHeight - anchor.bottom - 16 : floor - state.headerH - 16)) + 'px';
+    const inlineTop = desktopInline ? anchor.top + (anchor.height - lane.offsetHeight) / 2 : 0;
+    lane.style.top = desktopInline
+      ? Math.max(state.headerH + 8, Math.min(innerHeight - lane.offsetHeight - 8, inlineTop)) + 'px'
+      : below ? anchor.bottom + 8 + 'px' : 'auto';
+    lane.style.bottom = desktopInline || below ? 'auto' : Math.max(8, innerHeight - floor) + 'px';
+    const available = desktopInline ? floor - state.headerH - 16 : below ? innerHeight - anchor.bottom - 16 : floor - state.headerH - 16;
     lane.dataset.room = !state.menu && available >= 80 ? 'true' : 'false';
   }
 
