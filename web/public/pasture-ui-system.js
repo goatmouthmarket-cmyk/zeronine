@@ -301,11 +301,7 @@
   lane.setAttribute('aria-relevant', 'additions text');
   lane.setAttribute('role', 'status');
 
-  const criticalLane = document.createElement('div');
-  criticalLane.className = 'dc-critical-lane';
-  criticalLane.setAttribute('aria-live', 'assertive');
-
-  document.body.append(lane, criticalLane);
+  document.body.append(lane);
 
   const TYPES = {
     success: { icon: '✓', title: 'Done' },
@@ -354,54 +350,21 @@
     return top;
   }
 
-  function positionCritical() {
-    criticalLane.style.top = (state.headerH + 8) + 'px';
-    const panel = state.menu ? state.lastMenuRect : null;
-    if (panel && panel.left < 8 && panel.top > innerHeight * 0.3) {
-      criticalLane.style.left = 'auto';
-      criticalLane.style.right = 'max(8px, var(--pasture-safe-right))';
-      criticalLane.style.width = 'min(340px, calc(100vw - 76px))';
-      criticalLane.style.transform = 'none';
-    } else if (panel && panel.left > 20) {
-      criticalLane.style.left = '8px';
-      criticalLane.style.right = 'auto';
-      criticalLane.style.width = Math.max(220, Math.min(420, panel.left - 16)) + 'px';
-      criticalLane.style.transform = 'none';
-    } else {
-      criticalLane.style.left = '50%';
-      criticalLane.style.right = 'auto';
-      criticalLane.style.width = 'min(420px, calc(100vw - 32px))';
-      criticalLane.style.transform = 'translateX(-50%)';
-    }
-  }
-
   function positionLane() {
     state.viewport = { w: innerWidth, h: innerHeight };
-    if (innerWidth <= 999) {
-      // Phones: sit above the joystick and above the sheet when one is open.
-      lane.dataset.side = 'right';
-      const rect = state.menu ? state.lastMenuRect : null;
-      const sheetTop = rect && rect.top > 0 ? rect.top : innerHeight;
-      const floor = Math.min(sheetTop, bottomChromeTop());
-      lane.style.top = 'auto';
-      lane.style.bottom = Math.max(8, innerHeight - floor + 8) + 'px';
-      lane.style.maxHeight = Math.min(innerHeight * 0.38, Math.max(0, floor - state.headerH - 24)) + 'px';
-      // A sheet already carries the user's attention; keep normal toasts queued
-      // until it closes so nothing floats over the journal or the Ranger.
-      lane.dataset.room = !state.menu && floor - state.headerH - 24 >= 90 ? 'true' : 'false';
-      positionCritical();
-      return;
-    }
-    // Desktop: a left-edge lane below the player HUD. Major panels dock right.
+    const anchor = rectOf('#inspector .target-icon');
+    const width = Math.min(330, Math.max(0, innerWidth - 24));
+    const left = Math.max(8, Math.min(innerWidth - width - 8, anchor ? anchor.left : 8));
+    const below = anchor && anchor.top < state.headerH + 150;
+    const floor = Math.max(state.headerH + 90, anchor ? anchor.top - 8 : bottomChromeTop());
     lane.dataset.side = 'left';
-    const hud = rectOf('#playerHud');
-    const hudOnLeft = hud && hud.left < innerWidth * 0.4;
-    const top = hudOnLeft ? Math.max(state.headerH + 14, hud.bottom + 8) : state.headerH + 14;
-    lane.style.top = top + 'px';
-    lane.style.bottom = 'auto';
-    lane.style.maxHeight = 'min(46dvh, 380px)';
-    lane.dataset.room = 'true';
-    positionCritical();
+    lane.style.left = left + 'px';
+    lane.style.right = 'auto';
+    lane.style.top = below ? (anchor.bottom + 8) + 'px' : 'auto';
+    lane.style.bottom = below ? 'auto' : Math.max(8, innerHeight - floor) + 'px';
+    const available = below ? innerHeight - anchor.bottom - 16 : floor - state.headerH - 16;
+    lane.style.maxHeight = Math.max(80, Math.min(innerHeight * 0.38, available)) + 'px';
+    lane.dataset.room = !state.menu && available >= 80 ? 'true' : 'false';
   }
 
   function pruneRecent(now) {
@@ -520,6 +483,7 @@
     const el = document.createElement('div');
     el.className = 'dc-critical';
     el.dataset.type = item.type;
+    el.setAttribute('role', 'alert');
 
     // The character bubble and this banner would otherwise repeat one error.
     const bubble = document.querySelector('#rangerBrainBubble');
@@ -551,7 +515,7 @@
     close.textContent = '×';
 
     el.append(icon, body, close);
-    criticalLane.appendChild(el);
+    lane.prepend(el);
     const timer = setTimeout(() => dismissCritical(el), Math.max(item.ms, 8000));
     close.addEventListener('click', (event) => { event.stopPropagation(); dismissCritical(el); });
     el.addEventListener('click', () => dismissCritical(el));
@@ -579,7 +543,7 @@
   function enqueue(item) {
     const now = Date.now();
     pruneRecent(now);
-    const key = item.key || item.type + '|' + item.title + '|' + item.message;
+    const key = item.key || item.message.trim().toLowerCase().replace(/\s+/g, ' ');
     if (notifications.recent.has(key)) return;
     notifications.recent.set(key, now);
 
@@ -790,3 +754,4 @@
   positionLane();
   emit('ready');
 })();
+

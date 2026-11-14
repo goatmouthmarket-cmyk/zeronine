@@ -97,8 +97,6 @@
   (function frame() {
     try {
       placeAttached();
-      const bubble = $('rangerBet');
-      if (bubble && bubble.classList.contains('visible')) window.__pasturePlaceBubble(bubble);
     } catch {}
     requestAnimationFrame(frame);
   })();
@@ -126,3 +124,4 @@
     setInterval(fix, 1500);
   })();
 })();
+

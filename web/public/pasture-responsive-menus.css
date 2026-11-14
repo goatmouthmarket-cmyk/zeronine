@@ -1,0 +1,81 @@
+/* Keep the game menus usable at narrow widths and short viewport heights. */
+#inspector:has(.target-menu[open]),
+#rangerAutoHud:not([hidden]),
+#healthPanel:not([hidden]) {
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.manual-controls-grid,
+.ranger-auto-risk-fields,
+.ranger-ring-options,
+.health-actions,
+.risk-preview-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.manual-controls-grid > *,
+.ranger-auto-risk-fields > *,
+.ranger-ring-options > *,
+.health-actions > *,
+.risk-preview-actions > * {
+  min-width: 0;
+}
+
+.manual-control-cell,
+.ranger-auto-risk-fields label {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.manual-control-cell input,
+.manual-control-cell select,
+.ranger-auto-risk-fields input,
+.ranger-auto-fields input,
+.ranger-auto-fields select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.stake-input-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.ranger-auto-style-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+#inspector .target-menu[open] #rankings,
+#inspector .target-menu[open] #digitFlow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  gap: 6px;
+}
+
+#inspector .target-menu[open] #rankings .row,
+#inspector .target-menu[open] #digitFlow > * {
+  min-width: 0;
+}
+
+@media (max-width: 360px) {
+  .manual-controls-grid,
+  .ranger-auto-risk-fields,
+  .health-actions,
+  .risk-preview-actions {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 105px), 1fr));
+  }
+}

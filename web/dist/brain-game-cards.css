@@ -1,0 +1,31 @@
+/* Pasture art is taken from the How to Play ranger and cow. */
+#rangerBrainPanel { border: 3px solid #a46639; border-radius: 17px; background: #f8e5c5; box-shadow: 0 5px 0 #704326, 0 14px 34px #102a1b55; }
+#rangerBrainPanel::before { display: none; }
+#rangerBrainPanel .brain-head { background: linear-gradient(#ffefd0,#ebc697); border-bottom: 3px solid #a46639; }
+#rangerBrainPanel .brain-game-portrait { width: 45px; height: 45px; flex: 0 0 45px; object-fit: contain; padding: 3px; border: 2px solid #ad7649; border-radius: 12px; background: linear-gradient(#a7d78d,#5ba062); }
+#rangerBrainPanel .ranger-brain-tabs { background: #e8c99d; }
+#rangerBrainPanel .ranger-brain-tabs button { min-height: 43px; border: 2px solid #bc8a5d; background: #fff1d7; box-shadow: 0 2px 0 #a2744d; }
+#rangerBrainPanel .ranger-brain-tabs button[aria-selected="true"] { background: #246b46; border-color: #174e31; color: white !important; }
+#rangerBrainPanel #brainFindCow { color: white !important; }
+#rangerBrainPanel .ranger-brain-body { background: #f3dab0; }
+#rangerBrainPanel .brain-card { border: 2px solid #b77d4b; border-radius: 14px; background: #fff1d9; box-shadow: inset 0 2px #fff9, 0 3px 0 #b58455; }
+#rangerBrainPanel .brain-overview-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+#rangerBrainPanel .brain-hero-card { grid-column: 1/-1; position: relative; display: grid; grid-template-columns: minmax(0,1fr) minmax(100px,39%); align-items: center; gap: 4px; min-height: 168px; padding: 12px; overflow: hidden; background: linear-gradient(145deg,#fff2d7 0 61%,#b5df96 61% 100%); }
+#rangerBrainPanel .brain-game-scene { grid-column: 2; grid-row: 1; position: relative; width: 100%; max-width: 200px; height: auto; align-self: end; justify-self: center; z-index: 1; pointer-events: none; }
+#rangerBrainPanel .brain-hero-content { grid-column: 1; grid-row: 1; position: relative; z-index: 2; display: grid; gap: 6px; min-width: 0; }
+#rangerBrainPanel .brain-hero-scene, #rangerBrainPanel .brain-hero-veil, #rangerBrainPanel .brain-learn-scene, #rangerBrainPanel .brain-pattern-scene, #rangerBrainPanel .brain-memory-scene { display: none !important; }
+#rangerBrainPanel .brain-hero-status { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+#rangerBrainPanel #brainHeroTitle { margin: 0; font: 900 18px/1.1 system-ui,sans-serif; color: #264d31; }
+#rangerBrainPanel #brainHeadline { font-size: 11px; line-height: 1.35; }
+#rangerBrainPanel .brain-hero-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+#rangerBrainPanel #brainFindCow, #rangerBrainPanel .brain-hero-why-toggle { min-height: 34px; border-radius: 8px; cursor: pointer; }
+#rangerBrainPanel .brain-learning-card, #rangerBrainPanel .brain-patterns-card { min-width: 0; }
+#rangerBrainPanel .brain-discovery-card { grid-column: 1/-1; }
+#rangerBrainPanel :is(button,[role="button"]):focus-visible { outline: 3px solid #f5314f; outline-offset: 2px; }
+@media (max-width: 420px) {
+  #rangerBrainPanel .brain-overview-grid { grid-template-columns: 1fr; }
+  #rangerBrainPanel .brain-hero-card, #rangerBrainPanel .brain-discovery-card { grid-column: auto; }
+  #rangerBrainPanel .brain-hero-card { grid-template-columns: minmax(0,1fr) minmax(82px,35%); min-height: 155px; padding: 9px; }
+  #rangerBrainPanel #brainHeroTitle { font-size: 16px; }
+}
+@media (max-width: 300px) { #rangerBrainPanel .brain-hero-card { grid-template-columns: 1fr; } #rangerBrainPanel .brain-game-scene { grid-column: 1; grid-row: 1; opacity: .2; justify-self: end; } }

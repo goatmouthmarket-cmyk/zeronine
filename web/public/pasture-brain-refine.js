@@ -512,21 +512,11 @@
   }
 
   function mountScenes() {
-    mountPortrait();
     compactTabLabels();
     scenes.length = 0;
-    const defs = [
-      ['brainHeroScene', 'mind'],
-      ['brainLearnScene', 'learned'],
-      ['brainPatternScene', 'timing'],
-      ['brainMemoryScene', 'memory'],
-    ];
-    for (const [id, kind] of defs) {
-      const canvas = $(id);
-      if (!canvas) continue;
-      canvas.setAttribute('aria-hidden', 'true');
-      scenes.push({ canvas, kind, data: null });
-    }
+    // The card artwork uses the same ranger and cow as the game tutorial.
+    // Keep the legacy canvases inert so their hand-drawn stand-ins cannot
+    // reappear or consume animation frames behind the new artwork.
   }
 
   let sceneRaf = 0, sceneLastPaint = 0, sceneDirty = true;
@@ -623,41 +613,38 @@
     const pulse = $('brainTetherPulse');
     if (pulse) { pulse.setAttribute('cx', String(x1)); pulse.setAttribute('cy', String(y1)); }
     if (!card) return;
-    const sharedUi = window.DerivCowsUI;
-    if (sharedUi && sharedUi.placeFloating && sharedUi.placeFloating(card, { x: target.sx, y: target.sy - 26 }, {
-      gap: 12,
-      padding: 10,
-      avoid: ['#rangerBrainPanel', '#breakTimer', '#rangerBrainGlyph', '#mobileControls', '#playerHud', '#healthDock'],
-    })) return;
     const cardW = card.offsetWidth || 224, cardH = card.offsetHeight || 132;
-    const panel = $('rangerBrainPanel');
-    const panelRect = panel && !panel.hidden ? panel.getBoundingClientRect() : null;
-    // A phone journal is a bottom sheet: keep the whole card in the sky above it.
-    const sheet = !!panelRect && panelRect.top > innerHeight * 0.3 && panelRect.width > innerWidth * 0.7;
-    if (sheet) {
-      const left = Math.max(8, Math.min(innerWidth - cardW - 8, snap.head.x - cardW / 2));
-      const top = Math.max(8, panelRect.top - cardH - 10);
-      card.style.left = left + 'px';
-      card.style.top = top + 'px';
-      return;
+    const margin = 8;
+    const clamp = (n, max) => Math.max(margin, Math.min(Math.max(margin, max), n));
+    const visible = ['#rangerBrainPanel', '#breakTimer', '#rangerBrainGlyph', '#mobileControls', '#playerHud', '#healthDock']
+      .map((selector) => document.querySelector(selector))
+      .filter((el) => el && !el.hidden && el.getClientRects().length)
+      .map((el) => el.getBoundingClientRect());
+    // The selected cow and ranger are canvas drawings, so DOM collision
+    // detection cannot see them. Reserve space around both explicitly.
+    const radius = Math.max(38, 54 * (snap.zoom || 1));
+    visible.push({ left: target.sx - radius, right: target.sx + radius, top: target.sy - radius, bottom: target.sy + radius });
+    visible.push({ left: snap.head.x - 36, right: snap.head.x + 36, top: snap.head.y - 36, bottom: snap.feet.y + 28 });
+    const positions = [
+      [target.sx + radius + 12, target.sy - cardH / 2],
+      [target.sx - radius - cardW - 12, target.sy - cardH / 2],
+      [target.sx - cardW / 2, target.sy - radius - cardH - 12],
+      [target.sx - cardW / 2, target.sy + radius + 12],
+      [margin, margin], [innerWidth - cardW - margin, margin],
+      [margin, innerHeight - cardH - margin], [innerWidth - cardW - margin, innerHeight - cardH - margin],
+    ];
+    let best = null;
+    for (const [x, y] of positions) {
+      const left = clamp(x, innerWidth - cardW - margin), top = clamp(y, innerHeight - cardH - margin);
+      const overlap = visible.reduce((sum, box) => sum + Math.max(0, Math.min(left + cardW, box.right) - Math.max(left, box.left)) * Math.max(0, Math.min(top + cardH, box.bottom) - Math.max(top, box.top)), 0);
+      const score = overlap * 100 + Math.hypot(left + cardW / 2 - target.sx, top + cardH / 2 - target.sy);
+      if (!best || score < best.score) best = { left, top, score };
     }
-    // Sit the card beside the ranger's head, clear of the open journal.
-    let left = snap.head.x + 30;
-    if (left + cardW > innerWidth - 8) left = snap.head.x - cardW - 30;
-    if (panelRect && left + cardW > panelRect.left - 10 && left < panelRect.right + 10) {
-      if (innerWidth - panelRect.right >= cardW + 24) {
-        left = panelRect.right + 12;
-      } else if (panelRect.left >= cardW + 24) {
-        left = panelRect.left - cardW - 12;
-      } else {
-        // No room beside the journal: hover it above instead of over the text.
-        card.style.left = Math.max(8, Math.min(innerWidth - cardW - 8, snap.head.x - cardW / 2)) + 'px';
-        card.style.top = Math.max(8, panelRect.top - cardH - 10) + 'px';
-        return;
-      }
+    if (best) {
+      card.style.left = best.left + 'px';
+      card.style.top = best.top + 'px';
+      card.style.transform = 'none';
     }
-    card.style.left = Math.max(8, Math.min(innerWidth - cardW - 8, left)) + 'px';
-    card.style.top = Math.max(8, Math.min(innerHeight - cardH - 8, snap.head.y - cardH - 22)) + 'px';
   }
 
   function suggestionReason(snipe) {
@@ -1316,3 +1303,4 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
+
