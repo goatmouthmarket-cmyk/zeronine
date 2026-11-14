@@ -3,25 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#10251d">
-  <title>Pasture not found | Deriv Cows</title>
+  <meta name="theme-color" content="#183827">
+  <title>Page not found | Deriv Cows</title>
   <style>
-    *{box-sizing:border-box}html{min-height:100%;background:#10251d}body{min-height:100svh;margin:0;padding:28px;display:grid;place-items:center;color:#f7f1df;background:radial-gradient(ellipse at 18% 12%,#315a35 0,transparent 45%),radial-gradient(ellipse at 90% 85%,#45351d 0,transparent 42%),#10251d;font:500 16px/1.55 Inter,"Segoe UI",system-ui,sans-serif}.error-card{width:min(920px,100%);min-height:450px;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.9fr);align-items:center;gap:28px;padding:clamp(24px,5vw,58px);border:1px solid #d7b76855;border-radius:18px;background:linear-gradient(145deg,#173b2bd9,#0e1a22f2);box-shadow:0 28px 80px #0007,inset 0 1px #ffffff16}.error-copy{max-width:490px}.error-brand{display:inline-flex;align-items:center;gap:9px;margin-bottom:38px;color:#ffe7a9;text-decoration:none;font-size:13px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.error-brand img{width:34px;height:34px;object-fit:contain}.error-code{display:inline-block;padding:4px 9px;border:1px solid #efc76588;border-radius:5px;color:#f5cd70;font-size:11px;font-weight:900;letter-spacing:.18em}.error-copy h1{margin:14px 0 12px;color:#fff4d6;font-family:Inter,"Segoe UI",system-ui,sans-serif;font-size:clamp(34px,5vw,54px);font-weight:900;line-height:1.02;letter-spacing:-.045em}.error-copy p{max-width:390px;margin:0 0 25px;color:#d5dfd0;font-size:15px}.error-actions{display:flex;flex-wrap:wrap;align-items:center;gap:17px}.error-primary{display:inline-flex;min-height:46px;align-items:center;justify-content:center;padding:0 18px;border:0;border-radius:7px;background:#f4ca63;color:#2d2819;text-decoration:none;font-weight:900;box-shadow:0 4px 0 #a57628}.error-secondary{color:#e9d79e;text-decoration:underline;text-underline-offset:4px;font-size:13px;font-weight:750}.error-art{position:relative;display:grid;place-items:center;min-height:275px;overflow:hidden;border-radius:12px;background:radial-gradient(ellipse at 50% 68%,#91b846 0,#54783b 31%,#213d2c 62%,#182b29 100%);box-shadow:inset 0 0 0 1px #f0d18c55}.error-art:before{content:"";position:absolute;inset:auto -10% 0;height:31%;background:linear-gradient(180deg,#6a8e3e,#28452b);clip-path:polygon(0 45%,20% 17%,41% 40%,64% 7%,100% 35%,100% 100%,0 100%)}.error-cow{position:relative;z-index:1;width:min(86%,330px);height:160px;background:url('/cow-ui-assets.png') left top/768px auto no-repeat;filter:drop-shadow(0 12px 8px #10251d99)}.error-art-tag{position:absolute;z-index:2;right:14px;bottom:13px;padding:5px 8px;border:1px solid #e8d09866;border-radius:4px;background:#10251dcc;color:#f3d986;font-size:9px;font-weight:900;letter-spacing:.14em}.error-foot{margin-top:34px;color:#96ad96;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
-    @media(max-width:680px){body{padding:12px}.error-card{grid-template-columns:1fr;gap:16px;min-height:0;padding:23px 20px;border-radius:12px}.error-brand{margin-bottom:22px}.error-art{grid-row:1;min-height:180px}.error-cow{height:120px;background-size:620px auto}.error-copy h1{font-size:39px}.error-copy p{font-size:14px}.error-foot{margin-top:24px}}
+    *{box-sizing:border-box}
+    html{min-height:100%;background:#183827}
+    body{min-height:100svh;margin:0;padding:20px;display:grid;place-items:center;color:#273528;background:#183827;font:500 16px/1.5 Inter,"Segoe UI",system-ui,sans-serif}
+    .lost-card{width:min(420px,100%);padding:34px 28px;text-align:center;background:#f3ecd9;border-radius:10px;box-shadow:0 16px 42px #07170d55}
+    .brand{display:inline-flex;align-items:center;gap:9px;margin-bottom:22px;color:#36543a;text-decoration:none;font-size:12px;font-weight:800;letter-spacing:.08em}
+    .brand img{width:30px;height:30px;object-fit:contain}
+    .cow{display:block;width:112px;height:82px;margin:0 auto 14px;background:url('/cow-ui-assets.png') left top/560px auto no-repeat}
+    .code{margin:0;color:#9a7224;font-size:12px;font-weight:800;letter-spacing:.14em}
+    h1{margin:5px 0 8px;color:#26392b;font-size:clamp(27px,7vw,34px);line-height:1.15;letter-spacing:-.035em}
+    p{margin:0 auto 22px;max-width:30ch;color:#62705f;font-size:14px}
+    .actions{display:flex;align-items:center;justify-content:center;gap:18px}
+    .home{display:inline-flex;min-height:43px;align-items:center;justify-content:center;padding:0 17px;border-radius:5px;background:#f0c75b;color:#2e321e;text-decoration:none;font-size:14px;font-weight:800}
+    .guide{color:#466346;text-decoration:underline;text-underline-offset:3px;font-size:13px;font-weight:700}
+    @media(max-width:380px){.lost-card{padding:28px 19px}.actions{gap:14px}.home{padding:0 12px}}
     @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
   </style>
 </head>
 <body>
-  <main class="error-card">
-    <section class="error-copy">
-      <a class="error-brand" href="/" aria-label="Deriv Cows home"><img src="/deriv-cows-logo.png" alt=""> DERIV COWS · TRADING PASTURE</a>
-      <span class="error-code">404 · TRAIL NOT FOUND</span>
-      <h1>This trail ends in a different pasture.</h1>
-      <p>That page has wandered off. The cows and your account are still right where you left them.</p>
-      <nav class="error-actions" aria-label="Error page actions"><a class="error-primary" href="/">Back to the pasture</a><a class="error-secondary" href="/how-to-play">How to play</a></nav>
-      <div class="error-foot">A little lost · still in the game</div>
-    </section>
-    <div class="error-art" role="img" aria-label="Deriv Cows game art"><div class="error-cow" aria-hidden="true"></div><span class="error-art-tag">PASTURE PATROL</span></div>
+  <main class="lost-card">
+    <a class="brand" href="/" aria-label="Deriv Cows home"><img src="/deriv-cows-logo.png" alt=""> DERIV COWS</a>
+    <span class="cow" aria-hidden="true"></span>
+    <p class="code">404 · PAGE NOT FOUND</p>
+    <h1>This trail wandered off.</h1>
+    <p>Let’s get you back to the pasture.</p>
+    <nav class="actions" aria-label="Page not found links">
+      <a class="home" href="/">Back to pasture</a>
+      <a class="guide" href="/how-to-play">How to play</a>
+    </nav>
   </main>
 </body>
 </html>
