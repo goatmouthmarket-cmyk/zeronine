@@ -5722,36 +5722,28 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
         <div class="page-title">Account</div>
       </header>
       <RangerWardrobe accountId={session.loginid} />
-      <div class="section account-overview">
-        <div class="detail-row">
-          <span class="detail-label">Login ID</span>
-          <span class="detail-value">{session?.loginid ?? '—'}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Balance</span>
-          <span class="detail-value">{fmtMoney(session?.balance ?? 0, session?.currency)}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Currency</span>
-          <span class="detail-value">{session?.currency ?? '—'}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Mode</span>
-          <span class="detail-value">{session?.mode === 'demo' ? 'Demo' : 'Real'}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Connection</span>
-          <span class={`detail-value${s.feed?.connected ? ' green' : ' red'}`}>
-            {s.feed?.connected ? 'Connected' : 'Disconnected'}
+      <section class="account-status-card" aria-label="Deriv account overview">
+        <div class="account-status-heading">
+          <span class="account-status-emblem"><Icon name="account" size={23} strokeWidth={1.8} /></span>
+          <div class="account-status-identity">
+            <small>PASTURE ACCOUNT</small>
+            <h3>{session.mode === 'demo' ? 'Demo account' : 'Real account'}</h3>
+            <span>{session.loginid}</span>
+          </div>
+          <span class={`account-connection-chip${s.feed?.connected ? ' connected' : ''}`}>
+            <i aria-hidden="true" />{s.feed?.connected ? "Online" : "Offline"}
           </span>
         </div>
-        <div class="detail-row">
-          <span class="detail-label">Bot</span>
-          <span class={`detail-value${s.automation?.running ? ' green' : ' red'}`}>
-            {s.automation?.running ? 'Running' : 'Stopped'}
-          </span>
+        <div class="account-balance-card">
+          <small>AVAILABLE BALANCE</small>
+          <strong>{fmtMoney(session.balance, session.currency)}</strong>
+          <span>{session.currency} · {session.mode === 'demo' ? 'Practice funds' : 'Real funds'}</span>
         </div>
-      </div>
+        <div class="account-quick-stats">
+          <div><small>MARKET FEED</small><strong>{s.feed?.connected ? "Connected" : "Disconnected"}</strong></div>
+          <div><small>RANGER PILOT</small><strong>{s.automation?.running ? "Active" : "Standby"}</strong></div>
+        </div>
+      </section>
       <CowConfirmationSettings session={session} />
       {s.automation?.running && <button class="logout-btn" type="button" onClick={() => void stopAutomation().catch((error) => setAccountError(error instanceof Error ? error.message : String(error)))}>Stop legacy bot</button>}
       <div class="account-switcher">
@@ -5759,7 +5751,7 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
           <div><span class="detail-label">Trading account</span><h3>Choose demo or real</h3></div>
           {loadingAccounts && <span class="account-loading">Loading…</span>}
         </div>
-        <p class="account-switcher-copy">The header + opens this account manager. Switching is blocked while a contract is open. A selected real account is clearly marked and trades immediately through the same risk gates as demo.</p>
+        <p class="account-switcher-copy">Choose the account for your next bet. Open contracts must be closed before switching.</p>
         <div class="account-options">
           {accounts.map((account) => {
             const current = account.accountId === session.loginid;
