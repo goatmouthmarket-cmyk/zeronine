@@ -728,19 +728,25 @@ function updateRangerAnimation(now, dt) {
 const manualPaperTrades = [];
 const paperTelemetrySession = crypto.randomUUID();
 const paperTelemetryQueue = [];
-let paperTelemetryTimer = null, paperTelemetrySending = false;
+let paperTelemetryTimer = null, paperTelemetrySending = false, paperTelemetryOwner = false, paperTelemetryBlocked = false;
 function flushPaperTelemetry() {
   paperTelemetryTimer = null;
-  if (paperTelemetrySending || !paperTelemetryQueue.length || typeof fetch !== 'function') return;
+  if (paperTelemetrySending || !paperTelemetryQueue.length || !paperTelemetryOwner || paperTelemetryBlocked || typeof fetch !== 'function') return;
   const events = paperTelemetryQueue.splice(0, 40);
   paperTelemetrySending = true;
   try {
     Promise.resolve(fetch('/api/telemetry/paper', { method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ events }) }))
-      .catch(() => {}).finally(() => { paperTelemetrySending = false; if (paperTelemetryQueue.length && paperTelemetryTimer === null) paperTelemetryTimer = setTimeout(flushPaperTelemetry, 1000); });
+      .then(response => {
+        if (response.status === 401 || response.status === 403) {
+          paperTelemetryBlocked = true;
+          paperTelemetryQueue.length = 0;
+        }
+      })
+      .catch(() => {}).finally(() => { paperTelemetrySending = false; if (paperTelemetryOwner && !paperTelemetryBlocked && paperTelemetryQueue.length && paperTelemetryTimer === null) paperTelemetryTimer = setTimeout(flushPaperTelemetry, 1000); });
   } catch { paperTelemetrySending = false; }
 }
 function sendPaperTelemetry(trade, source) {
-  if (paperTelemetryQueue.length >= 200) return;
+  if (!paperTelemetryOwner || paperTelemetryBlocked || paperTelemetryQueue.length >= 200) return;
   paperTelemetryQueue.push({ eventId: `${paperTelemetrySession}:${trade.id}`, source, market: trade.symbol, direction: trade.direction, barrier: trade.barrier, status: trade.status, entryDigit: trade.entryDigit, exitDigit: trade.exitDigit, entryEpoch: trade.entryEpoch, entryQuote: trade.entryQuote, estWin: trade.estWin, edge: trade.edge, exitEpoch: trade.exitEpoch });
   if (paperTelemetryTimer === null) paperTelemetryTimer = setTimeout(flushPaperTelemetry, 1000);
 }
@@ -1010,6 +1016,11 @@ for (const eventName of ['pointerup', 'pointercancel', 'lostpointercapture']) {
 }
 
 function updateAutoPaperResearch(state) {
+  paperTelemetryOwner = state?.owner === true;
+  if (!paperTelemetryOwner) {
+    paperTelemetryQueue.length = 0;
+    if (paperTelemetryTimer !== null) { clearTimeout(paperTelemetryTimer); paperTelemetryTimer = null; }
+  }
   const markets = Array.isArray(state.markets) ? state.markets : [];
   for (const study of autoPaperStudies.values()) {
     for (const trade of settleManualPaperTrades(study.trades, markets)) if (typeof sendPaperTelemetry === 'function') sendPaperTelemetry(trade, 'auto_paper');
