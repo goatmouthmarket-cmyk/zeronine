@@ -134,6 +134,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
   type RangerRun = {
     accountId: string;
     mode: 'demo' | 'real';
+    armedUntil: number;
     source: 'owner' | 'player';
     sessionSecret: string | null;
     ownerAuthorized: () => boolean;
@@ -275,20 +276,22 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     ).sort((a, b) => b.score - a.score || b.edge - a.edge || b.p - a.p);
   }
 
-  async function runnerAuthorized(run: RangerRun): Promise<string | null> {
+  async function runnerAuthorized(run: RangerRun, force = false): Promise<string | null> {
     const now = Date.now();
     const checkedAt = rangerAuthCheckedAt.get(run.accountId) ?? 0;
-    if (now - checkedAt < RANGER_AUTH_CHECK_MS) return run.token;
+    if (!force && now - checkedAt < RANGER_AUTH_CHECK_MS) return run.token;
     rangerAuthCheckedAt.set(run.accountId, now);
     if (run.source === 'owner') {
       const session = getSession();
       if (!run.ownerAuthorized() || !session || session.loginid !== run.accountId) return null;
       try { return await resolveStoredToken(); } catch { return null; }
     }
-    const current = await store.resolveSession(run.sessionSecret);
-    if (!current || current.accountId !== run.accountId || current.expiresAt <= now) return null;
-    run.token = current.token;
-    return current.token;
+    try {
+      const current = await store.resolveSession(run.sessionSecret);
+      if (!current || current.accountId !== run.accountId || current.expiresAt <= now) return null;
+      run.token = current.token;
+      return current.token;
+    } catch { return null; }
   }
 
   async function tickRangerRun(run: RangerRun): Promise<void> {
@@ -343,10 +346,17 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const liveEdge = modelEdge(order, offered.askPrice, offered.payout);
       if (order.minEdge > 0 && liveEdge < order.minEdge) { run.phase = 'waiting-edge'; return; }
       if (!registry.snapshot(order.market).fresh) { run.phase = 'waiting-feed'; return; }
-      const stillAuthorized = await runnerAuthorized(run);
+      const stillAuthorized = await runnerAuthorized(run, true);
       if (!run.running || !stillAuthorized) { if (run.running) stopRangerRun(run, 'Deriv session expired or changed.'); return; }
+      const confirmRiskState = await store.riskSnapshot(run.accountId, info.balance);
+      const confirmRisk = riskCheck({ stake: order.stake, settings: riskSettings, balance: info.balance,
+        context: buildRecoveryContext(riskSettings, undefined, confirmRiskState), lastTradeAt: 0,
+        tradeGapMs: 0, now: Date.now(), accountId: 'deriv:' + run.accountId,
+        skipStrategyCaps: true, lane: 'digit' });
+      if (!confirmRisk.ok) { stopRangerRun(run, 'Trade blocked by account risk: ' + confirmRisk.reason); return; }
       const reservationId = await store.reserve(run.accountId, randomUUID(), { ...order, mode: info.mode });
       let buyAttempted = false;
+      let boughtContractId: string | null = null;
       try {
         if (!run.running || (run.mode === 'real' && (rangerArms.get(run.accountId) ?? 0) <= Date.now())) {
           await store.cancelBeforeBuy(run.accountId, reservationId);
@@ -360,6 +370,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         }
         buyAttempted = true;
         const bought = await client.placeBuy(offered.id, offered.askPrice);
+        boughtContractId = bought.contractId;
         await store.markPurchased(run.accountId, reservationId, bought.contractId, bought.buyPrice, bought.payout);
         run.pendingContractId = bought.contractId;
         run.phase = 'waiting-settlement'; run.updatedAt = Date.now();
@@ -367,7 +378,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         monitor(run.accountId, client);
       } catch (error) {
         if (buyAttempted) {
-          try { await store.markUnknown(run.accountId, reservationId, null); } catch { /* reservation remains fail-closed */ }
+          try { await store.markUnknown(run.accountId, reservationId, boughtContractId); } catch { /* reservation remains fail-closed */ }
           stopRangerRun(run, 'Purchase outcome uncertain; account locked for reconciliation.');
         } else {
           await store.cancelBeforeBuy(run.accountId, reservationId);
@@ -443,7 +454,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         candidate: null, confirmKey: '', confirmEpoch: 0, confirmations: 0,
         cooldownUntil: 0, pendingContractId: null, timer: null, busy: false,
         armedUntil: info.mode === 'real' ? rangerArms.get(user.accountId) ?? 0 : 0,
-      } as RangerRun & { armedUntil: number };
+      };
       rangerRuns.set(user.accountId, run);
       startRangerTimer(run);
       return { ok: true, state: rangerRunState(run, user.accountId) };
