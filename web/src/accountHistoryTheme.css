@@ -438,3 +438,102 @@
   .pasture-detail-panel[aria-label="Account"] .account-switcher { padding: 9px; }
   .pasture-detail-panel[aria-label="Account"] .account-option { gap: 7px; }
 }
+
+
+/* Hard light theme for the Account drawer, isolated from the cockpit's dark palette. */
+.pasture-detail-panel.account-theme {
+  color: #243c2b !important;
+  border-color: #b98b58 !important;
+  background: #fbf8ed !important;
+  box-shadow: 0 4px 0 #b68a59, 0 12px 30px #17351f35 !important;
+}
+.pasture-detail-panel.account-theme .pasture-detail-heading {
+  background: linear-gradient(110deg, #f4e2bd, #fff6df 58%, #dceacb) !important;
+  border-bottom: 1px solid #d4bd93 !important;
+}
+.pasture-detail-panel.account-theme .pasture-detail-heading small { color: #6c7856 !important; }
+.pasture-detail-panel.account-theme .pasture-detail-heading h2 { color: #214c32 !important; }
+.pasture-detail-panel.account-theme .pasture-detail-heading button {
+  border: 1px solid #c5a06d !important;
+  background: #fffdf5 !important;
+  color: #345a3b !important;
+  box-shadow: 0 2px 0 #d8c29e !important;
+}
+.pasture-detail-panel.account-theme .pasture-detail-content {
+  background: #f8f5e9 !important;
+  color: #243c2b !important;
+}
+.pasture-detail-panel.account-theme :is(.ranger-wardrobe, .account-switcher, .connect-card, .account-status-card) {
+  border-color: #d4c19b !important;
+  background-color: #fffdf5 !important;
+  color: #293e2d !important;
+  box-shadow: 0 2px 0 #dfcfad !important;
+}
+.pasture-detail-panel.account-theme .ranger-wardrobe {
+  background: linear-gradient(145deg, #fffdf5, #f4efdc) !important;
+}
+.pasture-detail-panel.account-theme .wardrobe-heading h3,
+.pasture-detail-panel.account-theme .account-switcher-head h3,
+.pasture-detail-panel.account-theme .connect-title {
+  color: #245438 !important;
+}
+.pasture-detail-panel.account-theme :is(.account-status-identity h3, .account-status-identity span, .account-quick-stats strong, .account-option-main strong, .account-switcher-copy, .wardrobe-note, .connect-card p, .detail-label, .detail-value) {
+  color: #354a38 !important;
+}
+.pasture-detail-panel.account-theme .account-status-card {
+  background:
+    radial-gradient(ellipse at 100% 0%, #e0edcf 0, transparent 48%),
+    linear-gradient(145deg, #fffdf6, #f6ebd2) !important;
+  border-color: #c9b184 !important;
+}
+.pasture-detail-panel.account-theme .account-balance-card {
+  border-color: #a9c38f !important;
+  background: linear-gradient(135deg, #edf5df, #f8f3dc) !important;
+}
+.pasture-detail-panel.account-theme .account-option {
+  border-color: #ded0b2 !important;
+  background: #fffef9 !important;
+  color: #293e2d !important;
+  box-shadow: 0 2px 0 #e5d6b8 !important;
+}
+.pasture-detail-panel.account-theme .account-option.current {
+  border-color: #7da476 !important;
+  background: #edf5e4 !important;
+}
+.pasture-detail-panel.account-theme :is(.account-overview .detail-row, .account-quick-stats > div) {
+  background: #f1efdf !important;
+  color: #354a38 !important;
+}
+.pasture-detail-panel.account-theme :is(input:not([type="checkbox"]):not([type="color"]), select) {
+  border-color: #c5b18c !important;
+  background: #fffef9 !important;
+  color: #283d2e !important;
+}
+.pasture-detail-panel.account-theme :is(.account-option button, .connect-btn, .logout-btn, .wardrobe-reset, .account-cashout) {
+  border: 1px solid #477d50 !important;
+  border-radius: 8px !important;
+  background: linear-gradient(#57945c, #347449) !important;
+  color: #fffdf0 !important;
+  box-shadow: 0 3px 0 #285c39 !important;
+  font-weight: 850 !important;
+}
+.pasture-detail-panel.account-theme :is(.account-option button, .connect-btn, .logout-btn, .wardrobe-reset, .account-cashout):hover:not(:disabled) {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+}
+.pasture-detail-panel.account-theme .account-option button.danger,
+.pasture-detail-panel.account-theme .account-cashout {
+  border-color: #d4ae69 !important;
+  background: linear-gradient(#f9e7bd, #eacb8d) !important;
+  color: #61451d !important;
+  box-shadow: 0 3px 0 #b59052 !important;
+}
+.pasture-detail-panel.account-theme .logout-btn:not(.account-cashout) {
+  border-color: #ba7164 !important;
+  background: linear-gradient(#c87667, #a94d43) !important;
+  color: #fffaf0 !important;
+  box-shadow: 0 3px 0 #823a33 !important;
+}
+.pasture-detail-panel.account-theme :is(.account-empty, .account-cashout-note, .account-loading) {
+  color: #667354 !important;
+}
