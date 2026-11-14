@@ -154,6 +154,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     confirmKey: string;
     confirmEpoch: number;
     confirmations: number;
+    lastAttemptEpoch: number;
     cooldownUntil: number;
     pendingContractId: string | null;
     timer: NodeJS.Timeout | null;
@@ -325,9 +326,11 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const selected = picks[0];
       const key = selected.market + '|' + selected.direction + '|' + selected.barrier;
       run.candidate = { market: selected.market, direction: selected.direction, barrier: selected.barrier };
-      if (key !== run.confirmKey) { run.confirmKey = key; run.confirmEpoch = 0; run.confirmations = 0; }
+      if (key !== run.confirmKey) { run.confirmKey = key; run.confirmEpoch = 0; run.confirmations = 0; run.lastAttemptEpoch = 0; }
       if (selected.epoch > run.confirmEpoch) { run.confirmEpoch = selected.epoch; run.confirmations += 1; }
       if (run.confirmations < run.config.shots) { run.phase = 'confirming-signal'; run.updatedAt = now; return; }
+      if (selected.epoch <= run.lastAttemptEpoch) { run.phase = 'waiting-next-tick'; run.updatedAt = now; return; }
+      run.lastAttemptEpoch = selected.epoch;
       run.phase = 'quoting'; run.updatedAt = now;
       const order: Order = { market: selected.market, direction: selected.direction, barrier: selected.barrier, stake: run.config.stake, minEdge: run.config.minEdge };
       if (!registry.snapshot(order.market).fresh) { run.phase = 'waiting-feed'; return; }
@@ -336,7 +339,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const risk = riskCheck({ stake: order.stake, settings: riskSettings, balance: info.balance,
         context: buildRecoveryContext(riskSettings, undefined, riskState), lastTradeAt: 0,
         tradeGapMs: 0, now, accountId: 'deriv:' + run.accountId,
-        skipStrategyCaps: true, lane: 'digit' });
+        skipStrategyCaps: false, lane: 'digit' });
       if (!risk.ok) { stopRangerRun(run, 'Trade blocked by account risk: ' + risk.reason); return; }
       const client = await clients.connect(run.accountId, token);
       if (await reconcile(run.accountId, client)) { run.phase = 'waiting-settlement'; return; }
@@ -352,7 +355,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const confirmRisk = riskCheck({ stake: order.stake, settings: riskSettings, balance: info.balance,
         context: buildRecoveryContext(riskSettings, undefined, confirmRiskState), lastTradeAt: 0,
         tradeGapMs: 0, now: Date.now(), accountId: 'deriv:' + run.accountId,
-        skipStrategyCaps: true, lane: 'digit' });
+        skipStrategyCaps: false, lane: 'digit' });
       if (!confirmRisk.ok) { stopRangerRun(run, 'Trade blocked by account risk: ' + confirmRisk.reason); return; }
       const reservationId = await store.reserve(run.accountId, randomUUID(), { ...order, mode: info.mode });
       let buyAttempted = false;
@@ -445,13 +448,14 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const active = await store.activeContract(user.accountId);
       const client = await clients.connect(user.accountId, user.token);
       if (active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing') || (await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'account has an open or uncertain contract');
+      if (!(listeners.get(user.accountId)?.size)) return fail(reply, 409, 'keep the authenticated player connection open to run Ranger Auto');
       const sessionSecret = user.source === 'player' ? secretFor(req) : null;
       const run: RangerRun = {
         accountId: user.accountId, mode: info.mode, source: user.source, sessionSecret,
         ownerAuthorized: () => isOwner(req), token: user.token, config,
         running: true, phase: 'starting', reason: null, startedAt: Date.now(), updatedAt: Date.now(),
         tradesDone: 0, wins: 0, losses: 0, lossStreak: 0, runProfit: 0,
-        candidate: null, confirmKey: '', confirmEpoch: 0, confirmations: 0,
+        candidate: null, confirmKey: '', confirmEpoch: 0, confirmations: 0, lastAttemptEpoch: 0,
         cooldownUntil: 0, pendingContractId: null, timer: null, busy: false,
         armedUntil: info.mode === 'real' ? rangerArms.get(user.accountId) ?? 0 : 0,
       };
@@ -634,7 +638,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (!bucket) { bucket = new Set(); listeners.set(accountId, bucket); }
       bucket.add(send);
       const heartbeat = setInterval(() => { void stillAuthorized().then(ok => { if (!ok) socket.close(1008, 'session expired'); }).catch(() => socket.close(1011, 'session unavailable')); }, 15_000);
-      const cleanup = () => { clearInterval(heartbeat); bucket!.delete(send); if (bucket!.size === 0) listeners.delete(accountId); };
+      const cleanup = () => { clearInterval(heartbeat); bucket!.delete(send); if (bucket!.size === 0) { listeners.delete(accountId); const run = rangerRuns.get(accountId); if (run?.running) stopRangerRun(run, 'Player connection closed.'); } };
       socket.on('close', cleanup); socket.on('error', cleanup);
       socket.send(JSON.stringify({ type: 'hello', accountId }));
     })().catch(() => socket.close(1011, 'session unavailable'));
