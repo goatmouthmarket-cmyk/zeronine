@@ -26,6 +26,8 @@ test('two signed players and the owner trade only their accounts, including manu
   const originalSnapshot = DerivPrivateClient.prototype.getContractSnapshot;
   const connected = new WeakMap<PrivateClientType, string>();
   const bought: string[] = [];
+  let bobBalance = 100;
+  let quotes = 0;
   const active = new Map<string, { id: string; status: string; provider_contract_id: string | null }>();
   const sessions = new Map([['secret-alice', { accountId: 'VRTC111', token: 'token-alice' }], ['secret-bob', { accountId: 'VRTC222', token: 'token-bob' }]]);
   const store = {
@@ -50,13 +52,13 @@ test('two signed players and the owner trade only their accounts, including manu
   globalThis.fetch = (async (_url: unknown, options?: RequestInit) => {
     const token = (options?.headers as Record<string, string>).Authorization;
     const accountId = token.endsWith('alice') ? 'VRTC111' : token.endsWith('owner') ? 'VRTC333' : 'VRTC222';
-    return Response.json({ data: [{ account_id: accountId, account_type: 'demo', currency: 'USD', balance: 100 }] });
+    return Response.json({ data: [{ account_id: accountId, account_type: 'demo', currency: 'USD', balance: accountId === 'VRTC222' ? bobBalance : 100 }] });
   }) as typeof fetch;
   DerivPrivateClient.prototype.connect = async function (_token, accountId) { connected.set(this, accountId!); return { loginid: accountId!, balance: 100, currency: 'USD', mode: 'demo' }; };
   Object.defineProperty(DerivPrivateClient.prototype, 'isConnected', { configurable: true, get() { return connected.has(this); } });
   Object.defineProperty(DerivPrivateClient.prototype, 'connectedAccountId', { configurable: true, get() { return connected.get(this) ?? null; } });
   DerivPrivateClient.prototype.getOpenContractIds = async () => new Set();
-  DerivPrivateClient.prototype.getQuote = async function (args) { return { id: `quote-${args.symbol}`, askPrice: args.amount, payout: args.amount * 2, spot: 100, barrier: args.barrier, direction: args.direction, requestSentAt: Date.now(), receivedAt: Date.now(), roundTripMs: 1, basis: 'stake' }; };
+  DerivPrivateClient.prototype.getQuote = async function (args) { quotes++; return { id: `quote-${args.symbol}`, askPrice: args.amount, payout: args.amount * 2, spot: 100, barrier: args.barrier, direction: args.direction, requestSentAt: Date.now(), receivedAt: Date.now(), roundTripMs: 1, basis: 'stake' }; };
   DerivPrivateClient.prototype.placeBuy = async function () { const id = connected.get(this)!; bought.push(id); return { contractId: `${id}-contract`, buyPrice: 1, payout: 2, purchaseTime: Date.now() }; };
   DerivPrivateClient.prototype.getContractSnapshot = async () => ({ contractId: 'open', status: 'open', profit: 0, sellPrice: 0, buyPrice: 1, settled: false });
 
@@ -90,6 +92,20 @@ test('two signed players and the owner trade only their accounts, including manu
     aliceSocket = await connectPlayer(alice, receivedAlice);
     bobSocket = await connectPlayer(bob, receivedBob);
     const order = { market: 'R_10', direction: 'over', barrier: 0, stake: 1, minEdge: 0 };
+    const beforeZero = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: bob }, payload: order });
+    assert.equal(beforeZero.statusCode, 200, beforeZero.body);
+    bobBalance = 0;
+    const zeroState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: bob } });
+    assert.equal(zeroState.statusCode, 200, zeroState.body);
+    assert.equal(zeroState.json().session.balance, 0, 'zero-balance account remains visible');
+    const previousQuotes = quotes;
+    const zeroPreview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: bob }, payload: order });
+    assert.notEqual(zeroPreview.statusCode, 200, 'zero-balance account cannot obtain a trade quote');
+    const zeroConfirm = await app.inject({ method: 'POST', url: '/api/player/trade/confirm', headers: { cookie: bob }, payload: { previewId: beforeZero.json().previewId, idempotencyKey: 'zero-balance-0001' } });
+    assert.notEqual(zeroConfirm.statusCode, 200, 'a previous quote cannot be purchased after balance falls to zero');
+    assert.equal(quotes, previousQuotes, 'zero balance stops both paths before requesting a quote');
+    assert.deepEqual(bought, [], 'zero balance never places an order');
+    bobBalance = 100;
     const preview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: alice }, payload: order });
     assert.equal(preview.statusCode, 200, preview.body);
     const previewId = preview.json().previewId;

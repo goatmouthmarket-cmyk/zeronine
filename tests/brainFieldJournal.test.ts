@@ -103,7 +103,14 @@ test('settled trades are reviewed once, per account, and never announced as "+1 
   assert.ok(note.includes('kind: \'trade_review\''));
   assert.ok(journal.includes('trade reviewed'));
   assert.equal(journal.includes('+1 learned'), false);
-  // "New lesson" belongs to the validated paper lessons, not to settlements.
+  // Lesson changes use the shared notice lane rather than a floating popover.
   const lesson = journal.slice(journal.indexOf('function noteLessonChange('), journal.indexOf('function renderLearnedCards('));
-  assert.ok(lesson.includes("pop.textContent = 'New lesson'"));
+  const notifications: string[] = [];
+  const noteLesson = runInNewContext(`let lessonSig = ''; ${lesson}; noteLessonChange`, { window: { notify: (message: string) => notifications.push(message) } }) as (signature: string) => boolean;
+  noteLesson('lesson:1');
+  noteLesson('lesson:1');
+  assert.deepEqual(notifications, [], 'the first and unchanged reports should not notify');
+  noteLesson('lesson:2');
+  assert.deepEqual(notifications, ['New Brain lesson']);
 });
+

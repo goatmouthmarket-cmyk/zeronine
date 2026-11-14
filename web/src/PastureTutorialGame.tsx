@@ -7,7 +7,7 @@ type Lesson = {
   tip?: string;
   links?: Array<{ label: string; href: string }>;
   connect?: boolean;
-  exercise?: 'move' | 'cow' | 'aim' | 'paper' | 'markets' | 'auto' | 'start' | 'ghost';
+  exercise?: 'move' | 'cow' | 'aim' | 'paper' | 'markets' | 'auto' | 'start' | 'ghost' | 'brain' | 'chat';
 };
 
 const LESSONS: Lesson[] = [
@@ -17,9 +17,9 @@ const LESSONS: Lesson[] = [
   { title: 'Read the cow’s bubble', body: 'OVER 2 means the final digit must be greater than 2. UNDER 7 means it must be less than 7. The barrier itself loses.', tip: 'Confidence is an estimate. L and H count recent low digits (0–4) and high digits (5–9).' },
   { title: 'Understand edge', body: 'Edge compares the estimated chance of winning with the chance needed to break even at the estimated payout.', tip: 'Compare the green positive edge with the weaker red negative example. Both are estimates, not promises, and can change.' },
   { title: 'What the rings mean', body: 'Green marks the strongest fresh positive edge. A yellow ring marks the highest confidence-weighted return estimate.', tip: 'A red ring marks a fresh entry signal. A cow can have more than one highlight; none guarantees a win.' },
-  { title: 'Aim at a cow', body: 'Left-click or tap a cow. The ranger moves into position and shoots automatically; the health bar shows progress.', tip: 'In guest play this is practice. When connected, defeating a cow can submit the selected contract, subject to account and risk checks.', exercise: 'aim' },
+  { title: 'Aim at a cow', body: 'When signed in, left-click or tap a cow. The ranger moves into position and shoots automatically; the health bar shows progress.', tip: 'As a guest, both click types make paper trades and leave the cow unharmed. When signed in, defeating a cow can submit the selected contract, subject to account and risk checks.', exercise: 'aim' },
   { title: 'Read the ranger’s bubble', body: 'The bubble shows status, market, direction, barrier, stake and style, plus the quote freshness and estimated edge when available.', tip: 'After settlement, the digit and WON or LOST result appear with profit or loss and any remaining session loss. Tap the bubble to dismiss it.' },
-  { title: 'Try a paper shot', body: 'Right-click a cow, or press and hold it on touch, to make a paper trade. Try it on the highlighted cow.', tip: 'In the game, a fresh live market tick is needed; the result uses the next tick. No account money is used.', exercise: 'paper' },
+  { title: 'Try a paper shot', body: 'As a guest, left-click, right-click or tap a cow to make a paper trade. When signed in, use right-click or press and hold on touch.', tip: 'In the game, a fresh live market tick is needed; the result uses the next tick. Paper trades leave the cow unharmed and use no account money.', exercise: 'paper' },
   { title: 'Set your trade', body: 'Open Markets to choose your stake, bet style, manual shot count, and minimum edge, and see live targets and recent bets.', tip: 'The cow setup and edge are locked on the first fresh shooting tick. The feed must be fresh, and the actual Deriv quote can still change. Recovery styles can increase stakes after losses.', exercise: 'markets' },
   { title: 'Meet Ranger Auto', body: 'Use the play icon to open automation controls. The icon shows pause and “Running” when Auto is active; opening it does not pause trading.', tip: 'Ranger Auto selects eligible highlighted cows after three fresh confirming ticks. Signals can disappear or change.', exercise: 'auto' },
   { title: 'Set limits first', body: 'Choose your stake, bet style and limits. Entry settings also control minimum edge, ring colors, shot counts and optional paper tests.', tip: 'Auto checks three fresh ticks before shooting. Paper-test results are research only and do not change account trades.' },
@@ -29,9 +29,14 @@ const LESSONS: Lesson[] = [
   { title: 'Meet the ghost scout', body: 'Click or tap the ghost to open its research menu. It follows virtual paper trades and shows its recent wins and losses.', tip: 'The scout menu includes historical replay and deeper research. Paper results do not use account funds.', exercise: 'ghost' },
   { title: 'Watch the scout work', body: 'The scout watches a market signal and fires a ghost arrow at the matching cow. The ghostly cow shows a paper trade; the real cow stays in the pasture.', tip: 'The example opens on one tick and settles on the next. No account order is placed.' },
   { title: 'Read scout research', body: 'The scout menu shows wins, losses, win rate, recent virtual trades and the latest signal details. Historical replay uses past ticks.', tip: 'Auto paper tests, when enabled, show samples for each setup. Research is not a guarantee and does not decide account trades.' },
-  { title: 'Where the markets come from', body: 'Deriv is an online broker that offers markets and trading accounts. The Volatility markets in the pasture are Deriv derived indices; each cow represents a market and an example contract.', tip: 'Deriv supplies the quotes and executes account trades. Availability depends on your location and account.', links: [{ label: 'Learn about Deriv markets', href: 'https://deriv.com/markets/derived-indices' }] },
-  { title: 'Deriv Over / Under', body: 'On Deriv, Digit Over/Under contracts predict whether the final digit of the contract’s last tick will be above or below your chosen number.', tip: 'For OVER 2, digits 3–9 win; 2 and below lose. For UNDER 7, digits 0–6 win; 7 and above lose. Real-money trades can lose your stake.', links: [{ label: 'Learn about Over / Under', href: 'https://community.deriv.com/t/options-to-trade-in-deriv-digital-options-2nd-part/41248' }] },
-  { title: 'Connect your Deriv account', body: 'To place trades, create a Deriv account, then choose Connect Deriv here. Select “Continue with Deriv”, sign in with Deriv, and return to the pasture.', tip: 'Choose demo to practise with virtual funds or real to use real money. You can also explore as a guest without placing bets.', links: [{ label: 'Create a Deriv account', href: 'https://home.deriv.com/dashboard/signup' }, { label: 'Visit Deriv', href: 'https://deriv.com/' }], connect: true },
+  { title: 'Where the markets come from', body: 'Deriv is an online broker that offers markets and trading accounts. The pasture’s Volatility markets are algorithm-generated synthetic indices; each cow represents a market and an example contract.', tip: 'Deriv supplies the quotes and executes account trades. Availability depends on your location and account.', links: [{ label: 'Learn about synthetic indices', href: 'https://traders-academy.deriv.com/trading-guides/trade-synthetic-indices-tradingview' }] },
+  { title: 'Deriv Over / Under', body: 'On Deriv, Digit Over/Under contracts predict whether the final digit of the contract’s last tick will be above or below your chosen number.', tip: 'For OVER 2, digits 3–9 win; 2 and below lose. For UNDER 7, digits 0–6 win; 7 and above lose. A tie loses. Real-money trades can lose your stake.', links: [{ label: 'Learn about Over / Under', href: 'https://legacy-docs.deriv.com/docs/digit-overunder' }] },
+  { title: 'Connect your Deriv account', body: 'Choose Connect Deriv and sign in through Deriv, then return to the pasture and select an authorized account.', tip: 'Check the account label before trading. Demo uses virtual funds; Real uses real money and can lose your stake. Guest paper trades do not place account orders.', links: [{ label: 'Create a Deriv account', href: 'https://home.deriv.com/dashboard/signup' }, { label: 'Visit Deriv', href: 'https://deriv.com/' }], connect: true },
+  { title: 'Meet the Ranger Brain', body: 'The Brain reviews paper evidence and can suggest a cow. Try the example Brain button to open its journal.', tip: 'In the pasture, left-click the Brain for a suggestion; right-click it, or press and hold on touch, for the menu. A suggestion is research, not an order or guarantee.', exercise: 'brain' },
+  { title: 'See what the Brain remembers', body: 'Memories show recent paper evidence, current lessons, and recorded finding changes with the time each was observed.', tip: 'Short and long windows use recent same-market paper results; the journal records changes from when it was enabled. A device-only fallback is labeled. It does not change account trades.' },
+  { title: 'Talk in the pasture', body: 'Chat appears as a simple line and open messages. On a laptop, press Enter to focus it; on mobile, tap the line.', tip: 'Try the example chat below. Your practice message stays in this tutorial and is not sent to other players.', exercise: 'chat' },
+  { title: 'Read the header and cooldown', body: 'The header holds navigation and account controls. When a trading cooldown is active, its remaining time appears there.', tip: 'The timer counts down while new entries are paused. Waiting for it does not change a settled result or bypass any risk checks.' },
+  { title: 'Review before Ranger Auto', body: 'The risk and reward preview shows the stake, account, recovery style, pause and loss settings before Auto starts.', tip: 'Open Advanced for the loss ladder and evidence. Illustrative figures are estimates; losses may exceed the amount shown before a pause, and real-money trading can lose your stake.' },
   { title: 'You’re ready', body: 'Take your time, check the market and stake, and use paper practice when you want to explore.', tip: 'You can return to this guide from How to play whenever you need it.' },
 ];
 
@@ -90,6 +95,9 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
   const [autoCompleted, setAutoCompleted] = useState(0);
   const [selected, setSelected] = useState(false);
   const [ghostOpen, setGhostOpen] = useState(false);
+  const [brainDemoOpen, setBrainDemoOpen] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatExample, setChatExample] = useState('');
   const [ghostPhase, setGhostPhase] = useState<'watching' | 'shooting' | 'settled'>('watching');
   const advanceTimer = useRef<number | null>(null);
   const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 600px)').matches);
@@ -119,6 +127,8 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
   }, []);
   useEffect(() => {
     if (advanceTimer.current !== null) { window.clearTimeout(advanceTimer.current); advanceTimer.current = null; }
+    if (lesson.exercise !== 'brain') setBrainDemoOpen(false);
+    if (lesson.exercise !== 'chat') { setChatDraft(''); setChatExample(''); }
     if (step !== 15 && step !== 17) setGhostOpen(false);
     if (step >= 14) setAutoRunning(false);
     if (step !== 8) { setPaper(false); setPaperSettled(false); }
@@ -164,12 +174,12 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
   const complete = (exercise: NonNullable<Lesson['exercise']>): void => {
     if (lesson.exercise !== exercise || advanceTimer.current !== null) return;
     setDone((previous) => ({ ...previous, [exercise]: true }));
-    const delay = exercise === 'aim' ? 2600 : exercise === 'paper' ? 1900 : exercise === 'start' ? 5900 : exercise === 'ghost' ? 1800 : 700;
+    const delay = exercise === 'aim' ? 2600 : exercise === 'paper' ? 1900 : exercise === 'start' ? 5900 : exercise === 'ghost' ? 1800 : exercise === 'brain' ? 3500 : exercise === 'chat' ? 2200 : 700;
     const currentStep = step;
     advanceTimer.current = window.setTimeout(() => {
       advanceTimer.current = null;
       setStep((value) => value === currentStep ? Math.min(LESSONS.length - 1, value + 1) : value);
-    }, reducedMotion && exercise !== 'start' ? Math.min(delay, 900) : delay);
+    }, reducedMotion && !['start', 'brain', 'chat'].includes(exercise) ? Math.min(delay, 900) : delay);
   };
   const next = (): void => setStep((value) => Math.min(LESSONS.length - 1, value + 1));
   const previous = (): void => setStep((value) => Math.max(0, value - 1));
@@ -189,6 +199,7 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
   };
   const selectCow = (): void => {
     if (suppressClick.current) { suppressClick.current = false; return; }
+    if (lesson.exercise === 'paper') { paperShot(); return; }
     setSelected(true);
     if (lesson.exercise === 'cow') complete('cow');
     if (lesson.exercise === 'aim') {
@@ -322,7 +333,12 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
       <div class="guide-game-controls">
         <button type="button" class={`${marketsOpen ? 'is-active ' : ''}${step === 9 ? 'guide-spot' : ''}`} onClick={() => { setMarketsOpen(!marketsOpen); setAutoOpen(false); if (lesson.exercise === 'markets' && !marketsOpen) complete('markets'); }} aria-expanded={marketsOpen}>◎ <span>Markets</span></button>
         <button type="button" class={`${autoOpen ? 'is-active ' : ''}${step === 10 ? 'guide-spot' : ''}`} onClick={() => { setAutoOpen(!autoOpen); setMarketsOpen(false); if (lesson.exercise === 'auto' && !autoOpen) complete('auto'); }} aria-expanded={autoOpen}>{autoRunning ? '❚❚' : '▶'} <span>{autoRunning ? 'Running' : 'Auto'}</span></button>
+        {lesson.exercise === 'brain' && <button type="button" class="guide-spot" aria-expanded={brainDemoOpen} aria-label="Open example Ranger Brain" onClick={() => { setBrainDemoOpen(true); complete('brain'); }}><img src="/brain-brand.svg" width="28" height="28" alt="" /><span>Brain</span></button>}
       </div>
+      {brainDemoOpen && lesson.exercise === 'brain' && <aside class="guide-demo-panel" aria-label="Example Ranger Brain journal"><div><strong>RANGER BRAIN</strong><button type="button" aria-label="Close example Brain" onClick={() => setBrainDemoOpen(false)}>×</button></div><img src="/brain-pasture-scene.svg" alt="" style={{ display: 'block', width: '100%', height: '64px', objectFit: 'contain', background: '#c9e6b0' }} /><p><b>Example: watching the pasture</b></p><p>My Brain · Lessons · Memories</p><small>Example only · paper research cannot place an order.</small></aside>}
+      {lesson.exercise === 'chat' && <aside class="guide-demo-panel" aria-label="Example pasture chat"><div><strong>PASTURE CHAT · EXAMPLE</strong></div>{chatExample && <p role="status"><b>Ranger:</b> {chatExample}</p>}<form onSubmit={(event) => { event.preventDefault(); const value = chatDraft.trim(); if (value) { setChatExample(value); setChatDraft(''); complete('chat'); } }}><label for="guide-chat-input">Practice message</label><input id="guide-chat-input" value={chatDraft} maxLength={80} placeholder="Type and press Enter" onInput={(event) => setChatDraft(event.currentTarget.value)} style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: '5px', padding: '7px', font: 'inherit' }} /><button type="submit">Send example</button></form><small>Example stays here · no message is sent.</small></aside>}
+      {step === 24 && <aside class="guide-demo-panel" aria-label="Example header cooldown"><div><strong>HEADER · EXAMPLE</strong></div><p><b>COOLDOWN 0:45</b></p><small>Example timer only · counts down during a real cooldown.</small></aside>}
+      {step === 25 && <aside class="guide-demo-panel" aria-label="Example risk preview"><div><strong>RISK &amp; REWARD · EXAMPLE</strong></div><p>Stake <b>1.00 USD</b> · Pause after <b>2 losses</b></p><p>Maximum run loss <b>Not set</b></p><small>Example settings only · no trade or guarantee.</small></aside>}
       {marketsOpen && <aside class={`guide-demo-panel${step === 9 ? ' guide-spot' : ''}`} aria-label="Example markets panel"><div><strong>Markets</strong><button onClick={() => setMarketsOpen(false)} aria-label="Close markets">×</button></div><p>Stake <b>1.00 USD</b> · Style <b>Base</b></p><p>Live targets · recent bets · balance</p><small>Example controls only</small></aside>}
       {autoOpen && <aside class="guide-demo-panel guide-auto-panel" aria-label="Example automation controls"><div><strong>RANGER AUTO</strong><button onClick={() => setAutoOpen(false)} aria-label="Close automation">×</button></div><p>{autoRunning ? 'ACTIVE · Looking for a fresh signal' : 'OFF · Ready to practise'}</p><div class={`guide-demo-settings${step === 11 ? ' guide-spot' : ''}`}><span>Stake <b>1.00</b></span><span>Style <b>Base</b></span><span>Losses <b>2</b></span><span>Cooldown <b>45s</b></span><span>Take profit <b>Off</b></span></div><button class={`guide-demo-start${step === 12 ? ' guide-spot' : ''}`} onClick={() => { if (!autoRunning) { setAutoSequence((value) => value + 1); setAutoOpen(false); } setAutoRunning(!autoRunning); if (lesson.exercise === 'start' && !autoRunning) complete('start'); }}>{autoRunning ? '❚❚  Pause practice' : '▶  Start practice'}</button><small>Simulation only · no trades</small></aside>}
       {step === 8 && <button class="guide-paper-accessible" type="button" onClick={paperShot}>Try paper shot</button>}
@@ -331,7 +347,7 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
     </div>
     <section class="guide-lesson" key={step} aria-live="polite">
       <div class="guide-progress"><span>LESSON {step + 1} OF {LESSONS.length}</span><div><i style={{ width: `${((step + 1) / LESSONS.length) * 100}%` }} /></div></div>
-      <h1>{lesson.title}</h1><p>{lesson.body}</p>{lesson.tip && <p class="guide-tip">{lesson.tip}</p>}
+      <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><img src={/brain|remember/i.test(lesson.title) ? '/brain-brand.svg' : /cow|market|over|under/i.test(lesson.title) ? '/brain-pasture-scene.svg' : '/brain-ranger.svg'} width="36" height="32" alt="" style={{ flex: '0 0 36px', objectFit: 'contain' }} /><span>{lesson.title}</span></h1><p>{lesson.body}</p>{lesson.tip && <p class="guide-tip">{lesson.tip}</p>}
       {(lesson.links || lesson.connect) && <div class="guide-links">{lesson.links?.map((link) => <a href={link.href} target="_blank" rel="noopener noreferrer" key={link.href}>{link.label} ↗</a>)}{lesson.connect && <button type="button" onClick={onConnect}>Connect Deriv in the pasture</button>}</div>}
       {lesson.exercise && <span class="guide-exercise">{completed ? '✓ Practice complete - continuing' : 'Try it in the pasture'}</span>}
       <div class="guide-navigation">

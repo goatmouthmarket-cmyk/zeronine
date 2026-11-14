@@ -1,0 +1,23 @@
+/* Small decorative game-art marks accompany the existing accessible titles. */
+#healthPanel #healthTitle::before,
+#inspector .menu-title::before,
+#rangerAutoHud .ranger-auto-heading strong::before,
+#ghostTraderPanel #ghostPanelTitle::before,
+#rangerAutoRiskPreview .risk-preview-head strong::before,
+#rangerAutoRunReport .risk-preview-head strong::before {
+  content: '';
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  margin-right: 5px;
+  vertical-align: middle;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+#inspector .menu-title::before { background-image: url('/brain-pasture-scene.svg'); width: 31px; }
+#rangerAutoHud .ranger-auto-heading strong::before,
+#rangerAutoRiskPreview .risk-preview-head strong::before,
+#rangerAutoRunReport .risk-preview-head strong::before { background-image: url('/brain-ranger.svg'); }
+#ghostTraderPanel #ghostPanelTitle::before { background-image: url('/pasture-ghost.svg'); }
+#healthPanel #healthTitle::before { background-image: url('/pasture-menu-health.svg'); }

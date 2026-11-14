@@ -940,13 +940,8 @@
       state.best = Math.max(state.best, state.streak);
       reflexWrite(state);
     }
-    // Rejected entries already have a safety notice from the game. Emit only
-    // the held-entry result here to avoid displaying the same event twice.
-    if (!saved && typeof window.notify === 'function') {
-      const message = 'Late entry: the setup held and the shot went through. Grade ' + grade.label + '.';
-      if (typeof window.notify.event === 'function') window.notify.event({ type: 'info', title: 'Late entry', message });
-      else window.notify(message);
-    }
+    // Visual entry status and its accessible explanation are rendered by the
+    // shared status indicator; a held setup is not a confirmed order.
   }
   window.addEventListener('zeronine:brain-late-entry', (event) => {
     try { showReflex((event && event.detail) || {}); } catch {}

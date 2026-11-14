@@ -316,6 +316,8 @@ test('paper scout badge draws bounded text without an unbounded sizing loop', ()
     };
     const ghostPaperState = { phase: 'running', openContract: { market: '1HZ50V', direction: 'under', barrier: 7 } };
     const ghost = { x: 200, y: 200 };
+    const brainZoomPrev = null;
+    const player = { x: 0, y: 0 };
     const lastRoomState = {};
     const marketName = () => 'A particularly long readable market name';
     const ghostPaperStats = () => ({ wins: 10, losses: 5, rate: 67 });

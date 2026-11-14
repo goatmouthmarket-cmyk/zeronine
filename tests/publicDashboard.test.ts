@@ -111,7 +111,9 @@ test('public dashboard exposes global market data but protects the connected acc
     if (String(url).includes('/accounts')) {
       const auth = (options?.headers as Record<string, string>).Authorization;
       const id = auth.endsWith('alice') ? 'VRTC111' : 'VRTC222';
-      return Response.json({ data: [{ account_id: id, account_type: 'demo', currency: 'USD', balance: id === 'VRTC111' ? 111 : 222 }] });
+      const accounts = [{ account_id: id, account_type: 'demo', currency: 'USD', balance: id === 'VRTC111' ? 111 : 222 }];
+      if (id === 'VRTC111') accounts.push({ account_id: 'CR111', account_type: 'real', currency: 'USD', balance: 25 });
+      return Response.json({ data: accounts });
     }
     throw new Error('unexpected request');
   }) as typeof fetch;
@@ -133,7 +135,24 @@ test('public dashboard exposes global market data but protects the connected acc
   assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: alice } })).json().session.balance, 111);
   assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: bob } })).json().session.balance, 222);
   assert.equal((await app.inject({ method: 'GET', url: '/api/state', headers: { cookie: alice } })).json().session, null);
-  await app.inject({ method: 'POST', url: '/api/player/logout', headers: { cookie: alice } });
+  const options = await app.inject({ method: 'GET', url: '/api/player/accounts', headers: { cookie: alice } });
+  assert.deepEqual(options.json().accounts.map((account: { accountId: string; mode: string }) => [account.accountId, account.mode]), [['VRTC111', 'demo'], ['CR111', 'real']]);
+  const unauthorizedSwitch = await app.inject({ method: 'POST', url: '/api/player/accounts/select', headers: { cookie: alice }, payload: { accountId: 'VRTC222' } });
+  assert.equal(unauthorizedSwitch.statusCode, 403, 'another player account must not be selectable');
+  const selectedReal = await app.inject({ method: 'POST', url: '/api/player/accounts/select', headers: { cookie: alice }, payload: { accountId: 'CR111' } });
+  assert.equal(selectedReal.statusCode, 200, selectedReal.body);
+  const realCookie = String(selectedReal.headers['set-cookie']).split(';', 1)[0];
+  assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: alice } })).statusCode, 401, 'old player session is revoked');
+  const realSession = await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: realCookie } });
+  assert.equal(realSession.json().session.loginid, 'CR111');
+  assert.equal(realSession.json().session.mode, 'real');
+  assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: bob } })).json().session.loginid, 'VRTC222', 'another player remains isolated');
+  const selectedDemo = await app.inject({ method: 'POST', url: '/api/player/accounts/select', headers: { cookie: realCookie }, payload: { accountId: 'VRTC111' } });
+  assert.equal(selectedDemo.statusCode, 200, selectedDemo.body);
+  const newAlice = String(selectedDemo.headers['set-cookie']).split(';', 1)[0];
+  assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: newAlice } })).json().session.mode, 'demo');
+  assert.equal(store.getSession()?.loginid, 'CR123', 'player selection must not alter owner account');
+  await app.inject({ method: 'POST', url: '/api/player/logout', headers: { cookie: newAlice } });
   assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: alice } })).statusCode, 401);
   assert.equal((await app.inject({ method: 'GET', url: '/api/player/session', headers: { cookie: bob } })).statusCode, 200);
   assert.equal(store.getSession()?.loginid, 'CR123');

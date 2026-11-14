@@ -1,0 +1,6 @@
+.brain-entry-status { position: fixed; z-index: 18; display: grid; place-items: center; width: 26px; height: 26px; color: #a1ffb8; pointer-events: auto; filter: drop-shadow(0 2px 2px #183820) drop-shadow(0 0 4px #17391f); }
+.brain-entry-status[hidden] { display: none; }
+.brain-entry-status[data-tone="waiting"] { color: #ffe3a0; }
+.brain-entry-status[data-tone="rejected"] { color: #ff8d91; }
+.brain-entry-status svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.brain-entry-explanation { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

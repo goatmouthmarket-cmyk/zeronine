@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 
 const read = (path: string) => readFileSync(new URL(`../web/public/${path}`, import.meta.url), 'utf8');
 
@@ -45,8 +46,26 @@ test('all four major menus register with the shared controller', () => {
   assert.ok(system.includes('closeMajors(id)'));
 });
 
-test('the Brain suggestion card uses the shared collision placement', () => {
+test('the Brain suggestion card avoids the target cow, ranger and visible panels', () => {
   const brain = read('pasture-brain-refine.js');
-  assert.ok(brain.includes('sharedUi.placeFloating(card'));
-  assert.ok(brain.includes("avoid: ['#rangerBrainPanel'"));
+  const start = brain.indexOf('  function placeOverlay() {');
+  const end = brain.indexOf('  function suggestionReason(', start);
+  assert.ok(start >= 0 && end > start);
+  const card = { offsetWidth: 224, offsetHeight: 132, style: { left: '', top: '', transform: '' } };
+  const cow = { index: 3, sx: 500, sy: 320 };
+  const snap = { herd: [cow], head: { x: 180, y: 300 }, feet: { x: 180, y: 355 }, zoom: 1 };
+  const panel = { hidden: false, getClientRects: () => [1], getBoundingClientRect: () => ({ left: 700, right: 980, top: 200, bottom: 500 }) };
+  const context = {
+    bridge: () => ({ snapshot: () => snap }), activeSuggestion: { cowIndex: 3 },
+    document: { querySelector: (selector: string) => selector === '#rangerBrainPanel' ? panel : null },
+    $: () => null, tether: null, card, innerWidth: 1200, innerHeight: 800, clearSuggestion: () => {},
+  };
+  runInNewContext(`${brain.slice(start, end)}; placeOverlay()`, context);
+  const left = Number.parseFloat(card.style.left), top = Number.parseFloat(card.style.top);
+  assert.ok(Number.isFinite(left) && Number.isFinite(top), 'the card is positioned');
+  const overlaps = (box: { left: number; right: number; top: number; bottom: number }) => left < box.right && left + card.offsetWidth > box.left && top < box.bottom && top + card.offsetHeight > box.top;
+  assert.equal(overlaps({ left: 446, right: 554, top: 266, bottom: 374 }), false, 'target cow stays visible');
+  assert.equal(overlaps({ left: 144, right: 216, top: 264, bottom: 383 }), false, 'ranger stays visible');
+  assert.equal(overlaps(panel.getBoundingClientRect()), false, 'open panel stays visible');
 });
+

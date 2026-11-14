@@ -1,5 +1,5 @@
 /* A lightweight chat overlay that leaves the pasture visible. */
-#pastureChat { color: #fff9e8; text-shadow: 0 1px 2px #122c1b, 0 1px 5px #122c1b; }
+#pastureChat { z-index: 60 !important; color: #fff9e8; text-shadow: 0 1px 2px #122c1b, 0 1px 5px #122c1b; }
 #chatToggle, #chatPanel header { display: none !important; }
 .pasture-chat-status {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -17,6 +17,10 @@
 }
 #chatPanel header span { color: #e7f6d4; }
 #chatMessages { pointer-events: auto; }
+#chatMessages { transition: opacity .25s ease; }
+.chat-history-faded #chatMessages { opacity: 0; pointer-events: none; }
+.chat-collapsed #chatMessages, .chat-collapsed #chatForm { display: none !important; }
+.chat-visibility-control[hidden] { display: none !important; }
 #chatMessages p { background: transparent; border: 0; border-radius: 0; padding: 2px 0; color: #fff9e8; }
 #chatMessages strong { color: #ffe271 !important; font-weight: 800; }
 #chatMessages p > span { color: #fffdf1 !important; }
@@ -38,7 +42,18 @@
 }
 #chatForm #chatInput:focus-visible { outline: none; border-bottom: 2px solid #ffdf80 !important; }
 @media (max-width: 999.98px) {
-  #pastureChat #chatPanel:not([hidden]) { right: var(--chat-hud-right, 8px) !important; bottom: max(80px, calc(env(safe-area-inset-bottom) + 72px)) !important; width: min(var(--chat-hud-width, 220px), calc(100vw - 16px)) !important; height: min(150px, 25dvh); }
+  #pastureChat #chatPanel:not([hidden]) { right: var(--chat-hud-right, 8px) !important; bottom: max(80px, calc(env(safe-area-inset-bottom) + 72px)) !important; width: min(var(--chat-hud-width, 220px), calc(100vw - 16px)) !important; height: min(150px, 25dvh); transform: translateY(calc(0px - var(--chat-toast-lift, 0px))) !important; }
   #chatName, #chatInput { font-size: 16px; }
   #chatInput { min-height: 44px; }
+  #chatPanel:has(.chat-visibility-control:not([hidden])) #chatForm { padding-right: 78px; }
+  #chatPanel .chat-visibility-control:not([hidden]) {
+    position: absolute; right: 4px; bottom: 4px; min-height: 36px; padding: 4px;
+    border: 0; border-radius: 0; background: transparent; box-shadow: none;
+    color: #ffe271; font: 800 9px/1.2 system-ui, sans-serif; white-space: nowrap;
+    text-shadow: 0 1px 2px #122c1b, 0 1px 5px #122c1b; pointer-events: auto;
+    touch-action: manipulation; user-select: none; -webkit-touch-callout: none;
+  }
+  #chatPanel .chat-visibility-control:focus-visible { outline: 2px solid #ffdf80; outline-offset: 2px; }
+  #pastureChat #chatPanel.chat-collapsed:not([hidden]) { height: 44px !important; }
 }
+@media (prefers-reduced-motion: reduce) { #chatMessages { transition: none; } }

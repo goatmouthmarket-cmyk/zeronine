@@ -619,26 +619,47 @@ interface ManualExecutionView {
   message?: string;
 }
 
-function QuickAccountMenu({ session, onNavigate }: { session: SessionInfo | null; onNavigate: (p: Page) => void }): JSX.Element {
+type QuickAccountOption = Pick<DerivAccountInfo, 'accountId' | 'mode' | 'currency' | 'balance'>;
+
+function QuickAccountMenu({ session, isPlayer, onNavigate }: { session: SessionInfo | null; isPlayer: boolean; onNavigate: (p: Page) => void }): JSX.Element {
   const [open, setOpen] = useState(false);
-  const [accounts, setAccounts] = useState<DerivAccountInfo[]>([]);
+  const [accounts, setAccounts] = useState<QuickAccountOption[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const requestGeneration = useRef(0);
+  useEffect(() => {
+    requestGeneration.current++;
+    setOpen(false);
+    setAccounts([]);
+    setBusy(false);
+    setError('');
+    return () => { requestGeneration.current++; };
+  }, [session?.loginid, isPlayer]);
   const toggle = () => {
-    if (open) { setOpen(false); return; }
+    if (open) { requestGeneration.current++; setOpen(false); setBusy(false); return; }
     setOpen(true);
     setError('');
+    setAccounts([]);
     if (!session) return;
     setBusy(true);
-    void loadDerivAccounts().then(setAccounts).catch((err) => setError(err instanceof Error ? err.message : String(err))).finally(() => setBusy(false));
+    const generation = ++requestGeneration.current;
+    const request = isPlayer ? loadPlayerAccounts() : loadDerivAccounts();
+    void request.then((list) => { if (generation === requestGeneration.current) setAccounts(list); })
+      .catch((err) => { if (generation === requestGeneration.current) setError(err instanceof Error ? err.message : String(err)); })
+      .finally(() => { if (generation === requestGeneration.current) setBusy(false); });
   };
-  const choose = async (account: DerivAccountInfo) => {
+  const choose = async (account: QuickAccountOption) => {
     if (busy || account.accountId === session?.loginid) return;
     setBusy(true);
     setError('');
-    try { await switchDerivAccount(account.accountId); setOpen(false); }
-    catch (err) { setError(err instanceof Error ? err.message : String(err)); }
-    finally { setBusy(false); }
+    const generation = ++requestGeneration.current;
+    try {
+      if (isPlayer) await selectPlayerAccount(account.accountId);
+      else await switchDerivAccount(account.accountId);
+      if (generation === requestGeneration.current) setOpen(false);
+    }
+    catch (err) { if (generation === requestGeneration.current) setError(err instanceof Error ? err.message : String(err)); }
+    finally { if (generation === requestGeneration.current) setBusy(false); }
   };
   return <div class="balance quick-account">
     <div class="balance-amount">{fmtMoney(session?.balance ?? 0, session?.currency)}</div>
@@ -1536,7 +1557,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
             title={headerNavOpen ? 'Collapse navigation' : 'Show navigation'}
             onClick={() => setHeaderNavOpen((open) => !open)}
           ><Icon name={headerNavOpen ? 'x' : 'menu'} size={21} strokeWidth={2.2} /></button>
-          <QuickAccountMenu session={s.session} onNavigate={onNavigate} />
+          <QuickAccountMenu session={s.session} isPlayer={!base.owner && !!base.playerSession} onNavigate={onNavigate} />
         </div>
         <div class="subtitle">Cow archery pasture · choose a live target · Deriv execution stays behind the game</div>
       </header>
@@ -5831,3 +5852,4 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
     </div>
   );
 }
+

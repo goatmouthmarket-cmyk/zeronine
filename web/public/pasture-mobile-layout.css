@@ -1,0 +1,32 @@
+/* Leave the bottom launchers reachable while mobile drawers are open. */
+@media (max-width: 999.98px) and (min-height: 561px) {
+  body #rangerAutoHud:not([hidden]),
+  body #rangerBrainPanel:not([hidden]),
+  body #ghostTraderPanel:not([hidden]) {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+    max-height: min(62dvh, calc(100dvh - var(--dc-header-h, 56px) - 84px - env(safe-area-inset-bottom, 0px))) !important;
+    overflow-y: auto !important;
+  }
+}
+
+@media (max-width: 999.98px) {
+  #rangerAutoHud #rangerAutoActivity:not([hidden]) {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: 100%;
+    padding: 8px 0;
+    color: #243e2d;
+    pointer-events: auto;
+    border-bottom: 1px solid #a88a6155;
+  }
+  #rangerAutoHud #rangerAutoActivity :is(.ranger-auto-pnl, .ranger-auto-pnl strong, small, #rangerAutoRecent li, #rangerAutoRecent li strong) {
+    color: #243e2d;
+    text-shadow: none;
+  }
+  #rangerAutoHud #rangerAutoActivity .ranger-auto-pnl strong[data-negative="true"],
+  #rangerAutoHud #rangerAutoRecent li[data-status="lost"] strong { color: #9c2530; }
+  #rangerAutoHud #rangerAutoRecent li[data-status="won"] strong { color: #17673b; }
+  #rangerAutoHud #rangerAutoTimer { background: #e6d6b9; color: #243e2d; }
+  #rangerAutoHud #rangerAutoTimer :is(span, strong) { color: #243e2d; }
+}

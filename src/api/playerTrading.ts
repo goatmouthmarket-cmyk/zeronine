@@ -45,11 +45,13 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     const player = await store.resolveSession(secretFor(req));
     return player ? { ...player, source: 'player' as const } : null;
   };
-  const account = async (accountId: string, token: string) => {
+  const account = async (accountId: string, token: string, purpose: 'state' | 'trade' = 'trade') => {
     const info = (await listDerivAccounts(token)).find(item => String(item.account_id) === accountId);
     if (!info) throw new Error('Deriv account unavailable; sign in again');
     const balance = Number(info.balance);
-    if (!Number.isFinite(balance) || balance <= 0) throw new Error('Deriv balance unavailable');
+    // Empty accounts must remain selectable and visible, but all quote and buy
+    // paths retain the positive-balance requirement before any order request.
+    if (info.balance == null || !Number.isFinite(balance) || balance < 0 || (purpose === 'trade' && balance === 0)) throw new Error('Deriv balance unavailable');
     return { balance, currency: info.currency || 'USD', mode: String(info.account_type ?? '').toLowerCase().includes('demo') ? 'demo' as const : 'real' as const };
   };
   const parseOrder = (input: unknown): Order => {
@@ -105,7 +107,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     const user = await principal(req);
     if (!user) return fail(reply, 401, 'player session required');
     try {
-      const info = await account(user.accountId, user.token);
+      const info = await account(user.accountId, user.token, 'state');
       const risk = await store.riskSnapshot(user.accountId, info.balance);
       const client = await clients.connect(user.accountId, user.token);
       const active = await reconcile(user.accountId, client);
