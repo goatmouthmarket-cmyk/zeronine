@@ -120,6 +120,7 @@ async function main(): Promise<void> {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   app.addHook('onSend', async (req, reply, payload) => {
     const isTradingRoom = req.url.split('?', 1)[0] === '/trading-room.html';
+    if (isTradingRoom) reply.header('Cache-Control', 'no-store, max-age=0');
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', isTradingRoom ? 'SAMEORIGIN' : 'DENY');
     reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
