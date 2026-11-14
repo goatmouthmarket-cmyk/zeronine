@@ -470,7 +470,7 @@ async function main(): Promise<void> {
         reply.code(404).send({ error: 'not found' });
         return;
       }
-      const pathname = new URL(req.url, 'http://localhost').pathname.replace(/\\/+$/, '') || '/';
+      const pathname = new URL(req.url, 'http://localhost').pathname.replace(/\/+$/, '') || '/';
       const appPaths = new Set([
         '/', '/history', '/lab', '/account', '/privacy', '/how-to-play',
         '/terms', '/refunds', '/cookies', '/gold', '/bot',

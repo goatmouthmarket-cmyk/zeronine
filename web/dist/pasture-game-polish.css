@@ -1,0 +1,31 @@
+/* Pasture game themed surfaces: terms, account and the loading scene. */
+:root{--pasture-ink:#17271e;--pasture-night:#13251d;--pasture-leaf:#244c35;--pasture-moss:#6b8c4c;--pasture-gold:#f0c65d;--pasture-cream:#f3e8cf;--pasture-muted:#b8c6b1}
+.pasture-enter{overflow:hidden;background:radial-gradient(ellipse at 50% 38%,#688a4b 0,#385f3c 42%,#172d27 100%)!important}
+.pasture-enter-content{z-index:2}
+.pasture-enter-cow{position:relative;isolation:isolate;filter:drop-shadow(0 12px 15px #10231688)}
+.pasture-enter-cow::before{content:"";position:absolute;z-index:2;width:64px;height:76px;left:-80px;bottom:3px;background:linear-gradient(#dcb65a,#dcb65a) 13px 0/39px 13px no-repeat,linear-gradient(#724b2e,#724b2e) 20px 12px/26px 40px no-repeat,linear-gradient(#d4a848,#d4a848) 14px 48px/39px 18px no-repeat,linear-gradient(#352c20,#352c20) 17px 63px/9px 12px no-repeat,linear-gradient(#352c20,#352c20) 42px 63px/9px 12px no-repeat;clip-path:polygon(20% 0,82% 0,82% 16%,91% 16%,91% 69%,79% 69%,79% 100%,61% 100%,61% 77%,39% 77%,39% 100%,20% 100%,20% 73%,9% 73%,9% 16%,20% 16%);animation:pasture-ranger-aim 1.15s ease-in-out infinite alternate}
+.pasture-enter-cow::after{content:"";position:absolute;z-index:3;left:-15px;bottom:42px;width:68px;height:2px;background:linear-gradient(90deg,#ffe891,transparent);transform:rotate(-12deg);transform-origin:left;animation:pasture-shot .9s steps(2,end) infinite}
+.pasture-enter-cow svg{position:relative;z-index:1;animation:pasture-cow-hit 1.8s ease-in-out infinite}
+@keyframes pasture-ranger-aim{to{transform:translateY(-3px) rotate(2deg)}}
+@keyframes pasture-shot{0%,68%,100%{opacity:0;scale:.4}70%,82%{opacity:1;scale:1}}
+@keyframes pasture-cow-hit{0%,68%,100%{transform:translateX(0)}72%{transform:translateX(5px) rotate(2deg)}78%{transform:translateX(-3px)}}
+.view-legal .legal-page{max-width:1080px;margin:clamp(16px,4vw,48px) auto;padding:clamp(18px,4vw,44px);color:var(--pasture-cream);background:linear-gradient(145deg,#183325f5,#14241df5);border:1px solid #d8b55a55;box-shadow:0 22px 70px #09130dcc;border-radius:18px}
+.view-legal .legal-header{position:relative;min-height:190px;padding:clamp(22px,4vw,42px);display:flex;flex-direction:column;justify-content:center;overflow:hidden;background:linear-gradient(100deg,#264a32 0%,#23412e 58%,#765a2e 100%);border:1px solid #ebc75b70;border-radius:14px}
+.view-legal .legal-header:after{content:"";position:absolute;right:2%;bottom:-12%;width:min(34%,300px);height:92%;opacity:.85;background:url('/cow-ui-assets.png') left top/600px auto no-repeat;mask-image:linear-gradient(90deg,transparent,#000 25%)}
+.view-legal .legal-header h1{position:relative;z-index:1;color:#fff0c8;font-size:clamp(2rem,5vw,3.2rem);letter-spacing:-.035em}
+.view-legal .legal-header p,.view-legal .legal-header small,.view-legal .legal-header span{position:relative;z-index:1;color:#e4e8ce;max-width:58ch}
+.view-legal .legal-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+.view-legal .legal-sections>section,.view-legal .legal-contact{padding:clamp(16px,2.5vw,24px);background:linear-gradient(145deg,#203b2c,#1b3025);border:1px solid #d7b85c35;border-radius:12px;color:#e8e5d4}
+.view-legal .legal-sections h2,.view-legal .legal-contact h2{color:var(--pasture-gold);font-size:1.08rem;margin:0 0 9px}
+.view-legal .legal-sections p,.view-legal .legal-contact p{line-height:1.68;color:#d5decf}
+.view-legal .legal-page a{color:#ffdc76;text-underline-offset:3px}
+.pasture-detail-panel[aria-label="Account"]{--account-card:#1b3528;--account-gold:#efc65e;color:#f2ead6;background:linear-gradient(160deg,#203a2c,#15251e)!important;border-color:#d1ac4d55!important}
+.pasture-detail-panel[aria-label="Account"] .pasture-detail-content{gap:16px}
+.pasture-detail-panel[aria-label="Account"] .page-title,.pasture-detail-panel[aria-label="Account"] h1,.pasture-detail-panel[aria-label="Account"] h2,.pasture-detail-panel[aria-label="Account"] h3{color:#f3d477}
+.pasture-detail-panel[aria-label="Account"] .account-overview,.pasture-detail-panel[aria-label="Account"] .account-switcher,.pasture-detail-panel[aria-label="Account"] .account-options,.pasture-detail-panel[aria-label="Account"] .connect-card,.pasture-detail-panel[aria-label="Account"] .ranger-wardrobe{background:linear-gradient(145deg,#254531,#1b3327)!important;border:1px solid #d7b85b55!important;border-radius:14px!important;box-shadow:0 12px 30px #09140c55}
+.pasture-detail-panel[aria-label="Account"] .account-overview,.pasture-detail-panel[aria-label="Account"] .account-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:12px}
+.pasture-detail-panel[aria-label="Account"] .wardrobe-preview{background:radial-gradient(ellipse at 50% 25%,#6b854d,#2c5038 62%,#1c3628)!important;border:1px solid #e3bd5c77!important;border-radius:14px!important}
+.pasture-detail-panel[aria-label="Account"] button,.pasture-detail-panel[aria-label="Account"] a[role="button"]{color:#18251c}
+.pasture-detail-panel[aria-label="Account"] :is(p,small,label,.muted){color:#d0dccb}
+@media(max-width:680px){.view-legal .legal-sections{grid-template-columns:1fr}.view-legal .legal-header{min-height:160px}.view-legal .legal-header:after{width:42%;opacity:.48}.pasture-detail-panel[aria-label="Account"] .account-overview,.pasture-detail-panel[aria-label="Account"] .account-options{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){.pasture-enter-cow::before,.pasture-enter-cow::after,.pasture-enter-cow svg{animation:none!important}}
