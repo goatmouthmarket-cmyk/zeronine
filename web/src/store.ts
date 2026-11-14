@@ -1610,6 +1610,10 @@ export async function refreshPlayerState(): Promise<void> {
   if (playerStateRefresh) {
     playerStateRefreshQueued = true;
     await playerStateRefresh;
+    if (playerStateRefreshQueued) {
+      playerStateRefreshQueued = false;
+      await refreshPlayerState();
+    }
     return;
   }
   const request = ++playerStateRequest;
@@ -1654,10 +1658,6 @@ export async function refreshPlayerState(): Promise<void> {
   } finally {
     if (playerStateRefresh === refresh) {
       playerStateRefresh = null;
-      if (playerStateRefreshQueued) {
-        playerStateRefreshQueued = false;
-        void refreshPlayerState();
-      }
     }
   }
 }
@@ -1689,6 +1689,7 @@ export async function logoutPlayer(): Promise<void> {
   await api('/api/player/logout', { method: 'POST' });
   playerSocket?.close();
   playerStateRequest++;
+  playerStateRefreshQueued = false;
   set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: 'signed-out', playerAuthMessage: 'Signed out', playerAccountSwitch: null });
 }
 
