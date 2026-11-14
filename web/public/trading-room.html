@@ -764,14 +764,20 @@ function paperTickKey(tick) {
   return `${tick.epoch}|${tick.quote}`;
 }
 
-function createManualPaperEntry(contract, tick, id) {
+function createManualPaperEntry(contract, tick, id, stake = 1, currency = 'USD') {
   const direction = String(contract?.kind || '').toLowerCase();
   if (!contract?.symbol || !['over', 'under'].includes(direction) ||
       !Number.isInteger(contract.barrier) || contract.barrier < 0 || contract.barrier > 9 ||
       !Number.isFinite(tick?.epoch) || !Number.isFinite(tick?.quote) ||
       !Number.isInteger(tick?.digit) || tick.digit < 0 || tick.digit > 9) return null;
+  const quotedPayout = Number(contract.payout);
+  const payoutMultiplier = Number.isFinite(quotedPayout) && quotedPayout > 1 ? quotedPayout : 2;
   return {
     id,
+    virtualStake: Number.isFinite(stake) && stake > 0 ? stake : 1,
+    virtualCurrency: currency || 'USD',
+    virtualPayout: payoutMultiplier,
+    virtualPayoutModelled: !(Number.isFinite(quotedPayout) && quotedPayout > 1),
     market: contract.market || contract.symbol,
     symbol: contract.symbol,
     direction,
@@ -812,6 +818,9 @@ function settleManualPaperTrades(trades, markets) {
     trade.exitDigit = nextTick.digit;
     trade.exitEpoch = nextTick.epoch;
     trade.status = manualPaperDigitWins(trade.direction, trade.barrier, nextTick.digit) ? 'won' : 'lost';
+    trade.profit = trade.status === 'won'
+      ? trade.virtualStake * (trade.virtualPayout - 1)
+      : -trade.virtualStake;
     settled.push(trade);
   }
   return settled;
@@ -836,10 +845,15 @@ function createPaperTradeDetails(trade) {
   const digits = document.createElement('span');
   digits.className = 'paper-trade-digits';
   digits.textContent = trade.status === 'open' ? `Entry ${trade.entryDigit} · waiting for next tick` : `Entry ${trade.entryDigit} → exit ${trade.exitDigit}`;
+  const pnl = document.createElement('strong');
+  pnl.className = 'paper-trade-pnl';
+  pnl.textContent = trade.status === 'open'
+    ? `Virtual stake ${Number(trade.virtualStake || 0).toFixed(2)} ${trade.virtualCurrency || 'USD'}`
+    : `Virtual P&L ${trade.profit >= 0 ? '+' : '−'}${Math.abs(Number(trade.profit || 0)).toFixed(2)} ${trade.virtualCurrency || 'USD'}`;
   const note = document.createElement('small');
   note.className = 'paper-trade-note';
-  note.textContent = 'REAL MARKET TICK · NO MONEY USED';
-  details.append(heading, market, prediction, digits, note);
+  note.textContent = trade.virtualPayoutModelled ? 'REAL MARKET TICK · SIMULATED 1:1 PAYOUT · NO MONEY USED' : `REAL MARKET TICK · SIMULATED ${trade.virtualPayout.toFixed(2)}× PAYOUT · NO MONEY USED`;
+  details.append(heading, market, prediction, digits, pnl, note);
   return details;
 }
 
@@ -907,7 +921,7 @@ function beginManualPaperTrade(cowTarget, paperSource = 'manual_paper') {
     notify(`Paper trade unavailable: no fresh tick for ${contract?.symbol ? marketName(contract.symbol, lastRoomState) : 'this market'}. No trade opened.`);
     return false;
   }
-  const trade = createManualPaperEntry(contract, tick, `manual-paper-${++manualPaperTradeSerial}`);
+  const trade = createManualPaperEntry(contract, tick, `manual-paper-${++manualPaperTradeSerial}`, selectedCowStake() || 1, betCurrency);
   if (!trade) {
     notify('Paper trade unavailable: this cow has no valid digit target. No trade opened.');
     return false;
