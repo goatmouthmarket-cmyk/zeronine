@@ -5718,9 +5718,6 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
   };
   return (
     <>
-      <header class="header">
-        <div class="page-title">Account</div>
-      </header>
       <RangerWardrobe accountId={session.loginid} />
       <section class="account-status-card" aria-label="Deriv account overview">
         <div class="account-status-heading">
