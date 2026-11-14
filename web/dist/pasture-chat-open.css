@@ -7,8 +7,8 @@
 }
 #pastureChat #chatPanel:not([hidden]) {
   position: fixed !important; top: auto !important; left: auto !important;
-  right: 12px !important; bottom: 12px !important;
-  width: min(310px, calc(100vw - 24px)) !important; height: min(180px, 28dvh);
+  right: var(--chat-hud-right, 12px) !important; bottom: 12px !important;
+  width: min(var(--chat-hud-width, 260px), calc(100vw - 24px)) !important; height: min(180px, 28dvh);
   max-height: none !important; overflow: visible !important; transform: none !important;
   z-index: 25 !important; border: 0 !important; border-radius: 0 !important;
   background: transparent !important; box-shadow: none !important;
@@ -18,7 +18,8 @@
 #chatPanel header span { color: #e7f6d4; }
 #chatMessages { pointer-events: auto; }
 #chatMessages p { background: transparent; border: 0; border-radius: 0; padding: 2px 0; color: #fff9e8; }
-#chatMessages strong { color: #ffdf80; }
+#chatMessages strong { color: #ffe271 !important; font-weight: 800; }
+#chatMessages p > span { color: #fffdf1 !important; }
 #chatName, #chatInput {
   pointer-events: auto; border: 0; border-radius: 0; background: transparent;
   box-shadow: none; color: #fff9e8; text-shadow: inherit; padding: 6px 0;
@@ -29,13 +30,15 @@
 }
 #chatName:focus { position: absolute; right: 4px; bottom: 44px; width: min(200px, 90%); }
 #chatName::placeholder, #chatInput::placeholder { color: #fff4d4; opacity: .9; }
+#chatForm #chatInput { border-bottom: 1px solid #fff4d4b3 !important; }
 #chatForm { pointer-events: auto; display: block; }
 #chatForm button { display: none; }
-#chatToggle:focus-visible, #chatName:focus-visible, #chatInput:focus-visible, #chatForm button:focus-visible {
+#chatToggle:focus-visible, #chatName:focus-visible, #chatForm button:focus-visible {
   outline: 2px solid #ffdf80; outline-offset: 2px;
 }
+#chatForm #chatInput:focus-visible { outline: none; border-bottom: 2px solid #ffdf80 !important; }
 @media (max-width: 999.98px) {
-  #pastureChat #chatPanel:not([hidden]) { right: 8px !important; bottom: max(80px, calc(env(safe-area-inset-bottom) + 72px)) !important; width: min(290px, calc(100vw - 16px)) !important; height: min(150px, 25dvh); }
+  #pastureChat #chatPanel:not([hidden]) { right: var(--chat-hud-right, 8px) !important; bottom: max(80px, calc(env(safe-area-inset-bottom) + 72px)) !important; width: min(var(--chat-hud-width, 220px), calc(100vw - 16px)) !important; height: min(150px, 25dvh); }
   #chatName, #chatInput { font-size: 16px; }
   #chatInput { min-height: 44px; }
 }

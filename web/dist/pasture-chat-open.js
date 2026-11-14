@@ -10,6 +10,27 @@
   panel.hidden = false;
   toggle.setAttribute('aria-expanded', 'true');
   input.enterKeyHint = 'send';
+  input.placeholder = 'Press ↵ to chat';
+  const hud = document.getElementById('playerHud');
+  const compactHud = document.getElementById('inspector');
+  const compactLevel = document.getElementById('marketHudQuick');
+  function alignWithLevelCards() {
+    const isCompact = compactLevel && getComputedStyle(compactLevel).display !== 'none';
+    const rect = (isCompact ? compactHud : hud)?.getBoundingClientRect();
+    if (rect && rect.width > 0 && rect.right > 0 && rect.left < innerWidth) {
+      panel.style.setProperty('--chat-hud-width', Math.min(rect.width, innerWidth - 16) + 'px');
+      panel.style.setProperty('--chat-hud-right', Math.max(8, innerWidth - rect.right) + 'px');
+    } else {
+      panel.style.removeProperty('--chat-hud-width');
+      panel.style.removeProperty('--chat-hud-right');
+    }
+  }
+  if (hud && typeof ResizeObserver !== 'undefined') new ResizeObserver(alignWithLevelCards).observe(hud);
+  if (compactHud && typeof ResizeObserver !== 'undefined') new ResizeObserver(alignWithLevelCards).observe(compactHud);
+  if (hud && typeof MutationObserver !== 'undefined') new MutationObserver(alignWithLevelCards).observe(hud, { attributes: true, attributeFilter: ['style', 'class'] });
+  if (compactHud && typeof MutationObserver !== 'undefined') new MutationObserver(alignWithLevelCards).observe(compactHud, { attributes: true, attributeFilter: ['style', 'class'] });
+  window.addEventListener('resize', alignWithLevelCards, { passive: true });
+  alignWithLevelCards();
   const status = document.getElementById('chatStatus');
   if (status) {
     status.setAttribute('role', 'status');
