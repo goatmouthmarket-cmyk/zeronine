@@ -18,6 +18,7 @@ import type { MomentumObserver } from '../momentum/observer.ts';
 import { momentumEntryGuard } from '../momentum/observer.ts';
 import { decryptToken, encryptToken } from '../db/crypto.ts';
 import { createPlayerSession, playerForSession, revokePlayerSession } from './playerSessions.ts';
+import { getRangerProfile, normalizeRangerProfile, saveRangerProfile } from './rangerProfile.ts';
 import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
 import {
   buildAuthorizeUrl,
@@ -120,6 +121,37 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const value = req.unsignCookie(cookie);
     return value.valid ? value.value : null;
   };
+  // The account is derived only from a verified server session, never from a
+  // client-selected ID. A guest has no cross-device profile.
+  const rangerProfileAccount = async (req: FastifyRequest): Promise<string | null> => {
+    // The owner UI and pasture use the owner Deriv session when it exists.
+    const ownerAccount = isOwner(req) ? getSession()?.loginid : null;
+    if (ownerAccount) return ownerAccount;
+    const player = multiplayerStore ? (await multiplayerStore.resolveSession(playerSecret(req)))?.accountId : playerForSession(playerSecret(req));
+    return player || null;
+  };
+  app.get('/api/player/ranger-profile', async (req, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    try {
+      const accountId = await rangerProfileAccount(req);
+      if (!accountId) return reply.code(401).send({ error: 'Connect a Deriv account to save your ranger.' });
+      return { accountId, profile: getRangerProfile(accountId) };
+    } catch { return reply.code(503).send({ error: 'Ranger profile is temporarily unavailable.' }); }
+  });
+  app.put('/api/player/ranger-profile', async (req, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    const origin = req.headers.origin;
+    try { if (origin && new URL(origin).host !== req.headers.host) return reply.code(403).send({ error: 'origin rejected' }); }
+    catch { return reply.code(403).send({ error: 'origin rejected' }); }
+    try {
+      const accountId = await rangerProfileAccount(req);
+      if (!accountId) return reply.code(401).send({ error: 'Connect a Deriv account to save your ranger.' });
+      const body = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
+      if (typeof body.accountId !== 'string' || body.accountId !== accountId) return reply.code(409).send({ error: 'Account changed. Reload your ranger before saving.' });
+      const profile = normalizeRangerProfile(body);
+      return { accountId, profile: saveRangerProfile(accountId, profile) };
+    } catch { return reply.code(503).send({ error: 'Ranger profile could not be saved.' }); }
+  });
   const gamePlayerId = async (req: FastifyRequest, reply: FastifyReply): Promise<string> => {
     if (multiplayerStore) {
       const session = await multiplayerStore.resolveSession(playerSecret(req));

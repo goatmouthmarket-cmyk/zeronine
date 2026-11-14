@@ -4,7 +4,19 @@
   if (window.__pastureReplay) return;
   const DB = 'pasture-play-recordings-v1', MAX_RECORDS = 12, MAX_DURATION = 120000, MAX_BYTES = 10000000;
   const read = () => { try { return window.__zeronineReplaySnapshot?.() || null; } catch { return null; } };
-  const mimeType = () => { try { return ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm', 'video/mp4'].find(value => typeof window.MediaRecorder?.isTypeSupported === 'function' && window.MediaRecorder.isTypeSupported(value)) || ''; } catch { return ''; } };
+  const mimeType = () => {
+    try {
+      if (typeof window.MediaRecorder?.isTypeSupported !== 'function') return '';
+      const ua = window.navigator?.userAgent || '';
+      const apple = /iPhone|iPad|iPod/.test(ua) || (/Safari/.test(ua) && !/Chrome|Chromium|CriOS|Edg/.test(ua));
+      const mp4 = ['video/mp4;codecs=avc1.42E01E', 'video/mp4'];
+      const webm = ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm'];
+      const video = document.createElement?.('video');
+      return (apple ? [...mp4, ...webm] : [...webm, ...mp4]).find(type =>
+        window.MediaRecorder.isTypeSupported(type) && (typeof video?.canPlayType !== 'function' || !!video.canPlayType(type))
+      ) || '';
+    } catch { return ''; }
+  };
   const supported = () => !!(window.indexedDB && window.crypto?.subtle && typeof window.crypto.randomUUID === 'function' && window.MediaRecorder && document.getElementById('game')?.captureStream && mimeType());
   let lastError = '';
   function issue(message) { lastError = message; window.dispatchEvent(new CustomEvent('zeronine:replay-updated')); }
@@ -80,7 +92,14 @@
     session.stopped = true;
     clearTimeout(session.deadline);
     if (reason) session.row.partialReason = reason;
-    try { if (session.recorder.state !== 'inactive') session.recorder.stop(); } catch {}
+    // Let MediaRecorder flush and finalize its container before ending tracks.
+    try {
+      if (session.recorder.state !== 'inactive') {
+        session.releaseTimer = setTimeout(() => { for (const track of session.stream.getTracks()) track.stop(); }, 1500);
+        session.recorder.stop();
+        return;
+      }
+    } catch { clearTimeout(session.releaseTimer); }
     for (const track of session.stream.getTracks()) track.stop();
   }
   function begin(snapshot) {
@@ -106,6 +125,8 @@
         scoped.then(key => key ? put({ ...session.row }).then(() => { lastError = ''; }) : undefined).catch(() => issue('Recording could not be saved on this device.')).finally(() => { session.saving = false; if (session.needsSave) { session.needsSave = false; session.persist(); } });
       };
       recorder.onstop = () => {
+        clearTimeout(session.releaseTimer);
+        for (const track of session.stream.getTracks()) track.stop();
         if (current === session && session.complete) current = null;
         session.row.endedAt = Date.now();
         const video = new Blob(session.chunks, { type }); session.chunks = [];

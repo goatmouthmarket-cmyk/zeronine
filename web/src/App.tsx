@@ -5538,34 +5538,80 @@ function TestLabPage(): JSX.Element {
 
 /* ---------------- account ---------------- */
 
-type RangerAppearance = { outfit: 'classic' | 'vest' | 'scout'; color: string; accent: string; headwear: 'none' | 'cap' | 'bandana'; accessory: 'none' | 'scarf' | 'badge' };
+type RangerAppearance = { outfit: 'classic' | 'vest' | 'scout' | 'jacket' | 'hoodie'; color: string; accent: string; headwear: 'none' | 'cap' | 'bandana' | 'hat' | 'hood'; accessory: 'none' | 'scarf' | 'badge' | 'glasses' | 'cape' };
 const defaultRangerAppearance: RangerAppearance = { outfit: 'classic', color: '#326db1', accent: '#a65b38', headwear: 'none', accessory: 'none' };
 function readRangerAppearance(): RangerAppearance {
   try {
     const value = JSON.parse(localStorage.getItem('pasture-ranger-appearance') || '{}');
     return {
-      outfit: ['classic', 'vest', 'scout'].includes(value.outfit) ? value.outfit : 'classic',
+      outfit: ['classic', 'vest', 'scout', 'jacket', 'hoodie'].includes(value.outfit) ? value.outfit : 'classic',
       color: /^#[0-9a-f]{6}$/i.test(value.color) ? value.color : defaultRangerAppearance.color,
       accent: /^#[0-9a-f]{6}$/i.test(value.accent) ? value.accent : defaultRangerAppearance.accent,
-      headwear: ['none', 'cap', 'bandana'].includes(value.headwear) ? value.headwear : 'none',
-      accessory: ['none', 'scarf', 'badge'].includes(value.accessory) ? value.accessory : 'none',
+      headwear: ['none', 'cap', 'bandana', 'hat', 'hood'].includes(value.headwear) ? value.headwear : 'none',
+      accessory: ['none', 'scarf', 'badge', 'glasses', 'cape'].includes(value.accessory) ? value.accessory : 'none',
     };
   } catch { return { ...defaultRangerAppearance }; }
 }
-function RangerWardrobe(): JSX.Element {
+function RangerWardrobe({ accountId }: { accountId: string | null }): JSX.Element {
   const [appearance, setAppearance] = useState<RangerAppearance>(readRangerAppearance);
+  const [name, setName] = useState('');
+  const [profileStatus, setProfileStatus] = useState('');
+  const [profileReady, setProfileReady] = useState(!accountId);
+  const [saving, setSaving] = useState(false);
+  const accountRef = useRef(accountId);
+  accountRef.current = accountId;
+  useEffect(() => {
+    let cancelled = false;
+    setSaving(false);
+    if (!accountId) {
+      setAppearance(readRangerAppearance());
+      try { setName(localStorage.getItem('pasture-chat-name') || ''); } catch { setName(''); }
+      setProfileReady(true);
+      setProfileStatus('Guest appearance is saved on this browser.');
+      return () => { cancelled = true; };
+    }
+    setAppearance({ ...defaultRangerAppearance });
+    setName('');
+    setProfileReady(false);
+    setProfileStatus('Loading your ranger…');
+    void fetch('/api/player/ranger-profile', { credentials: 'same-origin', cache: 'no-store' })
+      .then(async response => { if (!response.ok) throw new Error('Could not load your ranger.'); return response.json(); })
+      .then(data => {
+        if (cancelled || accountRef.current !== accountId || data.accountId !== accountId) return;
+        if (data.profile) { setName(String(data.profile.name || '').slice(0, 24)); setAppearance({ ...defaultRangerAppearance, ...data.profile.appearance }); }
+        setProfileReady(true);
+        setProfileStatus(data.profile ? 'Saved to this Deriv account.' : 'Choose your name and outfit, then save.');
+      }).catch(() => { if (!cancelled && accountRef.current === accountId) setProfileStatus('Could not load your ranger. Refresh to try again.'); });
+    return () => { cancelled = true; };
+  }, [accountId]);
   const update = (patch: Partial<RangerAppearance>) => {
     const next = { ...appearance, ...patch };
     setAppearance(next);
-    try { localStorage.setItem('pasture-ranger-appearance', JSON.stringify(next)); } catch { /* Appearance remains available for this session. */ }
+    if (!accountId) try { localStorage.setItem('pasture-ranger-appearance', JSON.stringify(next)); } catch { /* Guest appearance remains available for this session. */ }
+    if (accountId) setProfileStatus('Changes not saved yet.');
     document.querySelector<HTMLIFrameElement>('iframe.trading-room-frame')?.contentWindow?.postMessage({ type: 'zeronine:ranger-appearance', appearance: next }, window.location.origin);
   };
+  const save = async () => {
+    if (!accountId || !profileReady || saving) return;
+    setSaving(true); setProfileStatus('Saving your ranger…');
+    try {
+      const response = await fetch('/api/player/ranger-profile', { method: 'PUT', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accountId, name, appearance }) });
+      if (!response.ok) throw new Error('Save failed');
+      const result = await response.json();
+      if (accountRef.current !== accountId || result.accountId !== accountId) return;
+      setName(result.profile.name); setAppearance(result.profile.appearance); setProfileStatus('Saved to this Deriv account.');
+      document.querySelector<HTMLIFrameElement>('iframe.trading-room-frame')?.contentWindow?.postMessage({ type: 'zeronine:ranger-profile', profile: result.profile }, window.location.origin);
+    } catch { if (accountRef.current === accountId) setProfileStatus('Could not save. Please try again.'); }
+    finally { if (accountRef.current === accountId) setSaving(false); }
+  };
   return <section class="ranger-wardrobe" aria-labelledby="ranger-wardrobe-title">
-    <div class="wardrobe-heading"><div><small>YOUR RANGER</small><h3 id="ranger-wardrobe-title">Outfit &amp; accessories</h3></div><button type="button" class="wardrobe-reset" onClick={() => update(defaultRangerAppearance)}>Reset</button></div>
+    <div class="wardrobe-heading"><div><small>YOUR RANGER</small><h3 id="ranger-wardrobe-title">Outfit &amp; accessories</h3></div><button type="button" class="wardrobe-reset" disabled={saving || (!!accountId && !profileReady)} onClick={() => update(defaultRangerAppearance)}>Reset</button></div>
+    <label class="wardrobe-name-field">Ranger name<input disabled={saving || (!!accountId && !profileReady)} maxLength={24} value={name} onInput={e => { const value = e.currentTarget.value; setName(value); if (accountId) setProfileStatus('Changes not saved yet.'); else { try { localStorage.setItem('pasture-chat-name', value); } catch {} document.querySelector<HTMLIFrameElement>('iframe.trading-room-frame')?.contentWindow?.postMessage({ type: 'zeronine:ranger-profile', profile: { name: value, appearance } }, window.location.origin); } }} placeholder="Choose a name" /></label>
     <div class="wardrobe-layout"><div class="wardrobe-preview" aria-label="Ranger appearance preview">
-      <svg viewBox="0 0 100 130" aria-hidden="true"><ellipse cx="50" cy="116" rx="30" ry="7" fill="#254c3450"/><path d="M35 87v25h12V87m7 0v25h12V87" fill="#393a3d"/><path d="M32 107h16v8H32m21-8h16v8H53" fill="#5d4530"/><g class="wardrobe-breathe"><path d="M29 52 25 36 34 27 41 42" fill="#7c4934"/><path d="M33 52h34l3 39H32z" fill={appearance.color} stroke="#334b45" stroke-width="2"/>{appearance.outfit === 'vest' && <path d="M35 53h9l6 29 6-29h9l-4 32H39Z" fill={appearance.accent} opacity=".9"/>}{appearance.outfit === 'scout' && <path d="M34 56 62 84M42 53l26 25" stroke={appearance.accent} stroke-width="5"/>}{appearance.accessory === 'scarf' && <path d="M34 54q16 8 32 0v6q-16 8-32 0zM54 59h7l-1 16h-7z" fill={appearance.accent}/>} {appearance.accessory === 'badge' && <circle cx="60" cy="62" r="4" fill={appearance.accent} stroke="#ffebb5" stroke-width="1"/>}<path d="M33 83h35v7H33z" fill="#866338"/><path d="M29 57v24m42-24v24" stroke="#c69b75" stroke-width="8" stroke-linecap="round"/><circle cx="50" cy="36" r="15" fill="#cba17d"/><path d="M35 34q0-17 15-17t15 17l-9-7-15 6Z" fill="#4d3729"/>{appearance.headwear === 'cap' && <path d="M34 27q3-14 16-14t16 14H34m-3 1h39" fill={appearance.accent} stroke={appearance.accent} stroke-width="3"/>}{appearance.headwear === 'bandana' && <path d="M35 29q15-5 30 0v5q-15-5-30 0z" fill={appearance.accent}/>}<circle cx="51" cy="36" r="1.7" fill="#271f1d"/><circle cx="59" cy="36" r="1.7" fill="#271f1d"/><path d="M75 48q24 20 0 42M75 48v42" fill="none" stroke="#a87643" stroke-width="3"/></g></svg>
-    </div><div class="wardrobe-fields"><label>Outfit<select value={appearance.outfit} onChange={e => update({ outfit: e.currentTarget.value as RangerAppearance['outfit'] })}><option value="classic">Classic</option><option value="vest">Vest</option><option value="scout">Scout</option></select></label><label>Headwear<select value={appearance.headwear} onChange={e => update({ headwear: e.currentTarget.value as RangerAppearance['headwear'] })}><option value="none">None</option><option value="cap">Ranger cap</option><option value="bandana">Bandana</option></select></label><label>Accessory<select value={appearance.accessory} onChange={e => update({ accessory: e.currentTarget.value as RangerAppearance['accessory'] })}><option value="none">None</option><option value="scarf">Scarf</option><option value="badge">Badge</option></select></label><label>Outfit color<input type="color" value={appearance.color} onInput={e => update({ color: e.currentTarget.value })} /></label><label>Accent color<input type="color" value={appearance.accent} onInput={e => update({ accent: e.currentTarget.value })} /></label></div></div>
-    <small class="wardrobe-note">Saved on this browser. Changes appear in the pasture.</small>
+      <svg viewBox="0 0 100 130" aria-hidden="true"><ellipse cx="50" cy="116" rx="30" ry="7" fill="#254c3450"/><path d="M35 87v25h12V87m7 0v25h12V87" fill="#393a3d"/><path d="M32 107h16v8H32m21-8h16v8H53" fill="#5d4530"/><g class="wardrobe-breathe">{appearance.accessory === 'cape' && <path d="M33 52h34l12 46H22z" fill={appearance.accent}/>}<path d="M29 52 25 36 34 27 41 42" fill="#7c4934"/><path d="M33 52h34l3 39H32z" fill={appearance.color} stroke="#334b45" stroke-width="2"/>{appearance.outfit === 'vest' && <path d="M35 53h9l6 29 6-29h9l-4 32H39Z" fill={appearance.accent} opacity=".9"/>}{appearance.outfit === 'scout' && <path d="M34 56 62 84M42 53l26 25" stroke={appearance.accent} stroke-width="5"/>}{(appearance.outfit === 'jacket' || appearance.outfit === 'hoodie') && <path d="M49 53v35M34 55l10 10 6-12 6 12 10-10" fill="none" stroke={appearance.accent} stroke-width="3"/>}{appearance.accessory === 'scarf' && <path d="M34 54q16 8 32 0v6q-16 8-32 0zM54 59h7l-1 16h-7z" fill={appearance.accent}/>} {appearance.accessory === 'badge' && <circle cx="60" cy="62" r="4" fill={appearance.accent} stroke="#ffebb5" stroke-width="1"/>}<path d="M33 83h35v7H33z" fill="#866338"/><path d="M29 57v24m42-24v24" stroke="#c69b75" stroke-width="8" stroke-linecap="round"/><circle cx="50" cy="36" r="15" fill="#cba17d"/><path d="M35 34q0-17 15-17t15 17l-9-7-15 6Z" fill="#4d3729"/>{appearance.headwear === 'cap' && <path d="M34 27q3-14 16-14t16 14H34m-3 1h39" fill={appearance.accent} stroke={appearance.accent} stroke-width="3"/>}{appearance.headwear === 'bandana' && <path d="M35 29q15-5 30 0v5q-15-5-30 0z" fill={appearance.accent}/>}{appearance.headwear === 'hat' && <path d="M35 27l4-14h22l4 14m-36 1h42" fill={appearance.accent} stroke={appearance.accent} stroke-width="3"/>}{appearance.headwear === 'hood' && <path d="M33 40q-3-27 17-27t17 27l-5-10q-12-16-24 0z" fill={appearance.accent}/>}<circle cx="51" cy="36" r="1.7" fill="#271f1d"/><circle cx="59" cy="36" r="1.7" fill="#271f1d"/>{appearance.accessory === 'glasses' && <path d="M46 33h9v7h-9zm10 0h9v7h-9zm-1 3h1" fill="none" stroke={appearance.accent} stroke-width="2"/>}<path d="M75 48q24 20 0 42M75 48v42" fill="none" stroke="#a87643" stroke-width="3"/></g></svg>
+    </div><fieldset class="wardrobe-fields" disabled={saving || (!!accountId && !profileReady)}><label>Outfit<select value={appearance.outfit} onChange={e => update({ outfit: e.currentTarget.value as RangerAppearance['outfit'] })}><option value="classic">Classic</option><option value="vest">Vest</option><option value="scout">Scout</option><option value="jacket">Jacket</option><option value="hoodie">Hoodie</option></select></label><label>Headwear<select value={appearance.headwear} onChange={e => update({ headwear: e.currentTarget.value as RangerAppearance['headwear'] })}><option value="none">None</option><option value="cap">Ranger cap</option><option value="bandana">Bandana</option><option value="hat">Wide-brim hat</option><option value="hood">Hood</option></select></label><label>Accessory<select value={appearance.accessory} onChange={e => update({ accessory: e.currentTarget.value as RangerAppearance['accessory'] })}><option value="none">None</option><option value="scarf">Scarf</option><option value="badge">Badge</option><option value="glasses">Glasses</option><option value="cape">Cape</option></select></label><label>Outfit color<input type="color" value={appearance.color} onInput={e => update({ color: e.currentTarget.value })} /></label><label>Accent color<input type="color" value={appearance.accent} onInput={e => update({ accent: e.currentTarget.value })} /></label></fieldset></div>
+    {accountId && <button type="button" class="connect-btn" onClick={() => void save()} disabled={!profileReady || saving}>{saving ? 'Saving…' : 'Save ranger'}</button>}
+    <small class="wardrobe-note wardrobe-save-status" role="status">{profileStatus}</small>
   </section>;
 }
 
@@ -5593,8 +5639,8 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
       .catch((error) => setAccountError(error instanceof Error ? error.message : String(error)))
       .finally(() => setLoadingAccounts(false));
   }, [session?.loginid]);
-  if (!s.owner && s.playerSession) return <><RangerWardrobe /><section class="connect-card" aria-label="Your Deriv account"><h2 class="connect-title">Your Deriv account</h2><p>{s.playerSession.loginid} · {s.playerSession.mode === 'real' ? 'Real' : 'Demo'}</p><p>Balance: {fmtMoney(s.playerSession.balance, s.playerSession.currency)}</p><p>Market signals and research are shared. Trades and balance belong to this account.</p>{playerAccounts.length > 1 && <div class="player-account-list" aria-label="Authorized Deriv accounts">{playerAccounts.map(account => <button class="connect-btn" type="button" key={account.accountId} disabled={switchingAccount !== '' || account.accountId === s.playerSession?.loginid} onClick={async () => { setSwitchingAccount(account.accountId); setAccountError(''); try { await selectPlayerAccount(account.accountId); } catch (error) { setAccountError(error instanceof Error ? error.message : String(error)); } finally { setSwitchingAccount(''); } }}>{account.mode === 'demo' ? 'Demo' : 'Real'} · {account.accountId} · {fmtMoney(account.balance, account.currency)}</button>)}</div>}{accountError && <p role="alert">{accountError}</p>}<button class="connect-btn" type="button" onClick={() => void refreshPlayerState()}>Refresh account</button><button class="connect-btn" type="button" onClick={() => void logoutPlayer()}>Sign out</button></section></>;
-  if (!session) return <><RangerWardrobe /><ConnectView embedded onConnected={onConnected} /></>;
+  if (!s.owner && s.playerSession) return <><RangerWardrobe accountId={s.playerSession.loginid} /><section class="connect-card" aria-label="Your Deriv account"><h2 class="connect-title">Your Deriv account</h2><p>{s.playerSession.loginid} · {s.playerSession.mode === 'real' ? 'Real' : 'Demo'}</p><p>Balance: {fmtMoney(s.playerSession.balance, s.playerSession.currency)}</p><p>Market signals and research are shared. Trades and balance belong to this account.</p>{playerAccounts.length > 1 && <div class="player-account-list" aria-label="Authorized Deriv accounts">{playerAccounts.map(account => <button class="connect-btn" type="button" key={account.accountId} disabled={switchingAccount !== '' || account.accountId === s.playerSession?.loginid} onClick={async () => { setSwitchingAccount(account.accountId); setAccountError(''); try { await selectPlayerAccount(account.accountId); } catch (error) { setAccountError(error instanceof Error ? error.message : String(error)); } finally { setSwitchingAccount(''); } }}>{account.mode === 'demo' ? 'Demo' : 'Real'} · {account.accountId} · {fmtMoney(account.balance, account.currency)}</button>)}</div>}{accountError && <p role="alert">{accountError}</p>}<button class="connect-btn" type="button" onClick={() => void refreshPlayerState()}>Refresh account</button><button class="connect-btn" type="button" onClick={() => void logoutPlayer()}>Sign out</button></section></>;
+  if (!session) return <><RangerWardrobe accountId={null} /><ConnectView embedded onConnected={onConnected} /></>;
   const switchAccount = async (account: DerivAccountInfo): Promise<void> => {
     setAccountError('');
     setSwitchingAccount(account.accountId);
@@ -5655,7 +5701,7 @@ function AccountPage({ onConnected }: { onConnected: () => void }): JSX.Element 
       <header class="header">
         <div class="page-title">Account</div>
       </header>
-      <RangerWardrobe />
+      <RangerWardrobe accountId={session.loginid} />
       <div class="section account-overview">
         <div class="detail-row">
           <span class="detail-label">Login ID</span>

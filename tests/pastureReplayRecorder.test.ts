@@ -64,3 +64,45 @@ for (const file of ['web/public/pasture-replay-recorder.js', 'web/dist/pasture-r
     assert.doesNotThrow(tick, 'capture failure never escapes into trading');
   });
 }
+
+for (const file of ['web/public/pasture-replay-recorder.js', 'web/dist/pasture-replay-recorder.js']) {
+  test(`${file}: chooses playable iPhone MP4 and flushes before stopping the canvas track`, async () => {
+    let tick = () => {}, chosen = '';
+    const events: string[] = [];
+    const state: any = { connected: true, accountId: 'A', mode: 'demo', aim: 1, phase: 'aiming' };
+    class FakeRecorder {
+      static isTypeSupported() { return true; }
+      state = 'inactive'; ondataavailable: any; onstop: any;
+      constructor(_stream: unknown, options: { mimeType: string }) { chosen = options.mimeType; }
+      start() { this.state = 'recording'; }
+      stop() {
+        this.state = 'inactive';
+        queueMicrotask(() => {
+          events.push('flush');
+          this.ondataavailable?.({ data: new Blob(['frames'], { type: chosen }) });
+          this.onstop?.();
+        });
+      }
+    }
+    const stream = { getTracks: () => [{ stop: () => events.push('track-stop') }] };
+    const context: any = {
+      indexedDB: { open() { throw new Error('storage unavailable'); } }, crypto: webcrypto,
+      MediaRecorder: FakeRecorder, TextEncoder, Uint8Array, Blob, JSON, Date, Number, String, Array, Map,
+      navigator: { userAgent: 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Version/17.0 Mobile Safari/604.1' },
+      document: { getElementById: () => ({ captureStream: () => stream }), createElement: () => ({ canPlayType: (type: string) => type.startsWith('video/mp4') ? 'probably' : '' }) },
+      CustomEvent: class { type: string; constructor(type: string) { this.type = type; } },
+      setInterval: (fn: () => void) => { tick = fn; }, setTimeout: (fn: () => void, ms: number) => ms < 1000 ? setTimeout(fn, 0) : 0, clearTimeout: () => {},
+      __zeronineReplaySnapshot: () => ({ ...state }),
+      __zeronineReplayResolve: (id: string) => state.phase === 'won' ? { tradeId: id, outcome: 'won', profit: 1, stake: 1, currency: 'USD' } : null,
+      dispatchEvent() {}, addEventListener() {},
+    };
+    context.window = context;
+    runInNewContext(readFileSync(file, 'utf8'), context);
+    tick();
+    assert.match(chosen, /^video\/mp4/, 'record a format the same browser can play');
+    state.phase = 'open'; state.confirmedTradeId = 'T1'; tick();
+    state.phase = 'won'; tick();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.deepEqual(events.slice(0, 2), ['flush', 'track-stop'], 'finish the media container before stopping the canvas stream');
+  });
+}

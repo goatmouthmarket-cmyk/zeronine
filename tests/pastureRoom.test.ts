@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PastureRoom, PastureRooms, guestPresenceId, authenticatedPresenceId } from '../src/api/pastureRoom.ts';
 
@@ -119,3 +119,19 @@ test('presence ids are server-derived and never expose the account id', () => {
   assert.notEqual(guestPresenceId(), guestPresenceId(), 'guests never share a reclaimable identity');
   assert.equal(new PastureRoom().join(connection('bad id with spaces')), null, 'only server-shaped ids are accepted');
 });
+
+test('head gaze and expanded wardrobe reach other players with bounded values', () => {
+  const room = new PastureRoom();
+  const events: Record<string, unknown>[] = [];
+  const alice = connection('r-alice');
+  const id = room.join(alice)!;
+  room.join(connection('r-bob', events));
+  room.receive(id, alice.connectionId, { type: 'move', x: 480, y: 560, facing: 1, headFacing: -1, lookX: 4, lookY: -0.5, appearance: { outfit: 'hoodie', headwear: 'hat', accessory: 'glasses', color: '#123456', accent: '#abcdef' } });
+  const peer = events.find(event => event.type === 'player')!.player as Record<string, unknown>;
+  assert.equal(peer.headFacing, -1);
+  assert.equal(peer.lookX, 1);
+  assert.equal(peer.lookY, -0.5);
+  assert.deepEqual(peer.appearance, { outfit: 'hoodie', headwear: 'hat', accessory: 'glasses', color: '#123456', accent: '#abcdef' });
+  assert.equal('accountId' in peer, false);
+});
+

@@ -7,3 +7,6 @@
 #rangerBrainPanel .brain-recorded-viewer { display: grid; gap: 6px; min-width: 0; }
 #rangerBrainPanel .brain-recorded-viewer[hidden] { display: none; }
 #rangerBrainPanel #brainRecordedVideo { display: block; width: 100%; max-height: min(46vh, 310px); background: #193526; object-fit: contain; }
+#rangerBrainPanel #brainRecordedVideo[hidden] { display: none; }
+#rangerBrainPanel .brain-recorded-download { color: #175b36; font: 700 11px/1.4 Inter, system-ui, sans-serif; text-decoration: underline; }
+#rangerBrainPanel .brain-recorded-download:focus-visible { outline: 3px solid #266c40; outline-offset: 2px; }

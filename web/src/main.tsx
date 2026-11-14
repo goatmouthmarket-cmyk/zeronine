@@ -3,6 +3,7 @@ import { bootstrap } from './store';
 import { App } from './App';
 import './styles.css';
 import './refinement.css';
+import './accountHistoryTheme.css';
 
 void bootstrap();
 

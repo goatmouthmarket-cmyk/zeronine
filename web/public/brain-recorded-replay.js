@@ -11,9 +11,21 @@
     node.textContent = value;
     return node;
   };
+  function makeVideo() {
+    const video = document.createElement('video');
+    video.id = 'brainRecordedVideo';
+    video.controls = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    video.setAttribute('aria-label', 'Recorded pasture play');
+    return video;
+  }
   function clearVideo() {
     const video = $('brainRecordedVideo');
-    if (video) { video.onerror = null; video.pause(); video.removeAttribute('src'); video.load(); }
+    // A fresh element prevents an aborted previous load from reporting an error
+    // against a new recording selected immediately afterward.
+    if (video) { video.onerror = null; video.pause(); video.removeAttribute('src'); video.load(); video.replaceWith(makeVideo()); }
+    $('brainRecordedDownload')?.removeAttribute('href');
     if (url) URL.revokeObjectURL(url);
     url = '';
     const viewer = $('brainRecordedViewer');
@@ -47,13 +59,10 @@
     viewer.hidden = true;
     const caption = line('p', 'brain-recorded-caption', '');
     caption.id = 'brainRecordedCaption';
-    const video = document.createElement('video');
-    video.id = 'brainRecordedVideo';
-    video.controls = true;
-    video.playsInline = true;
-    video.preload = 'metadata';
-    video.setAttribute('aria-label', 'Recorded pasture play');
-    viewer.append(caption, video);
+    const video = makeVideo();
+    const download = line('a', 'brain-recorded-download', 'Download recording');
+    download.id = 'brainRecordedDownload';
+    viewer.append(caption, video, download);
     replacement.append(viewer);
     if (root) root.replaceWith(replacement);
     else {
@@ -90,11 +99,14 @@
       const viewer = $('brainRecordedViewer'), video = $('brainRecordedVideo'), caption = $('brainRecordedCaption');
       if (!viewer || !video || !caption) return;
       url = URL.createObjectURL(result.video);
+      const download = $('brainRecordedDownload');
+      if (download) { download.href = url; download.download = 'pasture-replay-' + String(result.id || 'recording') + (result.video.type.includes('mp4') ? '.mp4' : '.webm'); }
       caption.textContent = label(result) + (result.partialReason ? ' · Partial recording: ' + String(result.partialReason) : '');
       video.onerror = () => {
         if (ticket !== revision) return;
-        clearVideo();
-        if (state) state.textContent = 'This browser could not play the recorded video.';
+        video.onerror = null;
+        video.hidden = true;
+        if (state) state.textContent = 'This browser could not play the recording. You can download it and try another player.';
       };
       video.src = url;
       viewer.hidden = false;
