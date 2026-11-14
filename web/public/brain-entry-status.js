@@ -20,7 +20,7 @@
   status.append(svg, explanation);
   document.body.append(status);
   const states = {
-    held: { tone: 'held', path: 'M4 12.5 9.5 18 20 6', text: 'Setup held at the entry check. No trade has been confirmed yet.' },
+    held: { tone: 'held', path: 'M4 12.5 9.5 18 20 6', text: 'Selected setup is still valid. Checking the live quote now.' },
     stale: { tone: 'waiting', path: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5l3 2', text: 'Market feed stale. No trade placed.' },
     changed: { tone: 'rejected', path: 'M5 5l14 14M19 5 5 19', text: 'Setup changed — no trade placed.' },
     moved: { tone: 'rejected', path: 'M5 5l14 14M19 5 5 19', text: 'Setup changed — no trade placed.' },
