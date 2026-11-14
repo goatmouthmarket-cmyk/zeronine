@@ -537,3 +537,23 @@
 .pasture-detail-panel.account-theme :is(.account-empty, .account-cashout-note, .account-loading) {
   color: #667354 !important;
 }
+
+
+/* Keep every layer of the Account drawer visibly pasture-light. */
+.pasture-detail-panel.account-theme,
+.pasture-detail-panel.account-theme .pasture-detail-content,
+.pasture-detail-panel.account-theme .pasture-detail-content > *,
+.pasture-detail-panel.account-theme .account-overview,
+.pasture-detail-panel.account-theme .account-overview > *,
+.pasture-detail-panel.account-theme .ranger-wardrobe,
+.pasture-detail-panel.account-theme .account-switcher,
+.pasture-detail-panel.account-theme .connect-card,
+.pasture-detail-panel.account-theme .account-status-card {
+  color: #283d2e !important;
+  background-color: #fffdf5 !important;
+}
+.pasture-detail-panel.account-theme { background: #fffdf5 !important; }
+.pasture-detail-panel.account-theme .pasture-detail-content { background: #f7f2e2 !important; }
+.pasture-detail-panel.account-theme .account-overview :is(.detail-row, .account-quick-stats > div) { background: #eee9d7 !important; }
+.pasture-detail-panel.account-theme :is(p, span, small, label, .detail-label, .detail-value) { color: #3e503f !important; }
+.pasture-detail-panel.account-theme .pasture-detail-heading { background: linear-gradient(110deg, #f4e2bd, #fff6df 58%, #dceacb) !important; }
