@@ -339,9 +339,57 @@
     return section;
   }
 
+  function syncHudTask(progress, insights, guest) {
+    const card = $('missionHud');
+    const title = $('missionTitle');
+    const count = $('missionProgress');
+    if (!card || !title || !count) return;
+    const label = card.querySelector('.mission-copy small');
+    if (label) label.textContent = 'BRAIN TASK';
+    const pending = insights.filter(item => item.expectedDirection !== 'none' && item.outcome === 'pending').length;
+    if (guest) {
+      title.textContent = 'Connect to teach';
+      count.textContent = 'OPEN BRAIN';
+    } else if (!progress) {
+      title.textContent = 'Brain task unavailable';
+      count.textContent = 'RETRY';
+    } else if (progress.total === 0) {
+      title.textContent = 'Teach your first lesson';
+      count.textContent = '0 / 1';
+    } else if (pending > 0) {
+      title.textContent = 'Check a lesson';
+      count.textContent = pending + ' TO CHECK';
+    } else if (progress.linkedWins > 0) {
+      title.textContent = 'Build on your insight';
+      count.textContent = progress.linkedWins + ' WINS';
+    } else {
+      title.textContent = 'Teach another lesson';
+      count.textContent = progress.total + ' SAVED';
+    }
+    card.setAttribute('aria-label', 'Brain task: ' + title.textContent + '. ' + count.textContent + '. Open Brain Tasks.');
+  }
+
+  const missionHud = $('missionHud');
+  if (missionHud) {
+    missionHud.addEventListener('click', () => {
+      const menu = window.__zeronineBrainMenu;
+      if (menu && typeof menu.open === 'function') menu.open();
+      else $('rangerBrainGlyph')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      setTimeout(() => $('brainTabMemory')?.click(), 80);
+    });
+    const title = $('missionTitle'), count = $('missionProgress');
+    if (title && count && typeof MutationObserver === 'function') {
+      new MutationObserver(() => syncHudTask(state?.progress || null, state?.insights || [], note === 'guest'))
+        .observe(title.parentElement, { childList: true, subtree: true, characterData: true });
+      new MutationObserver(() => syncHudTask(state?.progress || null, state?.insights || [], note === 'guest'))
+        .observe(count, { childList: true, subtree: true, characterData: true });
+    }
+  }
+
   function render() {
     host.replaceChildren();
     const data=state;
+    syncHudTask(data?.progress || null, data?.insights || [], note === 'guest');
     if(!data){
       const card=node('section','brain-task-login');
       card.append(node('span','brain-task-eyebrow','PERSONAL BRAIN TASKS'));
