@@ -287,10 +287,10 @@
     check.append(checkCopy,node('em','',waiting?'IN PROGRESS':'READY'));
     const win=node('article','brain-task-tile');
     win.append(node('span','brain-task-tile-icon','★'));
-    const winCopy=node('div',''); winCopy.append(node('b','','A lesson lines up with a win'),node('small','','A verified matching win adds 25 XP. A matching loss removes the 10 XP teaching reward.'));
+    const winCopy=node('div',''); winCopy.append(node('b','','A lesson lines up with a win'),node('small','','A verified matching win adds 25 XP. A matching loss removes the lesson’s 10 XP and costs 10 more.'));
     win.append(winCopy,node('em','',progress.linkedWins+' WINS'));
     wrap.append(teach,check,win);
-    const noteLine=node('p','brain-task-rules','Teaching earns 10 XP. A later matching settled Deriv win adds 25 XP; a matching loss removes 10 XP. XP never changes your balance or stake. No points are awarded for placing a trade.');
+    const noteLine=node('p','brain-task-rules','Teaching earns 10 XP. A later matching settled Deriv win adds 25 XP; a matching loss removes that 10 XP and deducts 10 more from your progress. Total XP cannot fall below zero. XP never changes your balance or stake, and placing trades alone earns no points.');
     wrap.append(noteLine);
     return wrap;
   }
@@ -310,7 +310,7 @@
       const title=node('b','',insight.marketName+' · '+directionLabel(insight));
       const description=node('p','',insight.observation);
       const meta=node('small','',new Date(insight.createdAt).toLocaleString()+' · '+insight.confidence+'/5 confidence · '+(insight.horizon==='next_5'?'5 min':insight.horizon==='next_20'?'20 min':'12 hours'));
-      const status=node('em','',insight.outcome==='matched'?'Matched a later settled win · +25 XP':insight.outcome==='unmatched'?'Matching settled trade lost · −10 XP':insight.expectedDirection==='none'?'Saved human observation · +10 XP':'Waiting for a later matching settled trade');
+      const status=node('em','',insight.outcome==='matched'?'Matched a later settled win · +25 XP':insight.outcome==='unmatched'?'Matching settled loss · −20 XP':insight.expectedDirection==='none'?'Saved human observation · +10 XP':'Waiting for a later matching settled trade');
       copy.append(title,description,meta,status);
       item.append(mark,copy);
       list.append(item);
@@ -326,7 +326,7 @@
     head.append(node('h4','','Brain builders'));
     head.append(node('p','','Ranked by lessons taught and verified results, not by money or trade size.'));
     section.append(head);
-    if(!rows.length){section.append(node('p','brain-contribution-empty','The leaderboard will grow as Rangers teach the Brain.'));return section;}
+    if(!rows.length){section.append(node('p','brain-contribution-empty','The leaderboard grows as Rangers teach the Brain and verify their ideas.'));return section;}
     const list=node('ol','brain-task-rank-list');
     rows.forEach((entry,index)=>{
       const row=node('li','brain-task-rank');
