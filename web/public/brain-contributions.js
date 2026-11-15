@@ -223,27 +223,35 @@
     summary.append(metric('Cow edge at shot',percent(context.cowEdge)),metric('Cow confidence',percent(context.cowConfidence)),metric('Profit / loss',amount(trade.profit),Number(trade.profit)<0?'is-negative':''));
     detail.append(summary);
 
-    const sequence=node('div','brain-entry-sequence');
-    const sequenceHeading=node('div','brain-entry-sequence-heading');
-    sequenceHeading.append(node('strong','','Price around entry'),node('small','','Final digit highlighted'));
-    sequence.append(sequenceHeading);
-    const ticks=node('div','brain-tick-row');
-    ticks.setAttribute('aria-label','Three ticks before entry, the entry tick, and three ticks after entry');
-    const before=Array.isArray(context.before)?context.before.slice(-3):[];
-    const after=Array.isArray(context.after)?context.after.slice(0,3):[];
-    const slots=[...Array(Math.max(0,3-before.length)).fill(null),...before,{quote:context.entryQuote,digit:context.entryDigit},...after,...Array(Math.max(0,3-after.length)).fill(null)];
-    slots.forEach((tick,index)=>{
-      const cell=node('div','brain-tick'+(index===3?' is-entry':''));
-      cell.append(node('small','',index===3?'ENTRY':index<3?String(index-3):'+'+String(index-3)));
-      const quote=typeof tick?.quote==='string'?tick.quote.trim():'';
-      if(quote && /\d$/.test(quote)){
-        const value=node('span','');value.append(document.createTextNode(quote.slice(0,-1)),node('b','',quote.slice(-1)));cell.append(value);
-      } else cell.append(node('span','brain-tick-missing','—'));
-      ticks.append(cell);
-    });
-    sequence.append(ticks);
-    if (!context.entryQuote || before.length<3 || after.length<3) sequence.append(node('p','brain-trade-note','Some prices were not recorded.'));
-    detail.append(sequence);
+    const addPriceSequence = (label, quote, digit, preceding, following) => {
+      const before = Array.isArray(preceding) ? preceding.slice(-3) : [];
+      const after = Array.isArray(following) ? following.slice(0, 3) : [];
+      const sequence = node('div', 'brain-entry-sequence');
+      const sequenceHeading = node('div', 'brain-entry-sequence-heading');
+      sequenceHeading.append(node('strong', '', 'Price around ' + label.toLowerCase()), node('small', '', 'Final digit highlighted'));
+      sequence.append(sequenceHeading);
+      const ticks = node('div', 'brain-tick-row');
+      ticks.setAttribute('aria-label', 'Three ticks before ' + label.toLowerCase() + ', the ' + label.toLowerCase() + ' tick, and three ticks after ' + label.toLowerCase());
+      const slots = [...Array(Math.max(0, 3 - before.length)).fill(null), ...before,
+        { quote, digit }, ...after, ...Array(Math.max(0, 3 - after.length)).fill(null)];
+      slots.forEach((tick, index) => {
+        const cell = node('div', 'brain-tick' + (index === 3 ? ' is-entry' : ''));
+        cell.append(node('small', '', index === 3 ? label.toUpperCase() : index < 3 ? String(index - 3) : '+' + String(index - 3)));
+        const price = typeof tick?.quote === 'string' ? tick.quote.trim() : '';
+        if (price && /\d$/.test(price)) {
+          const value = node('span', '');
+          value.append(document.createTextNode(price.slice(0, -1)), node('b', '', price.slice(-1)));
+          cell.append(value);
+        } else cell.append(node('span', 'brain-tick-missing', '—'));
+        ticks.append(cell);
+      });
+      sequence.append(ticks);
+      if (!quote || before.length < 3 || after.length < 3) sequence.append(node('p', 'brain-trade-note', 'Some prices were not recorded.'));
+      detail.append(sequence);
+    };
+    addPriceSequence('Entry', context.entryQuote, context.entryDigit, context.before, context.after);
+    const exit = context.exit && typeof context.exit === 'object' ? context.exit : {};
+    addPriceSequence('Exit', exit.quote, exit.digit, exit.before, exit.after);
 
     const more=node('details','brain-entry-more');
     more.append(node('summary','','Trade details'));

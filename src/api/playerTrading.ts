@@ -136,6 +136,42 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       await store.saveTradeContext(accountId, contractId, context);
     })().catch(error => { console.warn('[brain] trade context unavailable:', error instanceof Error ? error.message : String(error)); });
   };
+  // This runs after settlement and never blocks a purchase or the settlement
+  // response. Only an unambiguous Deriv exit quote/time match can anchor ticks.
+  const captureExitContext = (
+    accountId: string, contractId: string, market: string,
+    settled: Awaited<ReturnType<DerivPrivateClient['getContractSnapshot']>>,
+    client: DerivPrivateClient,
+  ): void => {
+    void (async () => {
+      let provider = settled;
+      let exit: Record<string, unknown> = { quote: null, digit: null, epoch: null, before: [], after: [], complete: false };
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+        if (!Number.isFinite(provider.exitSpot) || !Number.isFinite(provider.exitTickTime)) {
+          try { provider = await client.getContractSnapshot(contractId); } catch { continue; }
+        }
+        const precision = getPrecision(market);
+        if (!Number.isInteger(precision) || precision! < 0 || precision! > 12 ||
+            !Number.isFinite(provider.exitSpot) || !Number.isFinite(provider.exitTickTime)) continue;
+        const epoch = Number(provider.exitTickTime), spot = Number(provider.exitSpot);
+        const ticks = registry.snapshot(market).recentTicks;
+        const matches = ticks.flatMap((tick, index) =>
+          tick.epoch === epoch && tick.quote.toFixed(precision!) === spot.toFixed(precision!) ? [index] : []);
+        const index = matches.length === 1 ? matches[0] : -1;
+        const format = (tick: { quote: number; digit: number; epoch: number }) =>
+          ({ quote: tick.quote.toFixed(precision!), digit: tick.digit, epoch: tick.epoch });
+        const before = index >= 0 ? ticks.slice(Math.max(0, index - 3), index).map(format) : [];
+        const after = index >= 0 ? ticks.slice(index + 1, index + 4).map(format) : [];
+        exit = { quote: spot.toFixed(precision!), digit: Number.isInteger(provider.exitDigit) ? provider.exitDigit : null,
+          epoch, before, after, complete: index >= 3 && after.length === 3 };
+        if (exit.complete) break;
+      }
+      // Merge the exit key into the existing context without overwriting the
+      // concurrently collected entry, cow display, or Brain attribution.
+      await store.saveTradeContext(accountId, contractId, { exit });
+    })().catch(error => console.warn('[brain] exit context unavailable:', error instanceof Error ? error.message : String(error)));
+  };
   const reconcile = async (accountId: string, client: DerivPrivateClient) => {
     const active = await store.activeContract(accountId);
     if (!active?.provider_contract_id || (active.status !== 'open' && active.status !== 'unknown')) return active;
@@ -143,6 +179,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const result = await client.getContractSnapshot(active.provider_contract_id);
       if (result.settled && (result.status === 'won' || result.status === 'lost')) {
         await store.recordSettlement(accountId, active.provider_contract_id, result.status, result.profit);
+        captureExitContext(accountId, active.provider_contract_id, active.market, result, client);
         publish({ type: 'trade', accountId, contractId: active.provider_contract_id, status: result.status, profit: result.profit });
         const rangerRun = rangerRuns.get(accountId);
         if (rangerRun?.pendingContractId === active.provider_contract_id) settleRangerRun(rangerRun, result.status, result.profit);

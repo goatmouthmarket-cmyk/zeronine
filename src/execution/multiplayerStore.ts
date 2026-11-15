@@ -382,7 +382,7 @@ export class MultiplayerStore {
     const result = await this.pool.query(`insert into multiplayer_private.trade_context (contract_id, account_id, context)
       select id, account_id, $3::jsonb from multiplayer_private.contracts
       where account_id=$1 and provider_contract_id=$2
-      on conflict (contract_id) do update set context=excluded.context, updated_at=now()`,
+      on conflict (contract_id) do update set context=trade_context.context || excluded.context, updated_at=now()`,
       [accountId, providerContractId, JSON.stringify(context)]);
     if (!result.rowCount) throw new Error('No matching contract found for trade context');
   }
@@ -457,9 +457,9 @@ export class MultiplayerStore {
     return result.rows;
   }
 
-  async activeContract(accountId: string): Promise<{ id: string; status: string; provider_contract_id: string | null } | null> {
-    const result = await this.pool.query<{ id: string; status: string; provider_contract_id: string | null }>(
-      `select id, status, provider_contract_id from multiplayer_private.contracts
+  async activeContract(accountId: string): Promise<{ id: string; status: string; provider_contract_id: string | null; market: string } | null> {
+    const result = await this.pool.query<{ id: string; status: string; provider_contract_id: string | null; market: string }>(
+      `select id, status, provider_contract_id, market from multiplayer_private.contracts
        where account_id=$1 and status in ('purchasing','open','unknown') limit 1`, [accountId],
     );
     return result.rows[0] ?? null;
