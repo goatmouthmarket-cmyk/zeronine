@@ -97,6 +97,12 @@
       .brain-review-selected { grid-column:2; grid-row:1 / span 3; }
       .brain-review-save { grid-column:2; grid-row:4; justify-self:end; align-self:start; width:min(220px,100%); min-height:44px; }
     }
+    .brain-pattern-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+    .brain-pattern-group{display:grid;gap:3px;min-width:0;padding:8px;border-radius:8px;background:#f2f5e9;color:#294b34;font-size:11px}
+    .brain-pattern-group b,.brain-pattern-group strong,.brain-pattern-group span,.brain-pattern-group small{overflow-wrap:anywhere}
+    .brain-pattern-trades,.brain-pattern-trade{min-width:0;margin-top:4px}
+    .brain-pattern-trades summary,.brain-pattern-trade summary{cursor:pointer;color:#1e6840;font-weight:800;padding:4px 0}
+    @container (max-width:420px){.brain-pattern-comparison{grid-template-columns:minmax(0,1fr)}}
     @container (max-width:300px) { .brain-tick-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .brain-entry-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   `;document.head.append(sheet);
 
@@ -314,7 +320,7 @@
       const label=node('label','brain-review-label');
       const confirm=node('input',''); confirm.type='checkbox'; confirm.name='confirmPattern'; confirm.value=pattern.side+':'+pattern.count;
       label.append(confirm,document.createTextNode(' I mean after '+pattern.count+' '+pattern.side+' digits ('+(pattern.side==='high'?'5–9':'0–4')+').'));
-      interpretation.append(label,node('small','','This pattern is saved for review. It does not change suggestions yet.'));
+      interpretation.append(label,node('small','',pattern.count > 3 ? 'Four earlier digits are not recorded yet; this stays a note.' : 'I’ll compare later trades with recorded prices.'));
     };
     observation.addEventListener('input',updateInterpretation);
 
@@ -431,44 +437,89 @@
     return wrap;
   }
 
-  function renderInsights(insights) {
+  function renderInsights(insights, trades) {
     const section=node('section','brain-task-insights');
     section.setAttribute('aria-labelledby','brainTaskMemoryTitle');
     const head=node('div','brain-task-section-head brain-task-memory-head');
     const title=node('h4','','Saved lessons'); title.id='brainTaskMemoryTitle';
-    const count=node('span','brain-task-memory-count',String(insights.length)+' stored');
-    head.append(title,count);
+    head.append(title,node('span','brain-task-memory-count',insights.length+' stored'));
     section.append(head);
     if(!insights.length){
       const empty=node('div','brain-task-memory-empty');
       empty.append(node('span','brain-task-empty-network','✦'));
-      const copy=node('div',''); copy.append(node('strong','','Your Brain store is empty'),node('small','','Add a lesson above. It will appear here as a connected memory.'));
-      const teach=node('button','brain-task-empty-action','Teach a lesson'); teach.type='button';
-      teach.addEventListener('click',openTeachingTask);
-      empty.append(copy,teach); section.append(empty); return section;
+      const copy=node('div',''); copy.append(node('strong','','No lessons yet'),node('small','','Choose a trade above to teach your first lesson.'));
+      const teach=node('button','brain-task-empty-action','Teach a lesson');teach.type='button';teach.addEventListener('click',openTeachingTask);
+      empty.append(copy,teach);section.append(empty);return section;
     }
+    const tradeById = new Map((Array.isArray(trades)?trades:[]).map(trade=>[String(trade.id),trade]));
     const list=node('div','brain-task-memory-grid');
     for(const insight of insights.slice(0,24)){
-      const card=node('details','brain-task-memory-card'); card.dataset.result=insight.outcome||'pending';
+      const evidence=insight.patternEvidence && typeof insight.patternEvidence==='object' ? insight.patternEvidence : null;
+      const matched=evidence?.matched || null, comparable=evidence?.comparable || null;
+      const seen=Math.max(0,Number(matched?.trades)||0), wins=Math.max(0,Number(matched?.wins)||0);
+      const pattern=insight.confirmedPattern;
+      const patternText=pattern && (pattern.side==='high'||pattern.side==='low') && [2,3,4].includes(Number(pattern.count))
+        ? 'After '+pattern.count+' '+pattern.side+' digits' : '';
+      const card=node('details','brain-task-memory-card');card.dataset.result='pending';
       const summary=node('summary','brain-task-memory-summary');
-      const mark=node('span','brain-task-memory-mark',insight.outcome==='matched'?'✓':insight.outcome==='unmatched'?'×':'•');
+      const mark=node('span','brain-task-memory-mark',patternText?'✦':'•');
       const copy=node('span','brain-task-memory-copy');
-      copy.append(node('b','',insight.marketName+' · '+directionLabel(insight)));
-      copy.append(node('small','',insight.category||'Market lesson'));
-      const badge=node('em','brain-task-memory-result',insight.outcome==='matched'?'SIMILAR WIN':insight.outcome==='unmatched'?'SIMILAR LOSS':'WAITING');
-      summary.append(mark,copy,badge); card.append(summary);
+      copy.append(node('b','',insight.marketName+' · '+directionLabel(insight)),
+        node('small','',patternText || 'Personal note'));
+      const badge=node('em','brain-task-memory-result',patternText ? (seen ? 'SEEN '+seen : 'WAITING') : 'SAVED');
+      summary.append(mark,copy,badge);card.append(summary);
       const detail=node('div','brain-task-memory-detail');
       detail.append(node('p','',String(insight.observation || '').replace(/\n\[Trade reference: [^\]]+\]$/, '')));
-      const status=insight.outcome==='matched'?'+25 XP · Your call matched a settled win':insight.outcome==='unmatched'?'−20 XP · A settled result challenged this call':insight.expectedDirection==='none'?'+10 XP · Observation saved':'Waiting for a matching settled result';
-      const similar=Number(insight.similarTrades)||0;
-      detail.append(node('strong','',similar ? (Number(insight.similarWins)||0)+' wins · '+(Number(insight.similarLosses)||0)+' losses in similar trades' : 'Waiting for similar trades'));
-      if(insight.stance)detail.append(node('small','',insight.stance==='warning'?'Your note: warning':'Your note: good sign'));
+      if(insight.assessment?.call || insight.stance){
+        const call=(insight.assessment?.call==='bad'||insight.stance==='warning')?'Bad call':'Good call';
+        const result=insight.assessment?.tradeResult;
+        detail.append(node('small','',call+(result==='won'?' · Trade won':result==='lost'?' · Trade lost':'')));
+      }
+      if(patternText){
+        if(!evidence){
+          detail.append(node('small','','Pattern comparison is unavailable right now.'));
+        }else if(evidence.supported === false){
+          detail.append(node('small','','This pattern needs four earlier digits. Current trade records keep three, so it cannot be checked yet.'));
+        }else{
+          const comparison=node('div','brain-pattern-comparison');
+          const makeGroup=(group,label)=>{
+            const count=Math.max(0,Number(group?.trades)||0), groupWins=Math.max(0,Number(group?.wins)||0);
+            const result=node('section','brain-pattern-group');
+            result.append(node('b','',label),node('strong','',count+' trade'+(count===1?'':'s')));
+            const hasMoney=group?.profit != null && group?.stake != null && Number.isFinite(Number(group.profit)) && Number(group.stake)>0;
+            result.append(node('span','',count?Math.round(groupWins/count*100)+'% won':'Waiting for trades'),
+              node('small','',hasMoney ? ((Number(group.profit)>=0?'+':'')+Number(group.profit).toFixed(2)+' net · '+(Number(group.profit)/Number(group.stake)*100).toFixed(1)+'% of stakes') : 'Return unavailable'));
+            const ids=Array.isArray(group?.tradeIds)?group.tradeIds.map(String):[];
+            const known=ids.map(id=>tradeById.get(id)).filter(Boolean);
+            if(known.length){
+              const entries=node('details','brain-pattern-trades');
+              entries.append(node('summary','','View trades · '+known.length));
+              for(const trade of known){
+                const entry=node('details','brain-pattern-trade');
+                const when=trade.settledAt||trade.createdAt, date=when?new Date(when):null;
+                const time=date&&!Number.isNaN(date.getTime())?date.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+                entry.append(node('summary','',(trade.status==='won'?'Won':'Lost')+(time?' · '+time:'')),tradeDetail(trade));entries.append(entry);
+              }
+              if(known.length<count)entries.append(node('small','','Showing recent trades available here.'));
+              result.append(entries);
+            } else if(count && Array.isArray(group?.tradeIds)) {
+              result.append(node('small','','Older trades are not shown in this list.'));
+            }
+            return result;
+          };
+          comparison.append(makeGroup(matched,'Pattern appeared'),makeGroup(comparable,'Pattern did not appear'));
+          detail.append(comparison);
+          detail.append(node('small','',evidence.pending ? 'Still learning. Uses up to your 1,000 latest trades with recorded prices.' : 'Uses up to your 1,000 latest trades. Past results do not predict the next trade.'));
+        }
+      }else{
+        detail.append(node('small','','This note is saved. Confirm a pattern in a new lesson to track it.'));
+      }
       const when=insight.createdAt?new Date(insight.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
-      detail.append(node('small','',when+(insight.confidence?' · Confidence '+insight.confidence+'/5':'')));
-      card.append(detail); list.append(card);
+      detail.append(node('small','',when+(insight.confidence?' · Your confidence '+insight.confidence+'/5':'')));
+      card.append(detail);list.append(card);
     }
     section.append(list);
-    if(insights.length>24) section.append(node('small','brain-task-memory-more',(insights.length-24)+' older lessons are stored in your Brain.'));
+    if(insights.length>24)section.append(node('small','brain-task-memory-more',(insights.length-24)+' older lessons are stored in your Brain.'));
     return section;
   }
 
@@ -499,7 +550,7 @@
     if (!card || !title || !count) return;
     const label = card.querySelector('.mission-copy small');
     if (label && label.textContent !== 'BRAIN TASK') label.textContent = 'BRAIN TASK';
-    const pending = insights.filter(item => item.expectedDirection !== 'none' && item.outcome === 'pending').length;
+    const pending = insights.filter(item => item.confirmedPattern && (!item.patternEvidence || item.patternEvidence.pending)).length;
     if (guest) {
       if (title.textContent !== 'Connect to teach') title.textContent = 'Connect to teach';
       if (count.textContent !== 'OPEN BRAIN') count.textContent = 'OPEN BRAIN';
@@ -542,48 +593,42 @@
   function renderMainGrowth(data) {
     const card = $('brainGrowthCard');
     if (!card) return;
-    const progress = data?.progress || { level: 1, xp: 0, levelXp: 0, linkedWins: 0, total: 0 };
-    const insights = Array.isArray(data?.insights) ? data.insights : [];
-    const wins = insights.filter(item => item.outcome === 'matched').length;
-    const losses = insights.filter(item => item.outcome === 'unmatched').length;
-    const waiting = insights.filter(item => item.expectedDirection !== 'none' && item.outcome === 'pending').length;
-    const level = Number(progress.level) || 1, xp = Number(progress.xp) || 0, levelXp = Math.max(0, Math.min(100, Number(progress.levelXp) || 0));
-    card.dataset.state = data ? (waiting ? 'waiting' : wins ? 'growing' : 'learning') : note === 'guest' ? 'guest' : 'offline';
-    $('brainGrowthLevel').textContent = 'LV ' + level;
-    $('brainGrowthXP').textContent = xp + ' XP';
-    $('brainGrowthNext').textContent = levelXp + ' / 100 XP to Level ' + (level + 1);
-    $('brainGrowthProgress').setAttribute('aria-valuenow', String(levelXp));
-    $('brainGrowthFill').style.width = levelXp + '%';
-    $('brainGrowthWins').textContent = String(wins);
-    $('brainGrowthLosses').textContent = String(losses);
-    $('brainGrowthWaiting').textContent = String(waiting);
-    $('brainGrowthLessons').textContent = String(Number(progress.total) || 0);
-    $('brainGrowthText').textContent = !data
-      ? note === 'guest' ? 'Connect Deriv to save lessons to your Ranger Brain.' : 'The Brain could not load its saved lessons. Try again in a moment.'
-      : waiting ? waiting + ' lesson' + (waiting === 1 ? ' is' : 's are') + ' waiting for matching settled results.'
-        : wins || losses ? 'See how later similar trades turned out.'
-          : progress.total ? 'Your lessons are saved. Later similar trades will appear with them.'
-            : 'Teach it what you notice. Follow later similar trades.';
-    const feed = $('brainGrowthActivity');
-    feed.replaceChildren();
-    if (!insights.length) {
-      const empty = node('li', 'is-empty', data ? 'No lessons yet. Add one and start the Brain’s growth.' : 'Connect Deriv to begin a private lesson trail.');
-      feed.append(empty);
-    } else {
-      for (const insight of insights.slice(0, 3)) {
-        const row = node('li', '');
-        row.dataset.result = insight.outcome || 'pending';
-        const mark = node('span', 'brain-growth-mark', insight.outcome === 'matched' ? '✓' : insight.outcome === 'unmatched' ? '×' : '·');
-        const copy = node('span', 'brain-growth-outcome');
-        copy.append(node('b', '', insight.marketName + ' · ' + directionLabel(insight)));
-        copy.append(node('small', '', String(insight.observation || '').replace(/\n\[Trade reference: [^\]]+\]$/, '').slice(0, 110)));
-        const status = node('strong', '', insight.outcome === 'matched' ? 'Similar trade won' : insight.outcome === 'unmatched' ? 'Similar trade lost' : insight.expectedDirection === 'none' ? 'Lesson saved · +10 XP' : 'Waiting for a result');
-        row.append(mark, copy, status);
-        feed.append(row);
-      }
+    const progress=data?.progress || {level:1,xp:0,levelXp:0,total:0};
+    const insights=Array.isArray(data?.insights)?data.insights:[];
+    const good=insights.filter(item=>item.stance==='good').length;
+    const bad=insights.filter(item=>item.stance==='warning').length;
+    const waiting=insights.filter(item=>item.confirmedPattern && (!item.patternEvidence || item.patternEvidence.pending)).length;
+    const level=Number(progress.level)||1,xp=Number(progress.xp)||0,levelXp=Math.max(0,Math.min(100,Number(progress.levelXp)||0));
+    card.dataset.state=data?(waiting?'waiting':'learning'):note==='guest'?'guest':'offline';
+    $('brainGrowthLevel').textContent='LV '+level;
+    $('brainGrowthXP').textContent=xp+' XP';
+    $('brainGrowthNext').textContent=levelXp+' / 100 XP to Level '+(level+1);
+    $('brainGrowthProgress').setAttribute('aria-valuenow',String(levelXp));
+    $('brainGrowthFill').style.width=levelXp+'%';
+    for(const [id,value,label] of [['brainGrowthWins',good,'Your good calls'],['brainGrowthLosses',bad,'Your bad calls'],['brainGrowthWaiting',waiting,'Still learning'],['brainGrowthLessons',Number(progress.total)||0,'Lessons']]){
+      const el=$(id);el.textContent=String(value);const caption=el.parentElement?.querySelector('span');if(caption)caption.textContent=label;
     }
-    const teach = $('brainGrowthTeach');
-    if (teach) teach.textContent = note === 'guest' ? 'Connect Deriv to teach' : 'Teach the Brain a lesson';
+    $('brainGrowthText').textContent=!data
+      ? note==='guest'?'Connect Deriv to save lessons.':'Your lessons are temporarily unavailable.'
+      : waiting?waiting+' pattern'+(waiting===1?' is':'s are')+' still collecting examples.'
+      : insights.length?'Your lessons are saved. Review their progress in Memories.':'Choose a trade and teach your first lesson.';
+    const feed=$('brainGrowthActivity');feed.replaceChildren();
+    if(!insights.length)feed.append(node('li','is-empty',data?'Your lessons will appear here.':'Connect Deriv to begin.'));
+    else for(const insight of insights.slice(0,3)){
+      const row=node('li','');row.dataset.result='pending';
+      const mark=node('span','brain-growth-mark','·');
+      const copy=node('span','brain-growth-outcome');
+      copy.append(node('b','',insight.marketName+' · '+directionLabel(insight)),
+        node('small','',String(insight.observation||'').replace(/\n\[Trade reference: [^\]]+\]$/,'').slice(0,110)));
+      const seen=Math.max(0,Number(insight.patternEvidence?.matched?.trades)||0);
+      const status=node('strong','',insight.confirmedPattern?(seen?'Seen '+seen+' times':'Waiting for examples'):'Saved note');
+      row.append(mark,copy,status);feed.append(row);
+    }
+    const explanation=card.querySelector('.brain-growth-actions p');
+    if(explanation)explanation.textContent='Review a trade, then teach a pattern. Later recorded prices help check it.';
+    const heading=card.querySelector('.brain-growth-trail-heading strong');
+    if(heading)heading.textContent='Recent lessons';
+    const teach=$('brainGrowthTeach');if(teach)teach.textContent=note==='guest'?'Connect Deriv to teach':'Teach the Brain';
   }
 
   function openTeachingTask() {
@@ -619,7 +664,8 @@
     for(const goal of goals){
       const row=node('div','brain-goal');
       const current=Math.max(0,Number(goal.current)||0),target=Math.max(1,Number(goal.target)||1);
-      const label=goal.key==='lessons'?'Teach from your trades':goal.key==='trades'?'See similar trades settle':String(goal.label||'Training');
+      const labels={reviews:'Review your trades',pattern:'Confirm a pattern',matches:'See the pattern again',comparison:'Compare other trades'};
+      const label=labels[goal.key] || String(goal.label||'Training');
       row.append(node('span','',label),node('strong','',Math.min(current,target)+' / '+target));
       const bar=node('progress','');bar.max=target;bar.value=Math.min(current,target);bar.setAttribute('aria-label',label);row.append(bar);list.append(row);
     }
@@ -650,19 +696,19 @@
     copy.append(node('span','brain-task-eyebrow','YOUR BRAIN'),node('h3','','Teach & memories'));
     copy.append(node('strong','','Level '+progress.level+' · '+progress.xp+' XP'));
     const metrics=node('div','brain-review-metrics');
-    metrics.append(node('span','',insights.length+' lessons'),node('span','',insights.filter(item=>item.outcome==='pending').length+' waiting'),node('span','',progress.linkedWins+' similar wins'));
+    metrics.append(node('span','',insights.length+' lessons'),node('span','',insights.filter(item=>item.outcome==='pending').length+' waiting'),node('span','',insights.filter(item=>item.confirmedPattern).length+' patterns'));
     copy.append(metrics);overview.append(visual,copy);card.append(overview);
     card.append(renderTraining(data.training));
     card.append(makeForm(Array.isArray(data.trades)?data.trades:[]));
     const status=node('p','brain-contribution-status',note);
     status.id='brainTaskStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');card.append(status);
     const memories=node('details','brain-review-details');
-    memories.append(node('summary','','Saved lessons · '+insights.length),renderInsights(insights));card.append(memories);
+    memories.append(node('summary','','Saved lessons · '+insights.length),renderInsights(insights,data.trades));card.append(memories);
     const evidence=node('div','brain-review-evidence');evidence.id='brainEvidenceSlot';card.append(evidence);
     host.append(card);
   }
   async function load() {
-    if(loading || document.hidden || formDirty) return;
+    if(loading || document.hidden) return;
     loading=true;
     try {
       const response=await request('/api/ranger-brain/contributions');
@@ -673,8 +719,27 @@
           if(market) response.markets.sort((a,b)=>a.symbol===market?-1:b.symbol===market?1:a.name.localeCompare(b.name));
         } catch {}
       }
+      if(formDirty) {
+        // The server can finish gathering entry ticks while the player is
+        // reviewing a trade. Refresh only its snapshot, never the form fields.
+        const selectedId=host.querySelector('[name="sourceTradeId"]')?.value;
+        const trade=Array.isArray(response.trades) ? response.trades.find(item=>String(item.id)===String(selectedId)) : null;
+        const detail=host.querySelector('.brain-review-selected');
+        if(trade && detail) {
+          const signature=JSON.stringify([trade.id,trade.status,trade.profit,trade.askPrice,trade.payout,trade.context]);
+          if(detail.dataset.snapshotSignature!==signature) {
+            const openStates=Array.from(detail.querySelectorAll('details'),item=>item.open);
+            detail.replaceChildren(tradeDetail(trade));
+            detail.querySelectorAll('details').forEach((item,index)=>{item.open=Boolean(openStates[index]);});
+            detail.dataset.snapshotSignature=signature;
+          }
+        }
+        return;
+      }
       render();
     } catch(error) {
+      // A transient refresh must not erase an unsaved lesson.
+      if(formDirty) return;
       state=null;
       note=error.status===401?'guest':error.status===503?'migration':'error';
       render();

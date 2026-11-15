@@ -92,7 +92,6 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
   // Match both Deriv's entry epoch and entry quote; ambiguous matches stay unavailable.
   const captureTradeContext = (accountId: string, contractId: string, order: Order, edge: number, client: DerivPrivateClient): void => {
     void (async () => {
-      const precision = getPrecision(order.market);
       // Persist an incomplete snapshot immediately in the background. If the
       // process stops while waiting for Deriv or later ticks, the card can
       // still show the captured quote estimate and the cow's displayed values.
@@ -109,6 +108,9 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       for (let attempt = 0; attempt < 20; attempt++) {
         if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
         try { provider = provider ?? await client.getContractSnapshot(contractId); } catch { continue; }
+        // Market precision can arrive after purchase when the public feed reconnects.
+        // Read it on every attempt instead of freezing an unavailable value.
+        const precision = getPrecision(order.market);
         if (!Number.isInteger(precision) || precision! < 0 || precision! > 12 ||
             !Number.isFinite(provider.entrySpot) || !Number.isFinite(provider.entryTickTime)) {
           if (!Number.isFinite(provider.entrySpot) || !Number.isFinite(provider.entryTickTime)) provider = null;

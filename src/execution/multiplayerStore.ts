@@ -379,11 +379,31 @@ export class MultiplayerStore {
   }
 
   async saveTradeContext(accountId: string, providerContractId: string, context: Record<string, unknown>): Promise<void> {
-    await this.pool.query(`insert into multiplayer_private.trade_context (contract_id, account_id, context)
+    const result = await this.pool.query(`insert into multiplayer_private.trade_context (contract_id, account_id, context)
       select id, account_id, $3::jsonb from multiplayer_private.contracts
       where account_id=$1 and provider_contract_id=$2
       on conflict (contract_id) do update set context=excluded.context, updated_at=now()`,
       [accountId, providerContractId, JSON.stringify(context)]);
+    if (!result.rowCount) throw new Error('No matching contract found for trade context');
+  }
+
+  /** Bounded, account-scoped samples used only by the Brain review endpoint. */
+  async listBrainEvaluationTrades(accountId: string): Promise<Array<Record<string, unknown>>> {
+    try {
+      const result = await this.pool.query(
+        `select c.id, c.market, c.direction, c.barrier, c.stake, c.profit, c.mode, c.status,
+                c.created_at, c.settled_at, t.context
+         from multiplayer_private.contracts c
+         join multiplayer_private.trade_context t on t.contract_id=c.id and t.account_id=c.account_id
+         where c.account_id=$1 and c.status in ('won','lost') and c.settled_at is not null
+         order by c.created_at desc, c.id desc limit 1000`, [accountId],
+      );
+      return result.rows;
+    } catch (error) {
+      // An older installation may not yet have the optional capture table.
+      if ((error as { code?: string }).code === '42P01') return [];
+      throw error;
+    }
   }
 
   async listTradeContexts(accountId: string): Promise<Map<string, unknown>> {

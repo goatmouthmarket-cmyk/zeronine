@@ -646,10 +646,35 @@
   }
 
   function suggestionReason(snipe) {
-    if (snipe.reason) return String(snipe.reason);
-    if (snipe.limited) return 'Stake capped by the account risk limits.';
-    if (Number(snipe.edge) > 0) return 'Fresh tick and the payout sits ahead of the chance.';
-    return 'Paper evidence backs this setup.';
+    const parts = [];
+    if (snipe.reason) parts.push(String(snipe.reason));
+    else if (snipe.limited) parts.push('Stake capped by your account limits.');
+    if (Number(snipe.edge) > 0) parts.push('Fresh price and positive estimated edge.');
+    else parts.push('Selected from the current live setups.');
+    parts.push(snipe.lessonContext || 'Your lessons are still learning for this setup.');
+    return parts.join(' ');
+  }
+
+  // A matching note is shown only if its exact digit condition is visible now.
+  // This is context for the player; lessons do not alter candidate ranking.
+  function lessonContextForPick(pick, insights) {
+    if (!pick || pick.status !== 'target' || !Array.isArray(insights)) return '';
+    const digits = bridge()?.recentDigits?.(pick.symbol);
+    if (!Array.isArray(digits)) return '';
+    const direction = String(pick.kind || '').toLowerCase();
+    const match = insights.find((lesson) => {
+      const rule = lesson?.confirmedPattern, evidence = lesson?.patternEvidence;
+      if (!rule || !evidence?.supported || ![2, 3].includes(Number(rule.count))) return false;
+      if (lesson.marketSymbol !== pick.symbol || String(lesson.expectedDirection || '').toLowerCase() !== direction
+          || Number(lesson.barrier) !== Number(pick.barrier)) return false;
+      const recent = digits.slice(-Number(rule.count));
+      return recent.length === Number(rule.count) && recent.every(digit => Number.isInteger(digit)
+        && (rule.side === 'high' ? digit >= 5 && digit <= 9 : rule.side === 'low' && digit >= 0 && digit <= 4));
+    });
+    if (!match) return '';
+    const count = Number(match.patternEvidence?.matched?.trades) || 0;
+    return count ? 'Your ' + match.confirmedPattern.side + '-digit lesson matches now (' + count + ' past matches). It did not change this pick.'
+      : 'Your ' + match.confirmedPattern.side + '-digit lesson matches now. Still learning from past trades; it did not change this pick.';
   }
   function renderSuggestion(snipe) {
     const left = Math.max(0, Math.ceil((snipe.until - performance.now()) / 1000));
@@ -760,6 +785,7 @@
         return;
       }
       const result = bridge()?.suggest?.();
+      if (result && result.status === 'target') result.lessonContext = lessonContextForPick(result, body?.insights);
       runCapture(result);
       return result;
     } catch {

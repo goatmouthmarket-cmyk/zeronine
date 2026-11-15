@@ -2013,18 +2013,21 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to keep personal Brain memories.' });
       const ownerKey = brainOwnerKey(accountId);
       await deps.multiplayerStore.syncBrainInsightOutcomes(ownerKey, accountId);
-      const [rawInsights, progress, leaderboard, accountTrades, comparison] = await Promise.all([
+      const [rawInsights, progress, leaderboard, accountTrades, comparison, contexts, evaluationTrades] = await Promise.all([
         deps.multiplayerStore.listBrainInsights(ownerKey),
         deps.multiplayerStore.brainInsightProgress(ownerKey),
         deps.multiplayerStore.brainLeaderboard(10),
         deps.multiplayerStore.listTrades(accountId, 100),
         deps.multiplayerStore.brainComparableOutcomes(ownerKey, accountId),
+        deps.multiplayerStore.listTradeContexts(accountId),
+        deps.multiplayerStore.listBrainEvaluationTrades(accountId),
       ]);
       const tradesById = new Map(accountTrades.map(trade => [String(trade.id), trade]));
+      const evaluationById = new Map(evaluationTrades.map(trade => [String(trade.id), trade]));
       const insights = rawInsights.map(insight => {
         const stance = /\n\[Brain stance: (good|warning)\]$/.exec(insight.observation)?.[1] ?? null;
         const sourceTradeId = /\n\[Trade reference: ([0-9a-f-]{36})\]/i.exec(insight.observation)?.[1] ?? null;
-        const sourceTrade = sourceTradeId ? tradesById.get(sourceTradeId) : null;
+        const sourceTrade = sourceTradeId ? (tradesById.get(sourceTradeId) ?? evaluationById.get(sourceTradeId)) : null;
         // The player's assessment is a judgment about the decision, separate
         // from whether this particular settled contract won or lost.
         const assessment = stance && sourceTradeId ? {
@@ -2034,15 +2037,51 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         } : null;
         const patternMatch = /\n\[Brain pattern: (high|low):([234])\]/.exec(insight.observation);
         const confirmedPattern = patternMatch ? { side: patternMatch[1], count: Number(patternMatch[2]) } : null;
-        return { ...insight, observation: insight.observation.replace(/\n\[Brain pattern: (high|low):[234]\]/, '').replace(/\n\[Brain stance: (good|warning)\]$/, ''), stance, assessment, confirmedPattern,
+        // Only compare settled, later trades with recorded digits for the same
+        // account, account mode and contract. Similar contracts alone do not
+        // establish that the taught condition happened again.
+        const group = () => ({ trades: 0, wins: 0, profit: 0, stake: 0, tradeIds: [] as string[] });
+        const matched = group(), comparable = group();
+        if (confirmedPattern && sourceTrade && confirmedPattern.count <= 3 && (sourceTrade.mode === 'demo' || sourceTrade.mode === 'real')) {
+          for (const trade of evaluationTrades) {
+            const created = Date.parse(String(trade.created_at));
+            if (!Number.isFinite(created) || created <= insight.createdAt ||
+                trade.market !== insight.marketSymbol || trade.direction !== insight.expectedDirection ||
+                Number(trade.barrier) !== insight.barrier || trade.mode !== sourceTrade.mode ||
+                (trade.status !== 'won' && trade.status !== 'lost') || !trade.settled_at) continue;
+            const context = trade.context as { entryEpoch?: unknown; before?: Array<{ digit?: unknown }> } | undefined;
+            const before = Array.isArray(context?.before) ? context.before.slice(-confirmedPattern.count) : [];
+            if (!Number.isFinite(Number(context?.entryEpoch)) || Number(context?.entryEpoch) <= 0 ||
+                before.length !== confirmedPattern.count || before.some(tick => typeof tick?.digit !== 'number' || !Number.isInteger(tick.digit) || tick.digit < 0 || tick.digit > 9)) continue;
+            const isMatch = before.every(tick => confirmedPattern.side === 'high' ? Number(tick.digit) >= 5 : Number(tick.digit) <= 4);
+            const bucket = isMatch ? matched : comparable;
+            const profit = trade.profit == null ? NaN : Number(trade.profit);
+            const stake = trade.stake == null ? NaN : Number(trade.stake);
+            if (!Number.isFinite(profit) || !Number.isFinite(stake) || stake <= 0) continue;
+            bucket.trades++; if (trade.status === 'won') bucket.wins++;
+            bucket.profit += profit; bucket.stake += stake;
+            // The picker only exposes the latest 100; never link to inaccessible rows.
+            if (tradesById.has(String(trade.id))) bucket.tradeIds.push(String(trade.id));
+          }
+        }
+        const patternEvidence = confirmedPattern ? { matched, comparable, pending: matched.trades < 20 || comparable.trades < 20, scope: 'last_1000' as const, supported: confirmedPattern.count <= 3 } : null;
+        return { ...insight, observation: insight.observation.replace(/\n\[Brain pattern: (high|low):[234]\]/, '').replace(/\n\[Brain stance: (good|warning)\]$/, ''), stance, assessment, confirmedPattern, patternEvidence,
           ...(comparison.byInsight[insight.id] ?? { similarTrades: 0, similarWins: 0, similarLosses: 0 }) };
       });
       const structuredLessons = insights.filter(insight => insight.stance !== null).length;
       const similarTrades = comparison.distinctTrades;
-      const ready = structuredLessons >= 3 && similarTrades >= 10;
+      const confirmed = insights.filter(insight => insight.confirmedPattern && insight.patternEvidence?.supported);
+      const best = confirmed.reduce<typeof confirmed[number] | null>((current, insight) =>
+        !current || Math.min(insight.patternEvidence!.matched.trades, insight.patternEvidence!.comparable.trades) >
+          Math.min(current.patternEvidence!.matched.trades, current.patternEvidence!.comparable.trades) ? insight : current, null);
+      const matches = best?.patternEvidence?.matched.trades ?? 0;
+      const comparisons = best?.patternEvidence?.comparable.trades ?? 0;
+      const ready = structuredLessons >= 3 && confirmed.length >= 1 && matches >= 20 && comparisons >= 20;
       const training = { structuredLessons, similarTrades, ready, unlocked: ready, goals: [
-        { key: 'lessons', label: 'Teach 3 lessons', current: structuredLessons, target: 3 },
-        { key: 'trades', label: 'See 10 similar trades', current: similarTrades, target: 10 },
+        { key: 'reviews', label: 'Review 3 trades', current: structuredLessons, target: 3 },
+        { key: 'pattern', label: 'Confirm a pattern', current: confirmed.length, target: 1 },
+        { key: 'matches', label: 'Record 20 matches', current: matches, target: 20 },
+        { key: 'comparison', label: 'Record 20 comparisons', current: comparisons, target: 20 },
       ] };
       const trades = accountTrades
         .filter(trade => (trade.status === 'won' || trade.status === 'lost') && trade.settled_at && (trade.direction === 'over' || trade.direction === 'under') && trade.barrier != null && Number.isInteger(Number(trade.barrier)) && Number(trade.barrier) >= 0 && Number(trade.barrier) <= 9 && typeof trade.market === 'string' && trade.market.length > 0)
@@ -2054,7 +2093,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
           accountMode: trade.mode, providerContractId: trade.provider_contract_id == null ? null : String(trade.provider_contract_id),
           createdAt: trade.created_at, settledAt: trade.settled_at,
         }));
-      const contexts = await deps.multiplayerStore.listTradeContexts(accountId);
       for (const trade of trades) Object.assign(trade, { context: contexts.get(trade.id) ?? null });
       const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
       const latestIdea = insights.find(insight => insight.expectedDirection !== 'none') || null;
