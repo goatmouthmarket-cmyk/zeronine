@@ -1622,7 +1622,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       window.removeEventListener('focus', refreshServerAutomation);
       document.removeEventListener('visibilitychange', refreshServerAutomation);
     };
-  }, [arm, onNavigate, playArenaTarget, postRoomState, s.markets, s.owner, s.session, s.testlab]);
+  }, [onNavigate, playArenaTarget, postRoomState, s.markets, s.owner, s.session, s.testlab]);
 
   useEffect(() => {
     if (!rangerAutoRunning) return;
