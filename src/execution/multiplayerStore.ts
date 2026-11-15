@@ -166,6 +166,32 @@ export class MultiplayerStore {
     return { byInsight, distinctTrades: Number(result.rows[0]?.distinct_trades || 0) };
   }
 
+  // Account-scoped estimates of saved row bytes; not database quota or disk usage.
+  // Cache briefly to avoid scanning the account on every Brain refresh.
+  private readonly brainStorageCache = new Map<string, { until: number; value: { bytes: number; lessons: number; trades: number; snapshots: number; measurement: 'estimated_row_bytes' } }>();
+  async brainStorageUsage(ownerKey: string, accountId: string): Promise<{ bytes: number; lessons: number; trades: number; snapshots: number; measurement: 'estimated_row_bytes' }> {
+    const key = ownerKey + ':' + accountId;
+    const cached = this.brainStorageCache.get(key);
+    if (cached && cached.until > Date.now()) return cached.value;
+    const result = await this.pool.query<{ lessons: string; trades: string; snapshots: string; bytes: string }>(
+      `select
+        (select count(*) from brain_private.insights i where i.owner_key=$1)::text as lessons,
+        (select count(*) from multiplayer_private.contracts c where c.account_id=$2 and c.provider_contract_id is not null)::text as trades,
+        (select count(*) from multiplayer_private.trade_context x where x.account_id=$2)::text as snapshots,
+        ((select coalesce(sum(pg_column_size(i)),0) from brain_private.insights i where i.owner_key=$1)
+         + (select coalesce(sum(pg_column_size(c)),0) from multiplayer_private.contracts c where c.account_id=$2 and c.provider_contract_id is not null)
+         + (select coalesce(sum(pg_column_size(x)),0) from multiplayer_private.trade_context x where x.account_id=$2))::text as bytes`,
+      [ownerKey, accountId],
+    );
+    const row = result.rows[0];
+    const value = { bytes: Math.max(0, Number(row?.bytes || 0)), lessons: Math.max(0, Number(row?.lessons || 0)),
+      trades: Math.max(0, Number(row?.trades || 0)), snapshots: Math.max(0, Number(row?.snapshots || 0)),
+      measurement: 'estimated_row_bytes' as const };
+    if (this.brainStorageCache.size >= 1000) this.brainStorageCache.clear();
+    this.brainStorageCache.set(key, { until: Date.now() + 30000, value });
+    return value;
+  }
+
   async brainInsightProgress(ownerKey: string): Promise<BrainInsightProgress> {
     const result = await this.pool.query<{ total: string; reviewed: string; matched: string; unmatched: string; patterns: string; xp: string; linked_wins: string }>(
       `select

@@ -487,3 +487,16 @@ html body #rangerBrainPanel #brainHeroCard > .brain-hero-veil {display:none!impo
 @media(prefers-reduced-motion:reduce){.brain-scan-glyph,.brain-scan-beam,.brain-scan-lock{animation:none}.brain-scan-beam,.brain-scan-lock{opacity:.7}}
 
 .brain-unlock-art{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-width:0}.brain-scan-caption{max-width:300px;margin:0;padding:0 8px;color:#31573b;font:600 11px/1.35 system-ui,sans-serif;text-align:center}
+
+/* The growth portrait shows a developed neural network; new branches are
+   revealed only as recorded lessons and trades advance the visual stage. */
+html body #rangerBrainPanel .brain-growth-visual{position:relative;display:grid;place-items:center;width:100%;min-width:0;min-height:160px;aspect-ratio:1.48;overflow:visible;background:radial-gradient(ellipse,#edf4da 0%,#e3edd2 65%,transparent 100%);border-radius:16px}
+html body #rangerBrainPanel .brain-growth-visual svg.brain-neural-art{position:relative;display:block;inset:auto;width:100%;height:100%;max-height:none;overflow:visible}
+html body #rangerBrainPanel .brain-growth-visual .neural-branches{stroke:#53865c;stroke-width:2.15;opacity:.68}
+html body #rangerBrainPanel .brain-growth-visual .neural-new{stroke:#39815a;stroke-width:1.7;opacity:0;transition:opacity 1s ease}
+html body #rangerBrainPanel .brain-growth-visual[data-neural-stage="1"] .neural-stage-1,html body #rangerBrainPanel .brain-growth-visual[data-neural-stage="2"] :is(.neural-stage-1,.neural-stage-2),html body #rangerBrainPanel .brain-growth-visual[data-neural-stage="3"] :is(.neural-stage-1,.neural-stage-2,.neural-stage-3),html body #rangerBrainPanel .brain-growth-visual[data-neural-stage="4"] :is(.neural-stage-1,.neural-stage-2,.neural-stage-3,.neural-stage-4),html body #rangerBrainPanel .brain-growth-visual[data-neural-stage="5"] .neural-new{opacity:.8}
+html body #rangerBrainPanel .brain-growth-visual .neural-nodes{fill:#d5b567;stroke:#567d4a;stroke-width:1.2}
+html body #rangerBrainPanel .brain-growth-visual .neural-pulses{fill:#fff1a9;filter:drop-shadow(0 0 4px #d6eeb0)}
+html body #rangerBrainPanel .brain-growth-visual .brain-growth-level{z-index:2}
+@media(max-width:700px){html body #rangerBrainPanel .brain-growth-visual{min-height:110px;max-height:170px}}
+@media(prefers-reduced-motion:reduce){html body #rangerBrainPanel .brain-growth-visual .neural-pulses{display:none}html body #rangerBrainPanel .brain-growth-visual .neural-new{transition:none}}

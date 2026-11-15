@@ -114,6 +114,15 @@
     @keyframes brainTradeSyncPulse { 50% { opacity:.35; transform:scale(.72) } }
     @keyframes brainSnapshotUpdate { from { box-shadow:0 0 0 3px #75bc81; } to { box-shadow:0 0 0 0 transparent; } }
     @media (prefers-reduced-motion:reduce) { .brain-trade-sync-dot,.brain-snapshot-updated { animation:none; } }
+
+    /* Account memory: fill is an illustration of growth, not a storage quota. */
+    .brain-memory-meter{display:flex;align-items:center;gap:8px;min-width:0;padding:7px 9px;border-radius:9px;background:#e8f0df;color:#28573a}
+    .brain-memory-cylinder{position:relative;flex:none;width:22px;height:29px;overflow:hidden;border:1.5px solid #527e57;border-radius:50% / 18%;background:#f8faed}
+    .brain-memory-cylinder::before{content:'';position:absolute;inset:auto 0 0;height:var(--memory-fill,12%);background:linear-gradient(#9ed995,#4b9b62);transition:height .7s ease}
+    .brain-memory-cylinder::after{content:'';position:absolute;left:0;right:0;top:0;height:6px;border-bottom:1px solid #527e57;border-radius:50%;background:#d8ecd0}
+    .brain-memory-copy{display:grid;gap:1px;min-width:0;line-height:1.2}.brain-memory-copy strong{font-size:11px}.brain-memory-copy small{font-size:10px;color:#566c4e}
+    @media(max-width:420px){.brain-memory-meter{padding:5px 7px;gap:6px}.brain-memory-cylinder{width:19px;height:25px}.brain-memory-copy strong,.brain-memory-copy small{font-size:9px;overflow-wrap:anywhere}}
+    @media(prefers-reduced-motion:reduce){.brain-memory-cylinder::before{transition:none}}
   `;document.head.append(sheet);
 
 
@@ -658,9 +667,44 @@
     action.onclick=()=>{if(unlocked) $('brainFindCow')?.click();else $('brainTabMemory')?.click();};
   }
 
+  function formatMemoryBytes(value) {
+    const bytes = Math.max(0, Number(value) || 0);
+    if (bytes < 1024) return Math.round(bytes) + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+    return (bytes / 1073741824).toFixed(2) + ' GB';
+  }
+  function updateMemoryGrowth(card, data) {
+    const visual = card.querySelector('.brain-growth-visual');
+    const storage = data?.storage;
+    const available = storage && storage.measurement === 'estimated_row_bytes' && Number.isFinite(Number(storage.bytes)) && Number.isFinite(Number(storage.lessons)) && Number.isFinite(Number(storage.trades));
+    const lessons = available ? Math.max(0, Math.floor(Number(storage.lessons))) : 0;
+    const trades = available ? Math.max(0, Math.floor(Number(storage.trades))) : 0;
+    // Visual stages represent saved activity; they are not an intelligence score.
+    const growth = available ? Math.min(1, Math.log1p(lessons * 8 + trades) / Math.log1p(1000)) : 0;
+    if (visual) { visual.style.setProperty('--neural-growth', growth.toFixed(3)); visual.dataset.neuralStage = String(Math.min(5, Math.floor(growth * 6))); }
+    let meter = $('brainMemoryMeter');
+    if (!meter) {
+      meter = node('div', 'brain-memory-meter'); meter.id = 'brainMemoryMeter';
+      const cylinder = node('span', 'brain-memory-cylinder'); cylinder.setAttribute('aria-hidden', 'true');
+      const copy = node('span', 'brain-memory-copy');
+      const title = node('strong', ''); title.id = 'brainMemorySize';
+      const sub = node('small', ''); sub.id = 'brainMemoryCounts';
+      copy.append(title, sub); meter.append(cylinder, copy);
+      const results = card.querySelector('.brain-growth-results');
+      if (results) results.insertAdjacentElement('afterend', meter); else card.append(meter);
+    }
+    meter.style.setProperty('--memory-fill', (12 + growth * 76).toFixed(1) + '%');
+    $('brainMemorySize').textContent = available ? formatMemoryBytes(storage.bytes) + ' saved' : 'Memory size unavailable';
+    $('brainMemoryCounts').textContent = available ? lessons + ' lessons · ' + trades + ' trades' : 'Saved memory is temporarily unavailable';
+    meter.title = available ? 'Estimated size of saved rows, excluding database overhead. The cylinder illustrates activity, not a storage limit.' : 'Saved memory could not be measured.';
+    meter.setAttribute('aria-label', available ? 'Estimated saved memory ' + formatMemoryBytes(storage.bytes) + ', ' + lessons + ' lessons, ' + trades + ' trades. Growth illustration is not a storage limit.' : 'Saved memory temporarily unavailable');
+  }
+
   function renderMainGrowth(data) {
     const card = $('brainGrowthCard');
     if (!card) return;
+    updateMemoryGrowth(card, data);
     const progress=data?.progress || {level:1,xp:0,levelXp:0,total:0};
     const insights=Array.isArray(data?.insights)?data.insights:[];
     const good=insights.filter(item=>item.stance==='good').length;
@@ -789,6 +833,8 @@
       if(arrived) { if(!formDirty)preferredTradeId=null; showTradeSync('Trade added to Memories · gathering prices'); }
       state=response;
       renderUnlockHero(response);
+      const growthCard = $('brainGrowthCard');
+      if (growthCard) updateMemoryGrowth(growthCard, response);
       if(response.markets?.length) {
         try {
           const market=typeof lastRoomState!=='undefined'&&lastRoomState?lastRoomState.selected:'';
