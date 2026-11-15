@@ -125,7 +125,7 @@ export class MultiplayerStore {
         set outcome=case when c.trade_status='won' then 'matched' else 'unmatched' end,
             linked_trade_id=c.trade_id,
             linked_trade_outcome=c.trade_status,
-            xp_earned=case when c.trade_status='won' then i.xp_earned + 25 else greatest(i.xp_earned - 10, 0) end,
+            xp_earned=case when c.trade_status='won' then i.xp_earned + 25 else i.xp_earned - 20 end,
             reviewed_at=c.settled_at
         from candidates c
         where i.id=c.insight_id and c.insight_rank=1 and c.trade_rank=1
@@ -151,19 +151,19 @@ export class MultiplayerStore {
       [ownerKey],
     );
     const row = result.rows[0];
-    const xp = Number(row?.xp || 0);
+    const xp = Math.max(0, Number(row?.xp || 0));
     return { total: Number(row?.total || 0), reviewed: Number(row?.reviewed || 0), matched: Number(row?.matched || 0), unmatched: Number(row?.unmatched || 0), patterns: Number(row?.patterns || 0), xp, level: Math.floor(xp / 100) + 1, levelXp: xp % 100, linkedWins: Number(row?.linked_wins || 0) };
   }
 
   async brainLeaderboard(limit = 10): Promise<BrainLeaderboardEntry[]> {
     const result = await this.pool.query<{ display_name: string; xp: string; linked_wins: string; contributions: string }>(
-      `select p.display_name, coalesce(sum(i.xp_earned),0)::text as xp,
+      `select p.display_name, greatest(coalesce(sum(i.xp_earned),0),0)::text as xp,
         count(*) filter (where i.linked_trade_outcome='won')::text as linked_wins,
         count(i.id)::text as contributions
        from brain_private.profiles p
        left join brain_private.insights i on i.owner_key=p.owner_key
        group by p.owner_key, p.display_name
-       order by coalesce(sum(i.xp_earned),0) desc, count(i.id) desc, p.display_name asc
+       order by greatest(coalesce(sum(i.xp_earned),0),0) desc, count(i.id) desc, p.display_name asc
        limit $1`,
       [Math.max(1, Math.min(20, Math.trunc(limit)))],
     );
