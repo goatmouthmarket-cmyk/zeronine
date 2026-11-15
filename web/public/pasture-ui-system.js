@@ -302,7 +302,7 @@
   lane.setAttribute('aria-relevant', 'additions text');
   lane.setAttribute('role', 'status');
 
-  document.body.append(lane);
+  (document.body || document.documentElement).append(lane);
 
   const TYPES = {
     success: { icon: '✓', title: 'Done' },

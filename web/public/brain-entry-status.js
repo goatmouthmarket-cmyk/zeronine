@@ -2,7 +2,6 @@
 (() => {
   'use strict';
   if (window.__brainEntryStatusReady) return;
-  window.__brainEntryStatusReady = true;
   const status = document.createElement('div');
   status.className = 'brain-entry-status';
   status.setAttribute('role', 'status');
@@ -18,7 +17,8 @@
   const explanation = document.createElement('span');
   explanation.className = 'brain-entry-explanation';
   status.append(svg, explanation);
-  document.body.append(status);
+  (document.body || document.documentElement).append(status);
+  window.__brainEntryStatusReady = true;
   const states = {
     held: { tone: 'held', path: 'M4 12.5 9.5 18 20 6', text: 'Selected setup is still valid. Checking the live quote now.' },
     stale: { tone: 'waiting', path: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5l3 2', text: 'Market feed stale. No trade placed.' },

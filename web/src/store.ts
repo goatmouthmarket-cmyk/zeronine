@@ -1606,13 +1606,16 @@ function playerTradeRow(raw: Record<string, unknown>): TradeRow {
 let playerStateRequest = 0;
 let playerStateRefresh: Promise<void> | null = null;
 let playerStateRefreshQueued = false;
-export async function refreshPlayerState(refreshAfterPending = false): Promise<void> {
+export async function refreshPlayerState(refreshAfterPending = false, force = false): Promise<void> {
+  // A confirmed 401 means this browser has no player session. Keep the one
+  // bootstrap probe, but avoid repeating the same guest request on every sync.
+  if (state.playerAuthStatus === 'signed-out' && !force && !refreshAfterPending) return;
   if (playerStateRefresh) {
     if (refreshAfterPending) playerStateRefreshQueued = true;
     await playerStateRefresh;
     if (playerStateRefreshQueued) {
       playerStateRefreshQueued = false;
-      await refreshPlayerState();
+      await refreshPlayerState(false, force);
     }
     return;
   }
