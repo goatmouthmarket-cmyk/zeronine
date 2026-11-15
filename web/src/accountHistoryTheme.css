@@ -557,3 +557,133 @@
 .pasture-detail-panel.account-theme .account-overview :is(.detail-row, .account-quick-stats > div) { background: #eee9d7 !important; }
 .pasture-detail-panel.account-theme :is(p, span, small, label, .detail-label, .detail-value) { color: #3e503f !important; }
 .pasture-detail-panel.account-theme .pasture-detail-heading { background: linear-gradient(110deg, #f4e2bd, #fff6df 58%, #dceacb) !important; }
+
+
+/* Account drawer refresh: a compact wardrobe and connection station. */
+.pasture-detail-panel[aria-label="Account"] {
+  width: min(440px, calc(100vw - 20px)) !important;
+  color: #263d2d !important;
+  border: 1px solid #cdb991 !important;
+  border-radius: 16px !important;
+  background: #f7f3e5 !important;
+  box-shadow: 0 12px 34px #182c1d38 !important;
+}
+.pasture-detail-panel[aria-label="Account"] .pasture-detail-heading {
+  min-height: 66px;
+  padding: 12px 15px;
+  background: linear-gradient(110deg, #e3edcf, #fff5df 70%) !important;
+  border-bottom: 1px solid #d9c9a7 !important;
+}
+.pasture-detail-panel[aria-label="Account"] .pasture-detail-content {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 11px !important;
+  background: #f7f3e5 !important;
+}
+.pasture-detail-panel[aria-label="Account"] .ranger-wardrobe,
+.pasture-detail-panel[aria-label="Account"] .account-switcher,
+.pasture-detail-panel[aria-label="Account"] .connect-card,
+.pasture-detail-panel[aria-label="Account"] .account-status-card {
+  border: 1px solid #d9c9a7 !important;
+  border-radius: 13px !important;
+  background: #fffdf6 !important;
+  box-shadow: 0 2px 5px #5947290c !important;
+}
+.pasture-detail-panel[aria-label="Account"] .ranger-wardrobe {
+  padding: 13px !important;
+  background: linear-gradient(145deg, #fffdf6, #f5f0df) !important;
+}
+.pasture-detail-panel[aria-label="Account"] .wardrobe-heading h3,
+.pasture-detail-panel[aria-label="Account"] .account-switcher-head h3 {
+  color: #264c33 !important;
+}
+.pasture-detail-panel[aria-label="Account"] .wardrobe-preview {
+  overflow: hidden;
+  border: 1px solid #bfd0a8 !important;
+  border-radius: 12px !important;
+  background: linear-gradient(#e4f0d8 0 66%, #b5d29c 66%) !important;
+}
+.pasture-detail-panel[aria-label="Account"] .wardrobe-fields :is(select, input),
+.pasture-detail-panel[aria-label="Account"] .wardrobe-name-field input,
+.pasture-detail-panel[aria-label="Account"] .connect-input {
+  border: 1px solid #d2c3a4 !important;
+  border-radius: 9px !important;
+  background: #fffefa !important;
+  color: #263d2d !important;
+  box-shadow: none !important;
+}
+.pasture-detail-panel[aria-label="Account"] .wardrobe-reset {
+  min-height: 34px;
+  border: 1px solid #cabb99 !important;
+  border-radius: 9px !important;
+  background: #f1ead7 !important;
+  color: #40533b !important;
+  box-shadow: none !important;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-embedded {
+  display: block !important;
+  min-width: 0;
+  color: #293e2d !important;
+  background: transparent !important;
+}
+/* The full welcome illustration belongs on the connect page, not inside this drawer. */
+.pasture-detail-panel[aria-label="Account"] .connect-hero { display: none !important; }
+.pasture-detail-panel[aria-label="Account"] .connect-card {
+  display: grid;
+  gap: 11px;
+  padding: 14px !important;
+  color: #293e2d !important;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-card :is(h1, h2, h3, p, label, .connect-copy, .connect-hint, .connect-oauth-note) {
+  color: #40513e !important;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-title {
+  color: #264c33 !important;
+  font-size: 17px !important;
+  font-weight: 800 !important;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-terms {
+  padding: 10px;
+  border: 1px solid #e0d4b9;
+  border-radius: 10px;
+  background: #f8f4e8;
+  color: #4c5744;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-terms :is(p, a, span, strong) { color: #4c5744 !important; }
+.pasture-detail-panel[aria-label="Account"] .connect-terms-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-terms-consent input { accent-color: #36764a; }
+.pasture-detail-panel[aria-label="Account"] .connect-btn {
+  min-height: 42px !important;
+  border: 1px solid #36764a !important;
+  border-radius: 10px !important;
+  background: #34784a !important;
+  color: #fffdf3 !important;
+  box-shadow: 0 2px 0 #285d3b !important;
+  font-size: 12px !important;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-btn:disabled {
+  background: #aab69d !important;
+  border-color: #9da990 !important;
+  color: #fdfcf4 !important;
+  box-shadow: none !important;
+}
+.pasture-detail-panel[aria-label="Account"] .connect-divider {
+  color: #81745e !important;
+}
+.pasture-detail-panel[aria-label="Account"] :is(.account-status-identity h3, .account-switcher-head h3, .detail-value) {
+  color: #2c4932 !important;
+}
+@media (max-width: 430px) {
+  .pasture-detail-panel[aria-label="Account"] {
+    width: min(420px, calc(100vw - 16px)) !important;
+    border-radius: 14px !important;
+  }
+  .pasture-detail-panel[aria-label="Account"] .pasture-detail-content { padding: 8px !important; gap: 8px; }
+  .pasture-detail-panel[aria-label="Account"] .connect-card,
+  .pasture-detail-panel[aria-label="Account"] .ranger-wardrobe { padding: 11px !important; }
+}
