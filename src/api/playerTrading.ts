@@ -14,7 +14,8 @@ import { getSession } from '../db/store.ts';
 import { resolveStoredToken } from '../deriv/oauth.ts';
 
 type Direction = 'over' | 'under';
-type Order = { market: string; direction: Direction; barrier: number; stake: number; minEdge: number };
+type CowDisplay = { edge: number | null; confidence: number | null; shownAt: number };
+type Order = { market: string; direction: Direction; barrier: number; stake: number; minEdge: number; cowDisplay?: CowDisplay | null };
 type Preview = { accountId: string; order: Order; ask: number; payout: number; edge: number; expiresAt: number; mode: 'demo' | 'real' };
 type Event = { type: 'balance' | 'trade'; accountId: string; [key: string]: unknown };
 
@@ -70,7 +71,12 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     const minEdge = body.minEdge === undefined ? 0 : Number(body.minEdge);
     if (!direction || !registry.has(market) || !Number.isInteger(barrier) || (direction === 'over' ? barrier < 0 || barrier > 8 : barrier < 1 || barrier > 9)) throw new Error('invalid market or contract');
     if (!Number.isFinite(stake) || stake <= 0 || !Number.isFinite(minEdge) || minEdge < 0 || minEdge > 1) throw new Error('invalid stake or minimum edge');
-    return { market, direction, barrier, stake, minEdge };
+    // Client metadata is optional and never influences pricing or risk checks.
+    const raw = body.cowDisplay && typeof body.cowDisplay === 'object' ? body.cowDisplay as Record<string, unknown> : null;
+    const bounded = (value: unknown, min: number, max: number): number | null => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : null;
+    const shownAt = bounded(raw?.shownAt, Date.now() - 120_000, Date.now() + 5_000);
+    const cowDisplay = raw && shownAt !== null ? { edge: bounded(raw.edge, -1, 1), confidence: bounded(raw.confidence, 0, 1), shownAt } : null;
+    return { market, direction, barrier, stake, minEdge, cowDisplay };
   };
   const modelEdge = (order: Order, ask: number, payout: number): number => {
     const dist = registry.snapshot(order.market).dist;
@@ -87,6 +93,17 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
   const captureTradeContext = (accountId: string, contractId: string, order: Order, edge: number, client: DerivPrivateClient): void => {
     void (async () => {
       const precision = getPrecision(order.market);
+      // Persist an incomplete snapshot immediately in the background. If the
+      // process stops while waiting for Deriv or later ticks, the card can
+      // still show the captured quote estimate and the cow's displayed values.
+      const pending: Record<string, unknown> = {
+        entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [],
+        edge: Number.isFinite(edge) ? edge : null, confidence: null,
+        cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null,
+        cowShownAt: order.cowDisplay?.shownAt ?? null, complete: false,
+      };
+      const initialWrite = store.saveTradeContext(accountId, contractId, pending)
+        .catch(error => { console.warn('[brain] initial trade context unavailable:', error instanceof Error ? error.message : String(error)); });
       let provider: Awaited<ReturnType<DerivPrivateClient['getContractSnapshot']>> | null = null;
       let context: Record<string, unknown> | null = null;
       for (let attempt = 0; attempt < 20; attempt++) {
@@ -106,10 +123,14 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         const after = index >= 0 ? ticks.slice(index + 1, index + 4).map(format) : [];
         context = { entryQuote: entrySpot.toFixed(precision!), entryDigit: Number.isInteger(provider.entryDigit) ? provider.entryDigit : null,
           entryEpoch, before, after, edge: Number.isFinite(edge) ? edge : null, confidence: null,
+          cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null,
           complete: index >= 3 && after.length === 3 };
         if (context.complete) break;
       }
-      if (!context) context = { entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [], edge: Number.isFinite(edge) ? edge : null, confidence: null, complete: false };
+      if (!context) context = { entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [], edge: Number.isFinite(edge) ? edge : null, confidence: null, cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, complete: false };
+      // Serialize writes so a slow initial save cannot overwrite the completed
+      // sequence. The runner is detached from trade submission throughout.
+      await initialWrite;
       await store.saveTradeContext(accountId, contractId, context);
     })().catch(error => { console.warn('[brain] trade context unavailable:', error instanceof Error ? error.message : String(error)); });
   };

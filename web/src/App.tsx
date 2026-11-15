@@ -887,8 +887,9 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
     onConfirmed?: (tradeId: string | number) => void,
+    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number } | null,
   ): Promise<boolean> => {
-    if (usePlayerTrading) return previewManualNow(direction, barrier, marketSymbol ?? '', stakeOverride, onFailure, rangerAutomation, minEdge, onConfirmed);
+    if (usePlayerTrading) return previewManualNow(direction, barrier, marketSymbol ?? '', stakeOverride, onFailure, rangerAutomation, minEdge, onConfirmed, cowDisplay);
     if (guest || !marketSymbol) {
       onFailure?.('Connect Deriv and select a live market before placing a bet.');
       return false;
@@ -947,6 +948,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
     onConfirmed?: (tradeId: string | number) => void,
+    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number } | null,
   ): Promise<boolean> => {
     setManualBusy(true);
     setManualError(false);
@@ -957,7 +959,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const exactCandidate = exactCandidateForSetup(heroCandidates, marketSymbol, direction, barrier);
       const estWin = exactCandidate?.estWin ?? (selectedMarket ? confidenceForSetup(selectedMarket, direction, barrier) : 0);
       const preview = usePlayerTrading
-        ? await previewPlayerTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge })
+        ? await previewPlayerTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge, cowDisplay })
         : await previewManualTrade({ market: marketSymbol, direction, barrier, stake: stakeOverride, estWin, entryMode: 'instant', expectedAccountId: s.session?.loginid, rangerAutomation, minEdge });
       if (sessionRef.current?.loginid !== s.session?.loginid || sessionRef.current?.mode !== s.session?.mode) throw new Error('Account changed while requesting the quote. No trade was submitted.');
       // Pasture targets are one operator action: the fresh quote is confirmed
@@ -994,6 +996,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
     onConfirmed?: (tradeId: string | number) => void,
+    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number } | null,
   ): Promise<boolean> => {
     setManualDirection(direction);
     direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier);
@@ -1003,8 +1006,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       onFailure?.('Connect Deriv before placing a bet.');
       return false;
     }
-    if (s.session?.mode === 'real') return previewManualNow(direction, barrier, marketSymbol, stakeOverride, onFailure, rangerAutomation, minEdge, onConfirmed);
-    return executeManualNow(direction, barrier, marketSymbol, stakeOverride, 'instant', false, onFailure, rangerAutomation, minEdge, onConfirmed);
+    if (s.session?.mode === 'real') return previewManualNow(direction, barrier, marketSymbol, stakeOverride, onFailure, rangerAutomation, minEdge, onConfirmed, cowDisplay);
+    return executeManualNow(direction, barrier, marketSymbol, stakeOverride, 'instant', false, onFailure, rangerAutomation, minEdge, onConfirmed, cowDisplay);
   };
 
   const placeManual = async (
@@ -1573,7 +1576,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-trade-result', ok: false, message: 'Connect Deriv before placing a trade.' }, window.location.origin);
         return;
       }
-      const { direction, barrier, stake, market: marketSymbol, rangerAutomation, minEdge, replayAttemptId } = message.payload ?? {};
+      const { direction, barrier, stake, market: marketSymbol, rangerAutomation, minEdge, replayAttemptId, cowDisplay } = message.payload ?? {};
       if ((direction !== 'over' && direction !== 'under') || typeof barrier !== 'number' || !Number.isInteger(barrier) || barrier < 0 || barrier > 9 || typeof stake !== 'number' || !Number.isFinite(stake) || stake <= 0 || typeof marketSymbol !== 'string' || !s.markets.some((item) => item.symbol === marketSymbol)) {
         roomFrameRef.current?.contentWindow?.postMessage({ type: 'zeronine:room-trade-result', ok: false, message: 'That game target is not valid.' }, window.location.origin);
         return;
@@ -1591,7 +1594,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
           replayAccountId, confirmedTradeId: tradeId,
         }, window.location.origin);
       };
-      void playArenaTarget(direction, barrier, marketSymbol, stake, (message) => { failureMessage = message; }, rangerAutomation === true, minEdge ?? null, onConfirmed).then((ok) => {
+      void playArenaTarget(direction, barrier, marketSymbol, stake, (message) => { failureMessage = message; }, rangerAutomation === true, minEdge ?? null, onConfirmed, cowDisplay).then((ok) => {
         roomFrameRef.current?.contentWindow?.postMessage({
           type: 'zeronine:room-trade-result',
           ok,

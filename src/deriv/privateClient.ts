@@ -303,11 +303,26 @@ export class DerivPrivateClient {
     }
     const exitTick = c.exit_tick;
     const entryTick = c.entry_tick;
-    const exitSpot = Number(exitTick?.quote ?? c.exit_spot ?? NaN);
-    const entrySpot = Number(entryTick?.quote ?? c.entry_spot ?? NaN);
+    // Deriv legacy contracts expose numeric entry_tick plus entry_tick_time;
+    // newer contracts expose entry_spot plus entry_spot_time. Some feeds wrap
+    // ticks as { quote, epoch }. Keep a missing timestamp unavailable.
+    const tickQuote = (tick: unknown, spot: unknown): number => {
+      const value = typeof tick === 'object' && tick !== null
+        ? (tick as { quote?: unknown }).quote ?? spot : tick ?? spot;
+      return value == null || value === '' ? NaN : Number(value);
+    };
+    const tickEpoch = (tick: unknown, legacy: unknown, spot: unknown): number => {
+      const nested = typeof tick === 'object' && tick !== null ? (tick as { epoch?: unknown }).epoch : undefined;
+      const value = nested ?? legacy ?? spot;
+      return value == null || value === '' ? NaN : Number(value);
+    };
+    const exitSpot = tickQuote(exitTick, c.exit_spot);
+    const entrySpot = tickQuote(entryTick, c.entry_spot);
+    const entryEpoch = tickEpoch(entryTick, c.entry_tick_time, c.entry_spot_time);
+    const exitEpoch = tickEpoch(exitTick, c.exit_tick_time, c.exit_spot_time);
     const currentSpot = Number(c.current_spot ?? c.spot ?? NaN);
     const currentSpotTime = Number(c.current_spot_time ?? NaN);
-    const precision = getPrecision(c.underlying_symbol);
+    const precision = getPrecision(c.underlying_symbol ?? c.underlying);
     return {
       contractId: String(c.contract_id),
       status,
@@ -324,8 +339,8 @@ export class DerivPrivateClient {
       entryDigit: Number.isFinite(entrySpot) ? lastDigitOf(entrySpot, precision) : undefined,
       dateStart: Number.isFinite(Number(c.date_start)) ? Number(c.date_start) : undefined,
       dateExpiry: Number.isFinite(Number(c.date_expiry)) ? Number(c.date_expiry) : undefined,
-      entryTickTime: Number.isFinite(Number(entryTick?.epoch)) ? Number(entryTick.epoch) : undefined,
-      exitTickTime: Number.isFinite(Number(exitTick?.epoch)) ? Number(exitTick.epoch) : undefined,
+      entryTickTime: Number.isFinite(entryEpoch) && entryEpoch > 0 ? entryEpoch : undefined,
+      exitTickTime: Number.isFinite(exitEpoch) && exitEpoch > 0 ? exitEpoch : undefined,
     };
   }
 
