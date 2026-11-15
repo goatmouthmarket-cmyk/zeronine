@@ -926,6 +926,7 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
       delete edgeFill.dataset.ahead;
       $('brainEdgeText').textContent = 'No settled practice results to compare yet.';
     }
+    const timingNote = $('brainWindowNote');
     if (best && latest.currentHour && best.key === latest.currentHour.key && latest.currentHour.verdict === 'favorable') {
       timingNote.textContent = 'TIME TO WATCH · NOW';
       timingNote.dataset.state = 'now';
