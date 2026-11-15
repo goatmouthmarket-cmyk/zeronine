@@ -25,10 +25,11 @@ create table if not exists brain_private.insights (
   outcome text not null default 'pending' check (outcome in ('pending', 'matched', 'unmatched')),
   linked_trade_id uuid references multiplayer_private.contracts(id) on delete set null,
   linked_trade_outcome text check (linked_trade_outcome is null or linked_trade_outcome in ('won', 'lost')),
-  xp_earned integer not null default 10 check (xp_earned >= 0),
+  xp_earned integer not null default 10,
   created_at timestamptz not null default now(),
   reviewed_at timestamptz
 );
+alter table brain_private.insights drop constraint if exists insights_xp_earned_check;
 create index if not exists brain_insights_owner_recent on brain_private.insights(owner_key, created_at desc);
 create index if not exists brain_insights_owner_pattern on brain_private.insights(owner_key, market_symbol, category, expected_direction, barrier, horizon);
 create unique index if not exists brain_insights_unique_linked_trade on brain_private.insights(linked_trade_id) where linked_trade_id is not null;
