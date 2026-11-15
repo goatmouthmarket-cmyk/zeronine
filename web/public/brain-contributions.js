@@ -267,8 +267,7 @@
     const fill=node('i',''); fill.style.width=progress.levelXp+'%'; bar.append(fill); right.append(bar);
     right.append(node('small','brain-task-next-level',progress.levelXp+' / 100 XP to Level '+(progress.level+1)));
     const stats=node('div','brain-task-stats');
-    stats.append(node('span','','<b>'+progress.total+'</b> lessons'));
-    stats.lastChild.innerHTML=''; const total=node('span',''); const totalStrong=node('b','',String(progress.total)); total.append(totalStrong,document.createTextNode(' lessons')); stats.replaceChildren(total);
+    const total=node('span',''); const totalStrong=node('b','',String(progress.total)); total.append(totalStrong,document.createTextNode(' lessons')); stats.replaceChildren(total);
     const reviewed=node('span',''); reviewed.append(node('b','',String(progress.reviewed)),document.createTextNode(' checked trades')); stats.append(reviewed);
     const patterns=node('span',''); patterns.append(node('b','',String(progress.patterns)),document.createTextNode(' repeated patterns')); stats.append(patterns);
     card.append(left,right,stats);
@@ -370,7 +369,7 @@
     loading=true;
     try {
       const response=await request('/api/ranger-brain/contributions');
-      state=response; note=note==='Lesson saved in your Brain · +10 XP'?'':note;
+      state=response;
       if(response.markets?.length) {
         try {
           const market=typeof lastRoomState!=='undefined'&&lastRoomState?lastRoomState.selected:'';
