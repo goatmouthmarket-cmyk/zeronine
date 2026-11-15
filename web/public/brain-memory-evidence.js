@@ -28,12 +28,12 @@
   const localizeFinding = (value, timeZone) => {
     const format = (hour, minute) => new Intl.DateTimeFormat(undefined, { timeZone: timeZone || localZone(), hour: 'numeric', minute: '2-digit' }).format(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate(), hour, minute)));
     return String(value || '')
-      .replace(/\\b(\\d{1,2}):(\\d{2})\\s*(AM|PM)\\s+UTC\\b/gi, (_match, hourText, minuteText, meridiem) => {
+      .replace(/\b(\d{1,2}):(\d{2})\s*(AM|PM)\s+UTC\b/gi, (_match, hourText, minuteText, meridiem) => {
         let hour = Number(hourText) % 12;
         if (String(meridiem).toUpperCase() === 'PM') hour += 12;
         return format(hour, Number(minuteText)) + ' your local time';
       })
-      .replace(/\\b(\\d{1,2}):00 UTC\\b/g, (_match, hourText) => format(Number(hourText) || 0, 0) + ' your local time');
+      .replace(/\b(\d{1,2}):00 UTC\b/g, (_match, hourText) => format(Number(hourText) || 0, 0) + ' your local time');
   };
 
   function ensure() {
