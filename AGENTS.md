@@ -22,6 +22,12 @@
 - Gold dashboard execution uses Deriv API demo multiplier contracts for the configured Gold symbol (`GOLD_DERIV_SYMBOL`, default `frxXAUUSD`). It must remain demo-only, owner-gated, proposal/buy/sell based, and protected by the shared single-open-account-contract guard.
 - MT5 Gold and cTrader CFD trading are not executable through the Gold dashboard path. Keep cTrader OAuth code as an optional future connector only; do not make the visible Gold flow depend on cTrader app approval.
 
+## Game Copy And Menus
+
+- Keep menus compact, visual, and action-focused. Use short headings, labels, and messages that say what the player can do or what happened.
+- Write for people who are new to trading: prefer everyday words, explain essential trading terms briefly in context, and avoid unexplained jargon, acronyms, and dense statistics. Offer extra detail only when the player asks for it.
+- Keep risk, account type, and trade outcome wording accurate and clear; never imply certainty or hide essential information to shorten copy.
+
 ## Validation
 
 - Tests use Node's built-in `node:test` in `tests/*.test.ts`; run `npm test` for server or domain changes.
