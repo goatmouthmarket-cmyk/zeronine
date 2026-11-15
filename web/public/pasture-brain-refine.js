@@ -105,7 +105,7 @@
 
   function reportMarket(lesson) {
     const text = String(lesson?.finding || '');
-    return text.match(/for ([^,]+), around /i)?.[1] || report?.market || 'this market';
+    return text.match(/for ([^,]+), around /i)?.[1] || 'this market';
   }
 
   let learnedSig = '';
