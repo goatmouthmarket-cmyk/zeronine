@@ -15,7 +15,7 @@ ledger.
 
 ## Teach the Brain tasks
 
-The Memories tab is now a task board for the connected Deriv account. A saved
+The Tasks tab is now a task board for the connected Deriv account. A saved
 lesson records the market, a short human observation, an optional Over/Under
 digit idea, the time window, and confidence. Account identity is resolved from
 the verified server session and stored as a keyed hash; the browser never sends
@@ -31,7 +31,7 @@ lessons and a pseudonymous top-ten leaderboard.
 Teaching a lesson awards 10 game XP. The server checks the verified account's
 Supabase contract records for a later settled contract on the same market,
 Over/Under direction, and barrier within the chosen time window. A matching
-win adds 25 XP; a matching loss removes the 10 XP teaching award. One trade can
+win adds 25 XP; a matching loss removes the 10 XP teaching award and deducts 10 more XP. Total XP is floored at zero. One trade can
 link to only one lesson. No XP is awarded for placing a trade, and XP never
 changes a stake or balance.
 
