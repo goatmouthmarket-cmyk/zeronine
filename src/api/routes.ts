@@ -661,8 +661,13 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   }));
 
   app.get('/api/game/progress', async (req, reply) => {
-    const playerId = await gamePlayerId(req, reply);
-    return { progress: getGameProgress(playerId) };
+    try {
+      const playerId = await gamePlayerId(req, reply);
+      return { progress: getGameProgress(playerId) };
+    } catch (error) {
+      console.error('[game-progress] Unable to load progress', error);
+      return reply.code(503).send({ error: 'Game progress temporarily unavailable. Retrying.' });
+    }
   });
 
   app.post('/api/game/progress', async (req, reply) => {
@@ -671,8 +676,13 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       reply.code(400);
       return { error: 'invalid game progress event' };
     }
-    const playerId = await gamePlayerId(req, reply);
-    return { progress: recordGameCowKill(playerId, body.eventId, body.duringBreak) };
+    try {
+      const playerId = await gamePlayerId(req, reply);
+      return { progress: recordGameCowKill(playerId, body.eventId, body.duringBreak) };
+    } catch (error) {
+      console.error('[game-progress] Unable to save progress', error);
+      return reply.code(503).send({ error: 'Game progress temporarily unavailable. Retrying.' });
+    }
   });
 
   // Ranger Auto run reports. These are the player's own finished runs, used by
@@ -731,8 +741,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const runId = typeof body.runId === 'string' ? body.runId : '';
     if (!/^[A-Za-z0-9:_-]{8,80}$/.test(runId)) { reply.code(400); return { error: 'invalid run id' }; }
-    const startedAt = numberOrNull(body.startedAt);
-    const endedAt = numberOrNull(body.endedAt);
+    const startedAt = numberOrNull(body.startedAt, 1e15);
+    const endedAt = numberOrNull(body.endedAt, 1e15);
     if (!startedAt || !endedAt || endedAt < startedAt) { reply.code(400); return { error: 'invalid run timestamps' }; }
     const accountMode = body.accountMode === 'demo' || body.accountMode === 'real' ? body.accountMode : 'unknown';
     const tradeRows = Array.isArray(body.tradeRows) ? body.tradeRows : Array.isArray(body.trades) ? body.trades : [];
@@ -744,14 +754,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         payout: numberOrNull(trade.payout),
         profit: numberOrNull(trade.profit),
         status: typeof trade.status === 'string' ? trade.status.slice(0, 24) : 'unknown',
-        purchasedAt: numberOrNull(trade.purchasedAt),
-        settledAt: numberOrNull(trade.settledAt),
+        purchasedAt: numberOrNull(trade.purchasedAt, 1e15),
+        settledAt: numberOrNull(trade.settledAt, 1e15),
       };
     }).filter((trade) => trade.tradeId.length > 0);
     const events = Array.isArray(body.events) ? body.events.slice(0, 200).map((item) => {
       const event = item && typeof item === 'object' ? item as Record<string, unknown> : {};
       return {
-        ts: numberOrNull(event.ts) ?? endedAt,
+        ts: numberOrNull(event.ts, 1e15) ?? endedAt,
         type: String(event.type ?? 'event').slice(0, 40),
         detail: typeof event.detail === 'string' ? event.detail.slice(0, 120) : undefined,
       };

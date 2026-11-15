@@ -450,7 +450,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         if (armedUntil <= Date.now()) return fail(reply, 403, 'arm real-money automation for 10 minutes before starting');
       }
       const current = rangerRuns.get(user.accountId);
-      if (current?.running) return fail(reply, 409, 'Ranger Auto is already running', { state: rangerRunState(current, user.accountId) });
+      // Repeated start requests should restore the existing run in the UI, not report a failure.
+      if (current?.running) return { ok: true, state: rangerRunState(current, user.accountId) };
       const active = await store.activeContract(user.accountId);
       const client = await clients.connect(user.accountId, user.token);
       if (active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing') || (await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'account has an open or uncertain contract');
