@@ -4,13 +4,14 @@ import { decryptToken, encryptToken } from '../db/crypto.ts';
 import { nextRecovery } from '../strategy/risk.ts';
 
 export type BrainInsightCategory = 'market_behavior' | 'setup' | 'entry_timing' | 'risk';
-export type BrainExpectedDirection = 'up' | 'down' | 'sideways' | 'unclear';
-export type BrainInsightOutcome = 'pending' | 'matched' | 'unmatched' | 'unclear';
-export type BrainInsightInput = { marketSymbol: string; marketName: string; category: BrainInsightCategory; observation: string; expectedDirection: BrainExpectedDirection; horizon: 'next_5' | 'next_20' | 'next_session'; confidence: number };
-export type BrainInsight = BrainInsightInput & { id: string; outcome: BrainInsightOutcome; outcomeNote: string | null; createdAt: number; reviewedAt: number | null };
-export type BrainInsightProgress = { total: number; reviewed: number; matched: number; unmatched: number; patterns: number };
-type BrainInsightRow = { id: string; market_symbol: string; market_name: string; category: BrainInsightCategory; observation: string; expected_direction: BrainExpectedDirection; horizon: BrainInsightInput['horizon']; confidence: number; outcome: BrainInsightOutcome; outcome_note: string | null; created_at: number | string; reviewed_at: number | string | null };
-const brainInsightFromRow = (row: BrainInsightRow): BrainInsight => ({ id: row.id, marketSymbol: row.market_symbol, marketName: row.market_name, category: row.category, observation: row.observation, expectedDirection: row.expected_direction, horizon: row.horizon, confidence: Number(row.confidence), outcome: row.outcome, outcomeNote: row.outcome_note, createdAt: Number(row.created_at), reviewedAt: row.reviewed_at == null ? null : Number(row.reviewed_at) });
+export type BrainExpectedDirection = 'over' | 'under' | 'none';
+export type BrainInsightOutcome = 'pending' | 'matched' | 'unmatched';
+export type BrainInsightInput = { marketSymbol: string; marketName: string; category: BrainInsightCategory; observation: string; expectedDirection: BrainExpectedDirection; barrier: number | null; horizon: 'next_5' | 'next_20' | 'next_session'; confidence: number };
+export type BrainInsight = BrainInsightInput & { id: string; outcome: BrainInsightOutcome; linkedTradeId: string | null; linkedTradeOutcome: 'won' | 'lost' | null; xpEarned: number; createdAt: number; reviewedAt: number | null };
+export type BrainInsightProgress = { total: number; reviewed: number; matched: number; unmatched: number; patterns: number; xp: number; level: number; levelXp: number; linkedWins: number };
+export type BrainLeaderboardEntry = { displayName: string; xp: number; level: number; linkedWins: number; contributions: number };
+type BrainInsightRow = { id: string; market_symbol: string; market_name: string; category: BrainInsightCategory; observation: string; expected_direction: BrainExpectedDirection; barrier: number | null; horizon: BrainInsightInput['horizon']; confidence: number; outcome: BrainInsightOutcome; linked_trade_id: string | null; linked_trade_outcome: 'won' | 'lost' | null; xp_earned: number; created_at: number | string; reviewed_at: number | string | null };
+const brainInsightFromRow = (row: BrainInsightRow): BrainInsight => ({ id: row.id, marketSymbol: row.market_symbol, marketName: row.market_name, category: row.category, observation: row.observation, expectedDirection: row.expected_direction, barrier: row.barrier == null ? null : Number(row.barrier), horizon: row.horizon, confidence: Number(row.confidence), outcome: row.outcome, linkedTradeId: row.linked_trade_id, linkedTradeOutcome: row.linked_trade_outcome, xpEarned: Number(row.xp_earned), createdAt: Number(row.created_at), reviewedAt: row.reviewed_at == null ? null : Number(row.reviewed_at) });
 
 export type AccountRisk = { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number };
 
@@ -71,14 +72,14 @@ export class MultiplayerStore {
         [ownerKey],
       );
       if (Number(rate.rows[0]?.count || 0) >= 20) return null;
+      const alias = `Ranger-${ownerKey.slice(0, 6).toUpperCase()}`;
+      await client.query('insert into brain_private.profiles(owner_key, display_name) values ($1,$2) on conflict (owner_key) do nothing', [ownerKey, alias]);
       const result = await client.query<BrainInsightRow>(
         `insert into brain_private.insights
-          (owner_key, market_symbol, market_name, category, observation, expected_direction, horizon, confidence)
-         values ($1,$2,$3,$4,$5,$6,$7,$8)
-         returning id, market_symbol, market_name, category, observation, expected_direction, horizon, confidence, outcome, outcome_note,
-           (extract(epoch from created_at) * 1000)::bigint as created_at,
-           (extract(epoch from reviewed_at) * 1000)::bigint as reviewed_at`,
-        [ownerKey, input.marketSymbol, input.marketName, input.category, input.observation, input.expectedDirection, input.horizon, input.confidence],
+          (owner_key, market_symbol, market_name, category, observation, expected_direction, barrier, horizon, confidence, xp_earned)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,10)
+         returning id, market_symbol, market_name, category, observation, expected_direction, barrier, horizon, confidence, outcome, linked_trade_id, linked_trade_outcome, xp_earned, (extract(epoch from created_at) * 1000)::bigint as created_at, (extract(epoch from reviewed_at) * 1000)::bigint as reviewed_at`,
+        [ownerKey, input.marketSymbol, input.marketName, input.category, input.observation, input.expectedDirection, input.barrier, input.horizon, input.confidence],
       );
       return brainInsightFromRow(result.rows[0]!);
     });
@@ -86,7 +87,7 @@ export class MultiplayerStore {
 
   async listBrainInsights(ownerKey: string): Promise<BrainInsight[]> {
     const result = await this.pool.query<BrainInsightRow>(
-      `select id, market_symbol, market_name, category, observation, expected_direction, horizon, confidence, outcome, outcome_note,
+      `select id, market_symbol, market_name, category, observation, expected_direction, barrier, horizon, confidence, outcome, linked_trade_id, linked_trade_outcome, xp_earned,
         (extract(epoch from created_at) * 1000)::bigint as created_at,
         (extract(epoch from reviewed_at) * 1000)::bigint as reviewed_at
        from brain_private.insights where owner_key=$1 order by created_at desc limit 60`,
@@ -95,33 +96,78 @@ export class MultiplayerStore {
     return result.rows.map(brainInsightFromRow);
   }
 
-  async reviewBrainInsight(ownerKey: string, id: string, outcome: BrainInsightOutcome, note: string): Promise<BrainInsight | null> {
-    const result = await this.pool.query<BrainInsightRow>(
-      `update brain_private.insights set outcome=$3, outcome_note=$4, reviewed_at=now()
-       where owner_key=$1 and id=$2::uuid and outcome='pending'
-       returning id, market_symbol, market_name, category, observation, expected_direction, horizon, confidence, outcome, outcome_note,
-         (extract(epoch from created_at) * 1000)::bigint as created_at,
-         (extract(epoch from reviewed_at) * 1000)::bigint as reviewed_at`,
-      [ownerKey, id, outcome, note || null],
-    );
-    return result.rows[0] ? brainInsightFromRow(result.rows[0]) : null;
+  /** Link only a later, settled trade belonging to this verified Deriv account. */
+  async syncBrainInsightOutcomes(ownerKey: string, accountId: string): Promise<void> {
+    await this.withTransaction(async client => {
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [ownerKey]);
+      await client.query(
+        `with candidates as (
+          select i.id as insight_id, c.id as trade_id, c.status as trade_status, c.settled_at,
+            row_number() over (partition by i.id order by c.created_at asc, c.id) as insight_rank,
+            row_number() over (partition by c.id order by i.created_at desc, i.id) as trade_rank
+          from brain_private.insights i
+          join multiplayer_private.contracts c
+            on c.account_id=$2
+           and c.market=i.market_symbol
+           and c.direction=i.expected_direction
+           and c.barrier=i.barrier
+           and c.created_at > i.created_at
+           and c.created_at <= i.created_at + case i.horizon
+             when 'next_5' then interval '5 minutes'
+             when 'next_20' then interval '20 minutes'
+             else interval '12 hours' end
+           and c.status in ('won','lost')
+           and c.settled_at is not null
+          where i.owner_key=$1 and i.outcome='pending' and i.expected_direction in ('over','under')
+            and not exists (select 1 from brain_private.insights linked where linked.linked_trade_id=c.id)
+        )
+        update brain_private.insights i
+        set outcome=case when c.trade_status='won' then 'matched' else 'unmatched' end,
+            linked_trade_id=c.trade_id,
+            linked_trade_outcome=c.trade_status,
+            xp_earned=case when c.trade_status='won' then i.xp_earned + 25 else greatest(i.xp_earned - 10, 0) end,
+            reviewed_at=c.settled_at
+        from candidates c
+        where i.id=c.insight_id and c.insight_rank=1 and c.trade_rank=1
+          and not exists (select 1 from brain_private.insights linked where linked.linked_trade_id=c.trade_id)`,
+        [ownerKey, accountId],
+      );
+    });
   }
 
   async brainInsightProgress(ownerKey: string): Promise<BrainInsightProgress> {
-    const result = await this.pool.query<{ total: string; reviewed: string; matched: string; unmatched: string; patterns: string }>(
+    const result = await this.pool.query<{ total: string; reviewed: string; matched: string; unmatched: string; patterns: string; xp: string; linked_wins: string }>(
       `select
         (select count(*) from brain_private.insights where owner_key=$1)::text as total,
         (select count(*) from brain_private.insights where owner_key=$1 and outcome <> 'pending')::text as reviewed,
         (select count(*) from brain_private.insights where owner_key=$1 and outcome = 'matched')::text as matched,
         (select count(*) from brain_private.insights where owner_key=$1 and outcome = 'unmatched')::text as unmatched,
         (select count(*) from (
-          select market_symbol, category from brain_private.insights where owner_key=$1
-          group by market_symbol, category having count(*) >= 2
-        ) repeated)::text as patterns`,
+          select market_symbol, category, expected_direction, barrier from brain_private.insights where owner_key=$1
+          group by market_symbol, category, expected_direction, barrier having count(*) >= 2
+        ) repeated)::text as patterns,
+        (select coalesce(sum(xp_earned),0) from brain_private.insights where owner_key=$1)::text as xp,
+        (select count(*) from brain_private.insights where owner_key=$1 and linked_trade_outcome='won')::text as linked_wins`,
       [ownerKey],
     );
     const row = result.rows[0];
-    return { total: Number(row?.total || 0), reviewed: Number(row?.reviewed || 0), matched: Number(row?.matched || 0), unmatched: Number(row?.unmatched || 0), patterns: Number(row?.patterns || 0) };
+    const xp = Number(row?.xp || 0);
+    return { total: Number(row?.total || 0), reviewed: Number(row?.reviewed || 0), matched: Number(row?.matched || 0), unmatched: Number(row?.unmatched || 0), patterns: Number(row?.patterns || 0), xp, level: Math.floor(xp / 100) + 1, levelXp: xp % 100, linkedWins: Number(row?.linked_wins || 0) };
+  }
+
+  async brainLeaderboard(limit = 10): Promise<BrainLeaderboardEntry[]> {
+    const result = await this.pool.query<{ display_name: string; xp: string; linked_wins: string; contributions: string }>(
+      `select p.display_name, coalesce(sum(i.xp_earned),0)::text as xp,
+        count(*) filter (where i.linked_trade_outcome='won')::text as linked_wins,
+        count(i.id)::text as contributions
+       from brain_private.profiles p
+       left join brain_private.insights i on i.owner_key=p.owner_key
+       group by p.owner_key, p.display_name
+       order by coalesce(sum(i.xp_earned),0) desc, count(i.id) desc, p.display_name asc
+       limit $1`,
+      [Math.max(1, Math.min(20, Math.trunc(limit)))],
+    );
+    return result.rows.map(row => { const xp = Number(row.xp); return { displayName: row.display_name, xp, level: Math.floor(xp / 100) + 1, linkedWins: Number(row.linked_wins), contributions: Number(row.contributions) }; });
   }
 
   async observeBrainEvidence(report: { marketSymbol: string | null; market: string | null; lessons: Array<{ id: string; topic: string; finding: string; validity: 'provisional' | 'validated'; outcomes: number }>; updatedAt: number }, observedAt = Date.now()): Promise<Array<{ market: string; lessonId: string; topic: string; finding: string; validity: 'provisional' | 'validated'; outcomes: number; observedAt: number; evidenceAt: number }>> {
