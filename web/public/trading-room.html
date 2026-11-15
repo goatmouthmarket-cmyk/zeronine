@@ -1181,7 +1181,7 @@ function brainTimeQuery() {
     const anchorY = glyphRect.height ? glyphRect.top + glyphRect.height / 2 : (head?.y ?? point.y - 45);
     const size = panel.getBoundingClientRect();
     if (!size.width || !size.height) return;
-    const margin = 8, gap = 20, topInset = 52;
+    const margin = 8, gap = 8, topInset = 52;
     const clamp = (value, low, high) => Math.max(low, Math.min(Math.max(low, high), value));
     const api = window.__zeronineBrainBridge;
     const pick = api?.activeSnipe?.();
@@ -1204,7 +1204,13 @@ function brainTimeQuery() {
       const faceOverlap = overlap(point.x, point.y - 25, 36, 55);
       const cowOverlap = cow ? overlap(cow.sx, cow.sy, radius, radius) : 0;
       const displacement = Math.hypot(left - candidate.x, top - candidate.y);
-      const score = faceOverlap * 6 + cowOverlap * 2 + displacement;
+      // Prefer the card edge nearest the Brain icon, while keeping the ranger
+      // and selected cow visible. Viewport clamping alone can leave a large
+      // empty gap, especially when the panel is wider than the available side.
+      const nearestX = clamp(anchorX, left, left + size.width);
+      const nearestY = clamp(anchorY, top, top + size.height);
+      const anchorDistance = Math.hypot(anchorX - nearestX, anchorY - nearestY);
+      const score = faceOverlap * 6 + cowOverlap * 2 + anchorDistance * 100 + displacement;
       if (score < bestScore) { bestScore = score; best = { left, top }; }
     }
     if (!best) return;

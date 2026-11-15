@@ -378,6 +378,26 @@ export class MultiplayerStore {
     return row ? { ...row, barrier: Number(row.barrier) } : null;
   }
 
+  async saveTradeContext(accountId: string, providerContractId: string, context: Record<string, unknown>): Promise<void> {
+    await this.pool.query(`insert into multiplayer_private.trade_context (contract_id, account_id, context)
+      select id, account_id, $3::jsonb from multiplayer_private.contracts
+      where account_id=$1 and provider_contract_id=$2
+      on conflict (contract_id) do update set context=excluded.context, updated_at=now()`,
+      [accountId, providerContractId, JSON.stringify(context)]);
+  }
+
+  async listTradeContexts(accountId: string): Promise<Map<string, unknown>> {
+    try {
+      const result = await this.pool.query<{ contract_id: string; context: unknown }>(
+        'select contract_id, context from multiplayer_private.trade_context where account_id=$1 order by updated_at desc limit 100', [accountId]);
+      return new Map(result.rows.map(row => [String(row.contract_id), row.context]));
+    } catch (error) {
+      // Migration can be applied independently; old deployments remain readable.
+      if ((error as { code?: string }).code === '42P01') return new Map();
+      throw error;
+    }
+  }
+
   async listTrades(accountId: string, limit = 30): Promise<Array<Record<string, unknown>>> {
     const result = await this.pool.query(
       `select id, account_id, market, direction, barrier, stake, ask_price, payout, profit,

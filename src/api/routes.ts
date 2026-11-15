@@ -2040,8 +2040,12 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
           accountMode: trade.mode ?? null, askPrice: trade.ask_price == null ? null : Number(trade.ask_price),
           payout: trade.payout == null ? null : Number(trade.payout), providerContractId: trade.provider_contract_id ?? null,
           profit: trade.profit == null ? null : Number(trade.profit), status: trade.status,
+          askPrice: trade.ask_price == null ? null : Number(trade.ask_price), payout: trade.payout == null ? null : Number(trade.payout),
+          accountMode: trade.mode, providerContractId: trade.provider_contract_id == null ? null : String(trade.provider_contract_id),
           createdAt: trade.created_at, settledAt: trade.settled_at,
         }));
+      const contexts = await deps.multiplayerStore.listTradeContexts(accountId);
+      for (const trade of trades) Object.assign(trade, { context: contexts.get(trade.id) ?? null });
       const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
       const latestIdea = insights.find(insight => insight.expectedDirection !== 'none') || null;
       const practiceEvidence = latestIdea ? brainDirectionalPractice(latestIdea) : null;

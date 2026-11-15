@@ -7,7 +7,7 @@ import { MultiplayerStore } from '../execution/multiplayerStore.ts';
 import type { MarketRegistry } from '../core/marketState.ts';
 import { buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { getSettings } from '../db/store.ts';
-import { estimateWinRate, winDigits } from '../core/digitMath.ts';
+import { estimateWinRate, winDigits, getPrecision } from '../core/digitMath.ts';
 import { pickSignal, type SignalCandidate } from '../strategy/signal.ts';
 import { isOwner } from './access.ts';
 import { getSession } from '../db/store.ts';
@@ -82,6 +82,37 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     direction: order.direction, barrier: order.barrier, amount: order.stake,
     currency, duration: 1, durationUnit: 't', symbol: order.market,
   });
+  // Collect evidence after purchase without delaying or affecting execution.
+  // Match both Deriv's entry epoch and entry quote; ambiguous matches stay unavailable.
+  const captureTradeContext = (accountId: string, contractId: string, order: Order, edge: number, client: DerivPrivateClient): void => {
+    void (async () => {
+      const precision = getPrecision(order.market);
+      let provider: Awaited<ReturnType<DerivPrivateClient['getContractSnapshot']>> | null = null;
+      let context: Record<string, unknown> | null = null;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
+        try { provider = provider ?? await client.getContractSnapshot(contractId); } catch { continue; }
+        if (!Number.isInteger(precision) || precision! < 0 || precision! > 12 ||
+            !Number.isFinite(provider.entrySpot) || !Number.isFinite(provider.entryTickTime)) {
+          if (!Number.isFinite(provider.entrySpot) || !Number.isFinite(provider.entryTickTime)) provider = null;
+          continue;
+        }
+        const entryEpoch = Number(provider.entryTickTime), entrySpot = Number(provider.entrySpot);
+        const ticks = registry.snapshot(order.market).recentTicks;
+        const matches = ticks.flatMap((tick, index) => tick.epoch === entryEpoch && tick.quote.toFixed(precision!) === entrySpot.toFixed(precision!) ? [index] : []);
+        const format = (tick: { quote: number; digit: number; epoch: number }) => ({ quote: tick.quote.toFixed(precision!), digit: tick.digit, epoch: tick.epoch });
+        const index = matches.length === 1 ? matches[0] : -1;
+        const before = index >= 0 ? ticks.slice(Math.max(0, index - 3), index).map(format) : [];
+        const after = index >= 0 ? ticks.slice(index + 1, index + 4).map(format) : [];
+        context = { entryQuote: entrySpot.toFixed(precision!), entryDigit: Number.isInteger(provider.entryDigit) ? provider.entryDigit : null,
+          entryEpoch, before, after, edge: Number.isFinite(edge) ? edge : null, confidence: null,
+          complete: index >= 3 && after.length === 3 };
+        if (context.complete) break;
+      }
+      if (!context) context = { entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [], edge: Number.isFinite(edge) ? edge : null, confidence: null, complete: false };
+      await store.saveTradeContext(accountId, contractId, context);
+    })().catch(error => { console.warn('[brain] trade context unavailable:', error instanceof Error ? error.message : String(error)); });
+  };
   const reconcile = async (accountId: string, client: DerivPrivateClient) => {
     const active = await store.activeContract(accountId);
     if (!active?.provider_contract_id || (active.status !== 'open' && active.status !== 'unknown')) return active;
@@ -384,6 +415,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         run.pendingContractId = bought.contractId;
         run.phase = 'waiting-settlement'; run.updatedAt = Date.now();
         publish({ type: 'trade', accountId: run.accountId, contractId: bought.contractId, status: 'open' });
+        captureTradeContext(run.accountId, bought.contractId, order, liveEdge, client);
         monitor(run.accountId, client);
       } catch (error) {
         if (buyAttempted) {
@@ -605,7 +637,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (await reconcile(user.accountId, client)) return fail(reply, 409, 'account has an open or uncertain contract');
       const offered = await quote(client, order, info.currency);
       if (offered.askPrice > preview.ask * 1.02 || offered.payout < preview.payout * .98 || offered.askPrice > info.balance || !Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice) return fail(reply, 409, 'quote changed; review again');
-      if ((order.minEdge > 0 && modelEdge(order, offered.askPrice, offered.payout) < order.minEdge) || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'market no longer meets entry conditions');
+      const entryEdge = modelEdge(order, offered.askPrice, offered.payout);
+      if ((order.minEdge > 0 && entryEdge < order.minEdge) || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'market no longer meets entry conditions');
       try { reservation = await store.reserve(user.accountId, body.idempotencyKey, { ...order, mode: info.mode }); }
       catch { return fail(reply, 409, 'account has an open or uncertain contract'); }
       if (client.connectedAccountId !== user.accountId) throw new Error('connected account changed');
@@ -615,6 +648,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       boughtContractId = bought.contractId;
       await store.markPurchased(user.accountId, reservation, bought.contractId, bought.buyPrice, bought.payout);
       publish({ type: 'trade', accountId: user.accountId, contractId: bought.contractId, status: 'open' });
+      captureTradeContext(user.accountId, bought.contractId, order, entryEdge, client);
       monitor(user.accountId, client);
       return { ok: true, reservationId: reservation, contractId: bought.contractId, ask: bought.buyPrice, payout: bought.payout };
     } catch {

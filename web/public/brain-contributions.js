@@ -124,7 +124,7 @@
     detail.append(node('h5','','At entry'));
     const facts=node('div','brain-trade-facts');
     const percent = value => value != null && Number.isFinite(Number(value)) ? (Number(value)*100).toFixed(1)+'%' : 'Not recorded';
-    facts.append(node('span','','Edge · '+percent(context.edge)),node('span','','Confidence · '+percent(context.confidence)));
+    facts.append(node('span','','Quote estimate · '+percent(context.edge)),node('span','','Confidence · '+percent(context.confidence)));
     const amount = value => value == null || !Number.isFinite(Number(value)) ? 'Not recorded' : Number(value).toFixed(2);
     facts.append(node('span','','Stake · '+amount(trade.stake)),node('span','','Buy price · '+amount(trade.askPrice)),node('span','','Payout · '+amount(trade.payout)),
       node('span','','Profit · '+amount(trade.profit)),node('span','','Account · '+String(trade.accountMode || 'Not recorded')),node('span','','Contract · '+String(trade.providerContractId || 'Not recorded')));
