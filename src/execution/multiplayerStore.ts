@@ -129,7 +129,7 @@ export class MultiplayerStore {
     return this.withTransaction(async client => {
       for (const lesson of report.lessons) {
         if (!lesson.id || !lesson.finding || !Number.isFinite(lesson.outcomes) || lesson.outcomes <= 0) continue;
-        const fingerprint = lesson.validity + '|' + lesson.finding.replace(/\\d+(?:[.,]\\d+)?%?/g, '#');
+        const fingerprint = lesson.validity + '|' + lesson.finding.replace(/\d+(?:[.,]\d+)?%?/g, '#');
         await client.query(
           `insert into brain_private.evidence_memory_events
             (market_symbol, market_name, lesson_id, topic, finding, fingerprint, validity, outcomes, evidence_at)
