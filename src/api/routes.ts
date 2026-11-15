@@ -19,7 +19,7 @@ import { momentumEntryGuard } from '../momentum/observer.ts';
 import { decryptToken, encryptToken } from '../db/crypto.ts';
 import { createPlayerSession, playerForSession, revokePlayerSession } from './playerSessions.ts';
 import { getRangerProfile, normalizeRangerProfile, saveRangerProfile } from './rangerProfile.ts';
-import type { BrainInsightCategory, BrainExpectedDirection, BrainInsightOutcome } from '../execution/multiplayerStore.ts';
+import type { BrainInsightCategory, BrainExpectedDirection } from '../execution/multiplayerStore.ts';
 import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
 import {
   buildAuthorizeUrl,
@@ -1980,12 +1980,14 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const accountId = await rangerProfileAccount(req);
       if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to keep personal Brain memories.' });
       const ownerKey = brainOwnerKey(accountId);
-      const [insights, progress] = await Promise.all([
+      await deps.multiplayerStore.syncBrainInsightOutcomes(ownerKey, accountId);
+      const [insights, progress, leaderboard] = await Promise.all([
         deps.multiplayerStore.listBrainInsights(ownerKey),
         deps.multiplayerStore.brainInsightProgress(ownerKey),
+        deps.multiplayerStore.brainLeaderboard(10),
       ]);
       const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
-      return { ok: true, insights, progress, markets };
+      return { ok: true, insights, progress, leaderboard, markets };
     } catch {
       return reply.code(503).send({ error: 'The Brain could not reach its saved memories. Try again shortly.' });
     }
