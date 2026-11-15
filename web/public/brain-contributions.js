@@ -6,6 +6,9 @@
   const $ = id => document.getElementById(id);
   const svgNs = 'http://www.w3.org/2000/svg';
   let state = null, loading = false, note = '', formDirty = false;
+  let reloadQueued = false, recentTradeSignature = null, recentTradeAccount = null;
+  let refreshTimers = [], pendingAnimationTimer = 0;
+  let preferredTradeId = null, seenMemoryTradeIds = null;
   const sheet=document.createElement('style');
   sheet.textContent=`
     .brain-review-card{background:#fff8e9;border:1px solid #d2b88c;border-radius:16px;padding:16px;color:#3d3022;display:grid;gap:14px}
@@ -104,6 +107,13 @@
     .brain-pattern-trades summary,.brain-pattern-trade summary{cursor:pointer;color:#1e6840;font-weight:800;padding:4px 0}
     @container (max-width:420px){.brain-pattern-comparison{grid-template-columns:minmax(0,1fr)}}
     @container (max-width:300px) { .brain-tick-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .brain-entry-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    .brain-trade-sync { display:flex; align-items:center; gap:8px; margin:4px 0 8px; padding:7px 10px; border-radius:9px; color:#245d39; background:#e5f1df; font:700 12px/1.35 system-ui,sans-serif; }
+    .brain-trade-sync[hidden] { display:none; }
+    .brain-trade-sync-dot { width:10px; height:10px; border-radius:50%; background:#4e9d68; flex:none; animation:brainTradeSyncPulse 1.2s ease-in-out infinite; }
+    .brain-snapshot-updated { animation:brainSnapshotUpdate .8s ease-out; }
+    @keyframes brainTradeSyncPulse { 50% { opacity:.35; transform:scale(.72) } }
+    @keyframes brainSnapshotUpdate { from { box-shadow:0 0 0 3px #75bc81; } to { box-shadow:0 0 0 0 transparent; } }
+    @media (prefers-reduced-motion:reduce) { .brain-trade-sync-dot,.brain-snapshot-updated { animation:none; } }
   `;document.head.append(sheet);
 
 
@@ -284,8 +294,8 @@
     const details=node('div','brain-review-selected');
     const showDetail=trade=>details.replaceChildren(tradeDetail(trade));
     const selected=node('input',''); selected.type='hidden'; selected.name='sourceTradeId'; form.append(selected);
-    const list=trades.slice(0,100);
-    let current=0;
+    let list=trades.slice(0,100);
+    let current=Math.max(0,list.findIndex(trade=>String(trade.id)===String(preferredTradeId)));
     const drawChoice=()=>{
       const trade=list[current], result=String(trade.status||'').toLowerCase();
       choices.replaceChildren();
@@ -301,12 +311,20 @@
       const copy=node('span','brain-review-trade-copy');
       copy.append(node('b','',String(trade.marketName||trade.marketSymbol||'Market')+' · '+(String(trade.direction||'').toLowerCase()==='over'?'Over ':'Under ')+trade.barrier),node('small','',dateLabel));
       selectedTrade.append(indicator,copy);
-      const move=delta=>{current=Math.max(0,Math.min(list.length-1,current+delta));selected.value=String(list[current].id);showDetail(list[current]);drawChoice();formDirty=true;};
+      const move=delta=>{current=Math.max(0,Math.min(list.length-1,current+delta));selected.value=String(list[current].id);preferredTradeId=selected.value;showDetail(list[current]);drawChoice();formDirty=true;};
       previous.addEventListener('click',()=>move(-1));next.addEventListener('click',()=>move(1));
       picker.append(previous,selectedTrade,next);
       choices.append(label,picker,node('small','brain-review-count',(current+1)+' / '+list.length));
     };
-    selected.value=String(list[0].id); showDetail(list[0]); drawChoice();
+    selected.value=String(list[current].id); preferredTradeId=selected.value; showDetail(list[current]); drawChoice();
+    // Preserve the selected trade and unsaved lesson fields while new trades arrive.
+    form.refreshTradeChoices=nextTrades=>{
+      if(!Array.isArray(nextTrades)||!nextTrades.length)return;
+      const next=nextTrades.slice(0,100), index=next.findIndex(trade=>String(trade.id)===selected.value);
+      if(index<0)return;
+      const changed=JSON.stringify(list.map(item=>[item.id,item.status,item.profit]))!==JSON.stringify(next.map(item=>[item.id,item.status,item.profit]));
+      list=next; current=index; if(changed)drawChoice();
+    };
     form.append(choices,details);
     const stance=node('fieldset','brain-review-stance');
     stance.append(node('legend','','What did this tell you?'));
@@ -750,10 +768,17 @@
     host.append(card);
   }
   async function load() {
-    if(loading || document.hidden) return;
+    if(document.hidden) return;
+    if(loading) { reloadQueued=true; return; }
     loading=true;
+    const requestedAccount=recentTradeAccount;
     try {
       const response=await request('/api/ranger-brain/contributions');
+      if(requestedAccount!==recentTradeAccount) return;
+      const freshTrades=Array.isArray(response.trades)?response.trades:[];
+      const arrived=seenMemoryTradeIds && freshTrades.some(trade=>!seenMemoryTradeIds.has(String(trade.id)));
+      seenMemoryTradeIds=new Set(freshTrades.map(trade=>String(trade.id)));
+      if(arrived) { if(!formDirty)preferredTradeId=null; showTradeSync('Trade added to Memories · gathering prices'); }
       state=response;
       renderUnlockHero(response);
       if(response.markets?.length) {
@@ -763,6 +788,8 @@
         } catch {}
       }
       if(formDirty) {
+        const form=host.querySelector('#brainInsightForm');
+        if(typeof form?.refreshTradeChoices==='function') form.refreshTradeChoices(response.trades);
         // The server can finish gathering entry ticks while the player is
         // reviewing a trade. Refresh only its snapshot, never the form fields.
         const selectedId=host.querySelector('[name="sourceTradeId"]')?.value;
@@ -775,6 +802,9 @@
             detail.replaceChildren(tradeDetail(trade));
             detail.querySelectorAll('details').forEach((item,index)=>{item.open=Boolean(openStates[index]);});
             detail.dataset.snapshotSignature=signature;
+            detail.classList.remove('brain-snapshot-updated');
+            void detail.offsetWidth;
+            detail.classList.add('brain-snapshot-updated');
           }
         }
         return;
@@ -787,8 +817,72 @@
       note=error.status===401?'guest':error.status===503?'migration':'error';
       renderUnlockHero(null);
       render();
-    } finally {loading=false;}
+    } finally {
+      loading=false;
+      if(reloadQueued) { reloadQueued=false; setTimeout(load,250); }
+    }
   }
+
+  function syncBanner() {
+    let banner=$('brainTradeSync');
+    if(!banner) {
+      banner=node('div','brain-trade-sync'); banner.id='brainTradeSync'; banner.setAttribute('role','status'); banner.setAttribute('aria-live','polite'); banner.hidden=true;
+      const dot=node('span','brain-trade-sync-dot'); dot.setAttribute('aria-hidden','true');
+      const message=node('span','brain-trade-sync-text'); banner.append(dot,message);
+      host.before(banner);
+    }
+    return banner;
+  }
+  function showTradeSync(message) {
+    const banner=syncBanner(); banner.querySelector('.brain-trade-sync-text').textContent=message; banner.hidden=false;
+    clearTimeout(pendingAnimationTimer);
+    pendingAnimationTimer=setTimeout(()=>{ banner.hidden=true; },35000);
+  }
+  function scheduleTradeRefresh(message) {
+    showTradeSync(message);
+    for(const timer of refreshTimers) clearTimeout(timer);
+    refreshTimers=[];
+    // Entry and exit prices arrive after settlement. Bound retries to this trade
+    // event so market ticks never trigger additional requests.
+    for(const delay of [300,1800,5000,12000,22000,34000]) {
+      refreshTimers.push(setTimeout(()=>{ if(!document.hidden) void load(); },delay));
+    }
+  }
+  window.addEventListener('message',event=>{
+    if(event.origin!==location.origin || event.source!==parent) return;
+    const message=event.data;
+    if(message?.type==='zeronine:room-trade-result' && message.ok===true && message.phase!=='review' && message.confirmedTradeId) {
+      scheduleTradeRefresh('Trade placed · waiting for its result');
+      return;
+    }
+    if(message?.type!=='zeronine:room-state') return;
+    const account=String(message.state?.accountId||'');
+    const trades=Array.isArray(message.state?.trades) ? message.state.trades : [];
+    const signature=JSON.stringify(trades.map(trade=>[String(trade.id),String(trade.status||'')]));
+    if(account!==recentTradeAccount) {
+      const hadAccount=recentTradeAccount!==null;
+      recentTradeAccount=account; recentTradeSignature=signature; seenMemoryTradeIds=null;
+      for(const timer of refreshTimers) clearTimeout(timer); refreshTimers=[];
+      clearTimeout(pendingAnimationTimer); const banner=$('brainTradeSync'); if(banner)banner.hidden=true;
+      preferredTradeId=null;
+      if(hadAccount) {
+        // A draft belongs to the prior Deriv account and must not cross accounts.
+        formDirty=false; state=null; note=account?'':'guest'; render();
+      }
+      void load();
+      return;
+    }
+    if(recentTradeSignature===null) { recentTradeSignature=signature; return; }
+    if(signature===recentTradeSignature) return;
+    let previous=[];
+    try { previous=JSON.parse(recentTradeSignature); } catch {}
+    const old=new Map(previous);
+    recentTradeSignature=signature;
+    const changes=trades.filter(trade=>old.get(String(trade.id))!==String(trade.status||''));
+    if(!changes.length)return;
+    const settled=changes.some(trade=>['won','lost'].includes(String(trade.status||'').toLowerCase()));
+    scheduleTradeRefresh(settled?'Adding trade to Memories · gathering prices':'Trade placed · waiting for its result');
+  });
 
   document.getElementById('brainTabMemory')?.addEventListener('click',()=>setTimeout(load,100));
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
