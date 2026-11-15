@@ -91,7 +91,7 @@
     lessonSig = sig;
     if (first) return true;
     if (typeof window.notify === 'function') {
-      const finding = String(lesson?.finding || '').replace(/\\s+/g, ' ').trim();
+      const finding = String(lesson?.finding || '').replace(/\s+/g, ' ').trim();
       const time = finding.match(/around (.+?) your local time/i)?.[1];
       const market = String(reportMarket(lesson) || '');
       const count = Number(lesson?.outcomes) || 0;
