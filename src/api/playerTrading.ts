@@ -14,7 +14,7 @@ import { getSession } from '../db/store.ts';
 import { resolveStoredToken } from '../deriv/oauth.ts';
 
 type Direction = 'over' | 'under';
-type CowDisplay = { edge: number | null; confidence: number | null; shownAt: number; brainPick: boolean };
+type CowDisplay = { edge: number | null; confidence: number | null; shownAt: number; brainPick: boolean; shotTick: { quote: number; digit: number; epoch: number } | null };
 type Order = { market: string; direction: Direction; barrier: number; stake: number; minEdge: number; cowDisplay?: CowDisplay | null };
 type Preview = { accountId: string; order: Order; ask: number; payout: number; edge: number; expiresAt: number; mode: 'demo' | 'real' };
 type Event = { type: 'balance' | 'trade'; accountId: string; [key: string]: unknown };
@@ -75,7 +75,10 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     const raw = body.cowDisplay && typeof body.cowDisplay === 'object' ? body.cowDisplay as Record<string, unknown> : null;
     const bounded = (value: unknown, min: number, max: number): number | null => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : null;
     const shownAt = bounded(raw?.shownAt, Date.now() - 120_000, Date.now() + 5_000);
-    const cowDisplay = raw && shownAt !== null ? { edge: bounded(raw.edge, -1, 1), confidence: bounded(raw.confidence, 0, 1), shownAt, brainPick: raw.brainPick === true } : null;
+    const tick = raw?.shotTick && typeof raw.shotTick === 'object' ? raw.shotTick as Record<string, unknown> : null;
+    const tickQuote = bounded(tick?.quote, 0, 1e15), tickEpoch = bounded(tick?.epoch, Math.floor(Date.now()/1000)-135, Math.floor(Date.now()/1000)+5), tickDigit = bounded(tick?.digit, 0, 9);
+    const shotTick = tickQuote !== null && tickEpoch !== null && tickDigit !== null && Number.isInteger(tickDigit) ? { quote: tickQuote, epoch: tickEpoch, digit: tickDigit } : null;
+    const cowDisplay = raw && shownAt !== null ? { edge: bounded(raw.edge, -1, 1), confidence: bounded(raw.confidence, 0, 1), shownAt, brainPick: raw.brainPick === true, shotTick } : null;
     return { market, direction, barrier, stake, minEdge, cowDisplay };
   };
   const modelEdge = (order: Order, ask: number, payout: number): number => {
@@ -99,7 +102,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [],
         edge: Number.isFinite(edge) ? edge : null, confidence: null,
         cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null,
-        cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, complete: false,
+        cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, shotTick: order.cowDisplay?.shotTick ?? null, complete: false,
       };
       const initialWrite = store.saveTradeContext(accountId, contractId, pending)
         .catch(error => { console.warn('[brain] initial trade context unavailable:', error instanceof Error ? error.message : String(error)); });
@@ -125,11 +128,22 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         const after = index >= 0 ? ticks.slice(index + 1, index + 4).map(format) : [];
         context = { entryQuote: entrySpot.toFixed(precision!), entryDigit: Number.isInteger(provider.entryDigit) ? provider.entryDigit : null,
           entryEpoch, before, after, edge: Number.isFinite(edge) ? edge : null, confidence: null,
-          cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true,
+          cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, shotTick: order.cowDisplay?.shotTick ?? null,
           complete: index >= 3 && after.length === 3 };
         if (context.complete) break;
       }
-      if (!context) context = { entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [], edge: Number.isFinite(edge) ? edge : null, confidence: null, cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, complete: false };
+      if (!context) context = { entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [], edge: Number.isFinite(edge) ? edge : null, confidence: null, cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, shotTick: order.cowDisplay?.shotTick ?? null, complete: false };
+      const shot = order.cowDisplay?.shotTick;
+      const precision = getPrecision(order.market);
+      if (shot && Number.isInteger(precision) && precision! >= 0 && precision! <= 12) {
+        const feed = registry.snapshot(order.market).recentTicks;
+        const indices = feed.flatMap((tick, index) => tick.epoch === shot.epoch && tick.quote.toFixed(precision!) === shot.quote.toFixed(precision!) ? [index] : []);
+        const formatShot = (tick: {quote: number; digit: number; epoch: number}) => ({quote: tick.quote.toFixed(precision!), digit: tick.digit, epoch: tick.epoch});
+        const index = indices.length === 1 ? indices[0] : -1;
+        context.shot = {quote: shot.quote.toFixed(precision!), digit: shot.digit, epoch: shot.epoch,
+          before: index >= 0 ? feed.slice(Math.max(0,index-3),index).map(formatShot) : [],
+          after: index >= 0 ? feed.slice(index+1,index+4).map(formatShot) : [], complete: index >= 3 && feed.length-index-1 >= 3};
+      }
       // Serialize writes so a slow initial save cannot overwrite the completed
       // sequence. The runner is detached from trade submission throughout.
       await initialWrite;

@@ -2102,7 +2102,7 @@ export interface ManualOrder {
   /** Optional minimum server-estimated edge, expressed as a fraction. */
   minEdge?: number | null;
   /** Snapshot shown on the cow when submitted; display metadata only, never a risk input. */
-  cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number; brainPick?: boolean } | null;
+  cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number; brainPick?: boolean; shotTick?: { quote: number; digit: number; epoch: number } | null } | null;
   /** Stable for one operator action so retries can never create a second buy. */
   idempotencyKey?: string;
 }

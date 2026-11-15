@@ -259,6 +259,9 @@
       if (!quote || before.length < 3 || after.length < 3) sequence.append(node('p', 'brain-trade-note', 'Some prices were not recorded.'));
       detail.append(sequence);
     };
+    const shot = context.shot && typeof context.shot === 'object' ? context.shot : {};
+    addPriceSequence('Shot', shot.quote, shot.digit, shot.before, shot.after);
+    detail.append(node('p', 'brain-trade-note', 'Shot is the last price your app received when you sent the trade. Entry and exit are reported by Deriv.'));
     addPriceSequence('Entry', context.entryQuote, context.entryDigit, context.before, context.after);
     const exit = context.exit && typeof context.exit === 'object' ? context.exit : {};
     addPriceSequence('Exit', exit.quote, exit.digit, exit.before, exit.after);
