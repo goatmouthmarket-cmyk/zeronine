@@ -106,6 +106,16 @@
     .brain-pattern-trades,.brain-pattern-trade{min-width:0;margin-top:4px}
     .brain-pattern-trades summary,.brain-pattern-trade summary{cursor:pointer;color:#1e6840;font-weight:800;padding:4px 0}
     @container (max-width:420px){.brain-pattern-comparison{grid-template-columns:minmax(0,1fr)}}
+    /* Keep the teaching inputs in their own flow so the taller snapshot
+       cannot stretch the rows and create blank gaps. */
+    .brain-review-input-column { display:grid; align-content:start; gap:8px; min-width:0; }
+    @container (min-width:650px) {
+      .brain-review-fields { grid-template-columns:minmax(200px,.9fr) minmax(0,1.2fr); grid-template-rows:auto auto; align-items:start; }
+      .brain-review-input-column { grid-column:1; grid-row:1 / span 2; }
+      .brain-review-input-column > * { grid-column:auto; grid-row:auto; }
+      .brain-review-selected { grid-column:2; grid-row:1; }
+      .brain-review-save { grid-column:2; grid-row:2; justify-self:end; align-self:start; width:min(220px,100%); min-height:44px; }
+    }
     @container (max-width:300px) { .brain-tick-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .brain-entry-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     .brain-trade-sync { display:flex; align-items:center; gap:8px; margin:4px 0 8px; padding:7px 10px; border-radius:9px; color:#245d39; background:#e5f1df; font:700 12px/1.35 system-ui,sans-serif; }
     .brain-trade-sync[hidden] { display:none; }
@@ -268,15 +278,15 @@
       if (!quote || before.length < 3 || after.length < 3) sequence.append(node('p', 'brain-trade-note', 'Some prices were not recorded.'));
       detail.append(sequence);
     };
-    const shot = context.shot && typeof context.shot === 'object' ? context.shot : {};
-    addPriceSequence('Shot', shot.quote, shot.digit, shot.before, shot.after);
-    detail.append(node('p', 'brain-trade-note', 'Shot is the last price your app received when you sent the trade. Entry and exit are reported by Deriv.'));
-    addPriceSequence('Entry', context.entryQuote, context.entryDigit, context.before, context.after);
     const exit = context.exit && typeof context.exit === 'object' ? context.exit : {};
-    addPriceSequence('Exit', exit.quote, exit.digit, exit.before, exit.after);
     const entryTime = Number(context.entryEpoch), exitTime = Number(exit.epoch);
-    if (context.entryEpoch != null && exit.epoch != null && Number.isFinite(entryTime) && Number.isFinite(exitTime) && entryTime === exitTime && context.entryQuote != null && exit.quote != null && String(context.entryQuote) === String(exit.quote)) {
-      detail.append(node('p', 'brain-trade-note', 'Entry and exit were recorded at the same price and time. Multiple ticks can share a second.'));
+    const sameRecordedPoint = context.entryEpoch != null && exit.epoch != null && Number.isFinite(entryTime) && Number.isFinite(exitTime) && entryTime === exitTime && context.entryQuote != null && exit.quote != null && String(context.entryQuote) === String(exit.quote);
+    if (sameRecordedPoint) {
+      addPriceSequence('Entry / exit', context.entryQuote, context.entryDigit, context.before, context.after);
+      detail.append(node('p', 'brain-trade-note', 'Deriv recorded the same price and second for entry and exit. More than one tick can share a second.'));
+    } else {
+      addPriceSequence('Entry', context.entryQuote, context.entryDigit, context.before, context.after);
+      addPriceSequence('Exit', exit.quote, exit.digit, exit.before, exit.after);
     }
 
 
@@ -342,17 +352,18 @@
       const changed=JSON.stringify(list.map(item=>[item.id,item.status,item.profit]))!==JSON.stringify(next.map(item=>[item.id,item.status,item.profit]));
       list=next; current=index; if(changed)drawChoice();
     };
-    form.append(choices,details);
+    const inputColumn=node('div','brain-review-input-column');
+    inputColumn.append(choices); form.append(inputColumn,details);
     const stance=node('fieldset','brain-review-stance');
     stance.append(node('legend','','What did this tell you?'));
     [['good','Good call'],['warning','Bad call']].forEach(([value,label])=>{
       const choice=node('label','');const input=node('input','');input.type='radio';input.name='stance';input.value=value;input.required=true;
       choice.append(input,node('span','',label));stance.append(choice);
     });
-    form.append(stance);
+    inputColumn.append(stance);
     const topic=node('label','brain-review-label brain-review-note','What did you notice?');
-    const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);form.append(topic);
-    const interpretation=node('div','brain-note-interpretation'); interpretation.setAttribute('aria-live','polite'); form.append(interpretation);
+    const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);inputColumn.append(topic);
+    const interpretation=node('div','brain-note-interpretation'); interpretation.setAttribute('aria-live','polite'); inputColumn.append(interpretation);
     const updateInterpretation=()=>{
       interpretation.replaceChildren();
       const pattern=notePattern(observation.value);
@@ -374,7 +385,7 @@
     [['setup','Pattern'],['market_behavior','Market movement'],['entry_timing','Entry timing'],['risk','Risk or warning']].forEach(([value,label])=>option(category,value,label));categoryLabel.append(category);
     const confidenceLabel=node('label','brain-review-label','Your confidence');
     const confidence=node('input','brain-confidence-slider');confidence.type='range';confidence.name='confidence';confidence.min='1';confidence.max='5';confidence.step='1';confidence.value='3';confidence.setAttribute('aria-label','Your confidence, from 1 to 5');const confidenceValue=node('output','brain-confidence-value','3 / 5');confidence.addEventListener('input',()=>{confidenceValue.textContent=confidence.value+' / 5'});confidenceLabel.append(confidence,confidenceValue);
-    row.append(categoryLabel,confidenceLabel);form.append(row);
+    row.append(categoryLabel,confidenceLabel);inputColumn.append(row);
     const horizon=node('input','');horizon.type='hidden';horizon.name='horizon';horizon.value='next_session';form.append(horizon);
     const submit=node('button','brain-task-primary brain-review-save','Save lesson');submit.type='submit';form.append(submit);
     form.addEventListener('input',()=>{formDirty=true});form.addEventListener('change',()=>{formDirty=true});form.addEventListener('submit',submitInsight);

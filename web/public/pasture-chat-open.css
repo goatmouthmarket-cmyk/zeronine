@@ -59,3 +59,6 @@
   #pastureChat #chatPanel.chat-collapsed:not([hidden]) { height: 44px !important; }
 }
 @media (prefers-reduced-motion: reduce) { #chatMessages { transition: none; } }
+
+/* The floating Brain panel is the active interaction; keep chat from drawing over it. */
+body.brain-zoomed #pastureChat { visibility:hidden !important; pointer-events:none !important; }
