@@ -71,6 +71,8 @@ export interface TimingBucket {
 
 export interface TimingProfile {
   market: string | null;
+  /** IANA time zone used to group display buckets. */
+  timeZone: string;
   lookbackDays: number;
   updatedAt: number;
   outcomes: number;
@@ -168,8 +170,36 @@ export function classifyBucket(
   };
 }
 
-const UTC_HOUR_LABEL = (hour: number) => `${String(hour).padStart(2, '0')}:00 UTC`;
 const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/** Accept only a valid IANA zone; untrusted query values safely fall back to UTC. */
+export function normalizeBrainTimeZone(value?: string | null): string {
+  const candidate = typeof value === 'string' && value.length <= 80 ? value.trim() : '';
+  if (!candidate) return 'UTC';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(0);
+    return candidate;
+  } catch {
+    return 'UTC';
+  }
+}
+
+function localHourLabel(hour: number): string {
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', hour: 'numeric', minute: '2-digit' })
+    .format(new Date(Date.UTC(2020, 0, 1, hour)));
+}
+
+function localHourOf(formatter: Intl.DateTimeFormat, timestamp: number): number {
+  const value = formatter.formatToParts(new Date(timestamp)).find((part) => part.type === 'hour')?.value;
+  const hour = Number(value);
+  return Number.isInteger(hour) ? hour % 24 : new Date(timestamp).getUTCHours();
+}
+
+function localWeekdayOf(formatter: Intl.DateTimeFormat, timestamp: number): number {
+  const value = formatter.formatToParts(new Date(timestamp)).find((part) => part.type === 'weekday')?.value;
+  return WEEKDAY_INDEX[value ?? ''] ?? new Date(timestamp).getUTCDay();
+}
 
 function buildBuckets(
   outcomes: BrainOutcome[],
@@ -218,6 +248,7 @@ export function buildTimingProfile(
     now: number;
     market?: string | null;
     lookbackDays?: number;
+    timeZone?: string;
     minEdgeMargin?: number;
     breakevenOverride?: number | null;
   },
@@ -226,6 +257,9 @@ export function buildTimingProfile(
   const lookbackDays = Math.max(1, Math.min(365, Math.round(options.lookbackDays ?? BRAIN_DEFAULT_LOOKBACK_DAYS)));
   const since = now - lookbackDays * 24 * 60 * 60 * 1000;
   const market = options.market ?? null;
+  const timeZone = normalizeBrainTimeZone(options.timeZone);
+  const hourFormatter = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', hourCycle: 'h23' });
+  const weekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' });
   const settled = outcomes.filter((outcome) =>
     Number.isFinite(outcome.openedAt) && Number.isFinite(outcome.settledAt)
     && outcome.settledAt <= now && outcome.settledAt >= since
@@ -238,14 +272,15 @@ export function buildTimingProfile(
   const margin = options.minEdgeMargin ?? BRAIN_MIN_EDGE_MARGIN;
   const interval = wilsonInterval(wins, total);
   const overall = classifyBucket(total, rawRate, interval, breakeven, margin);
-  const hours = buildBuckets(settled, 24, (row) => new Date(row.openedAt).getUTCHours(), UTC_HOUR_LABEL, rawRate, breakeven);
-  const weekdays = buildBuckets(settled, 7, (row) => new Date(row.openedAt).getUTCDay(), (key) => WEEKDAY_LABELS[key]!, rawRate, breakeven);
+  const hours = buildBuckets(settled, 24, (row) => localHourOf(hourFormatter, row.openedAt), localHourLabel, rawRate, breakeven);
+  const weekdays = buildBuckets(settled, 7, (row) => localWeekdayOf(weekdayFormatter, row.openedAt), (key) => WEEKDAY_LABELS[key]!, rawRate, breakeven);
   const bestHour = hours
     .filter((bucket) => bucket.verdict === 'favorable')
     .sort((a, b) => (b.shrunkWinRate ?? 0) - (a.shrunkWinRate ?? 0) || b.outcomes - a.outcomes)[0] ?? null;
 
   return {
     market,
+    timeZone,
     lookbackDays,
     updatedAt: total ? Math.max(...settled.map((row) => row.settledAt)) : now,
     outcomes: total,
