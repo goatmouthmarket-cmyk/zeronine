@@ -525,7 +525,7 @@ function ConnectView({ embedded = false, onConnected }: { embedded?: boolean; on
             <div class="connect-divider">then connect your account</div>
           </>
         )}
-        <div class="connect-card-heading"><span class="connect-card-emblem connect-game-mark"><img src="/deriv-cows-logo.png" alt="Deriv Cows" /></span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
+        <div class="connect-card-heading"><span class="connect-card-emblem connect-game-mark"><img src="https://media.ffycdn.net/eu/deriv/wuocaH22WRfM6oVmc69e.webp?format=webp&amp;width=400" alt="Deriv" loading="lazy" decoding="async" /></span><div><div class="connect-eyebrow">READY WHEN YOU ARE</div><h2 class="connect-title">Connect your account</h2></div></div>
         {playerSession && <div class="connect-terms" role="status"><strong>Signed in · {playerSession.loginid}</strong><div class="account-balance-card"><small>AVAILABLE BALANCE</small><strong>{fmtMoney(playerSession.balance, playerSession.currency)}</strong><span>{playerSession.currency} · {playerSession.mode === 'demo' ? 'Demo funds' : 'Real funds'}</span></div><p>Your account stays private in the pasture.</p><button type="button" class="connect-btn" onClick={async () => { await logoutPlayer(); setPlayerSession(null); }}>Sign out</button></div>}
         <div class="connect-copy">Sign in to use your demo or real Deriv account. You can explore and shoot cows as a guest; guest shots never place bets.</div>
         <section class="connect-terms" aria-label="Trading information and terms">
