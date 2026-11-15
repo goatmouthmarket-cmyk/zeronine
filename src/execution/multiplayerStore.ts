@@ -119,6 +119,7 @@ export class MultiplayerStore {
            and c.status in ('won','lost')
            and c.settled_at is not null
           where i.owner_key=$1 and i.outcome='pending' and i.expected_direction in ('over','under')
+            and i.observation not like '%[Brain stance: good]' and i.observation not like '%[Brain stance: warning]'
             and not exists (select 1 from brain_private.insights linked where linked.linked_trade_id=c.id)
         )
         update brain_private.insights i
@@ -133,6 +134,32 @@ export class MultiplayerStore {
         [ownerKey, accountId],
       );
     });
+  }
+
+  /** Count settled contracts with the same market and contract after a structured lesson.
+   * These are comparable outcomes, not evidence that the user's observation repeated. */
+  async brainComparableOutcomes(ownerKey: string, accountId: string): Promise<{ byInsight: Record<string, { similarTrades: number; similarWins: number; similarLosses: number }>; distinctTrades: number }> {
+    const result = await this.pool.query<{ insight_id: string; trade_id: string; status: 'won' | 'lost' }>(
+      `select i.id::text as insight_id, c.id::text as trade_id, c.status
+       from brain_private.insights i
+       join multiplayer_private.contracts c on c.account_id=$2 and c.market=i.market_symbol
+         and c.direction=i.expected_direction and c.barrier=i.barrier
+         and c.created_at > i.created_at
+         and c.created_at <= i.created_at + case i.horizon
+           when 'next_5' then interval '5 minutes' when 'next_20' then interval '20 minutes'
+           else interval '12 hours' end
+         and c.status in ('won','lost') and c.settled_at is not null
+       where i.owner_key=$1 and (i.observation like '%[Brain stance: good]' or i.observation like '%[Brain stance: warning]')`,
+      [ownerKey, accountId],
+    );
+    const byInsight: Record<string, { similarTrades: number; similarWins: number; similarLosses: number }> = {};
+    const unique = new Set<string>();
+    for (const row of result.rows) {
+      const counts = byInsight[row.insight_id] ??= { similarTrades: 0, similarWins: 0, similarLosses: 0 };
+      counts.similarTrades++; if (row.status === 'won') counts.similarWins++; else counts.similarLosses++;
+      unique.add(row.trade_id);
+    }
+    return { byInsight, distinctTrades: unique.size };
   }
 
   async brainInsightProgress(ownerKey: string): Promise<BrainInsightProgress> {

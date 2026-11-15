@@ -740,10 +740,33 @@
     } catch {}
   }
 
-  function suggest() {
-    const result = bridge()?.suggest?.();
-    runCapture(result);
-    return result;
+  let trainingCheckPending = false;
+  async function suggest() {
+    if (trainingCheckPending) return;
+    const account = currentAccount();
+    if (!account) {
+      runCapture({ status: 'none', reason: 'Connect your account and teach the Brain first.' });
+      return;
+    }
+    trainingCheckPending = true;
+    try {
+      const response = await fetch('/api/ranger-brain/contributions', { credentials: 'same-origin', cache: 'no-store' });
+      if (!response.ok) throw new Error('Training unavailable');
+      const body = await response.json();
+      // A response for a previous account must never unlock the current one.
+      if (account !== currentAccount()) return;
+      if (body?.training?.unlocked !== true) {
+        runCapture({ status: 'none', reason: 'Complete your Brain training goals to unlock suggestions.' });
+        return;
+      }
+      const result = bridge()?.suggest?.();
+      runCapture(result);
+      return result;
+    } catch {
+      if (account === currentAccount()) runCapture({ status: 'none', reason: 'Could not check your Brain goals. Try again.' });
+    } finally {
+      trainingCheckPending = false;
+    }
   }
 
   window.__zeronineBrainSuggest = suggest;

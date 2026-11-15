@@ -12,6 +12,8 @@
     .brain-review-overview{display:grid;grid-template-columns:minmax(90px,130px) 1fr;align-items:center;gap:12px}
     .brain-review-network svg{display:block;width:100%;height:auto}.brain-review-summary h3{margin:4px 0;color:#294f34;font-size:22px}.brain-review-summary strong{color:#285638}.brain-review-metrics{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.brain-review-metrics span{padding:4px 7px;background:#e7efdc;border-radius:6px;font-size:11px;font-weight:750;color:#31583d}
     .brain-review-form h4{margin:0 0 9px;color:#294f34;font-size:16px}.brain-review-fields{display:grid;gap:10px}.brain-review-trades{display:grid;gap:6px;max-height:200px;overflow:auto}.brain-review-trade{display:flex;align-items:center;gap:9px;width:100%;padding:9px;border:1px solid #decaa8;border-radius:9px;background:#fffdf5;color:#3d3022;text-align:left;cursor:pointer}.brain-review-trade[aria-pressed=true]{border:2px solid #388553;background:#e9f4e5}.brain-review-result{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#e8c9be;color:#8a302c;font-weight:900}.brain-review-trade[data-result=won] .brain-review-result{background:#cee9cd;color:#25713d}.brain-review-trade-copy{display:grid;gap:2px;flex:1;min-width:0}.brain-review-trade-copy small{color:#776b5a}.brain-review-trade strong{color:#31583d}.brain-review-label{display:grid;gap:5px;font-size:12px;font-weight:800}.brain-review-label textarea,.brain-review-label select{width:100%;min-width:0;padding:9px;border:1px solid #c8b08c;border-radius:8px;background:#fffdf7;color:#30291f;font:inherit}.brain-review-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.brain-review-save{width:100%}.brain-review-details{border-top:1px solid #e2d2b9;padding-top:10px}.brain-review-details summary{cursor:pointer;font-weight:800;color:#31583d}.brain-review-evidence:empty{display:none}.brain-evidence-compact{border-top:1px solid #e2d2b9;padding-top:10px}.brain-evidence-compact__top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;color:#31583d}.brain-evidence-compact__stats{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.brain-evidence-compact__stats>*{background:#e7efdc;border-radius:6px;padding:5px 7px;color:#31583d;font-size:11px}.brain-evidence-compact__details{font-size:12px;color:#665a48}.brain-review-empty{font-size:13px;color:#665a48}
+
+    .brain-goals{background:#eaf2df;border-radius:10px;padding:11px;display:grid;gap:7px;color:#234c32}.brain-goals h4{font-size:14px;margin:0}.brain-goals-list{display:grid;gap:6px}.brain-goal{display:grid;grid-template-columns:1fr auto;gap:4px;font-size:12px;font-weight:750}.brain-goal progress{grid-column:1/-1;width:100%;height:6px;accent-color:#438659}.brain-goals button{justify-self:start;border:0;border-radius:7px;background:#245d39;color:#fff;padding:7px 10px;font:700 12px system-ui;cursor:pointer}.brain-review-stance{display:flex;gap:7px;margin:0;padding:0;border:0}.brain-review-stance legend{font-size:12px;font-weight:800;margin-bottom:5px}.brain-review-stance label{flex:1;display:flex;align-items:center;gap:5px;padding:9px;border:1px solid #c8b08c;border-radius:8px;background:#fffdf7;font-size:12px;font-weight:750}.brain-review-stance input{accent-color:#28794f}
   `;document.head.append(sheet);
 
 
@@ -142,6 +144,13 @@
     form.append(choices);
     const topic=node('label','brain-review-label','What did you notice?');
     const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);form.append(topic);
+    const stance=node('fieldset','brain-review-stance');
+    stance.append(node('legend','','What did this tell you?'));
+    [['good','Good sign'],['warning','Warning']].forEach(([value,label])=>{
+      const choice=node('label','');const input=node('input','');input.type='radio';input.name='stance';input.value=value;input.required=true;
+      choice.append(input,node('span','',label));stance.append(choice);
+    });
+    form.append(stance);
     const row=node('div','brain-review-row');
     const categoryLabel=node('label','brain-review-label','Your observation');
     const category=node('select','');category.name='category';
@@ -162,7 +171,7 @@
     submit.disabled=true;submit.textContent='Saving…';setMessage('Saving your lesson…','busy');
     try {
       await request('/api/ranger-brain/contributions',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({
-        sourceTradeId:String(data.get('sourceTradeId')),category:data.get('category'),observation:data.get('observation'),
+        sourceTradeId:String(data.get('sourceTradeId')),category:data.get('category'),observation:data.get('observation'),stance:data.get('stance'),
         confidence:Number(data.get('confidence')),horizon:data.get('horizon')
       })});
       note='Lesson saved';formDirty=false;await load();setMessage(note,'good');
@@ -278,12 +287,14 @@
       const copy=node('span','brain-task-memory-copy');
       copy.append(node('b','',insight.marketName+' · '+directionLabel(insight)));
       copy.append(node('small','',insight.category||'Market lesson'));
-      const badge=node('em','brain-task-memory-result',insight.outcome==='matched'?'GOOD CALL':insight.outcome==='unmatched'?'MISSED':'WAITING');
+      const badge=node('em','brain-task-memory-result',insight.outcome==='matched'?'SIMILAR WIN':insight.outcome==='unmatched'?'SIMILAR LOSS':'WAITING');
       summary.append(mark,copy,badge); card.append(summary);
       const detail=node('div','brain-task-memory-detail');
       detail.append(node('p','',String(insight.observation || '').replace(/\n\[Trade reference: [^\]]+\]$/, '')));
       const status=insight.outcome==='matched'?'+25 XP · Your call matched a settled win':insight.outcome==='unmatched'?'−20 XP · A settled result challenged this call':insight.expectedDirection==='none'?'+10 XP · Observation saved':'Waiting for a matching settled result';
-      detail.append(node('strong','',status));
+      const similar=Number(insight.similarTrades)||0;
+      detail.append(node('strong','',similar ? (Number(insight.similarWins)||0)+' wins · '+(Number(insight.similarLosses)||0)+' losses in similar trades' : 'Waiting for similar trades'));
+      if(insight.stance)detail.append(node('small','',insight.stance==='warning'?'Your note: warning':'Your note: good sign'));
       const when=insight.createdAt?new Date(insight.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
       detail.append(node('small','',when+(insight.confidence?' · Confidence '+insight.confidence+'/5':'')));
       card.append(detail); list.append(card);
@@ -382,9 +393,9 @@
     $('brainGrowthText').textContent = !data
       ? note === 'guest' ? 'Connect Deriv to save lessons to your Ranger Brain.' : 'The Brain could not load its saved lessons. Try again in a moment.'
       : waiting ? waiting + ' lesson' + (waiting === 1 ? ' is' : 's are') + ' waiting for matching settled results.'
-        : wins || losses ? 'Your settled results are strengthening or correcting the lessons you taught.'
-          : progress.total ? 'Your lessons are saved. A matching settled trade will test each prediction.'
-            : 'Teach it what you notice. A later settled result will show whether your lesson helped.';
+        : wins || losses ? 'See how later similar trades turned out.'
+          : progress.total ? 'Your lessons are saved. Later similar trades will appear with them.'
+            : 'Teach it what you notice. Follow later similar trades.';
     const feed = $('brainGrowthActivity');
     feed.replaceChildren();
     if (!insights.length) {
@@ -398,7 +409,7 @@
         const copy = node('span', 'brain-growth-outcome');
         copy.append(node('b', '', insight.marketName + ' · ' + directionLabel(insight)));
         copy.append(node('small', '', String(insight.observation || '').replace(/\n\[Trade reference: [^\]]+\]$/, '').slice(0, 110)));
-        const status = node('strong', '', insight.outcome === 'matched' ? 'Good call · +25 XP' : insight.outcome === 'unmatched' ? 'Missed call · −20 XP' : insight.expectedDirection === 'none' ? 'Lesson saved · +10 XP' : 'Waiting for a result');
+        const status = node('strong', '', insight.outcome === 'matched' ? 'Similar trade won' : insight.outcome === 'unmatched' ? 'Similar trade lost' : insight.expectedDirection === 'none' ? 'Lesson saved · +10 XP' : 'Waiting for a result');
         row.append(mark, copy, status);
         feed.append(row);
       }
@@ -427,6 +438,28 @@
   $('brainGrowthAllTasks')?.addEventListener('click', () => document.getElementById('brainTabMemory')?.click());
   document.addEventListener('zeronine:brain-teach', openTeachingTask);
 
+  function renderTraining(training) {
+    const card=node('section','brain-goals');
+    const unlocked=training?.unlocked === true;
+    card.append(node('h4','',unlocked?'Brain suggestions unlocked':'Unlock Brain suggestions'));
+    const list=node('div','brain-goals-list');
+    const goals=Array.isArray(training?.goals)?training.goals:[];
+    if (!goals.length) {
+      card.append(node('small','','Training progress is unavailable right now.'));
+      return card;
+    }
+    for(const goal of goals){
+      const row=node('div','brain-goal');
+      const current=Math.max(0,Number(goal.current)||0),target=Math.max(1,Number(goal.target)||1);
+      const label=goal.key==='lessons'?'Teach from your trades':goal.key==='trades'?'See similar trades settle':String(goal.label||'Training');
+      row.append(node('span','',label),node('strong','',Math.min(current,target)+' / '+target));
+      const bar=node('progress','');bar.max=target;bar.value=Math.min(current,target);bar.setAttribute('aria-label',label);row.append(bar);list.append(row);
+    }
+    card.append(list);
+    if(!unlocked){const action=node('button','','Teach a lesson');action.type='button';action.addEventListener('click',()=>{const field=$('brainInsightForm')?.querySelector('textarea');field?.scrollIntoView({behavior:'smooth',block:'center'});field?.focus({preventScroll:true})});card.append(action)}
+    return card;
+  }
+
   function render() {
     formDirty = false;
     host.replaceChildren();
@@ -449,8 +482,9 @@
     copy.append(node('span','brain-task-eyebrow','YOUR BRAIN'),node('h3','','Teach & memories'));
     copy.append(node('strong','','Level '+progress.level+' · '+progress.xp+' XP'));
     const metrics=node('div','brain-review-metrics');
-    metrics.append(node('span','',insights.length+' lessons'),node('span','',insights.filter(item=>item.outcome==='pending').length+' waiting'),node('span','',progress.linkedWins+' matched wins'));
+    metrics.append(node('span','',insights.length+' lessons'),node('span','',insights.filter(item=>item.outcome==='pending').length+' waiting'),node('span','',progress.linkedWins+' similar wins'));
     copy.append(metrics);overview.append(visual,copy);card.append(overview);
+    card.append(renderTraining(data.training));
     card.append(makeForm(Array.isArray(data.trades)?data.trades:[]));
     const status=node('p','brain-contribution-status',note);
     status.id='brainTaskStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');card.append(status);

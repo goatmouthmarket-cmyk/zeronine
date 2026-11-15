@@ -2013,12 +2013,25 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to keep personal Brain memories.' });
       const ownerKey = brainOwnerKey(accountId);
       await deps.multiplayerStore.syncBrainInsightOutcomes(ownerKey, accountId);
-      const [insights, progress, leaderboard, accountTrades] = await Promise.all([
+      const [rawInsights, progress, leaderboard, accountTrades, comparison] = await Promise.all([
         deps.multiplayerStore.listBrainInsights(ownerKey),
         deps.multiplayerStore.brainInsightProgress(ownerKey),
         deps.multiplayerStore.brainLeaderboard(10),
         deps.multiplayerStore.listTrades(accountId, 100),
+        deps.multiplayerStore.brainComparableOutcomes(ownerKey, accountId),
       ]);
+      const insights = rawInsights.map(insight => {
+        const stance = /\n\[Brain stance: (good|warning)\]$/.exec(insight.observation)?.[1] ?? null;
+        return { ...insight, observation: insight.observation.replace(/\n\[Brain stance: (good|warning)\]$/, ''), stance,
+          ...(comparison.byInsight[insight.id] ?? { similarTrades: 0, similarWins: 0, similarLosses: 0 }) };
+      });
+      const structuredLessons = insights.filter(insight => insight.stance !== null).length;
+      const similarTrades = comparison.distinctTrades;
+      const ready = structuredLessons >= 3 && similarTrades >= 10;
+      const training = { structuredLessons, similarTrades, ready, unlocked: ready, goals: [
+        { key: 'lessons', label: 'Teach 3 lessons', current: structuredLessons, target: 3 },
+        { key: 'trades', label: 'See 10 similar trades', current: similarTrades, target: 10 },
+      ] };
       const trades = accountTrades
         .filter(trade => (trade.status === 'won' || trade.status === 'lost') && trade.settled_at && (trade.direction === 'over' || trade.direction === 'under') && trade.barrier != null && Number.isInteger(Number(trade.barrier)) && Number(trade.barrier) >= 0 && Number(trade.barrier) <= 9 && typeof trade.market === 'string' && trade.market.length > 0)
         .map(trade => ({
@@ -2030,7 +2043,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
       const latestIdea = insights.find(insight => insight.expectedDirection !== 'none') || null;
       const practiceEvidence = latestIdea ? brainDirectionalPractice(latestIdea) : null;
-      return { ok: true, insights, progress, leaderboard, markets, trades, practiceEvidence, evaluatedInsightId: latestIdea?.id || null };
+      return { ok: true, insights, progress, leaderboard, markets, trades, training, practiceEvidence, evaluatedInsightId: latestIdea?.id || null };
     } catch {
       return reply.code(503).send({ error: 'The Brain could not reach its saved memories. Try again shortly.' });
     }
@@ -2051,14 +2064,16 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const sourceTrade = await deps.multiplayerStore.brainSourceTrade(accountId, sourceTradeId);
       if (!sourceTrade) return reply.code(404).send({ error: 'That settled trade is not available for this account.' });
       const category = body?.category;
+      const stance = body?.stance;
+      if (stance !== 'good' && stance !== 'warning') return reply.code(400).send({ error: 'Choose good sign or warning.' });
       const observation = typeof body?.observation === 'string' ? body.observation.trim() : '';
       const horizon = body?.horizon;
       const confidence = Number(body?.confidence);
       if (!['market_behavior', 'setup', 'entry_timing', 'risk'].includes(String(category))) {
         return reply.code(400).send({ error: 'Choose what your observation is about.' });
       }
-      if (observation.length < 8 || observation.length > 440) {
-        return reply.code(400).send({ error: 'Write between 8 and 440 characters about what you noticed.' });
+      if (observation.length < 8 || observation.length > 400) {
+        return reply.code(400).send({ error: 'Write between 8 and 400 characters about what you noticed.' });
       }
       if (!['next_5', 'next_20', 'next_session'].includes(String(horizon))
         || !Number.isInteger(confidence) || confidence < 1 || confidence > 5) {
@@ -2068,7 +2083,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         marketSymbol: sourceTrade.market,
         marketName: brainMarketName(sourceTrade.market),
         category: category as BrainInsightCategory,
-        observation: observation + '\n[Trade reference: ' + sourceTrade.id + ']',
+        observation: observation + '\n[Trade reference: ' + sourceTrade.id + ']\n[Brain stance: ' + stance + ']',
         expectedDirection: sourceTrade.direction as BrainExpectedDirection,
         barrier: sourceTrade.barrier,
         horizon: horizon as 'next_5' | 'next_20' | 'next_session',
