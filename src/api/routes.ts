@@ -37,6 +37,7 @@ import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
 import { buildBrainReport } from '../brain/service.ts';
+import { normalizeBrainTimeZone } from '../brain/timing.ts';
 import { observeBrainMemory, type BrainMemoryEvent } from '../brain/memory.ts';
 import {
   type TradeRow,
@@ -1952,20 +1953,25 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   const brainCache = new Map<string, { at: number; report: ReturnType<typeof buildBrainReport>; memoryHistory: BrainMemoryEvent[]; memoryAvailable: boolean }>();
   app.get('/api/ranger-brain/status', async (req, reply) => {
     reply.header('cache-control', 'no-store');
-    const query = req.query as { market?: string; lookbackDays?: string };
+    const query = req.query as { market?: string; lookbackDays?: string; timeZone?: string };
     const market = typeof query.market === 'string' && query.market.length <= 64 ? query.market : null;
     const lookbackDays = Number(query.lookbackDays);
     const lookback = Number.isFinite(lookbackDays) && lookbackDays > 0 ? lookbackDays : undefined;
-    const key = `${market ?? 'auto'}|${lookback ?? 'default'}`;
+    const timeZone = normalizeBrainTimeZone(query.timeZone);
+    const key = `${market ?? 'auto'}|${lookback ?? 'default'}|${timeZone}`;
     const now = Date.now();
     const cached = brainCache.get(key);
     if (cached && now - cached.at < 10_000) return { report: cached.report, memoryHistory: cached.memoryHistory, memoryAvailable: cached.memoryAvailable };
-    const report = buildBrainReport({ market, lookbackDays: lookback });
+    const report = buildBrainReport({ market, lookbackDays: lookback, timeZone });
     let memoryHistory: BrainMemoryEvent[] = [];
     let memoryAvailable = true;
-    try { memoryHistory = observeBrainMemory(report, now); } catch { memoryAvailable = false; }
+    try {
+      // Keep the shared server journal canonical; only the reader-facing report is localized.
+      const memoryReport = timeZone === 'UTC' ? report : buildBrainReport({ market, lookbackDays: lookback, timeZone: 'UTC' });
+      memoryHistory = observeBrainMemory(memoryReport, now);
+    } catch { memoryAvailable = false; }
     brainCache.set(key, { at: now, report, memoryHistory, memoryAvailable });
-    while (brainCache.size > 8) brainCache.delete(String(brainCache.keys().next().value));
+    while (brainCache.size > 64) brainCache.delete(String(brainCache.keys().next().value));
     return { report, memoryHistory, memoryAvailable };
   });
 
