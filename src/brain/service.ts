@@ -313,7 +313,7 @@ export function friendlyBrainMarketName(symbol: string | null | undefined): stri
   const currencies = /^frx([A-Z]{6})$/.exec(value);
   if (currencies) return `${currencies[1].slice(0, 3)}/${currencies[1].slice(3)} Forex`;
   if (value.startsWith('cry')) return `${value.slice(3).replace(/([A-Z]{3})([A-Z]{3})$/, '$1/$2')} Crypto`;
-  return value.replace(/^([A-Z]+)_/, '$1 ').replaceAll('_', ' ').replace(/\\bR (\\d+)\\b/, 'Volatility $1').trim();
+  return value.replace(/^([A-Z]+)_/, '$1 ').replaceAll('_', ' ')..trim();
 }
 
 function safePaperTrades(): PaperTradeSummary[] {
