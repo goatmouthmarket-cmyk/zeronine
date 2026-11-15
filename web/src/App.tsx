@@ -1458,6 +1458,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         postRoomState();
         postRoomMarketState();
         postRoomAutoMenu();
+        if (!s.playerSession) return;
         void fetch('/api/player/automation/state', { credentials: 'same-origin' }).then(async (response) => {
           if (!response.ok) return;
           const body = await response.json().catch(() => ({})) as { state?: unknown; running?: boolean };
@@ -1602,7 +1603,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       });
     };
     const refreshServerAutomation = (): void => {
-      if (document.hidden) return;
+      if (document.hidden || !s.playerSession) return;
       void fetch('/api/player/automation/state', { credentials: 'same-origin' }).then(async (response) => {
         if (!response.ok) return;
         const body = await response.json().catch(() => ({})) as { state?: unknown; running?: boolean };
@@ -1622,10 +1623,10 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       window.removeEventListener('focus', refreshServerAutomation);
       document.removeEventListener('visibilitychange', refreshServerAutomation);
     };
-  }, [onNavigate, playArenaTarget, postRoomState, s.markets, s.owner, s.session, s.testlab]);
+  }, [onNavigate, playArenaTarget, postRoomState, s.markets, s.owner, s.playerSession, s.session, s.testlab]);
 
   useEffect(() => {
-    if (!rangerAutoRunning) return;
+    if (!rangerAutoRunning || !s.playerSession) return;
     const poll = (): void => {
       void fetch('/api/player/automation/state', { credentials: 'same-origin' }).then(async (response) => {
         if (!response.ok) return;
@@ -1640,7 +1641,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     };
     const timer = window.setInterval(poll, 2_000);
     return () => window.clearInterval(timer);
-  }, [rangerAutoRunning]);
+  }, [rangerAutoRunning, s.playerSession]);
 
   return (
     <>
