@@ -18,6 +18,62 @@
     .brain-confidence-slider{width:100%;accent-color:#267b48}.brain-confidence-value{color:#31583d;font-size:12px}.brain-trade-facts span{overflow-wrap:anywhere}
 
     .brain-trade-detail{padding:14px;background:#fffdf5;border:1px solid #dfcfad;border-radius:12px;gap:12px;box-shadow:0 3px 12px #44351c0a}.brain-entry-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.brain-entry-title small{display:block;color:#89765b;font-size:9px;font-weight:800;letter-spacing:.08em}.brain-entry-title h5{margin:2px 0 0;color:#294f34;font-size:15px}.brain-entry-outcome{padding:4px 9px;border-radius:6px;background:#eee7d8;color:#665640;font-size:11px;font-weight:800}.brain-entry-outcome[data-result=won]{background:#e0f1df;color:#246339}.brain-entry-outcome[data-result=lost]{background:#f8e4df;color:#9a3336}.brain-entry-summary,.brain-trade-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.brain-entry-metric{min-width:0;padding:8px;background:#f4f1e5;border-radius:7px}.brain-entry-metric small,.brain-entry-metric strong{display:block;overflow-wrap:anywhere}.brain-entry-metric small{font-size:10px;color:#756b58}.brain-entry-metric strong{margin-top:2px;color:#294f34;font-size:12px;font-variant-numeric:tabular-nums}.brain-entry-metric.is-negative strong{color:#a33338}.brain-entry-sequence{min-width:0}.brain-entry-sequence-heading{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}.brain-entry-sequence-heading strong{font-size:11px;color:#35553a}.brain-entry-sequence-heading small{font-size:10px;color:#82745d}.brain-tick-row{display:grid;grid-template-columns:repeat(7,minmax(64px,1fr));gap:4px;overflow-x:auto;padding-bottom:3px}.brain-tick{padding:7px 4px;background:#f4f1e5;font-size:11px;white-space:nowrap;overflow-wrap:normal}.brain-tick small{margin-bottom:3px;font-size:9px}.brain-tick.is-entry{background:#ddf0dc}.brain-entry-more{border-top:1px solid #eadfc9;padding-top:9px}.brain-entry-more summary{cursor:pointer;color:#31583d;font-size:11px;font-weight:800}.brain-entry-more .brain-trade-facts{margin-top:8px}.brain-entry-metric.is-id{grid-column:span 2}.brain-trade-note{margin:5px 0 0}@media(max-width:430px){.brain-trade-detail{padding:10px}.brain-entry-summary{gap:4px}.brain-entry-metric{padding:6px}.brain-entry-metric strong{font-size:11px}.brain-entry-sequence-heading{display:block}.brain-entry-sequence-heading small{display:block;margin-top:2px}.brain-entry-more .brain-trade-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+    /* The teaching view uses the width of the Brain panel, not the viewport. */
+    #brainContributionApp { container-type: inline-size; min-width: 0; }
+    .brain-review-card { padding: 10px; gap: 9px; border: 0; border-radius: 12px; min-width: 0; }
+    .brain-review-card > * { min-width: 0; }
+    .brain-review-overview { grid-template-columns: 56px minmax(0, 1fr); gap: 9px; }
+    .brain-review-summary h3 { font-size: 16px; margin: 1px 0; line-height: 1.15; }
+    .brain-review-summary strong { font-size: 12px; }
+    .brain-review-metrics { margin-top: 4px; gap: 4px; }
+    .brain-review-metrics span { padding: 3px 6px; font-size: 10px; }
+    .brain-goals { padding: 8px 10px; gap: 4px; }
+    .brain-goals-list { gap: 3px; }
+    .brain-review-form { min-width: 0; }
+    .brain-review-form h4 { margin: 0 0 6px; font-size: 14px; }
+    .brain-review-fields { min-width: 0; gap: 7px; }
+    .brain-review-fields > * { min-width: 0; }
+    .brain-review-trades { max-height: 142px; gap: 4px; overscroll-behavior: contain; }
+    .brain-review-trade { min-height: 44px; padding: 6px 8px; gap: 7px; }
+    .brain-review-trade[aria-pressed=true] { border-width: 1px; box-shadow: inset 0 0 0 1px #388553; }
+    .brain-review-result { width: 25px; height: 25px; flex: 0 0 25px; }
+    .brain-review-trade-copy b { overflow-wrap: anywhere; font-size: 11px; }
+    .brain-review-trade-copy small { font-size: 10px; }
+    .brain-review-trade strong { font-size: 11px; }
+    .brain-trade-detail { padding: 9px; gap: 7px; box-shadow: none; }
+    .brain-entry-metric { padding: 6px; }
+    .brain-review-stance { margin: 0; gap: 6px; }
+    .brain-review-stance legend { margin-bottom: 4px; font-size: 12px; }
+    .brain-review-stance label span { min-height: 44px; padding: 8px; font-size: 14px; }
+    .brain-review-label { gap: 4px; font-size: 11px; }
+    .brain-review-label textarea, .brain-review-label select { padding: 7px 8px; min-height: 40px; }
+    .brain-review-note textarea { min-height: 54px; resize: vertical; }
+    .brain-review-row { gap: 6px; }
+    .brain-review-save { min-height: 44px; }
+    .brain-review-details, .brain-evidence-compact { padding-top: 7px; }
+    .brain-note-interpretation:empty, .brain-contribution-status:empty { display: none; }
+    @container (min-width: 650px) {
+      .brain-review-card { grid-template-columns: minmax(0, 1fr) minmax(220px, .8fr); align-items: start; }
+      .brain-review-overview { grid-column: 1; }
+      .brain-review-card > .brain-goals { grid-column: 2; grid-row: 1; }
+      .brain-review-card > .brain-review-form,
+      .brain-review-card > .brain-contribution-status,
+      .brain-review-card > .brain-review-details,
+      .brain-review-card > .brain-review-evidence { grid-column: 1 / -1; }
+      .brain-review-fields { grid-template-columns: minmax(200px, .9fr) minmax(0, 1.2fr); align-items: start; }
+      .brain-review-trades { grid-column: 1; grid-row: 1; max-height: 210px; }
+      .brain-review-selected { grid-column: 2; grid-row: 1 / span 4; }
+      .brain-review-stance, .brain-review-note, .brain-note-interpretation, .brain-review-row { grid-column: 1; }
+      .brain-review-save { grid-column: 1 / -1; }
+    }
+    @container (max-width: 420px) {
+      .brain-review-card { padding: 8px; gap: 8px; }
+      .brain-review-overview { grid-template-columns: 46px minmax(0, 1fr); }
+      .brain-review-trades { max-height: 120px; }
+      .brain-review-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .brain-review-stance label span { font-size: 13px; }
+    }
   `;document.head.append(sheet);
 
 
@@ -214,7 +270,7 @@
       choice.append(input,node('span','',label));stance.append(choice);
     });
     form.append(stance);
-    const topic=node('label','brain-review-label','What did you notice?');
+    const topic=node('label','brain-review-label brain-review-note','What did you notice?');
     const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);form.append(topic);
     const interpretation=node('div','brain-note-interpretation'); interpretation.setAttribute('aria-live','polite'); form.append(interpretation);
     const updateInterpretation=()=>{

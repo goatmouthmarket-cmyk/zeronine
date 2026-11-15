@@ -185,3 +185,126 @@
 @media (max-height: 500px) {
   #rangerBrainPanel { max-height: calc(100dvh - 64px); }
 }
+
+
+/* Compact floating Brain: fixed controls and content that shares the available space. */
+html body #rangerBrainPanel:not([hidden]) {
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  grid-template-rows:auto auto minmax(0,1fr);
+  width:min(900px,calc(100vw - 24px));
+  max-width:calc(100vw - 24px);
+  max-height:min(80dvh,700px);
+  border:0 !important;
+  border-radius:18px;
+  background:#fff6e7;
+  box-shadow:0 12px 32px #173a2347,0 2px 6px #4e351b24;
+  overflow:hidden;
+}
+html body #rangerBrainPanel .brain-head {
+  position:relative;
+  z-index:4;
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr) 38px 38px;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+  padding:5px 7px 4px;
+  border:0;
+  background:#fff6e7;
+}
+html body #rangerBrainPanel .brain-game-portrait {
+  width:32px;height:32px;min-width:32px;flex-basis:32px;padding:1px;border:0;border-radius:7px;
+}
+html body #rangerBrainPanel .brain-head-copy {min-width:0;overflow:hidden}
+html body #rangerBrainPanel #rangerBrainTitle {font-size:14px;line-height:1.15}
+html body #rangerBrainPanel #rangerBrainSubtitle {display:none}
+html body #rangerBrainPanel :is(#rangerBrainGear,#rangerBrainClose) {
+  position:relative;
+  z-index:6;
+  display:grid;
+  place-items:center;
+  width:38px;
+  min-width:38px;
+  height:38px;
+  min-height:38px;
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:8px;
+  background:#f3e6cc;
+  color:#294b35;
+  cursor:pointer;
+}
+html body #rangerBrainPanel #rangerBrainClose {font-size:24px;line-height:1}
+html body #rangerBrainPanel :is(#rangerBrainGear,#rangerBrainClose):focus-visible {
+  outline:3px solid #c28225;outline-offset:-3px;
+}
+html body #rangerBrainPanel .ranger-brain-tabs {
+  position:relative;z-index:3;
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:4px;margin:0;padding:2px 7px 5px;
+  border:0;background:#fff6e7;
+}
+html body #rangerBrainPanel .ranger-brain-tabs button {
+  min-width:0;min-height:38px;margin:0;padding:5px 8px;
+  border:0;border-radius:8px;box-shadow:none;
+}
+html body #rangerBrainPanel .ranger-brain-body {
+  min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;
+  padding:7px;background:#f7ecd8;
+}
+html body #rangerBrainPanel [role="tabpanel"] {min-width:0}
+html body #rangerBrainPanel [role="tabpanel"][hidden] {display:none !important}
+html body #rangerBrainPanel button {touch-action:manipulation}
+html body #rangerBrainPanel :is(.brain-pane-head,.brain-teach-heading) {margin:0 0 6px;padding:0}
+html body #rangerBrainPanel :is(.brain-pane-head,.brain-teach-heading) h3 {margin:0;line-height:1.2}
+@media (min-width:800px) {
+  html body #rangerBrainPanel #brainPaneMind:not([hidden]) {
+    display:grid;
+    grid-template-columns:minmax(245px,.9fr) minmax(0,1.45fr);
+    align-items:start;
+    gap:7px;
+  }
+  html body #rangerBrainPanel #brainPaneMind > .brain-growth-card {grid-column:1;min-width:0;margin:0}
+  html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid {
+    grid-column:2;min-width:0;display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;
+  }
+  html body #rangerBrainPanel #brainPaneMind .brain-hero-card {
+    grid-column:1 / -1;
+    display:grid;
+    grid-template-columns:minmax(0,1.2fr) minmax(125px,.8fr);
+    grid-template-rows:auto;
+    min-height:0;
+  }
+  html body #rangerBrainPanel #brainPaneMind .brain-game-scene {
+    grid-column:2;grid-row:1;height:clamp(100px,17vh,140px);
+  }
+  html body #rangerBrainPanel #brainPaneMind .brain-hero-content {
+    grid-column:1;grid-row:1;min-width:0;min-height:0;padding:8px;
+  }
+  html body #rangerBrainPanel #brainPaneMind .brain-learning-card,
+  html body #rangerBrainPanel #brainPaneMind .brain-patterns-card,
+  html body #rangerBrainPanel #brainPaneMind .brain-discovery-card {grid-column:auto;min-width:0}
+  html body #rangerBrainPanel #brainPaneMind .brain-discovery-card {grid-column:1 / -1}
+  html body #rangerBrainPanel #brainPaneMind > .brain-activity,
+  html body #rangerBrainPanel #brainPaneMind > .brain-note {grid-column:1 / -1}
+}
+@media (max-width:799px) {
+  html body #rangerBrainPanel:not([hidden]) {
+    width:min(620px,calc(100vw - 16px));max-width:calc(100vw - 16px);
+    max-height:calc(100dvh - 64px);border-radius:14px;
+  }
+  html body #rangerBrainPanel .brain-head {grid-template-columns:28px minmax(0,1fr) 38px 38px}
+  html body #rangerBrainPanel .brain-game-portrait {width:28px;height:28px;min-width:28px}
+  html body #rangerBrainPanel #brainPaneMind:not([hidden]) {display:grid;grid-template-columns:minmax(0,1fr);gap:7px}
+  html body #rangerBrainPanel .brain-overview-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+  html body #rangerBrainPanel .brain-hero-card,
+  html body #rangerBrainPanel .brain-discovery-card {grid-column:1 / -1}
+}
+@media (max-width:420px) {
+  html body #rangerBrainPanel .brain-overview-grid {grid-template-columns:minmax(0,1fr)}
+  html body #rangerBrainPanel .brain-hero-card,
+  html body #rangerBrainPanel .brain-discovery-card {grid-column:auto}
+}
