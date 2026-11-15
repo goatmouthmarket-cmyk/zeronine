@@ -449,6 +449,24 @@ async function main(): Promise<void> {
   await registerWs(app, hub, registry, multiplayerStore);
   if (multiplayerStore) registerPlayerTrading(app, multiplayerStore, registry);
 
+  // Serve the frame document and renderer directly from source. Vite's public
+  // asset copy did not appear in production requests, leaving the canvas/HUD blank.
+  const framePublic = path.resolve(import.meta.dirname, '..', 'web', 'public');
+  const pastureHtml = fs.readFileSync(path.join(framePublic, 'trading-room.html'), 'utf8');
+  const pastureRenderer = fs.readFileSync(path.join(framePublic, 'trading-room-core.js'), 'utf8');
+  app.get('/trading-room.html', async (_request, reply) => {
+    return reply
+      .type('text/html; charset=utf-8')
+      .header('Cache-Control', 'no-store, max-age=0')
+      .send(pastureHtml);
+  });
+  app.get('/trading-room-core.js', async (_request, reply) => {
+    return reply
+      .type('application/javascript; charset=utf-8')
+      .header('Cache-Control', 'no-store, max-age=0')
+      .send(pastureRenderer);
+  });
+
   const webDist = path.resolve(import.meta.dirname, '..', 'web', 'dist');
   if (fs.existsSync(webDist)) {
     app.register(fastifyStatic, {
