@@ -308,3 +308,116 @@ html body #rangerBrainPanel :is(.brain-pane-head,.brain-teach-heading) h3 {margi
   html body #rangerBrainPanel .brain-hero-card,
   html body #rangerBrainPanel .brain-discovery-card {grid-column:auto}
 }
+
+/* Fit the Brain to the pasture while keeping controls reachable on short screens. */
+html body #rangerBrainPanel:not([hidden]) {
+  box-sizing: border-box;
+  width: min(960px, calc(100vw - 20px));
+  max-width: calc(100vw - 20px);
+  max-height: calc(100dvh - 64px);
+  border-radius: clamp(16px, 2vw, 22px);
+  overflow: hidden;
+}
+html body #rangerBrainPanel .ranger-brain-body {
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+html body #rangerBrainPanel #brainPaneMind:not([hidden]) {
+  min-width: 0;
+  align-items: stretch;
+}
+html body #rangerBrainPanel #brainPaneMind > *,
+html body #rangerBrainPanel .brain-overview-grid > *,
+html body #rangerBrainPanel .brain-growth-top > * { min-width: 0; max-width: 100%; }
+html body #rangerBrainPanel .brain-growth-card {
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: clamp(5px, .8vh, 9px);
+  padding: clamp(8px, 1vw, 14px);
+  overflow: visible;
+}
+html body #rangerBrainPanel .brain-growth-top {
+  display: grid;
+  grid-template-columns: minmax(110px, 42%) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(8px, 1vw, 14px);
+}
+html body #rangerBrainPanel .brain-growth-visual {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1.22;
+  align-self: center;
+}
+html body #rangerBrainPanel .brain-growth-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: .62;
+}
+html body #rangerBrainPanel .brain-growth-visual svg {
+  width: 100%;
+  height: 100%;
+}
+html body #rangerBrainPanel .brain-growth-copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+html body #rangerBrainPanel .brain-growth-copy h3 {
+  font-size: clamp(16px, 1.65vw, 22px);
+  line-height: 1.12;
+}
+html body #rangerBrainPanel .brain-growth-copy p {
+  font-size: clamp(11px, .85vw, 13px);
+  line-height: 1.3;
+}
+html body #rangerBrainPanel .brain-growth-results {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 5px;
+}
+html body #rangerBrainPanel .brain-growth-results > * { min-width: 0; }
+html body #rangerBrainPanel .brain-growth-footer { min-width: 0; gap: 6px; }
+html body #rangerBrainPanel .brain-growth-teach { min-height: 40px; }
+html body #rangerBrainPanel .brain-overview-grid { min-width: 0; align-content: start; }
+html body #rangerBrainPanel .brain-game-scene {
+  display: block;
+  max-width: 100%;
+  object-fit: contain;
+}
+@media (min-width:800px) and (min-height:650px) {
+  html body #rangerBrainPanel #brainPaneMind:not([hidden]) {
+    grid-template-columns: minmax(300px, .95fr) minmax(0, 1.25fr);
+    gap: 8px;
+  }
+}
+@media (max-width:799px) {
+  html body #rangerBrainPanel:not([hidden]) {
+    width: min(620px,calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    max-height: calc(100dvh - 64px);
+    border-radius: 18px;
+  }
+  html body #rangerBrainPanel .brain-growth-top {
+    grid-template-columns: minmax(100px, 38%) minmax(0,1fr);
+  }
+}
+@media (max-width:380px) {
+  html body #rangerBrainPanel .brain-growth-top {
+    grid-template-columns: minmax(82px, 35%) minmax(0,1fr);
+  }
+  html body #rangerBrainPanel .brain-growth-results { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-height:540px) {
+  html body #rangerBrainPanel:not([hidden]) { max-height: calc(100dvh - 56px); }
+  html body #rangerBrainPanel .brain-growth-visual { max-height: 120px; }
+}

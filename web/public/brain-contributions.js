@@ -74,6 +74,26 @@
       .brain-review-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
       .brain-review-stance label span { font-size: 13px; }
     }
+
+    /* Fit the teaching surface without scroll regions inside individual cards. */
+    .brain-review-trades { display:grid; gap:4px; max-height:none; overflow:visible; min-width:0; }
+    .brain-review-picker-label { font-size:11px; font-weight:800; color:#405c40; }
+    .brain-review-picker { display:grid; grid-template-columns:36px minmax(0,1fr) 36px; gap:5px; align-items:stretch; min-width:0; }
+    .brain-review-page { min-width:36px; min-height:40px; border:0; border-radius:7px; background:#e1ecda; color:#245d39; font:800 22px/1 system-ui,sans-serif; cursor:pointer; }
+    .brain-review-page:disabled { opacity:.4; cursor:default; }
+    .brain-review-page:focus-visible { outline:3px solid #235c38; outline-offset:2px; }
+    .brain-review-current { display:flex; align-items:center; gap:7px; padding:5px 7px; border-radius:7px; background:#f1f4e9; min-width:0; }
+    .brain-review-current .brain-review-result[data-result=won] { background:#cee9cd; color:#25713d; }
+    .brain-review-current .brain-review-trade-copy b { overflow-wrap:anywhere; }
+    .brain-review-count { justify-self:center; color:#776b5a; font-size:10px; line-height:1; }
+    .brain-tick-row { grid-template-columns:repeat(7,minmax(0,1fr)); overflow:visible; padding:0; }
+    .brain-tick { min-width:0; white-space:normal; overflow-wrap:anywhere; word-break:break-word; font-size:clamp(9px,1.1vw,11px); line-height:1.25; }
+    .brain-entry-summary,.brain-trade-facts { min-width:0; }
+    .brain-trade-detail,.brain-review-selected,.brain-entry-sequence { min-width:0; max-width:100%; }
+    .brain-review-network svg { width:100%; max-width:160px; height:auto; }
+    @container (min-width:650px) { .brain-review-trades { max-height:none; overflow:visible; } .brain-review-overview { grid-template-columns:minmax(72px,110px) minmax(0,1fr); } }
+    @container (max-width:520px) { .brain-tick-row { grid-template-columns:repeat(4,minmax(0,1fr)); } .brain-tick { font-size:10px; } .brain-review-overview { grid-template-columns:minmax(56px,76px) minmax(0,1fr); } }
+    @container (max-width:300px) { .brain-tick-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .brain-entry-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   `;document.head.append(sheet);
 
 
@@ -246,22 +266,29 @@
     const details=node('div','brain-review-selected');
     const showDetail=trade=>details.replaceChildren(tradeDetail(trade));
     const selected=node('input',''); selected.type='hidden'; selected.name='sourceTradeId'; form.append(selected);
-    trades.slice(0,12).forEach((trade,index)=>{
-      const button=node('button','brain-review-trade'); button.type='button';
-      const result=String(trade.status||'').toLowerCase();
-      button.dataset.result=result;
-      const when=trade.settledAt||trade.createdAt;
-      const date=when?new Date(when):null;
+    const list=trades.slice(0,100);
+    let current=0;
+    const drawChoice=()=>{
+      const trade=list[current], result=String(trade.status||'').toLowerCase();
+      choices.replaceChildren();
+      const label=node('span','brain-review-picker-label','Choose a trade');
+      const picker=node('div','brain-review-picker');
+      const previous=node('button','brain-review-page','‹');previous.type='button';previous.setAttribute('aria-label','Previous trade');previous.disabled=current===0;
+      const next=node('button','brain-review-page','›');next.type='button';next.setAttribute('aria-label','Next trade');next.disabled=current===list.length-1;
+      const when=trade.settledAt||trade.createdAt, date=when?new Date(when):null;
       const dateLabel=date&&!Number.isNaN(date.getTime())?date.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
-      const profit=Number(trade.profit);
-      button.append(node('span','brain-review-result',result==='won'?'✓':'×'));
+      const selectedTrade=node('div','brain-review-current');
+      const indicator=node('span','brain-review-result',result==='won'?'✓':'×');
+      indicator.dataset.result=result;
       const copy=node('span','brain-review-trade-copy');
       copy.append(node('b','',String(trade.marketName||trade.marketSymbol||'Market')+' · '+(String(trade.direction||'').toLowerCase()==='over'?'Over ':'Under ')+trade.barrier),node('small','',dateLabel));
-      button.append(copy,node('strong','',Number.isFinite(profit)?(profit>=0?'+':'')+profit.toFixed(2):result.toUpperCase()));
-      button.addEventListener('click',()=>{selected.value=String(trade.id);choices.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));showDetail(trade);formDirty=true});
-      choices.append(button);
-      if(index===0){selected.value=String(trade.id);button.setAttribute('aria-pressed','true');showDetail(trade)}else button.setAttribute('aria-pressed','false');
-    });
+      selectedTrade.append(indicator,copy);
+      const move=delta=>{current=Math.max(0,Math.min(list.length-1,current+delta));selected.value=String(list[current].id);showDetail(list[current]);drawChoice();formDirty=true;};
+      previous.addEventListener('click',()=>move(-1));next.addEventListener('click',()=>move(1));
+      picker.append(previous,selectedTrade,next);
+      choices.append(label,picker,node('small','brain-review-count',(current+1)+' / '+list.length));
+    };
+    selected.value=String(list[0].id); showDetail(list[0]); drawChoice();
     form.append(choices,details);
     const stance=node('fieldset','brain-review-stance');
     stance.append(node('legend','','What did this tell you?'));
