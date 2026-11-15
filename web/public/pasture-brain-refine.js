@@ -15,8 +15,8 @@
   }
   function friendlyMind(report) {
     if (!report) return 'I can’t read my notes right now.';
-    if (report.mind === 'paper_hunting') return 'Looking for a good cow to practise on';
-    if (report.mind === 'waiting') return 'Waiting for a better moment';
+    if (report.mind === 'paper_hunting') return 'A practice time stands out; watching for a fresh setup';
+    if (report.mind === 'waiting') return 'Practice has not shown a reliable edge';
     if (report.mind === 'offline' || !report.outcomes) return 'Watching and collecting practice games';
     return 'Studying my practice games and learning from them';
   }
@@ -84,16 +84,28 @@
   }
 
   let lessonSig = '';
-  function noteLessonChange(signature, force) {
+  function noteLessonChange(signature, lesson) {
     const sig = typeof signature === 'string' ? signature : '';
-    if (!sig) return false;
-    if (sig === lessonSig) return false;
+    if (!sig || sig === lessonSig) return false;
     const first = !lessonSig;
     lessonSig = sig;
-    if (first && !force) return true;
-    if (first && force) return true;
-    if (typeof window.notify === 'function') window.notify('New Brain lesson');
+    if (first) return true;
+    if (typeof window.notify === 'function') {
+      const finding = String(lesson?.finding || '').replace(/\\s+/g, ' ').trim();
+      const time = finding.match(/around (.+?) your local time/i)?.[1];
+      const market = String(reportMarket(lesson) || '');
+      const count = Number(lesson?.outcomes) || 0;
+      const message = time
+        ? 'Practice insight: around ' + time + ' your time has stood out on ' + market + ' (' + count + ' results). Watch for a fresh setup; this is not a live signal.'
+        : 'Practice insight: ' + (finding.length > 145 ? finding.slice(0, 142).trimEnd() + '...' : finding);
+      window.notify(message);
+    }
     return true;
+  }
+
+  function reportMarket(lesson) {
+    const text = String(lesson?.finding || '');
+    return text.match(/for ([^,]+), around /i)?.[1] || report?.market || 'this market';
   }
 
   let learnedSig = '';
@@ -140,9 +152,22 @@
   }
 
   /* ---------- report / thinking text ---------- */
+  function brainReportQuery() {
+    const params = new URLSearchParams();
+    try {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (zone) params.set('timeZone', zone);
+    } catch {}
+    try {
+      const room = typeof lastRoomState === 'undefined' ? null : lastRoomState;
+      if (room && typeof room.selected === 'string' && room.selected) params.set('market', room.selected);
+    } catch {}
+    return '?' + params.toString();
+  }
+
   async function fetchReport() {
     try {
-      const r = await fetch('/api/ranger-brain/status', { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
+      const r = await fetch('/api/ranger-brain/status' + brainReportQuery(), { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
       if (!r.ok) return null;
       const p = await r.json();
       return p && p.report ? p.report : null;
@@ -156,29 +181,31 @@
     const card = $('brainSuggestionCard');
     if (!state || !why) return;
     if (!report) {
-      state.textContent = 'Watching and learning from practice games.';
-      why.textContent = 'I will explain a suggestion here when I can read real evidence. A suggestion is not permission to place a trade.';
-      if (ev) ev.textContent = 'I compare finished practice results against the break-even mark for the same setup.';
+      state.textContent = 'Still learning from practice';
+      why.textContent = 'I cannot name a useful time yet. I will explain what I learn and how many finished practice results support it.';
+      if (ev) ev.textContent = 'This Brain reads shared site practice results. It does not read your Deriv account history or predict the next trade.';
       card?.setAttribute('data-state', 'learning');
       return;
     }
     const best = report.bestHour;
-    const cur = report.currentHour;
+    const current = report.currentHour;
     const outcomes = Number(report.outcomes) || 0;
     const target = Number(report.evidenceTarget) || 100;
-    let label = 'Keep studying';
-    if (report.mind === 'paper_hunting' && best && best.verdict === 'favorable') label = 'Worth watching';
-    else if (report.mind === 'waiting' || (cur && cur.verdict === 'unfavorable')) label = 'Wait for a better chance';
-    else if (!outcomes || outcomes < Math.max(10, target * 0.25)) label = 'Still exploring';
-    else if (report.verdict === 'insufficient_evidence' || report.verdict === 'no_separable_edge') label = 'No reliable signal yet';
-    state.textContent = label + ' · ' + friendlyMind(report);
-    const parts = [];
-    if (cur) parts.push(`Right now ${plainVerdict(cur.verdict)}.`);
-    else if (best) parts.push(`Best hour ${best.label}: ${plainVerdict(best.verdict)}.`);
-    if (Number.isFinite(report.winRate) && Number.isFinite(report.breakeven)) parts.push(`${pct(report.winRate)} wins vs ${pct(report.breakeven)} break-even.`);
-    why.textContent = parts.join(' ');
-    if (ev) ev.textContent = `${outcomes} of ${target} practice games finished.`;
-    card?.setAttribute('data-state', label.toLowerCase().includes('watch') ? 'watch' : label.toLowerCase().includes('wait') ? 'wait' : 'learning');
+    const sample = best ? (report.hours || []).find((hour) => hour.key === best.key) : null;
+    const happeningNow = !!(best && current && best.key === current.key && current.verdict === 'favorable');
+    if (happeningNow) state.textContent = 'BEST TIME TO WATCH · ' + best.label + ' YOUR TIME';
+    else if (best && best.verdict === 'favorable') state.textContent = 'BEST-SUPPORTED PRACTICE TIME · ' + best.label + ' YOUR TIME';
+    else if (current && current.verdict === 'unfavorable') state.textContent = 'PRACTICE HAS BEEN WEAK AROUND THIS TIME';
+    else state.textContent = 'STILL LEARNING · NO RELIABLE BEST TIME YET';
+    if (best && sample) {
+      why.textContent = 'For ' + (report.market || 'this market') + ', shared site practice had ' + sample.wins + ' wins from ' + sample.outcomes + ' settled results around ' + best.label + ' your local time. That is a time to watch for a fresh setup, not a promise or a live signal.';
+    } else if (current && current.verdict === 'unfavorable') {
+      why.textContent = 'Past site practice around ' + current.label + ' your local time has been weaker for ' + (report.market || 'this market') + '. This describes the practice record; it does not predict the next result.';
+    } else {
+      why.textContent = 'I have reviewed ' + outcomes + ' of ' + target + ' settled site practice results for ' + (report.market || 'this market') + '. There is not enough reliable evidence to name a best time yet.';
+    }
+    if (ev) ev.textContent = 'Shared site practice data · ' + (report.lookbackDays || 30) + ' days · separate from your Deriv account history.';
+    card?.setAttribute('data-state', happeningNow || (best && best.verdict === 'favorable') ? 'watch' : current?.verdict === 'unfavorable' ? 'wait' : 'learning');
   }
 
   /* ---------- animated card scenes (game assets, drawn) ---------- */
@@ -537,8 +564,10 @@
     for (const scene of scenes) {
       if (scene.kind === 'timing') scene.data = { hours: data.hours || [], currentHour: data.currentHour || null };
     }
-    const signature = (data.lessons || []).map((lesson) => String(lesson.id || lesson.topic || '') + ':' + String(lesson.outcomes || 0) + ':' + String(lesson.validity || '')).join('|');
-    noteLessonChange(signature);
+    const lessons = data.lessons || [];
+    const signature = lessons.map((lesson) => String(lesson.id || lesson.topic || '') + ':' + String(lesson.validity || '') + ':' + String(lesson.finding || '').replace(/\\d+(?:[.,]\\d+)?%?/g, '#')).join('|');
+    const changedLesson = lessons.find((lesson) => String(lesson.topic || '').toLowerCase().includes('time')) || lessons[0];
+    noteLessonChange(signature, changedLesson);
     startScenes(true);
   });
   window.addEventListener('resize', () => { sceneDirty = true; startScenes(); }, { passive: true });
