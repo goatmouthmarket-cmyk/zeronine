@@ -145,6 +145,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
   ): void => {
     void (async () => {
       let provider = settled;
+      let initialWrite: Promise<void> | null = null;
       let exit: Record<string, unknown> = { quote: null, digit: null, epoch: null, before: [], after: [], complete: false };
       for (let attempt = 0; attempt < 30; attempt++) {
         if (attempt) await new Promise(resolve => setTimeout(resolve, 1000));
@@ -165,10 +166,13 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         const after = index >= 0 ? ticks.slice(index + 1, index + 4).map(format) : [];
         exit = { quote: spot.toFixed(precision!), digit: Number.isInteger(provider.exitDigit) ? provider.exitDigit : null,
           epoch, before, after, complete: index >= 3 && after.length === 3 };
+        if (!initialWrite) initialWrite = store.saveTradeContext(accountId, contractId, { exit })
+          .catch(error => { console.warn('[brain] initial exit context unavailable:', error instanceof Error ? error.message : String(error)); });
         if (exit.complete) break;
       }
       // Merge the exit key into the existing context without overwriting the
       // concurrently collected entry, cow display, or Brain attribution.
+      if (initialWrite) await initialWrite;
       await store.saveTradeContext(accountId, contractId, { exit });
     })().catch(error => console.warn('[brain] exit context unavailable:', error instanceof Error ? error.message : String(error)));
   };
