@@ -52,7 +52,7 @@ export interface BrainOutcome {
 }
 
 export interface TimingBucket {
-  /** UTC hour 0-23, or weekday 0-6 (Sunday = 0). */
+  /** Local hour 0-23 or local weekday 0-6 (Sunday = 0), using the profile time zone. */
   key: number;
   label: string;
   outcomes: number;
