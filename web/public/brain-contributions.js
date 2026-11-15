@@ -262,6 +262,11 @@
     addPriceSequence('Entry', context.entryQuote, context.entryDigit, context.before, context.after);
     const exit = context.exit && typeof context.exit === 'object' ? context.exit : {};
     addPriceSequence('Exit', exit.quote, exit.digit, exit.before, exit.after);
+    const entryTime = Number(context.entryEpoch), exitTime = Number(exit.epoch);
+    if (context.entryEpoch != null && exit.epoch != null && Number.isFinite(entryTime) && Number.isFinite(exitTime) && entryTime === exitTime && context.entryQuote != null && exit.quote != null && String(context.entryQuote) === String(exit.quote)) {
+      detail.append(node('p', 'brain-trade-note', 'Entry and exit were recorded at the same price and time. Multiple ticks can share a second.'));
+    }
+
 
     const more=node('details','brain-entry-more');
     more.append(node('summary','','Trade details'));
