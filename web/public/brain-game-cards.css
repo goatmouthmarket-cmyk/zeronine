@@ -128,3 +128,27 @@
     border-radius: 14px;
   }
 }
+
+
+/* A wide thought card follows the ranger on every screen. */
+#rangerBrainPanel {
+  width: min(620px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: min(64dvh, 560px);
+  border: 1px solid #ac855a;
+  border-radius: 18px;
+  background: #fff6e5;
+  box-shadow: 0 12px 30px #173a2350, 0 2px 4px #68472c26;
+}
+#rangerBrainPanel .ranger-brain-body { min-height: 0; overflow-y: auto; }
+@media (max-width: 700px) {
+  #rangerBrainPanel {
+    width: min(480px, calc(100vw - 16px));
+    max-width: calc(100vw - 16px);
+    max-height: min(55dvh, 440px);
+    border-radius: 16px;
+  }
+}
+@media (max-height: 500px) {
+  #rangerBrainPanel { max-height: calc(100dvh - 68px); }
+}

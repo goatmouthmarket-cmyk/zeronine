@@ -366,7 +366,7 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
   Promise.all([import('/ranger-auto-risk.js'), import('/ranger-auto-timing.js')])
     .then(([risk, timing]) => publish({ risk, timing, ready: true, error: '' }))
     .catch((error) => publish({ risk: null, timing: null, ready: false, error: String(error?.message || error || 'calculator unavailable') }));
-</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-6" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=float3"><style id="mobile-ranger-auto-pnl">
+</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-6" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=float4"><style id="mobile-ranger-auto-pnl">
 #rangerAutoMobilePnl,#rangerAutoMobilePnl[hidden]{display:none!important}
 @media(max-width:999.98px){
  .account-balance-hud>#rangerAutoMobilePnl:not([hidden]){
@@ -1171,33 +1171,47 @@ function brainTimeQuery() {
   // The menu opens beside the ranger, the way a right-click menu should, and
   // never on top of the Ranger Auto controls on the left edge.
   function positionPanel() {
-    if (innerWidth <= 700) return;
     const hook = window.__zeronineRanger;
     if (!hook || typeof hook.screen !== 'function') return;
-    let point;
-    try { point = hook.screen(); } catch { return; }
+    let point, head;
+    try { point = hook.screen(); head = typeof hook.head === 'function' ? hook.head() : null; } catch { return; }
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    const glyphRect = glyph.getBoundingClientRect();
+    const anchorX = glyphRect.width ? glyphRect.left + glyphRect.width / 2 : (head?.x ?? point.x);
+    const anchorY = glyphRect.height ? glyphRect.top + glyphRect.height / 2 : (head?.y ?? point.y - 45);
     const size = panel.getBoundingClientRect();
-    if (!size.width) return;
-    const gap = 34;
-    const top = Math.max(8, Math.min(innerHeight - size.height - 8, point.y - size.height * 0.62));
+    if (!size.width || !size.height) return;
+    const margin = 8, gap = 20, topInset = 52;
+    const clamp = (value, low, high) => Math.max(low, Math.min(Math.max(low, high), value));
     const api = window.__zeronineBrainBridge;
     const pick = api?.activeSnipe?.();
     const snap = pick && api?.snapshot?.();
     const cow = snap?.herd?.find((row) => row.index === pick.cowId);
     const radius = Math.max(38, 54 * (snap?.zoom || 1));
-    const options = [point.x + gap, point.x - gap - size.width];
-    let left = 8, best = Infinity;
-    for (const option of options) {
-      const candidate = Math.max(8, Math.min(innerWidth - size.width - 8, option));
-      const rangerOverlap = Math.max(0, Math.min(candidate + size.width, point.x + 30) - Math.max(candidate, point.x - 30));
-      const cowOverlap = cow ? Math.max(0, Math.min(candidate + size.width, cow.sx + radius) - Math.max(candidate, cow.sx - radius)) * Math.max(0, Math.min(top + size.height, cow.sy + radius) - Math.max(top, cow.sy - radius)) : 0;
-      const score = cowOverlap + rangerOverlap * size.height;
-      if (score < best) { best = score; left = candidate; }
+    const candidates = [
+      { x: anchorX - size.width / 2, y: anchorY - size.height - gap },
+      { x: anchorX + gap, y: anchorY - size.height * .65 },
+      { x: anchorX - size.width - gap, y: anchorY - size.height * .65 },
+      { x: anchorX - size.width / 2, y: anchorY + gap }
+    ];
+    let best = null, bestScore = Infinity;
+    for (const candidate of candidates) {
+      const left = clamp(candidate.x, margin, innerWidth - size.width - margin);
+      const top = clamp(candidate.y, topInset, innerHeight - size.height - margin);
+      const overlap = (cx, cy, rx, ry) =>
+        Math.max(0, Math.min(left + size.width, cx + rx) - Math.max(left, cx - rx)) *
+        Math.max(0, Math.min(top + size.height, cy + ry) - Math.max(top, cy - ry));
+      const faceOverlap = overlap(point.x, point.y - 25, 36, 55);
+      const cowOverlap = cow ? overlap(cow.sx, cow.sy, radius, radius) : 0;
+      const displacement = Math.hypot(left - candidate.x, top - candidate.y);
+      const score = faceOverlap * 6 + cowOverlap * 2 + displacement;
+      if (score < bestScore) { bestScore = score; best = { left, top }; }
     }
-    panel.style.left = left + 'px';
-    panel.style.top = top + 'px';
+    if (!best) return;
+    panel.style.left = Math.round(best.left) + 'px';
+    panel.style.top = Math.round(best.top) + 'px';
     panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
+    panel.style.setProperty('bottom', 'auto', 'important');
   }
 
   function setOpen(next) {
