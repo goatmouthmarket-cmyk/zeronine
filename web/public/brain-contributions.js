@@ -292,7 +292,7 @@
     const form=node('form','brain-review-fields'); form.id='brainInsightForm';
     const choices=node('div','brain-review-trades');
     const details=node('div','brain-review-selected');
-    const showDetail=trade=>details.replaceChildren(tradeDetail(trade));
+    const showDetail=trade=>{details.replaceChildren(tradeDetail(trade));details.dataset.snapshotSignature=JSON.stringify([trade.id,trade.status,trade.profit,trade.askPrice,trade.payout,trade.context]);};
     const selected=node('input',''); selected.type='hidden'; selected.name='sourceTradeId'; form.append(selected);
     let list=trades.slice(0,100);
     let current=Math.max(0,list.findIndex(trade=>String(trade.id)===String(preferredTradeId)));
