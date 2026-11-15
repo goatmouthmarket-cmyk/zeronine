@@ -335,6 +335,18 @@ export class MultiplayerStore {
     });
   }
 
+  /** Resolve an owned settled digit trade on the server; never trust client trade fields. */
+  async brainSourceTrade(accountId: string, tradeId: string): Promise<{ id: string; market: string; direction: 'over' | 'under'; barrier: number } | null> {
+    const result = await this.pool.query<{ id: string; market: string; direction: 'over' | 'under'; barrier: number }>(
+      `select id, market, direction, barrier from multiplayer_private.contracts
+       where account_id=$1 and id=$2 and status in ('won','lost') and settled_at is not null
+         and direction in ('over','under') and barrier between 0 and 9 limit 1`,
+      [accountId, tradeId],
+    );
+    const row = result.rows[0];
+    return row ? { ...row, barrier: Number(row.barrier) } : null;
+  }
+
   async listTrades(accountId: string, limit = 30): Promise<Array<Record<string, unknown>>> {
     const result = await this.pool.query(
       `select id, account_id, market, direction, barrier, stake, ask_price, payout, profit,

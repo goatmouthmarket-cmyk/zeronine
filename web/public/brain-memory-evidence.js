@@ -37,71 +37,58 @@
   };
 
   function ensure() {
-    const pane = $('brainPaneMemory');
-    if (!pane) return null;
+    const slot = $('brainEvidenceSlot');
+    if (!slot) return null;
     let root = $('brainEvidenceMemory');
     if (!root) {
       root = document.createElement('section');
       root.id = 'brainEvidenceMemory';
-      root.className = 'brain-memory-summary';
-      root.setAttribute('aria-label', 'Paper evidence and observed findings');
-      const scene = pane.querySelector('.brain-card-scene');
-      pane.insertBefore(root, scene ? scene.nextSibling : pane.firstChild);
+      root.className = 'brain-evidence-compact';
+      root.setAttribute('aria-label', 'Shared practice evidence');
+      slot.append(root);
     }
     return root;
   }
-  function makeWindow(label, report) {
-    const card = document.createElement('article');
-    card.className = 'brain-memory-window';
-    card.append(text('strong', '', label));
-    if (!report) { card.append(text('p', '', 'Evidence temporarily unavailable.')); return card; }
-    const count = Math.max(0, Number(report.outcomes) || 0);
-    card.append(text('b', '', count + (count === 1 ? ' paper result' : ' paper results')));
-    card.append(text('p', '', count ? percent(report.winRate) + ' wins · ' + percent(report.breakeven) + ' break-even' : 'No settled paper evidence in this window.'));
-    if (count) card.append(text('small', '', 'Latest settlement: ' + date(report.updatedAt)));
-    return card;
-  }
-  function render(long, short, error, serverHistory) {
+  function render(report, unused, error, serverHistory) {
     const root = ensure();
     if (!root) return;
     root.replaceChildren();
-    root.append(text('h3', '', 'Evidence memory'));
-    root.append(text('p', 'brain-memory-updated', error ? 'Could not refresh Supabase paper evidence or memory history.' : 'Shared site practice results · ' + String(long?.market || 'No market yet') + ' · your local time · checked ' + date(long?.generatedAt)));
-    const windows = document.createElement('div');
-    windows.className = 'brain-memory-windows';
-    windows.append(makeWindow('Recent · 7 days', short), makeWindow('Longer view · ' + (Number(long?.lookbackDays) || 30) + ' days', long));
-    root.append(windows);
-    root.append(text('p', 'brain-memory-caveat', 'These are shared site practice results for this market, not your Deriv account history or a live read of the market. They are a guide to past results, not a promise.'));
-    root.append(text('h4', '', 'Current findings'));
-    const current = document.createElement('div');
-    current.className = 'brain-memory-findings';
-    const lessons = Array.isArray(long?.lessons) ? long.lessons.filter(item => item && Number(item.outcomes) > 0 && item.finding) : [];
-    if (!lessons.length) current.append(text('p', '', error ? 'Current findings unavailable.' : 'Waiting for settled paper evidence.'));
-    for (const lesson of lessons.slice(0, 6)) {
-      const card = document.createElement('article');
-      card.className = 'brain-memory-finding';
-      card.append(text('strong', '', String(lesson.topic || 'Evidence') + ' · ' + (lesson.validity === 'validated' ? 'Checked' : 'Still checking')));
-      card.append(text('p', '', lesson.finding));
-      card.append(text('small', '', Number(lesson.outcomes) + ' paper results · latest evidence ' + date(long.updatedAt)));
-      current.append(card);
+    const top = document.createElement('div');
+    top.className = 'brain-evidence-compact__top';
+    top.append(text('strong', '', 'Practice snapshot'));
+    top.append(text('small', '', report?.market || 'Selected market'));
+    root.append(top);
+    if (error || !report) {
+      root.append(text('p', '', 'Practice results are temporarily unavailable.'));
+      return;
     }
-    root.append(current);
-    root.append(text('h4', '', 'Finding history'));
-    root.append(text('p', 'brain-memory-caveat', serverHistory ? 'Recorded in Supabase when a finding is first observed or changes meaning. Times show when it was recorded, not when the pattern originally began.' : 'Supabase history is unavailable. Findings are not saved in this browser as a fallback.'));
-    const findings = document.createElement('div');
-    findings.className = 'brain-memory-findings';
-    const market = String(long?.market || '');
-    const rows = (Array.isArray(serverHistory) ? serverHistory : []).filter(item => !market || item.market === market).slice(0, 12);
-    if (!rows.length) findings.append(text('p', '', 'No Supabase findings are available yet. Settled paper evidence is needed.'));
-    for (const item of rows) {
-      const card = document.createElement('article');
-      card.className = 'brain-memory-finding';
-      card.append(text('strong', '', item.topic + ' · ' + (item.validity === 'validated' ? 'Checked' : 'Still checking')));
-      card.append(text('p', '', localizeFinding(item.finding, long?.timeZone)));
-      card.append(text('small', '', 'Observed ' + date(item.observedAt || item.recordedAt) + ' · ' + item.outcomes + ' paper results · latest evidence ' + date(item.evidenceAt)));
-      findings.append(card);
+    const count = Math.max(0, Number(report.outcomes) || 0);
+    const stats = document.createElement('div');
+    stats.className = 'brain-evidence-compact__stats';
+    const stat = (value, label) => {
+      const el = document.createElement('div');
+      el.append(text('b', '', value), text('small', '', label));
+      return el;
+    };
+    stats.append(stat(String(count), 'paper results'), stat(count ? percent(report.winRate) : '—', 'won'), stat(count ? percent(report.breakeven) : '—', 'break-even'));
+    root.append(stats);
+    const details = document.createElement('details');
+    details.className = 'brain-evidence-compact__details';
+    details.append(text('summary', '', 'Practice details'));
+    details.append(text('p', '', 'Shared site practice over ' + (Number(report.lookbackDays) || 30) + ' days. Past results do not guarantee future outcomes.'));
+    const lessons = Array.isArray(report.lessons) ? report.lessons.filter(item => item && Number(item.outcomes) > 0 && item.finding) : [];
+    if (lessons[0]) details.append(text('p', '', localizeFinding(lessons[0].finding, report.timeZone)));
+    const market = String(report.market || '');
+    const rows = (Array.isArray(serverHistory) ? serverHistory : []).filter(item => !market || item.market === market).slice(0, 3);
+    if (rows.length) {
+      const history = document.createElement('details');
+      history.append(text('summary', '', 'Recent findings'));
+      for (const item of rows) {
+        history.append(text('p', '', localizeFinding(item.finding, report.timeZone)));
+      }
+      details.append(history);
     }
-    root.append(findings);
+    root.append(details);
   }
   async function request(query) {
     const response = await fetch('/api/ranger-brain/status' + query, { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
@@ -122,9 +109,7 @@
       if (sequence !== revision) return;
       
       if (!$('rangerBrainPanel')?.hidden && !$('brainPaneMemory')?.hidden) {
-        const market = long.marketSymbol ? '&market=' + encodeURIComponent(long.marketSymbol) : '';
-        const short = await request(reportQuery(7, long.marketSymbol || selectedMarket));
-        if (sequence === revision) render(long, short.report, false, result.memoryHistory);
+        if (sequence === revision) render(long, null, false, result.memoryHistory);
       }
     } catch {
       if (sequence === revision && !$('rangerBrainPanel')?.hidden && !$('brainPaneMemory')?.hidden) render(null, null, true);

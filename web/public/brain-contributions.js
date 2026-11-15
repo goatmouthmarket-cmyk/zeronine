@@ -6,6 +6,14 @@
   const $ = id => document.getElementById(id);
   const svgNs = 'http://www.w3.org/2000/svg';
   let state = null, loading = false, note = '', formDirty = false;
+  const sheet=document.createElement('style');
+  sheet.textContent=`
+    .brain-review-card{background:#fff8e9;border:1px solid #d2b88c;border-radius:16px;padding:16px;color:#3d3022;display:grid;gap:14px}
+    .brain-review-overview{display:grid;grid-template-columns:minmax(90px,130px) 1fr;align-items:center;gap:12px}
+    .brain-review-network svg{display:block;width:100%;height:auto}.brain-review-summary h3{margin:4px 0;color:#294f34;font-size:22px}.brain-review-summary strong{color:#285638}.brain-review-metrics{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.brain-review-metrics span{padding:4px 7px;background:#e7efdc;border-radius:6px;font-size:11px;font-weight:750;color:#31583d}
+    .brain-review-form h4{margin:0 0 9px;color:#294f34;font-size:16px}.brain-review-fields{display:grid;gap:10px}.brain-review-trades{display:grid;gap:6px;max-height:200px;overflow:auto}.brain-review-trade{display:flex;align-items:center;gap:9px;width:100%;padding:9px;border:1px solid #decaa8;border-radius:9px;background:#fffdf5;color:#3d3022;text-align:left;cursor:pointer}.brain-review-trade[aria-pressed=true]{border:2px solid #388553;background:#e9f4e5}.brain-review-result{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#e8c9be;color:#8a302c;font-weight:900}.brain-review-trade[data-result=won] .brain-review-result{background:#cee9cd;color:#25713d}.brain-review-trade-copy{display:grid;gap:2px;flex:1;min-width:0}.brain-review-trade-copy small{color:#776b5a}.brain-review-trade strong{color:#31583d}.brain-review-label{display:grid;gap:5px;font-size:12px;font-weight:800}.brain-review-label textarea,.brain-review-label select{width:100%;min-width:0;padding:9px;border:1px solid #c8b08c;border-radius:8px;background:#fffdf7;color:#30291f;font:inherit}.brain-review-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.brain-review-save{width:100%}.brain-review-details{border-top:1px solid #e2d2b9;padding-top:10px}.brain-review-details summary{cursor:pointer;font-weight:800;color:#31583d}.brain-review-evidence:empty{display:none}.brain-evidence-compact{border-top:1px solid #e2d2b9;padding-top:10px}.brain-evidence-compact__top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;color:#31583d}.brain-evidence-compact__stats{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.brain-evidence-compact__stats>*{background:#e7efdc;border-radius:6px;padding:5px 7px;color:#31583d;font-size:11px}.brain-evidence-compact__details{font-size:12px;color:#665a48}.brain-review-empty{font-size:13px;color:#665a48}
+  `;document.head.append(sheet);
+
 
   const node = (tag, cls, text) => {
     const item = document.createElement(tag);
@@ -105,80 +113,61 @@
     return (insight.expectedDirection === 'over' ? 'Over ' : 'Under ') + insight.barrier;
   }
 
-  function makeForm(markets) {
-    const card = node('section', 'brain-task-form-card');
-    card.setAttribute('aria-labelledby', 'brainTaskFormTitle');
-    const head = node('div', 'brain-task-section-head brain-task-form-heading');
-    const emblem = node('span', 'brain-task-form-emblem');
-    const emblemImage = node('img', ''); emblemImage.src='/brain-brand.svg'; emblemImage.alt=''; emblemImage.setAttribute('aria-hidden','true'); emblem.append(emblemImage);
-    const titleCopy = node('div', ''); titleCopy.append(node('span','brain-task-eyebrow','YOUR NEXT LESSON'));
-    const title = node('h4', '', 'Put your market read into words'); title.id='brainTaskFormTitle'; titleCopy.append(title);
-    head.append(emblem,titleCopy,node('span','brain-task-reward-chip','+10 XP')); card.append(head);
-    card.append(node('p','brain-task-form-intro','A useful lesson can be a small detail. Tell the Brain what you noticed and how you think it may play out; you can also save an observation without making a prediction.'));
-    const form=node('form','brain-task-form'); form.id='brainInsightForm';
-    const marketLabel=node('label','brain-task-field brain-task-market-field','Which market were you watching?');
-    const market=node('select',''); market.id='brainInsightMarket'; market.name='marketSymbol'; market.required=true; option(market,'','Choose a market');
-    const current=typeof lastRoomState!=='undefined'&&lastRoomState?lastRoomState.selected:'';
-    for(const item of markets){const choice=node('option','',item.name||'Market');choice.value=item.symbol;if(item.symbol===current)choice.selected=true;market.append(choice)}
-    marketLabel.append(market);form.append(marketLabel);
-    const topicGroup=node('fieldset','brain-task-choice-group brain-task-topic-group');topicGroup.append(node('legend','','What kind of lesson is it?'));
-    const topics=node('div','brain-task-topic-cards');
-    const topicOptions=[['setup','Pattern I noticed','A repeat or change in recent results','✦'],['market_behavior','How it moves','A behavior you keep seeing','↗'],['entry_timing','When I would enter','A moment or condition to watch','◷'],['risk','A warning sign','When you would slow down or wait','◇']];
-    topicOptions.forEach(([value,label,detail,icon],index)=>{const item=node('label','brain-task-topic-card'),input=node('input','');input.type='radio';input.name='category';input.value=value;input.required=index===0;input.checked=index===0;const mark=node('span','brain-task-choice-mark',icon),copy=node('span','brain-task-topic-copy');copy.append(node('b','',label),node('small','',detail));item.append(input,mark,copy);topics.append(item)});
-    topicGroup.append(topics);form.append(topicGroup);
-    const observationLabel=node('label','brain-task-field brain-task-field-wide brain-task-observation-field','What did you notice?');
-    const observation=node('textarea','');observation.name='observation';observation.rows=3;observation.maxLength=500;observation.minLength=8;observation.required=true;observation.placeholder='Example: I noticed the results stayed low for several ticks, then started to climb.';
-    observationLabel.append(observation);form.append(observationLabel);
-    const examples=node('div','brain-task-example-row');examples.append(node('span','brain-task-example-label','Need a starting point?'));
-    [['setup','A pattern','I noticed the last few results were…'],['entry_timing','A timing idea','I would pay attention after…'],['risk','A warning sign','I would be careful when…']].forEach(([category,label,value])=>{const button=node('button','brain-task-example',label);button.type='button';button.addEventListener('click',()=>{const choice=form.querySelector('input[name="category"][value="'+category+'"]');if(choice)choice.checked=true;observation.value=value;formDirty=true;observation.focus();observation.setSelectionRange(value.length,value.length)});examples.append(button)});
-    form.append(examples);
-    const prediction=node('fieldset','brain-task-choice-group brain-task-prediction-group');prediction.append(node('legend','','What do you think may happen?'));
-    const directions=node('div','brain-task-direction-cards'),directionChoices=[['over','Over a digit','You think a higher digit may appear','↑'],['under','Under a digit','You think a lower digit may appear','↓'],['none','Just an observation','Save the thought without a prediction','…']];
-    directionChoices.forEach(([value,label,detail,icon],index)=>{const item=node('label','brain-task-direction-card'),input=node('input','');input.type='radio';input.name='expectedDirection';input.value=value;input.required=index===0;input.checked=index===0;const mark=node('span','brain-task-choice-mark',icon),copy=node('span','brain-task-direction-copy');copy.append(node('b','',label),node('small','',detail));item.append(input,mark,copy);directions.append(item)});
-    prediction.append(directions);form.append(prediction);
-    const detailRow=node('div','brain-task-detail-row'),barrierLabel=node('label','brain-task-field brain-task-barrier-field','Target digit');
-    const barrier=node('select','');barrier.id='brainInsightBarrier';barrier.name='barrier';for(let digit=0;digit<=9;digit+=1)option(barrier,String(digit),String(digit));barrierLabel.append(barrier);detailRow.append(barrierLabel);
-    const horizonLabel=node('label','brain-task-field','When would you check the idea?'),horizon=node('select','');horizon.name='horizon';option(horizon,'next_5','Within 5 minutes');option(horizon,'next_20','Within 20 minutes');option(horizon,'next_session','Within 12 hours');horizonLabel.append(horizon);detailRow.append(horizonLabel);form.append(detailRow);
-    const confidenceField=node('fieldset','brain-task-confidence');confidenceField.append(node('legend','','How sure are you?'));const confidence=node('div','brain-task-confidence-options');
-    for(let score=1;score<=5;score+=1){const label=node('label','brain-task-confidence-card'),input=node('input','');input.type='radio';input.name='confidence';input.value=String(score);input.required=score===1;input.checked=score===3;label.append(input,node('span','brain-task-confidence-number',String(score)),node('small','',['Guessing','A little sure','Fairly sure','Very sure','Certain'][score-1]));confidence.append(label)}
-    confidenceField.append(confidence);form.append(confidenceField);
-    form.append(node('small','brain-task-form-help','Teaching earns +10 XP. A matching settled win adds 25 XP; a matching loss costs 20 XP. No trade is required to teach, and XP never changes your balance or stake.'));
-    const submit=node('button','brain-task-primary brain-task-save','Save lesson · +10 XP');submit.type='submit';form.append(submit);
+  function makeForm(trades) {
+    const card = node('section','brain-review-form');
+    card.append(node('h4','','Teach from a trade'));
+    if (!trades.length) {
+      card.append(node('p','brain-review-empty','Your settled trades will appear here. Choose one to teach the Brain what you noticed.'));
+      return card;
+    }
+    const form=node('form','brain-review-fields'); form.id='brainInsightForm';
+    const choices=node('div','brain-review-trades');
+    const selected=node('input',''); selected.type='hidden'; selected.name='sourceTradeId'; form.append(selected);
+    trades.slice(0,12).forEach((trade,index)=>{
+      const button=node('button','brain-review-trade'); button.type='button';
+      const result=String(trade.status||'').toLowerCase();
+      button.dataset.result=result;
+      const when=trade.settledAt||trade.createdAt;
+      const date=when?new Date(when):null;
+      const dateLabel=date&&!Number.isNaN(date.getTime())?date.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+      const profit=Number(trade.profit);
+      button.append(node('span','brain-review-result',result==='won'?'✓':'×'));
+      const copy=node('span','brain-review-trade-copy');
+      copy.append(node('b','',String(trade.marketName||trade.marketSymbol||'Market')+' · '+(String(trade.direction||'').toLowerCase()==='over'?'Over ':'Under ')+trade.barrier),node('small','',dateLabel));
+      button.append(copy,node('strong','',Number.isFinite(profit)?(profit>=0?'+':'')+profit.toFixed(2):result.toUpperCase()));
+      button.addEventListener('click',()=>{selected.value=String(trade.id);choices.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));formDirty=true});
+      choices.append(button);
+      if(index===0){selected.value=String(trade.id);button.setAttribute('aria-pressed','true')}else button.setAttribute('aria-pressed','false');
+    });
+    form.append(choices);
+    const topic=node('label','brain-review-label','What did you notice?');
+    const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);form.append(topic);
+    const row=node('div','brain-review-row');
+    const categoryLabel=node('label','brain-review-label','Your observation');
+    const category=node('select','');category.name='category';
+    [['setup','Pattern'],['market_behavior','Market movement'],['entry_timing','Entry timing'],['risk','Risk or warning']].forEach(([value,label])=>option(category,value,label));categoryLabel.append(category);
+    const confidenceLabel=node('label','brain-review-label','Your confidence');
+    const confidence=node('select','');confidence.name='confidence';for(let n=1;n<=5;n++)option(confidence,String(n),n+' / 5');confidence.value='3';confidenceLabel.append(confidence);
+    row.append(categoryLabel,confidenceLabel);form.append(row);
+    const horizon=node('input','');horizon.type='hidden';horizon.name='horizon';horizon.value='next_session';form.append(horizon);
+    const submit=node('button','brain-task-primary brain-review-save','Save lesson');submit.type='submit';form.append(submit);
     form.addEventListener('input',()=>{formDirty=true});form.addEventListener('change',()=>{formDirty=true});form.addEventListener('submit',submitInsight);
-    const syncDirection=()=>{const selected=form.querySelector('input[name="expectedDirection"]:checked')?.value||'over',off=selected==='none';barrier.disabled=off;barrierLabel.hidden=off};
-    form.querySelectorAll('input[name="expectedDirection"]').forEach(input=>input.addEventListener('change',syncDirection));syncDirection();
     card.append(form);return card;
   }
 
   async function submitInsight(event) {
     event.preventDefault();
-    const form=event.currentTarget;
-    const data=new FormData(form);
-    const direction=String(data.get('expectedDirection'));
-    const submit=form.querySelector('button[type="submit"]');
-    submit.disabled=true; submit.textContent='Saving to your Brain…';
-    setMessage('Saving your lesson securely to Supabase…','busy');
+    const form=event.currentTarget, data=new FormData(form), submit=form.querySelector('button[type="submit"]');
+    if(!data.get('sourceTradeId')){setMessage('Choose a settled trade first.','bad');return;}
+    submit.disabled=true;submit.textContent='Saving…';setMessage('Saving your lesson…','busy');
     try {
-      const result=await request('/api/ranger-brain/contributions',{
-        method:'POST',
-        headers:{'content-type':'application/json',accept:'application/json'},
-        body:JSON.stringify({
-          marketSymbol:data.get('marketSymbol'),
-          category:data.get('category'),
-          observation:data.get('observation'),
-          expectedDirection:direction,
-          barrier:direction==='none'?null:Number(data.get('barrier')),
-          horizon:data.get('horizon'),
-          confidence:Number(data.get('confidence'))
-        })
-      });
-      note='Lesson saved in your Brain · +10 XP';
-      formDirty = false;
-      await load();
-      setMessage(note,'good');
+      await request('/api/ranger-brain/contributions',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({
+        sourceTradeId:String(data.get('sourceTradeId')),category:data.get('category'),observation:data.get('observation'),
+        confidence:Number(data.get('confidence')),horizon:data.get('horizon')
+      })});
+      note='Lesson saved';formDirty=false;await load();setMessage(note,'good');
     } catch(error) {
-      setMessage(error.message || 'The Brain could not save your note. It was not saved.','bad');
-      submit.disabled=false; submit.textContent='Save this lesson · +10 XP';
+      setMessage(error.message||'Could not save your lesson. Try again.','bad');submit.disabled=false;submit.textContent='Save lesson';
     }
   }
 
@@ -292,7 +281,7 @@
       const badge=node('em','brain-task-memory-result',insight.outcome==='matched'?'GOOD CALL':insight.outcome==='unmatched'?'MISSED':'WAITING');
       summary.append(mark,copy,badge); card.append(summary);
       const detail=node('div','brain-task-memory-detail');
-      detail.append(node('p','',insight.observation));
+      detail.append(node('p','',String(insight.observation || '').replace(/\n\[Trade reference: [^\]]+\]$/, '')));
       const status=insight.outcome==='matched'?'+25 XP · Your call matched a settled win':insight.outcome==='unmatched'?'−20 XP · A settled result challenged this call':insight.expectedDirection==='none'?'+10 XP · Observation saved':'Waiting for a matching settled result';
       detail.append(node('strong','',status));
       const when=insight.createdAt?new Date(insight.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
@@ -408,7 +397,7 @@
         const mark = node('span', 'brain-growth-mark', insight.outcome === 'matched' ? '✓' : insight.outcome === 'unmatched' ? '×' : '·');
         const copy = node('span', 'brain-growth-outcome');
         copy.append(node('b', '', insight.marketName + ' · ' + directionLabel(insight)));
-        copy.append(node('small', '', String(insight.observation || '').slice(0, 110)));
+        copy.append(node('small', '', String(insight.observation || '').replace(/\n\[Trade reference: [^\]]+\]$/, '').slice(0, 110)));
         const status = node('strong', '', insight.outcome === 'matched' ? 'Good call · +25 XP' : insight.outcome === 'unmatched' ? 'Missed call · −20 XP' : insight.expectedDirection === 'none' ? 'Lesson saved · +10 XP' : 'Waiting for a result');
         row.append(mark, copy, status);
         feed.append(row);
@@ -426,7 +415,7 @@
       if (form) {
         form.hidden = false;
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        form.querySelector('textarea')?.focus({ preventScroll: true });
+        (form.querySelector('.brain-review-trade') || form.querySelector('textarea'))?.focus({ preventScroll: true });
         return;
       }
       if (attempts++ === 0) void load();
@@ -453,12 +442,22 @@
       host.append(card);return;
     }
     const insights=data.insights||[],progress=data.progress||{total:0,reviewed:0,matched:0,unmatched:0,patterns:0,xp:0,level:1,levelXp:0,linkedWins:0};
-    host.append(makeForm(data.markets||[]));
-    host.append(renderProgress(progress,insights));
-    host.append(renderInsights(insights));
+    const card=node('section','brain-review-card');
+    const overview=node('div','brain-review-overview');
+    const visual=node('div','brain-review-network');visual.append(drawNetwork(insights));
+    const copy=node('div','brain-review-summary');
+    copy.append(node('span','brain-task-eyebrow','YOUR BRAIN'),node('h3','','Teach & memories'));
+    copy.append(node('strong','','Level '+progress.level+' · '+progress.xp+' XP'));
+    const metrics=node('div','brain-review-metrics');
+    metrics.append(node('span','',insights.length+' lessons'),node('span','',insights.filter(item=>item.outcome==='pending').length+' waiting'),node('span','',progress.linkedWins+' matched wins'));
+    copy.append(metrics);overview.append(visual,copy);card.append(overview);
+    card.append(makeForm(Array.isArray(data.trades)?data.trades:[]));
     const status=node('p','brain-contribution-status',note);
-    status.id='brainTaskStatus'; status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
-    host.append(status);
+    status.id='brainTaskStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');card.append(status);
+    const memories=node('details','brain-review-details');
+    memories.append(node('summary','','Saved lessons · '+insights.length),renderInsights(insights));card.append(memories);
+    const evidence=node('div','brain-review-evidence');evidence.id='brainEvidenceSlot';card.append(evidence);
+    host.append(card);
   }
   async function load() {
     if(loading || document.hidden || formDirty) return;
