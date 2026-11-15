@@ -1,7 +1,6 @@
 /* Leave the bottom launchers reachable while mobile drawers are open. */
 @media (max-width: 999.98px) and (min-height: 561px) {
   body #rangerAutoHud:not([hidden]),
-  body #rangerBrainPanel:not([hidden]),
   body #ghostTraderPanel:not([hidden]) {
     bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
     max-height: min(62dvh, calc(100dvh - var(--dc-header-h, 56px) - 84px - env(safe-area-inset-bottom, 0px))) !important;

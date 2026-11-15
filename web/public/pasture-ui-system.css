@@ -87,7 +87,6 @@ body { font-family: var(--dc-font); }
 
 /* Desktop: every major journal docks to the same right-hand edge. */
 @media (min-width: 1000px) {
-  #rangerBrainPanel:not([hidden]),
   #rangerAutoHud:not([hidden]),
   #ghostTraderPanel:not([hidden]),
   #chatPanel:not([hidden]) {
@@ -110,7 +109,6 @@ body { font-family: var(--dc-font); }
 
 /* Phone: one bottom sheet for every major menu. */
 @media (max-width: 999.98px) {
-  #rangerBrainPanel:not([hidden]),
   #rangerAutoHud:not([hidden]),
   #ghostTraderPanel:not([hidden]),
   #chatPanel:not([hidden]) {
@@ -140,7 +138,6 @@ body { font-family: var(--dc-font); }
 
 /* Short landscape: a side sheet, never a tall bottom sheet. */
 @media (max-height: 560px) and (orientation: landscape) {
-  #rangerBrainPanel:not([hidden]),
   #rangerAutoHud:not([hidden]),
   #ghostTraderPanel:not([hidden]),
   #chatPanel:not([hidden]) {
@@ -389,7 +386,6 @@ body[data-dc-modal="true"] .dc-critical-lane { z-index: var(--dc-z-critical-moda
  * compatibility layer no longer escalates any of these properties.
  * ---------------------------------------------------------------------- */
 @media (min-width: 1000px) {
-  #rangerBrainPanel:not([hidden]),
   #rangerAutoHud:not([hidden]),
   #ghostTraderPanel:not([hidden]),
   #chatPanel:not([hidden]) {
@@ -411,7 +407,6 @@ body[data-dc-modal="true"] .dc-critical-lane { z-index: var(--dc-z-critical-moda
 }
 
 @media (max-width: 999.98px) {
-  #rangerBrainPanel:not([hidden]),
   #rangerAutoHud:not([hidden]),
   #ghostTraderPanel:not([hidden]),
   #chatPanel:not([hidden]) {
@@ -435,7 +430,6 @@ body[data-dc-modal="true"] .dc-critical-lane { z-index: var(--dc-z-critical-moda
 }
 
 @media (max-height: 560px) and (orientation: landscape) {
-  #rangerBrainPanel:not([hidden]),
   #rangerAutoHud:not([hidden]),
   #ghostTraderPanel:not([hidden]),
   #chatPanel:not([hidden]) {

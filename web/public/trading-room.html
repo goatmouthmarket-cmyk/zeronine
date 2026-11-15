@@ -1214,9 +1214,9 @@ function brainTimeQuery() {
       if (score < bestScore) { bestScore = score; best = { left, top }; }
     }
     if (!best) return;
-    panel.style.left = Math.round(best.left) + 'px';
-    panel.style.top = Math.round(best.top) + 'px';
-    panel.style.right = 'auto';
+    panel.style.setProperty('left', Math.round(best.left) + 'px', 'important');
+    panel.style.setProperty('top', Math.round(best.top) + 'px', 'important');
+    panel.style.setProperty('right', 'auto', 'important');
     panel.style.setProperty('bottom', 'auto', 'important');
   }
 
@@ -1300,7 +1300,7 @@ function brainTimeQuery() {
   loadReport({ minimumThink: 0 });
   setInterval(() => { if (!document.hidden) loadReport({ minimumThink: 0 }); }, 60000);
 })();
-</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"><link rel="stylesheet" href="/pasture-ui-system.css?v=layout2" id="pasture-ui-system-css"><link rel="stylesheet" href="/pasture-cooldown-flat.css"><link rel="stylesheet" href="/pasture-typography.css"><link rel="stylesheet" href="/pasture-chat-open.css?v=mobile3"><link rel="stylesheet" href="/pasture-login-feedback.css"><link rel="stylesheet" href="/pasture-loading.css"><link rel="stylesheet" href="/pasture-risk-card.css"><link rel="stylesheet" href="/pasture-mobile-layout.css"><link rel="stylesheet" href="/brain-entry-status.css"><link rel="stylesheet" href="/pasture-menu-brand.css"><link rel="stylesheet" href="/pasture-contrast-fixes.css">
+</script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"><link rel="stylesheet" href="/pasture-ui-system.css?v=layout3" id="pasture-ui-system-css"><link rel="stylesheet" href="/pasture-cooldown-flat.css"><link rel="stylesheet" href="/pasture-typography.css"><link rel="stylesheet" href="/pasture-chat-open.css?v=mobile3"><link rel="stylesheet" href="/pasture-login-feedback.css"><link rel="stylesheet" href="/pasture-loading.css"><link rel="stylesheet" href="/pasture-risk-card.css"><link rel="stylesheet" href="/pasture-mobile-layout.css?v=brain2"><link rel="stylesheet" href="/brain-entry-status.css"><link rel="stylesheet" href="/pasture-menu-brand.css"><link rel="stylesheet" href="/pasture-contrast-fixes.css">
 <script defer src="/pasture-ui-system.js?v=market-inline2" id="pasture-ui-system-js"></script>
 <script src="/pasture-ui-refine.js?v=cooldown2" id="pasture-ui-refine-js"></script><script src="/pasture-brain-refine.js?v=20261115-4" id="pasture-brain-refine-js"></script><script src="/brain-memory-evidence.js?v=20261115-4"></script><script src="/brain-contributions.js?v=20261115-15"></script><script src="/brain-projection.js"></script><script src="/brain-loading.js"></script><script src="/pasture-cooldown-header.js"></script><script src="/pasture-chat-open.js?v=mobile3"></script><script src="/pasture-login-feedback.js"></script><script src="/pasture-risk-card.js"></script><script src="/pasture-mobile-layout.js"></script><script defer src="/brain-entry-status.js?v=body-mount1"></script><script src="/ranger-profile-sync.js"></script></body></html>
 
