@@ -119,7 +119,8 @@ async function main(): Promise<void> {
 
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   app.addHook('onSend', async (req, reply, payload) => {
-    const isTradingRoom = req.url.split('?', 1)[0] === '/trading-room.html';
+    const requestPath = req.url.split('?', 1)[0];
+    const isTradingRoom = requestPath === '/trading-room.html' || requestPath === '/pasture-frame.html';
     if (isTradingRoom) reply.header('Cache-Control', 'no-store, max-age=0');
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', isTradingRoom ? 'SAMEORIGIN' : 'DENY');
@@ -452,14 +453,17 @@ async function main(): Promise<void> {
   // Serve the frame document and renderer directly from source. Vite's public
   // asset copy did not appear in production requests, leaving the canvas/HUD blank.
   const framePublic = path.resolve(import.meta.dirname, '..', 'web', 'public');
-  const pastureHtml = fs.readFileSync(path.join(framePublic, 'trading-room.html'), 'utf8');
+  const rawPastureHtml = fs.readFileSync(path.join(framePublic, 'trading-room.html'), 'utf8');
   const pastureRenderer = fs.readFileSync(path.join(framePublic, 'trading-room-core.js'), 'utf8');
-  app.get('/trading-room.html', async (_request, reply) => {
-    return reply
-      .type('text/html; charset=utf-8')
-      .header('Cache-Control', 'no-store, max-age=0')
-      .send(pastureHtml);
-  });
+  const rendererTag = '<script src="/trading-room-core.js?v=20261115-9"></script>';
+  if (!rawPastureHtml.includes(rendererTag)) throw new Error('Pasture renderer script tag is missing');
+  const pastureHtml = rawPastureHtml.replace(rendererTag, `<script>${pastureRenderer}</script>`);
+  const servePastureFrame = async (_request: unknown, reply: any) => reply
+    .type('text/html; charset=utf-8')
+    .header('Cache-Control', 'no-store, max-age=0')
+    .send(pastureHtml);
+  app.get('/trading-room.html', servePastureFrame);
+  app.get('/pasture-frame.html', servePastureFrame);
   app.get('/trading-room-core.js', async (_request, reply) => {
     return reply
       .type('application/javascript; charset=utf-8')
