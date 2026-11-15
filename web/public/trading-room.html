@@ -477,13 +477,13 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
         <article class="brain-card brain-patterns-card" id="brainPatternsCard">
           <div class="brain-card-head">
             <div>
-              <span class="brain-eyebrow">Market patterns</span>
-              <h3>When I do better</h3>
+              <span class="brain-eyebrow">Practice patterns</span>
+              <h3>When practice has gone better</h3>
             </div>
             <span id="brainWindowNote">No clear hour yet</span>
           </div>
           <canvas id="brainPatternScene" class="brain-pattern-scene" aria-hidden="true"></canvas>
-          <div class="brain-window-hours" id="brainWindowHours" role="group" aria-label="Practice results by UTC hour"></div>
+          <div class="brain-window-hours" id="brainWindowHours" role="group" aria-label="Practice results by your local hour"></div>
           <div id="brainHourDetail" class="brain-hour-detail" hidden></div>
           <button id="brainPatternsMore" type="button" class="brain-card-link-button">Inspect the hours <span aria-hidden="true">&rarr;</span></button>
         </article>
@@ -2409,18 +2409,18 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
 
   function heroCopy(latest, best) {
     if (!latest || latest.mind === 'offline') {
-      return { state: 'offline', title: 'Waiting for the notes', line: 'I need settled practice games before I can read the pasture.' };
+      return { state: 'offline', title: 'Still collecting practice', line: 'I need finished site practice results before I can point to a useful time.' };
     }
     if (latest.mind === 'waiting') {
-      return { state: 'waiting', title: 'Waiting for better conditions', line: "The market's paper record is below break-even, so I am standing down." };
+      return { state: 'waiting', title: 'No clear edge in practice', line: 'The site practice record is below the break-even point. I do not see a reliable time to recommend.' };
     }
-    if (latest.mind === 'paper_hunting') {
-      return { state: 'reviewing', title: 'Reviewing a paper setup', line: best ? best.label + ' is holding up in practice. I would only take a paper shot.' : 'A paper setup is being reviewed. No live order is involved.' };
+    if (latest.mind === 'paper_hunting' && best) {
+      return { state: 'reviewing', title: 'A practice window to watch', line: 'Around ' + best.label + ' in your local time has the strongest supported practice record for ' + (latest.market || 'this market') + '. Wait for a fresh setup; this is not a live signal.' };
     }
     if (best) {
-      return { state: 'studying', title: 'Studying a possible pattern', line: best.label + ' is leading my practice notes. I am still testing it.' };
+      return { state: 'studying', title: 'Still checking this time', line: 'Around ' + best.label + ' is ahead in the site practice results, but there is not enough evidence to call it reliable yet.' };
     }
-    return { state: 'watching', title: 'Watching the pasture', line: 'I am collecting practice results before I make a call.' };
+    return { state: 'watching', title: 'Still learning', line: 'I am collecting finished site practice results. I cannot name a best time yet.' };
   }
 
   function renderReport() {
@@ -2451,68 +2451,17 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
       $('brainEdgeFill').style.width = '0%';
       $('brainEdgeText').textContent = 'No reading without the server.';
       $('brainWindowHours').replaceChildren();
-      $('brainWindowNote').textContent = 'Offline';
-      if (detail) { detail.hidden = true; detail.replaceChildren(); }
-      $('brainDiscoveryTitle').textContent = 'No reliable pattern yet';
-      $('brainDiscoveryText').textContent = 'The notes are offline, so there is nothing to report.';
-      $('brainDiscoveryStatus').textContent = 'Offline';
-      $('brainDiscoveryStatus').dataset.tone = 'warn';
-      discovery.dataset.lessonIndex = '';
-      $('brainLessons').replaceChildren();
-      $('brainHourGrid').replaceChildren();
-      $('brainTrainingHeadline').textContent = 'The Brain read model is unreachable, so there is nothing to train on.';
-      document.dispatchEvent(new CustomEvent('zeronine:brain-report', { detail: { mind: 'offline', outcomes: 0, target: 100, progress: 0, hours: [], lessons: [] } }));
-      return;
-    }
-    const target = Number.isFinite(latest.evidenceTarget) && latest.evidenceTarget > 0 ? latest.evidenceTarget : 100;
-    const progress = Math.max(0, Math.min(1, latest.outcomes / target));
-    const remaining = Math.max(0, target - latest.outcomes);
-    const best = latest.bestHour;
-    const copy = heroCopy(latest, best);
-    if (hero) hero.dataset.state = copy.state;
-    badge.textContent = latest.mindLabel;
-    badge.dataset.state = latest.mind;
-    badge.title = latest.headline;
-    glyph.dataset.state = latest.mind;
-    $('brainHeroTitle').textContent = copy.title;
-    $('brainHeadline').textContent = copy.line;
-    drawRing(progress, latest.mind);
-    $('brainRing').title = latest.outcomes + ' of ' + target + ' settled paper outcomes for ' + String(latest.market || 'this market');
-    $('brainReadyTitle').textContent = latest.mind === 'offline' ? 'No paper results yet'
-      : progress >= 1 ? 'Evidence bar met'
-        : 'Still filling in the picture';
-    $('brainReadyText').textContent = latest.mind === 'offline'
-      ? 'Let the scout settle a few paper games first.'
-      : progress >= 1
-        ? 'I can now compare each hour with its own break-even mark.'
-        : plural(remaining, 'more paper result') + ' before I can compare my hours.';
-    $('brainLearnCount').textContent = String(latest.outcomes || 0);
-    $('brainLearnTarget').textContent = String(target);
-    $('brainLearnRemaining').textContent = progress >= 1 ? 'The full evidence bar is in.' : plural(remaining, 'more practice result') + ' needed.';
-    const learnStatus = $('brainLearnStatus');
-    learnStatus.textContent = progress >= 1 ? 'Evidence bar met' : latest.outcomes ? 'Still checking' : 'Just getting started';
-    learnStatus.dataset.tone = progress >= 1 ? 'good' : 'neutral';
-    $('brainPips').replaceChildren();
-    const edgeFill = $('brainEdgeFill');
-    if (Number.isFinite(latest.winRate) && Number.isFinite(latest.breakeven)) {
-      const ratio = Math.max(0, Math.min(1, 0.5 + (latest.winRate - latest.breakeven) / 0.24));
-      edgeFill.style.width = (ratio * 100).toFixed(1) + '%';
-      edgeFill.dataset.ahead = String(latest.winRate >= latest.breakeven);
-      $('brainEdge').title = 'Paper win rate ' + pct(latest.winRate) + ' against ' + pct(latest.breakeven) + ' break-even on ' + latest.outcomes + ' settled outcomes';
-      $('brainEdgeText').textContent = latest.outcomes < Math.max(10, target / 4)
-        ? 'Too early to read. The dark mark is break-even.'
-        : latest.winRate >= latest.breakeven
-          ? 'Paper wins land on the good side of the mark.'
-          : 'Paper wins land on the wrong side of the mark.';
+      const timingNote = $('brainWindowNote');
+    if (best && latest.currentHour && best.key === latest.currentHour.key && latest.currentHour.verdict === 'favorable') {
+      timingNote.textContent = 'TIME TO WATCH · NOW';
+      timingNote.dataset.state = 'now';
+    } else if (best) {
+      timingNote.textContent = 'BEST TIME TO WATCH · ' + best.label;
+      timingNote.dataset.state = 'best';
     } else {
-      edgeFill.style.width = '0%';
-      delete edgeFill.dataset.ahead;
-      $('brainEdgeText').textContent = 'No paper results to compare yet.';
+      timingNote.textContent = latest.currentHour ? 'YOUR TIME · ' + latest.currentHour.label : 'NO CLEAR TIME YET';
+      timingNote.dataset.state = 'learning';
     }
-
-    const nowKey = latest.currentHour ? latest.currentHour.key : -1;
-    const bestKey = best ? best.key : -1;
-    $('brainWindowNote').textContent = latest.currentHour ? 'Now ' + latest.currentHour.label : best ? 'Best so far ' + best.label : 'No clear hour yet';
     const map = $('brainWindowHours');
     map.replaceChildren();
     for (const hour of latest.hours || []) {
@@ -2624,26 +2573,26 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
       cell.title = hour.label + ': ' + hour.outcomes + ' outcomes, ' + pct(hour.winRate) + ' | ' + hour.verdictReason;
       const bar = document.createElement('i');
       const label = document.createElement('b');
-      label.textContent = String(hour.key).padStart(2, '0');
+      label.textContent = String(hour.label || '').replace(':00', '');
       cell.append(bar, label);
       grid.append(cell);
     }
-    $('brainTimingSummary').textContent = latest.bestHour
-      ? latest.bestHour.label + ' carries the strongest paper record so far. Each hour answers only for its own results, never a pooled average.'
-      : 'No hour stands out yet. Each hour is judged on its own results, never pooled.';
+    const bestHourStats = best ? (latest.hours || []).find((hour) => hour.key === best.key) : null;
+    $('brainTimingSummary').textContent = best
+      ? 'In site practice for ' + (latest.market || 'this market') + ', around ' + best.label + ' your local time has the strongest supported record. ' + (bestHourStats ? bestHourStats.wins + ' wins from ' + bestHourStats.outcomes + ' settled results. ' : '') + 'Watch for a fresh setup; this history cannot tell you what the next trade will do.'
+      : 'No time has a reliable practice advantage yet. I will keep learning from finished site practice results for this market.';
     $('brainWeekdaySummary').textContent = latest.currentHour
-      ? 'Right now, ' + latest.currentHour.label + ' · ' + plainVerdict(latest.currentHour.verdict) + '.'
-      : 'The current hour has no results yet.';
+      ? 'Around ' + latest.currentHour.label + ' your local time, past site practice was ' + plainVerdict(latest.currentHour.verdict) + '. This describes history, not live market conditions.'
+      : 'There are no finished practice results for this local time yet.';
     const bar = $('brainTrainingBar');
-    if (bar) bar.textContent = latest.outcomes + ' / ' + target + ' outcomes';
+    if (bar) bar.textContent = latest.outcomes + ' / ' + target + ' practice results';
     $('brainTrainingHeadline').textContent = latest.outcomes >= target
-      ? 'Evidence bar reached; the baseline can rank hours for this market.'
-      : 'Collecting evidence: ' + latest.outcomes + ' of ' + target + ' settled outcomes.';
-    $('brainTrainingBody').textContent = 'Verdict ' + latest.verdictLabel + '. ' + (latest.bestHour
-      ? 'Strongest hour is ' + latest.bestHour.label + '.'
-      : 'No hour is separable from break-even yet.')
-      + ' No candidate model has been promoted over the baseline.';
-    $('brainSettingsEvidence').textContent = 'Evidence thresholds: 30 settled outcomes per hour bucket, 2% margin beyond break-even, ' + latest.lookbackDays + '-day lookback.';
+      ? 'I have enough site practice results to compare local hours for this market.'
+      : 'Still learning: ' + latest.outcomes + ' of ' + target + ' finished site practice results.';
+    $('brainTrainingBody').textContent = best
+      ? 'The strongest supported site practice window is around ' + best.label + ' your local time on ' + (latest.market || 'this market') + '. I would watch for a fresh setup then, but the time alone is not a reason to trade.'
+      : 'I cannot find a dependable best time in the site practice results yet. Keep using practice while I collect more finished results.';
+    $('brainSettingsEvidence').textContent = 'Using shared site practice results from the last ' + latest.lookbackDays + ' days, grouped by your local time. Each time window needs a strong, repeated record before it is marked worth watching.';
     updated.textContent = latest.outcomes ? 'Updated ' + new Date(latest.updatedAt).toLocaleTimeString() : 'No settled outcomes';
     document.dispatchEvent(new CustomEvent('zeronine:brain-report', { detail: {
       mind: latest.mind, outcomes: latest.outcomes, target, progress,
@@ -2657,7 +2606,20 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
     showThoughts(list);
   }
 
-  async function loadReport(options) {
+function brainTimeQuery() {
+    const params = new URLSearchParams();
+    try {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (zone) params.set('timeZone', zone);
+    } catch {}
+    try {
+      const room = typeof lastRoomState === 'undefined' ? null : lastRoomState;
+      if (room && typeof room.selected === 'string' && room.selected) params.set('market', room.selected);
+    } catch {}
+    return '?' + params.toString();
+  }
+
+    async function loadReport(options) {
     const seq = ++requestSeq;
     busy = true;
     if (open) {
@@ -2667,7 +2629,7 @@ body.ghost-details-open #playerHud{visibility:hidden!important;pointer-events:no
     let nextReport = null;
     let failure = '';
     try {
-      const response = await fetch(BRAIN_ENDPOINT, { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
+      const response = await fetch(BRAIN_ENDPOINT + brainTimeQuery(), { credentials: 'same-origin', cache: 'no-store', headers: { accept: 'application/json' } });
       if (response.status === 401 || response.status === 403) failure = 'This server is not serving the Brain yet.';
       else if (!response.ok) failure = 'The game server could not answer the Brain request (' + response.status + ').';
       else {
