@@ -267,25 +267,40 @@
 
   function renderInsights(insights) {
     const section=node('section','brain-task-insights');
-    const head=node('div','brain-task-section-head');
-    head.append(node('span','brain-task-eyebrow','MEMORY TRAIL'));
-    head.append(node('h4','','Your lessons'));
+    section.setAttribute('aria-labelledby','brainTaskMemoryTitle');
+    const head=node('div','brain-task-section-head brain-task-memory-head');
+    const title=node('h4','','Saved lessons'); title.id='brainTaskMemoryTitle';
+    const count=node('span','brain-task-memory-count',String(insights.length)+' stored');
+    head.append(title,count);
     section.append(head);
-    if(!insights.length){ section.append(node('p','brain-contribution-empty','No lessons yet. Your first saved idea will appear here and add a new connection to the Brain.')); return section; }
-    const list=node('ol','brain-task-list');
-    for(const insight of insights.slice(0,12)){
-      const item=node('li','brain-task-memory'); item.dataset.result=insight.outcome;
-      const mark=node('span','brain-task-memory-mark',insight.outcome==='matched'?'✓':insight.outcome==='unmatched'?'↗':'•');
-      const copy=node('div','brain-task-memory-copy');
-      const title=node('b','',insight.marketName+' · '+directionLabel(insight));
-      const description=node('p','',insight.observation);
-      const meta=node('small','',new Date(insight.createdAt).toLocaleString()+' · '+insight.confidence+'/5 confidence · '+(insight.horizon==='next_5'?'5 min':insight.horizon==='next_20'?'20 min':'12 hours'));
-      const status=node('em','',insight.outcome==='matched'?'Matched a later settled win · +25 XP':insight.outcome==='unmatched'?'Matching settled loss · −20 XP':insight.expectedDirection==='none'?'Saved human observation · +10 XP':'Waiting for a later matching settled trade');
-      copy.append(title,description,meta,status);
-      item.append(mark,copy);
-      list.append(item);
+    if(!insights.length){
+      const empty=node('div','brain-task-memory-empty');
+      empty.append(node('span','brain-task-empty-network','✦'));
+      const copy=node('div',''); copy.append(node('strong','','Your Brain store is empty'),node('small','','Add a lesson above. It will appear here as a connected memory.'));
+      const teach=node('button','brain-task-empty-action','Teach a lesson'); teach.type='button';
+      teach.addEventListener('click',openTeachingTask);
+      empty.append(copy,teach); section.append(empty); return section;
+    }
+    const list=node('div','brain-task-memory-grid');
+    for(const insight of insights.slice(0,24)){
+      const card=node('details','brain-task-memory-card'); card.dataset.result=insight.outcome||'pending';
+      const summary=node('summary','brain-task-memory-summary');
+      const mark=node('span','brain-task-memory-mark',insight.outcome==='matched'?'✓':insight.outcome==='unmatched'?'×':'•');
+      const copy=node('span','brain-task-memory-copy');
+      copy.append(node('b','',insight.marketName+' · '+directionLabel(insight)));
+      copy.append(node('small','',insight.category||'Market lesson'));
+      const badge=node('em','brain-task-memory-result',insight.outcome==='matched'?'GOOD CALL':insight.outcome==='unmatched'?'MISSED':'WAITING');
+      summary.append(mark,copy,badge); card.append(summary);
+      const detail=node('div','brain-task-memory-detail');
+      detail.append(node('p','',insight.observation));
+      const status=insight.outcome==='matched'?'+25 XP · Your call matched a settled win':insight.outcome==='unmatched'?'−20 XP · A settled result challenged this call':insight.expectedDirection==='none'?'+10 XP · Observation saved':'Waiting for a matching settled result';
+      detail.append(node('strong','',status));
+      const when=insight.createdAt?new Date(insight.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
+      detail.append(node('small','',when+(insight.confidence?' · Confidence '+insight.confidence+'/5':'')));
+      card.append(detail); list.append(card);
     }
     section.append(list);
+    if(insights.length>24) section.append(node('small','brain-task-memory-more',(insights.length-24)+' older lessons are stored in your Brain.'));
     return section;
   }
 
@@ -431,20 +446,19 @@
     renderMainGrowth(data);
     if(!data){
       const card=node('section','brain-task-login');
-      card.append(node('span','brain-task-eyebrow','PERSONAL BRAIN LESSONS'));
-      card.append(node('h4','',note==='guest'?'Connect Deriv to teach your Brain':'Lessons are temporarily unavailable'));
-      card.append(node('p','',note==='guest'?'Connect your Deriv account to save lessons privately and check them against later matching settled trades.':'Your Brain lessons are shown as saved only after Supabase confirms them. Try again in a moment.'));
-      if(note==='migration')card.append(node('p','brain-task-migration','The Brain memory tables need the Supabase migration before this feature can save contributions.'));
+      card.append(node('span','brain-task-eyebrow','BRAIN MEMORY'));
+      card.append(node('h4','',note==='guest'?'Connect Deriv to save lessons':'Memory store unavailable'));
+      card.append(node('p','',note==='guest'?'Connect your Deriv account to teach and keep your Brain lessons.':'Could not load your saved lessons. Try again in a moment.'));
+      if(note==='migration')card.append(node('p','brain-task-migration','Supabase memory tables need to be enabled before lessons can be saved.'));
       host.append(card);return;
     }
     const insights=data.insights||[],progress=data.progress||{total:0,reviewed:0,matched:0,unmatched:0,patterns:0,xp:0,level:1,levelXp:0,linkedWins:0};
     host.append(makeForm(data.markets||[]));
-    host.append(renderTasks(progress,insights));
     host.append(renderProgress(progress,insights));
-    host.append(renderCombinedRead(data));
-    host.append(node('p','brain-contribution-status',note));host.lastChild.id='brainTaskStatus';host.lastChild.setAttribute('role','status');host.lastChild.setAttribute('aria-live','polite');
     host.append(renderInsights(insights));
-    host.append(renderLeaderboard(data.leaderboard||[]));
+    const status=node('p','brain-contribution-status',note);
+    status.id='brainTaskStatus'; status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+    host.append(status);
   }
   async function load() {
     if(loading || document.hidden || formDirty) return;
