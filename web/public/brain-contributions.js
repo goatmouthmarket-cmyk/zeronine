@@ -5,7 +5,7 @@
   window.__brainContributionTasksV1 = true;
   const $ = id => document.getElementById(id);
   const svgNs = 'http://www.w3.org/2000/svg';
-  let state = null, loading = false, note = '';
+  let state = null, loading = false, note = '', formDirty = false;
 
   const node = (tag, cls, text) => {
     const item = document.createElement(tag);
@@ -108,77 +108,46 @@
   function makeForm(markets) {
     const card = node('section', 'brain-task-form-card');
     card.setAttribute('aria-labelledby', 'brainTaskFormTitle');
-    const head = node('div', 'brain-task-section-head');
-    head.append(node('span','brain-task-eyebrow','YOUR NEXT TASK'));
-    head.append(node('h4','','Teach the Brain one thing you noticed'));
-    head.append(node('p','','Write what you saw and what you think may happen. Your note stays tied to this Deriv account.'));
-    card.append(head);
-
-    const form = node('form','brain-task-form');
-    form.id = 'brainInsightForm';
-    const marketLabel = node('label','brain-task-field','Market');
-    const market = node('select',''); market.id='brainInsightMarket'; market.name='marketSymbol'; market.required=true;
-    option(market,'','Choose a market');
-    const current = typeof lastRoomState !== 'undefined' && lastRoomState ? lastRoomState.selected : '';
-    for (const item of markets) {
-      const label = node('option','',item.name || 'Market');
-      label.value = item.symbol;
-      if (item.symbol === current) label.selected = true;
-      market.append(label);
-    }
-    marketLabel.append(market); form.append(marketLabel);
-
-    const categoryLabel = node('label','brain-task-field','What kind of lesson is this?');
-    const category = node('select',''); category.name='category'; category.required=true;
-    option(category,'setup','A setup I noticed');
-    option(category,'market_behavior','How this market moves');
-    option(category,'entry_timing','When I would enter');
-    option(category,'risk','A risk or warning sign');
-    categoryLabel.append(category); form.append(categoryLabel);
-
-    const observationLabel = node('label','brain-task-field brain-task-field-wide','What did you notice?');
-    const observation = node('textarea',''); observation.name='observation'; observation.rows=3; observation.maxLength=500; observation.minLength=8; observation.required=true;
-    observation.placeholder='Example: after several small digits, I often see a larger digit within the next few ticks.';
-    observationLabel.append(observation); form.append(observationLabel);
-
-    const predictionRow = node('div','brain-task-prediction-row');
-    const directionLabelEl = node('label','brain-task-field','Your idea');
-    const direction = node('select',''); direction.id='brainInsightDirection'; direction.name='expectedDirection'; direction.required=true;
-    option(direction,'over','Over a digit');
-    option(direction,'under','Under a digit');
-    option(direction,'none','Observation only');
-    directionLabelEl.append(direction); predictionRow.append(directionLabelEl);
-    const barrierLabel = node('label','brain-task-field','Target digit');
-    const barrier = node('select',''); barrier.id='brainInsightBarrier'; barrier.name='barrier';
-    for(let n=0;n<=9;n++) option(barrier,String(n),String(n));
-    barrierLabel.append(barrier); predictionRow.append(barrierLabel);
-    const horizonLabel = node('label','brain-task-field','Check within');
-    const horizon = node('select',''); horizon.name='horizon';
-    option(horizon,'next_5','5 minutes');
-    option(horizon,'next_20','20 minutes');
-    option(horizon,'next_session','12 hours');
-    horizonLabel.append(horizon); predictionRow.append(horizonLabel);
-    form.append(predictionRow);
-
-    const confidenceField = node('fieldset','brain-task-confidence');
-    confidenceField.append(node('legend','','How sure are you?'));
-    const confidence = node('div','brain-task-confidence-options');
-    for(let n=1;n<=5;n++){
-      const label=node('label','');
-      const input=node('input',''); input.type='radio'; input.name='confidence'; input.value=String(n); input.required=n===1; input.checked=n===3;
-      label.append(input,node('span','',String(n)));
-      confidence.append(label);
-    }
-    confidenceField.append(confidence); form.append(confidenceField);
-    const help=node('small','brain-task-form-help','Only a later settled trade on this market and exact Over/Under digit can test your idea. Never place a bet to earn points.');
-    form.append(help);
-    const submit=node('button','brain-task-primary','Save this lesson · +10 XP'); submit.type='submit';
-    form.append(submit);
-    form.addEventListener('submit', submitInsight);
-    direction.addEventListener('change',()=>{ const off=direction.value==='none'; barrier.disabled=off; barrierLabel.hidden=off; });
-    direction.dispatchEvent(new Event('change'));
-    card.append(form);
-    return card;
+    const head = node('div', 'brain-task-section-head brain-task-form-heading');
+    const emblem = node('span', 'brain-task-form-emblem');
+    const emblemImage = node('img', ''); emblemImage.src='/brain-brand.svg'; emblemImage.alt=''; emblemImage.setAttribute('aria-hidden','true'); emblem.append(emblemImage);
+    const titleCopy = node('div', ''); titleCopy.append(node('span','brain-task-eyebrow','YOUR NEXT LESSON'));
+    const title = node('h4', '', 'Put your market read into words'); title.id='brainTaskFormTitle'; titleCopy.append(title);
+    head.append(emblem,titleCopy,node('span','brain-task-reward-chip','+10 XP')); card.append(head);
+    card.append(node('p','brain-task-form-intro','A useful lesson can be a small detail. Tell the Brain what you noticed and how you think it may play out; you can also save an observation without making a prediction.'));
+    const form=node('form','brain-task-form'); form.id='brainInsightForm';
+    const marketLabel=node('label','brain-task-field brain-task-market-field','Which market were you watching?');
+    const market=node('select',''); market.id='brainInsightMarket'; market.name='marketSymbol'; market.required=true; option(market,'','Choose a market');
+    const current=typeof lastRoomState!=='undefined'&&lastRoomState?lastRoomState.selected:'';
+    for(const item of markets){const choice=node('option','',item.name||'Market');choice.value=item.symbol;if(item.symbol===current)choice.selected=true;market.append(choice)}
+    marketLabel.append(market);form.append(marketLabel);
+    const topicGroup=node('fieldset','brain-task-choice-group brain-task-topic-group');topicGroup.append(node('legend','','What kind of lesson is it?'));
+    const topics=node('div','brain-task-topic-cards');
+    const topicOptions=[['setup','Pattern I noticed','A repeat or change in recent results','✦'],['market_behavior','How it moves','A behavior you keep seeing','↗'],['entry_timing','When I would enter','A moment or condition to watch','◷'],['risk','A warning sign','When you would slow down or wait','◇']];
+    topicOptions.forEach(([value,label,detail,icon],index)=>{const item=node('label','brain-task-topic-card'),input=node('input','');input.type='radio';input.name='category';input.value=value;input.required=index===0;input.checked=index===0;const mark=node('span','brain-task-choice-mark',icon),copy=node('span','brain-task-topic-copy');copy.append(node('b','',label),node('small','',detail));item.append(input,mark,copy);topics.append(item)});
+    topicGroup.append(topics);form.append(topicGroup);
+    const observationLabel=node('label','brain-task-field brain-task-field-wide brain-task-observation-field','What did you notice?');
+    const observation=node('textarea','');observation.name='observation';observation.rows=3;observation.maxLength=500;observation.minLength=8;observation.required=true;observation.placeholder='Example: I noticed the results stayed low for several ticks, then started to climb.';
+    observationLabel.append(observation);form.append(observationLabel);
+    const examples=node('div','brain-task-example-row');examples.append(node('span','brain-task-example-label','Need a starting point?'));
+    [['setup','A pattern','I noticed the last few results were…'],['entry_timing','A timing idea','I would pay attention after…'],['risk','A warning sign','I would be careful when…']].forEach(([category,label,value])=>{const button=node('button','brain-task-example',label);button.type='button';button.addEventListener('click',()=>{const choice=form.querySelector('input[name="category"][value="'+category+'"]');if(choice)choice.checked=true;observation.value=value;formDirty=true;observation.focus();observation.setSelectionRange(value.length,value.length)});examples.append(button)});
+    form.append(examples);
+    const prediction=node('fieldset','brain-task-choice-group brain-task-prediction-group');prediction.append(node('legend','','What do you think may happen?'));
+    const directions=node('div','brain-task-direction-cards'),directionChoices=[['over','Over a digit','You think a higher digit may appear','↑'],['under','Under a digit','You think a lower digit may appear','↓'],['none','Just an observation','Save the thought without a prediction','…']];
+    directionChoices.forEach(([value,label,detail,icon],index)=>{const item=node('label','brain-task-direction-card'),input=node('input','');input.type='radio';input.name='expectedDirection';input.value=value;input.required=index===0;input.checked=index===0;const mark=node('span','brain-task-choice-mark',icon),copy=node('span','brain-task-direction-copy');copy.append(node('b','',label),node('small','',detail));item.append(input,mark,copy);directions.append(item)});
+    prediction.append(directions);form.append(prediction);
+    const detailRow=node('div','brain-task-detail-row'),barrierLabel=node('label','brain-task-field brain-task-barrier-field','Target digit');
+    const barrier=node('select','');barrier.id='brainInsightBarrier';barrier.name='barrier';for(let digit=0;digit<=9;digit+=1)option(barrier,String(digit),String(digit));barrierLabel.append(barrier);detailRow.append(barrierLabel);
+    const horizonLabel=node('label','brain-task-field','When would you check the idea?'),horizon=node('select','');horizon.name='horizon';option(horizon,'next_5','Within 5 minutes');option(horizon,'next_20','Within 20 minutes');option(horizon,'next_session','Within 12 hours');horizonLabel.append(horizon);detailRow.append(horizonLabel);form.append(detailRow);
+    const confidenceField=node('fieldset','brain-task-confidence');confidenceField.append(node('legend','','How sure are you?'));const confidence=node('div','brain-task-confidence-options');
+    for(let score=1;score<=5;score+=1){const label=node('label','brain-task-confidence-card'),input=node('input','');input.type='radio';input.name='confidence';input.value=String(score);input.required=score===1;input.checked=score===3;label.append(input,node('span','brain-task-confidence-number',String(score)),node('small','',['Guessing','A little sure','Fairly sure','Very sure','Certain'][score-1]));confidence.append(label)}
+    confidenceField.append(confidence);form.append(confidenceField);
+    form.append(node('small','brain-task-form-help','Teaching earns +10 XP. A matching settled win adds 25 XP; a matching loss costs 20 XP. No trade is required to teach, and XP never changes your balance or stake.'));
+    const submit=node('button','brain-task-primary brain-task-save','Save lesson · +10 XP');submit.type='submit';form.append(submit);
+    form.addEventListener('input',()=>{formDirty=true});form.addEventListener('change',()=>{formDirty=true});form.addEventListener('submit',submitInsight);
+    const syncDirection=()=>{const selected=form.querySelector('input[name="expectedDirection"]:checked')?.value||'over',off=selected==='none';barrier.disabled=off;barrierLabel.hidden=off};
+    form.querySelectorAll('input[name="expectedDirection"]').forEach(input=>input.addEventListener('change',syncDirection));syncDirection();
+    card.append(form);return card;
   }
 
   async function submitInsight(event) {
@@ -204,6 +173,7 @@
         })
       });
       note='Lesson saved in your Brain · +10 XP';
+      formDirty = false;
       await load();
       setMessage(note,'good');
     } catch(error) {
@@ -454,34 +424,30 @@
   document.addEventListener('zeronine:brain-teach', openTeachingTask);
 
   function render() {
+    formDirty = false;
     host.replaceChildren();
     const data=state;
-    syncHudTask(data?.progress || null, data?.insights || [], note === 'guest');
+    syncHudTask(data?.progress || null,data?.insights || [],note==='guest');
     renderMainGrowth(data);
     if(!data){
       const card=node('section','brain-task-login');
-      card.append(node('span','brain-task-eyebrow','PERSONAL BRAIN TASKS'));
-      card.append(node('h4','',note==='guest'?'Connect Deriv to start teaching':'Brain tasks are temporarily unavailable'));
-      card.append(node('p','',note==='guest'?'Sign in to save your lessons to your Deriv-linked Brain and appear on the private-memory leaderboard.':'Your notes are never shown as saved until Supabase confirms them. Try again in a moment.'));
-      if(note==='migration') card.append(node('p','brain-task-migration','The Brain memory tables need the Supabase migration before this feature can save contributions.'));
-      host.append(card);
-      return;
+      card.append(node('span','brain-task-eyebrow','PERSONAL BRAIN LESSONS'));
+      card.append(node('h4','',note==='guest'?'Connect Deriv to teach your Brain':'Lessons are temporarily unavailable'));
+      card.append(node('p','',note==='guest'?'Connect your Deriv account to save lessons privately and check them against later matching settled trades.':'Your Brain lessons are shown as saved only after Supabase confirms them. Try again in a moment.'));
+      if(note==='migration')card.append(node('p','brain-task-migration','The Brain memory tables need the Supabase migration before this feature can save contributions.'));
+      host.append(card);return;
     }
-    const insights=data.insights||[], progress=data.progress||{total:0,reviewed:0,matched:0,unmatched:0,patterns:0,xp:0,level:1,levelXp:0,linkedWins:0};
-    host.append(renderProgress(progress,insights));
+    const insights=data.insights||[],progress=data.progress||{total:0,reviewed:0,matched:0,unmatched:0,patterns:0,xp:0,level:1,levelXp:0,linkedWins:0};
+    host.append(makeForm(data.markets||[]));
     host.append(renderTasks(progress,insights));
+    host.append(renderProgress(progress,insights));
     host.append(renderCombinedRead(data));
-    const action=node('button','brain-task-primary brain-task-open','Teach the Brain a lesson · +10 XP');
-    action.type='button'; action.addEventListener('click',()=>{const form=$('brainInsightForm');form.hidden=!form.hidden;if(!form.hidden)form.querySelector('textarea').focus();});
-    host.append(action);
-    const form=makeForm(data.markets||[]); form.hidden=true; host.append(form);
-    host.append(node('p','brain-contribution-status',note)); host.lastChild.id='brainTaskStatus'; host.lastChild.setAttribute('role','status'); host.lastChild.setAttribute('aria-live','polite');
+    host.append(node('p','brain-contribution-status',note));host.lastChild.id='brainTaskStatus';host.lastChild.setAttribute('role','status');host.lastChild.setAttribute('aria-live','polite');
     host.append(renderInsights(insights));
     host.append(renderLeaderboard(data.leaderboard||[]));
   }
-
   async function load() {
-    if(loading || document.hidden) return;
+    if(loading || document.hidden || formDirty) return;
     loading=true;
     try {
       const response=await request('/api/ranger-brain/contributions');
