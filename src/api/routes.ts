@@ -37,8 +37,8 @@ import { entryLabDashboardState, type EntryResearchRuntime } from '../testlab/en
 import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
-import { buildBrainReport, friendlyBrainMarketName } from '../brain/service.ts';
-import { normalizeBrainTimeZone } from '../brain/timing.ts';
+import { buildBrainReport, friendlyBrainMarketName, paperTradesToOutcomes } from '../brain/service.ts';
+import { BRAIN_MIN_BUCKET_OUTCOMES, classifyBucket, normalizeBrainTimeZone, wilsonInterval } from '../brain/timing.ts';
 import { observeBrainMemory, type BrainMemoryEvent } from '../brain/memory.ts';
 import {
   type TradeRow,
@@ -1963,6 +1963,28 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       return parsed.host.toLowerCase() === host && (config.nodeEnv !== 'production' || parsed.protocol === 'https:');
     } catch { return false; }
   };
+  const brainDirectionalPractice = (insight: { marketSymbol: string; expectedDirection: BrainExpectedDirection; barrier: number | null }) => {
+    if (insight.expectedDirection === 'none' || insight.barrier == null) return null;
+    try {
+      const matching = paperTradesToOutcomes(listPaperTrades(500)).filter(outcome =>
+        outcome.market === insight.marketSymbol && outcome.direction === insight.expectedDirection && outcome.barrier === insight.barrier,
+      );
+      const outcomes = matching.length;
+      const wins = matching.filter(outcome => outcome.won).length;
+      const winRate = outcomes ? wins / outcomes : null;
+      const payoutRates = matching
+        .filter(outcome => Number.isFinite(outcome.stake) && outcome.stake! > 0 && Number.isFinite(outcome.winProfit) && outcome.winProfit! > 0)
+        .map(outcome => outcome.stake! / (outcome.stake! + outcome.winProfit!))
+        .sort((a, b) => a - b);
+      const middle = Math.floor(payoutRates.length / 2);
+      const breakEven = payoutRates.length
+        ? (payoutRates.length % 2 ? payoutRates[middle]! : (payoutRates[middle - 1]! + payoutRates[middle]!) / 2)
+        : null;
+      const verdict = classifyBucket(outcomes, winRate, wilsonInterval(wins, outcomes), breakEven).verdict;
+      return { outcomes, wins, winRate, breakEven, verdict, minimumOutcomes: BRAIN_MIN_BUCKET_OUTCOMES, source: 'shared_site_paper' as const };
+    } catch { return null; }
+  };
+
   const brainMarketName = (symbol: string): string => {
     try {
       if (deps.registry.symbols().includes(symbol)) {
@@ -1987,7 +2009,9 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         deps.multiplayerStore.brainLeaderboard(10),
       ]);
       const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
-      return { ok: true, insights, progress, leaderboard, markets };
+      const latestIdea = insights.find(insight => insight.expectedDirection !== 'none') || null;
+      const practiceEvidence = latestIdea ? brainDirectionalPractice(latestIdea) : null;
+      return { ok: true, insights, progress, leaderboard, markets, practiceEvidence, evaluatedInsightId: latestIdea?.id || null };
     } catch {
       return reply.code(503).send({ error: 'The Brain could not reach its saved memories. Try again shortly.' });
     }
