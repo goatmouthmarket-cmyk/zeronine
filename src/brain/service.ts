@@ -124,6 +124,7 @@ export function brainLessons(profile: TimingProfile, now: number, displayMarket 
   const lessons: BrainLesson[] = [];
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
   const marketLabel = displayMarket ?? 'All markets';
+  const timeLabel = (label: string): string => profile.timeZone === 'UTC' ? `${label} UTC` : `${label} your local time`;
 
   if (!profile.outcomes) {
     lessons.push({
@@ -167,7 +168,7 @@ export function brainLessons(profile: TimingProfile, now: number, displayMarket 
     lessons.push({
       id: `hour-favorable-${best.key}`,
       topic: 'Time of day',
-      finding: `In site practice for ${marketLabel}, around ${best.label} your local time had ${best.wins} wins from ${best.outcomes} settled results (${percent(best.winRate ?? 0)}). It is a time to watch for a fresh setup, not a promise.`,
+      finding: `In site practice for ${marketLabel}, around ${timeLabel(best.label)} had ${best.wins} wins from ${best.outcomes} settled results (${percent(best.winRate ?? 0)}). It is a time to watch for a fresh setup, not a promise.`,
       outcomes: best.outcomes,
       confidence: best.interval?.low ?? null,
       validity: profile.outcomes >= BRAIN_MIN_MARKET_OUTCOMES ? 'validated' : 'provisional',
@@ -181,7 +182,7 @@ export function brainLessons(profile: TimingProfile, now: number, displayMarket 
       lessons.push({
         id: `hour-no-winner-${closest.key}`,
         topic: 'Time of day',
-        finding: `Around ${closest.label} has the largest practice sample (${closest.outcomes} results), but it has not shown a dependable advantage over break-even. I cannot call it a best time.`,
+        finding: `Around ${timeLabel(closest.label)} has the largest practice sample (${closest.outcomes} results), but it has not shown a dependable advantage over break-even. I cannot call it a best time.`,
         outcomes: closest.outcomes,
         confidence: closest.interval?.low ?? null,
         validity: 'provisional',
@@ -280,18 +281,19 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
 function headlineFor(profile: TimingProfile, mind: BrainMindState, displayMarket: string | null): string {
   const market = displayMarket ?? 'this market';
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
+  const bestTimeLabel = profile.bestHour ? (profile.timeZone === 'UTC' ? `${profile.bestHour.label} UTC` : `${profile.bestHour.label} in your local time`) : '';
   switch (mind) {
     case 'offline':
       return 'No finished site practice results yet. I need evidence before I can suggest a time to watch.';
     case 'observing':
       return profile.bestHour
-        ? `I am still learning from ${profile.outcomes} site practice results. Around ${profile.bestHour.label} looks promising for ${market}, but there is not enough evidence to call it a reliable window.`
+        ? `I am still learning from ${profile.outcomes} site practice results. Around ${bestTimeLabel} looks promising for ${market}, but there is not enough evidence to call it a reliable window.`
         : `I have ${profile.outcomes} of ${BRAIN_MIN_MARKET_OUTCOMES} site practice results for ${market}. I am still learning and cannot name a best time yet.`;
     case 'waiting':
       return `Site practice results for ${market} are below the estimated break-even point: ${percent(profile.winRate ?? 0)} wins, compared with ${percent(profile.breakeven ?? 0)} needed to cover the stakes. I do not see a reliable time to recommend; wait for a fresh setup.`;
     default:
       return profile.bestHour
-        ? `The strongest-supported practice window for ${market} is around ${profile.bestHour.label} in your local time. It is a time to watch for a fresh setup, not a promise or live signal.`
+        ? `The strongest-supported practice window for ${market} is around ${bestTimeLabel}. It is a time to watch for a fresh setup, not a promise or live signal.`
         : 'I do not have enough evidence to point to a useful practice window yet.';
   }
 }
