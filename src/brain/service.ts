@@ -48,6 +48,7 @@ export interface RangerBrainReport {
   mindLabel: string;
   headline: string;
   market: string | null;
+  marketSymbol: string | null;
   lookbackDays: number;
   outcomes: number;
   /** Mirrors BRAIN_MIN_MARKET_OUTCOMES so the pasture can draw the same bar. */
@@ -68,6 +69,7 @@ export interface RangerBrainReport {
 export interface BrainReportOptions {
   now?: number;
   market?: string | null;
+  marketName?: string | null;
   timeZone?: string;
   lookbackDays?: number;
   /** Injectable for tests; defaults to the persisted virtual ledger. */
@@ -118,10 +120,10 @@ function mindFor(profile: TimingProfile): BrainMindState {
 }
 
 /** Deterministic lessons: every sentence restates a measured number. */
-export function brainLessons(profile: TimingProfile, now: number): BrainLesson[] {
+export function brainLessons(profile: TimingProfile, now: number, displayMarket = friendlyBrainMarketName(profile.market)): BrainLesson[] {
   const lessons: BrainLesson[] = [];
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
-  const marketLabel = profile.market ?? 'All markets';
+  const marketLabel = displayMarket ?? 'All markets';
 
   if (!profile.outcomes) {
     lessons.push({
@@ -238,6 +240,7 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
   const timeZone = normalizeBrainTimeZone(options.timeZone);
   const market = options.market ?? dominantMarket(outcomes, now, lookbackDays);
   const profile = buildTimingProfile(outcomes, { now, market, lookbackDays, timeZone });
+  const displayMarket = profile.market ? (options.marketName || friendlyBrainMarketName(profile.market)) : null;
   const hourValue = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(now)).find((part) => part.type === 'hour')?.value;
   const hourKey = Number(hourValue) % 24;
   const currentBucket = profile.hours[hourKey] ?? null;
@@ -252,8 +255,9 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
     generatedAt: now,
     mind,
     mindLabel: MIND_LABELS[mind],
-    headline: headlineFor(profile, mind),
-    market: profile.market,
+    headline: headlineFor(profile, mind, displayMarket),
+    market: displayMarket,
+    marketSymbol: profile.market,
     lookbackDays: profile.lookbackDays,
     outcomes: profile.outcomes,
     evidenceTarget: BRAIN_MIN_MARKET_OUTCOMES,
@@ -268,13 +272,13 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
       : null,
     hours: profile.hours,
     weekdays: profile.weekdays,
-    lessons: brainLessons(profile, now),
+    lessons: brainLessons(profile, now, displayMarket || 'All markets'),
     updatedAt: profile.updatedAt,
   };
 }
 
-function headlineFor(profile: TimingProfile, mind: BrainMindState): string {
-  const market = profile.market ?? 'this market';
+function headlineFor(profile: TimingProfile, mind: BrainMindState, displayMarket: string | null): string {
+  const market = displayMarket ?? 'this market';
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
   switch (mind) {
     case 'offline':
@@ -290,6 +294,26 @@ function headlineFor(profile: TimingProfile, mind: BrainMindState): string {
         ? `The strongest-supported practice window for ${market} is around ${profile.bestHour.label} in your local time. It is a time to watch for a fresh setup, not a promise or live signal.`
         : 'I do not have enough evidence to point to a useful practice window yet.';
   }
+}
+
+/** Turns common Deriv market symbols into names people recognize. */
+export function friendlyBrainMarketName(symbol: string | null | undefined): string {
+  if (!symbol) return 'this market';
+  const value = symbol.trim();
+  const volatility = /^R_(10|25|50|75|100)$/.exec(value);
+  if (volatility) return `Volatility ${volatility[1]} Index`;
+  const oneSecondVolatility = /^1HZ(10|25|50|75|100)V$/.exec(value);
+  if (oneSecondVolatility) return `Volatility ${oneSecondVolatility[1]} (1s) Index`;
+  const boom = /^BOOM(300|500|600|900|1000)$/.exec(value);
+  if (boom) return `Boom ${boom[1]} Index`;
+  const crash = /^CRASH(300|500|600|900|1000)$/.exec(value);
+  if (crash) return `Crash ${crash[1]} Index`;
+  const jump = /^JD(10|25|50|75|100)$/.exec(value);
+  if (jump) return `Jump ${jump[1]} Index`;
+  const currencies = /^frx([A-Z]{6})$/.exec(value);
+  if (currencies) return `${currencies[1].slice(0, 3)}/${currencies[1].slice(3)} Forex`;
+  if (value.startsWith('cry')) return `${value.slice(3).replace(/([A-Z]{3})([A-Z]{3})$/, '$1/$2')} Crypto`;
+  return value.replace(/^([A-Z]+)_/, '$1 ').replaceAll('_', ' ').replace(/\\bR (\\d+)\\b/, 'Volatility $1').trim();
 }
 
 function safePaperTrades(): PaperTradeSummary[] {
