@@ -30,7 +30,7 @@
     if (market) params.set('market', market);
     return '?' + params.toString();
   };
-  const localizeFinding = (value, timeZone) => String(value || '').replace(/\\b(\\d{1,2}):00 UTC\\b/g, (_match, hourText) => {
+  const localizeFinding = (value, timeZone) => String(value || '').replace(/\b(\d{1,2}):00 UTC\b/g, (_match, hourText) => {
     const now = new Date();
     const instant = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), Number(hourText) || 0));
     const label = new Intl.DateTimeFormat(undefined, { timeZone: timeZone || localZone(), hour: 'numeric', minute: '2-digit' }).format(instant);
@@ -138,7 +138,8 @@
     active = true;
     const sequence = ++revision;
     try {
-      const room = typeof lastRoomState === 'undefined' ? null : lastRoomState;\n      const selectedMarket = room && typeof room.selected === 'string' ? room.selected : '';\n      const result = await request(reportQuery(30, selectedMarket));
+      const room = typeof lastRoomState === 'undefined' ? null : lastRoomState;
+      const selectedMarket = room && typeof room.selected === 'string' ? room.selected : '';\n      const result = await request(reportQuery(30, selectedMarket));
       const long = result.report;
       if (sequence !== revision) return;
       if (!result.memoryHistory) saveReports(long, Date.now());
