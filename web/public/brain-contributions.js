@@ -14,6 +14,8 @@
     .brain-review-form h4{margin:0 0 9px;color:#294f34;font-size:16px}.brain-review-fields{display:grid;gap:10px}.brain-review-trades{display:grid;gap:6px;max-height:200px;overflow:auto}.brain-review-trade{display:flex;align-items:center;gap:9px;width:100%;padding:9px;border:1px solid #decaa8;border-radius:9px;background:#fffdf5;color:#3d3022;text-align:left;cursor:pointer}.brain-review-trade[aria-pressed=true]{border:2px solid #388553;background:#e9f4e5}.brain-review-result{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#e8c9be;color:#8a302c;font-weight:900}.brain-review-trade[data-result=won] .brain-review-result{background:#cee9cd;color:#25713d}.brain-review-trade-copy{display:grid;gap:2px;flex:1;min-width:0}.brain-review-trade-copy small{color:#776b5a}.brain-review-trade strong{color:#31583d}.brain-review-label{display:grid;gap:5px;font-size:12px;font-weight:800}.brain-review-label textarea,.brain-review-label select{width:100%;min-width:0;padding:9px;border:1px solid #c8b08c;border-radius:8px;background:#fffdf7;color:#30291f;font:inherit}.brain-review-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.brain-review-save{width:100%}.brain-review-details{border-top:1px solid #e2d2b9;padding-top:10px}.brain-review-details summary{cursor:pointer;font-weight:800;color:#31583d}.brain-review-evidence:empty{display:none}.brain-evidence-compact{border-top:1px solid #e2d2b9;padding-top:10px}.brain-evidence-compact__top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;color:#31583d}.brain-evidence-compact__stats{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.brain-evidence-compact__stats>*{background:#e7efdc;border-radius:6px;padding:5px 7px;color:#31583d;font-size:11px}.brain-evidence-compact__details{font-size:12px;color:#665a48}.brain-review-empty{font-size:13px;color:#665a48}
 
     .brain-goals{background:#eaf2df;border-radius:10px;padding:11px;display:grid;gap:7px;color:#234c32}.brain-goals h4{font-size:14px;margin:0}.brain-goals-list{display:grid;gap:6px}.brain-goal{display:grid;grid-template-columns:1fr auto;gap:4px;font-size:12px;font-weight:750}.brain-goal progress{grid-column:1/-1;width:100%;height:6px;accent-color:#438659}.brain-goals button{justify-self:start;border:0;border-radius:7px;background:#245d39;color:#fff;padding:7px 10px;font:700 12px system-ui;cursor:pointer}.brain-review-stance{display:flex;gap:7px;margin:0;padding:0;border:0}.brain-review-stance legend{font-size:12px;font-weight:800;margin-bottom:5px}.brain-review-stance label{flex:1;display:flex;align-items:center;gap:5px;padding:9px;border:1px solid #c8b08c;border-radius:8px;background:#fffdf7;font-size:12px;font-weight:750}.brain-review-stance input{accent-color:#28794f}
+    .brain-trade-detail{padding:10px;border-radius:10px;background:#f0ead8;border:1px solid #d7c5a2;display:grid;gap:8px}.brain-trade-detail h5{margin:0;color:#31583d;font-size:13px}.brain-trade-facts{display:flex;gap:6px;flex-wrap:wrap}.brain-trade-facts span{background:#fffaf0;border-radius:6px;padding:5px 8px;color:#36543b;font-weight:800;font-size:11px}.brain-tick-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.brain-tick{min-width:0;text-align:center;padding:5px 2px;background:#fffaf0;border-radius:5px;color:#554a3b;font-size:clamp(8px,1.6vw,11px);overflow-wrap:anywhere}.brain-tick small{display:block;font-size:9px;color:#7e725f}.brain-tick.is-entry{background:#dbeed8;box-shadow:inset 0 0 0 1px #629369}.brain-tick b{color:#bc3039;font-size:1.15em}.brain-tick-missing{color:#887c69}.brain-trade-note{margin:0;color:#776b5a;font-size:11px;line-height:1.35}
+    .brain-confidence-slider{width:100%;accent-color:#267b48}.brain-confidence-value{color:#31583d;font-size:12px}.brain-trade-facts span{overflow-wrap:anywhere}
   `;document.head.append(sheet);
 
 
@@ -115,6 +117,38 @@
     return (insight.expectedDirection === 'over' ? 'Over ' : 'Under ') + insight.barrier;
   }
 
+  function tradeDetail(trade) {
+    const detail=node('section','brain-trade-detail');
+    detail.setAttribute('aria-label','Trade details');
+    const context=trade && trade.context && typeof trade.context==='object' ? trade.context : {};
+    detail.append(node('h5','','At entry'));
+    const facts=node('div','brain-trade-facts');
+    const percent = value => value != null && Number.isFinite(Number(value)) ? (Number(value)*100).toFixed(1)+'%' : 'Not recorded';
+    facts.append(node('span','','Edge · '+percent(context.edge)),node('span','','Confidence · '+percent(context.confidence)));
+    const amount = value => value == null || !Number.isFinite(Number(value)) ? 'Not recorded' : Number(value).toFixed(2);
+    facts.append(node('span','','Stake · '+amount(trade.stake)),node('span','','Buy price · '+amount(trade.askPrice)),node('span','','Payout · '+amount(trade.payout)),
+      node('span','','Profit · '+amount(trade.profit)),node('span','','Account · '+String(trade.accountMode || 'Not recorded')),node('span','','Contract · '+String(trade.providerContractId || 'Not recorded')));
+    detail.append(facts);
+    const ticks=node('div','brain-tick-row');
+    ticks.setAttribute('aria-label','Three ticks before entry, the entry tick, and three ticks after entry');
+    const before=Array.isArray(context.before)?context.before.slice(-3):[];
+    const after=Array.isArray(context.after)?context.after.slice(0,3):[];
+    const slots=[...Array(Math.max(0,3-before.length)).fill(null),...before,{quote:context.entryQuote,digit:context.entryDigit},...after,...Array(Math.max(0,3-after.length)).fill(null)];
+    slots.forEach((tick,index)=>{
+      const cell=node('div','brain-tick'+(index===3?' is-entry':''));
+      cell.append(node('small','',index===3?'ENTRY':index<3?String(index-3):'+'+String(index-3)));
+      const quote=typeof tick?.quote==='string'?tick.quote.trim():'';
+      // Preserve the recorded quote text; only highlight its actual final digit.
+      if(quote && /\d$/.test(quote)){
+        const value=node('span','');value.append(document.createTextNode(quote.slice(0,-1)),node('b','',quote.slice(-1)));cell.append(value);
+      } else cell.append(node('span','brain-tick-missing','—'));
+      ticks.append(cell);
+    });
+    detail.append(ticks);
+    if (!context.entryQuote || before.length<3 || after.length<3) detail.append(node('p','brain-trade-note','Some entry details were not recorded.'));
+    return detail;
+  }
+
   function makeForm(trades) {
     const card = node('section','brain-review-form');
     card.append(node('h4','','Teach from a trade'));
@@ -124,6 +158,8 @@
     }
     const form=node('form','brain-review-fields'); form.id='brainInsightForm';
     const choices=node('div','brain-review-trades');
+    const details=node('div','brain-review-selected');
+    const showDetail=trade=>details.replaceChildren(tradeDetail(trade));
     const selected=node('input',''); selected.type='hidden'; selected.name='sourceTradeId'; form.append(selected);
     trades.slice(0,12).forEach((trade,index)=>{
       const button=node('button','brain-review-trade'); button.type='button';
@@ -137,11 +173,11 @@
       const copy=node('span','brain-review-trade-copy');
       copy.append(node('b','',String(trade.marketName||trade.marketSymbol||'Market')+' · '+(String(trade.direction||'').toLowerCase()==='over'?'Over ':'Under ')+trade.barrier),node('small','',dateLabel));
       button.append(copy,node('strong','',Number.isFinite(profit)?(profit>=0?'+':'')+profit.toFixed(2):result.toUpperCase()));
-      button.addEventListener('click',()=>{selected.value=String(trade.id);choices.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));formDirty=true});
+      button.addEventListener('click',()=>{selected.value=String(trade.id);choices.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));showDetail(trade);formDirty=true});
       choices.append(button);
-      if(index===0){selected.value=String(trade.id);button.setAttribute('aria-pressed','true')}else button.setAttribute('aria-pressed','false');
+      if(index===0){selected.value=String(trade.id);button.setAttribute('aria-pressed','true');showDetail(trade)}else button.setAttribute('aria-pressed','false');
     });
-    form.append(choices);
+    form.append(choices,details);
     const topic=node('label','brain-review-label','What did you notice?');
     const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);form.append(topic);
     const stance=node('fieldset','brain-review-stance');
@@ -156,7 +192,7 @@
     const category=node('select','');category.name='category';
     [['setup','Pattern'],['market_behavior','Market movement'],['entry_timing','Entry timing'],['risk','Risk or warning']].forEach(([value,label])=>option(category,value,label));categoryLabel.append(category);
     const confidenceLabel=node('label','brain-review-label','Your confidence');
-    const confidence=node('select','');confidence.name='confidence';for(let n=1;n<=5;n++)option(confidence,String(n),n+' / 5');confidence.value='3';confidenceLabel.append(confidence);
+    const confidence=node('input','brain-confidence-slider');confidence.type='range';confidence.name='confidence';confidence.min='1';confidence.max='5';confidence.step='1';confidence.value='3';confidence.setAttribute('aria-label','Your confidence, from 1 to 5');const confidenceValue=node('output','brain-confidence-value','3 / 5');confidence.addEventListener('input',()=>{confidenceValue.textContent=confidence.value+' / 5'});confidenceLabel.append(confidence,confidenceValue);
     row.append(categoryLabel,confidenceLabel);form.append(row);
     const horizon=node('input','');horizon.type='hidden';horizon.name='horizon';horizon.value='next_session';form.append(horizon);
     const submit=node('button','brain-task-primary brain-review-save','Save lesson');submit.type='submit';form.append(submit);

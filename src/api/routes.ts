@@ -2037,6 +2037,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         .map(trade => ({
           id: String(trade.id), marketSymbol: String(trade.market), marketName: brainMarketName(String(trade.market)),
           direction: trade.direction, barrier: Number(trade.barrier), stake: Number(trade.stake),
+          accountMode: trade.mode ?? null, askPrice: trade.ask_price == null ? null : Number(trade.ask_price),
+          payout: trade.payout == null ? null : Number(trade.payout), providerContractId: trade.provider_contract_id ?? null,
           profit: trade.profit == null ? null : Number(trade.profit), status: trade.status,
           createdAt: trade.created_at, settledAt: trade.settled_at,
         }));
