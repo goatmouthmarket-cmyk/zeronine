@@ -103,3 +103,28 @@
 @keyframes brainIconAppear { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: scale(1); } }
 @keyframes brainIconProject { 0% { transform: scale(.85); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { #rangerBrainPanel.brain-projecting, #rangerBrainGlyph.brain-glyph-enter > svg, #rangerBrainGlyph.brain-glyph-project > svg { animation: none !important; } }
+
+
+/* A light floating journal, connected to the ranger's Brain control. */
+#rangerBrainPanel {
+  border: 1px solid #a77d50;
+  border-radius: 14px;
+  background: #fff3dc;
+  box-shadow: 0 14px 36px rgba(22, 48, 29, .27), 0 2px 6px rgba(54, 35, 19, .12);
+}
+#rangerBrainPanel .brain-head {
+  background: linear-gradient(135deg, #fff9eb, #f1ddba);
+  border-bottom: 1px solid #d8bd93;
+}
+#rangerBrainPanel .ranger-brain-tabs {
+  background: #f7e8cf;
+  border-bottom: 1px solid #d8bd93;
+}
+@media (max-width: 700px) {
+  #rangerBrainPanel {
+    width: min(440px, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
+    max-height: min(75dvh, 650px);
+    border-radius: 14px;
+  }
+}
