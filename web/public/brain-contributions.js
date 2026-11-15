@@ -345,26 +345,26 @@
     const count = $('missionProgress');
     if (!card || !title || !count) return;
     const label = card.querySelector('.mission-copy small');
-    if (label) label.textContent = 'BRAIN TASK';
+    if (label && label.textContent !== 'BRAIN TASK') label.textContent = 'BRAIN TASK';
     const pending = insights.filter(item => item.expectedDirection !== 'none' && item.outcome === 'pending').length;
     if (guest) {
-      title.textContent = 'Connect to teach';
-      count.textContent = 'OPEN BRAIN';
+      if (title.textContent !== 'Connect to teach') title.textContent = 'Connect to teach';
+      if (count.textContent !== 'OPEN BRAIN') count.textContent = 'OPEN BRAIN';
     } else if (!progress) {
-      title.textContent = 'Brain task unavailable';
-      count.textContent = 'RETRY';
+      if (title.textContent !== 'Brain task unavailable') title.textContent = 'Brain task unavailable';
+      if (count.textContent !== 'RETRY') count.textContent = 'RETRY';
     } else if (progress.total === 0) {
-      title.textContent = 'Teach your first lesson';
-      count.textContent = '0 / 1';
+      if (title.textContent !== 'Teach your first lesson') title.textContent = 'Teach your first lesson';
+      if (count.textContent !== '0 / 1') count.textContent = '0 / 1';
     } else if (pending > 0) {
-      title.textContent = 'Check a lesson';
-      count.textContent = pending + ' TO CHECK';
+      if (title.textContent !== 'Check a lesson') title.textContent = 'Check a lesson';
+      if (count.textContent !== pending + ' TO CHECK') count.textContent = pending + ' TO CHECK';
     } else if (progress.linkedWins > 0) {
-      title.textContent = 'Build on your insight';
-      count.textContent = progress.linkedWins + ' WINS';
+      if (title.textContent !== 'Build on your insight') title.textContent = 'Build on your insight';
+      if (count.textContent !== progress.linkedWins + ' WINS') count.textContent = progress.linkedWins + ' WINS';
     } else {
-      title.textContent = 'Teach another lesson';
-      count.textContent = progress.total + ' SAVED';
+      if (title.textContent !== 'Teach another lesson') title.textContent = 'Teach another lesson';
+      if (count.textContent !== progress.total + ' SAVED') count.textContent = progress.total + ' SAVED';
     }
     card.setAttribute('aria-label', 'Brain task: ' + title.textContent + '. ' + count.textContent + '. Open Brain Tasks.');
   }
