@@ -1,6 +1,6 @@
 # Ranger Brain (paper research) — v1
 
-Status: **v1 implemented, paper-only.** No demo or real order path exists in the Brain.
+Status: **paper research and account-scoped teaching tasks implemented.** Brain tasks never place an order.
 
 ## What it is
 
@@ -12,6 +12,34 @@ built from a stored number.
 
 The Ghost Scout is untouched. It keeps its independent scanner, patrol and
 ledger.
+
+## Teach the Brain tasks
+
+The Memories tab is now a task board for the connected Deriv account. A saved
+lesson records the market, a short human observation, an optional Over/Under
+digit idea, the time window, and confidence. Account identity is resolved from
+the verified server session and stored as a keyed hash; the browser never sends
+an account identifier. Leaderboard names are anonymous Ranger aliases.
+
+Personal lessons, XP, outcome links, leaderboard totals, and new shared evidence
+history are stored in Supabase's private `brain_private` schema. The migration
+is `supabase/migrations/202611150001_brain_contributions.sql`. Apply it as the
+Supabase project owner before using the task board; the production app connects
+as `multiplayer_runtime`. The browser receives only the signed-in player's
+lessons and a pseudonymous top-ten leaderboard.
+
+Teaching a lesson awards 10 game XP. The server checks the verified account's
+Supabase contract records for a later settled contract on the same market,
+Over/Under direction, and barrier within the chosen time window. A matching
+win adds 25 XP; a matching loss removes the 10 XP teaching award. One trade can
+link to only one lesson. No XP is awarded for placing a trade, and XP never
+changes a stake or balance.
+
+The Brain's combined read compares a human idea with the shared paper record
+for that exact market, direction, and barrier. It abstains until the matching
+practice sample clears the evidence threshold. A later actual trade can check
+whether the idea aligned with a win, but that correlation is not proof that the
+note caused the outcome or a promise about the next trade.
 
 ## Architecture in v1
 
