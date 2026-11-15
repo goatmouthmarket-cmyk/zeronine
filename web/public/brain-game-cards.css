@@ -472,3 +472,16 @@ html body #rangerBrainPanel #brainHeroCard > .brain-hero-veil {display:none!impo
 @media(prefers-reduced-motion:reduce){.brain-unlock-orbit:before,.brain-unlock-orbit:after,.brain-unlock-orbit img{animation:none}}
 
 .brain-unlock-performance{display:flex;flex-wrap:wrap;align-items:center;gap:5px 12px;font:700 11px/1.25 system-ui;color:#285b3d}.brain-unlock-performance[hidden]{display:none}.brain-unlock-performance small{color:#695b48;font-weight:600}
+
+/* The ranger's Brain scans the same cow artwork used elsewhere in the game. */
+.brain-scan-scene{position:relative;width:min(100%,360px);aspect-ratio:200/92;isolation:isolate}
+.brain-scan-characters,.brain-scan-overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.brain-scan-characters{z-index:1}
+.brain-scan-overlay{z-index:2;overflow:visible;pointer-events:none}
+.brain-scan-glyph{position:absolute;z-index:3;left:18%;top:3%;width:10%;height:auto;filter:drop-shadow(0 0 3px #fff3a8);animation:brainScanGlow 3.6s ease-in-out infinite}
+.brain-scan-beam{stroke-dasharray:4 5;animation:brainScanBeam 3.6s ease-in-out infinite}
+.brain-scan-lock{transform-origin:137px 42px;animation:brainScanLock 3.6s ease-in-out infinite}
+@keyframes brainScanGlow{0%,100%{opacity:.7;transform:scale(.9)}25%,70%{opacity:1;transform:scale(1.1)}}
+@keyframes brainScanBeam{0%,12%,90%,100%{opacity:0;stroke-dashoffset:20}30%,68%{opacity:1;stroke-dashoffset:0}80%{opacity:.35}}
+@keyframes brainScanLock{0%,20%,100%{opacity:0;transform:scale(1.25)}42%,70%{opacity:1;transform:scale(1)}85%{opacity:.2;transform:scale(1.05)}}
+@media(prefers-reduced-motion:reduce){.brain-scan-glyph,.brain-scan-beam,.brain-scan-lock{animation:none}.brain-scan-beam,.brain-scan-lock{opacity:.7}}
