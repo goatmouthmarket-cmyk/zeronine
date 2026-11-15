@@ -16,6 +16,8 @@
     .brain-goals{background:#eaf2df;border-radius:10px;padding:11px;display:grid;gap:7px;color:#234c32}.brain-goals h4{font-size:14px;margin:0}.brain-goals-list{display:grid;gap:6px}.brain-goal{display:grid;grid-template-columns:1fr auto;gap:4px;font-size:12px;font-weight:750}.brain-goal progress{grid-column:1/-1;width:100%;height:6px;accent-color:#438659}.brain-goals button{justify-self:start;border:0;border-radius:7px;background:#245d39;color:#fff;padding:7px 10px;font:700 12px system-ui;cursor:pointer}.brain-review-stance{display:flex;gap:7px;margin:0;padding:0;border:0}.brain-review-stance legend{font-size:12px;font-weight:800;margin-bottom:5px}.brain-review-stance label{flex:1;display:flex;align-items:center;gap:5px;padding:9px;border:1px solid #c8b08c;border-radius:8px;background:#fffdf7;font-size:12px;font-weight:750}.brain-review-stance input{accent-color:#28794f}
     .brain-trade-detail{padding:10px;border-radius:10px;background:#f0ead8;border:1px solid #d7c5a2;display:grid;gap:8px}.brain-trade-detail h5{margin:0;color:#31583d;font-size:13px}.brain-trade-facts{display:flex;gap:6px;flex-wrap:wrap}.brain-trade-facts span{background:#fffaf0;border-radius:6px;padding:5px 8px;color:#36543b;font-weight:800;font-size:11px}.brain-tick-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.brain-tick{min-width:0;text-align:center;padding:5px 2px;background:#fffaf0;border-radius:5px;color:#554a3b;font-size:clamp(8px,1.6vw,11px);overflow-wrap:anywhere}.brain-tick small{display:block;font-size:9px;color:#7e725f}.brain-tick.is-entry{background:#dbeed8;box-shadow:inset 0 0 0 1px #629369}.brain-tick b{color:#bc3039;font-size:1.15em}.brain-tick-missing{color:#887c69}.brain-trade-note{margin:0;color:#776b5a;font-size:11px;line-height:1.35}
     .brain-confidence-slider{width:100%;accent-color:#267b48}.brain-confidence-value{color:#31583d;font-size:12px}.brain-trade-facts span{overflow-wrap:anywhere}
+
+    .brain-trade-detail{padding:14px;background:#fffdf5;border:1px solid #dfcfad;border-radius:12px;gap:12px;box-shadow:0 3px 12px #44351c0a}.brain-entry-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.brain-entry-title small{display:block;color:#89765b;font-size:9px;font-weight:800;letter-spacing:.08em}.brain-entry-title h5{margin:2px 0 0;color:#294f34;font-size:15px}.brain-entry-outcome{padding:4px 9px;border-radius:6px;background:#eee7d8;color:#665640;font-size:11px;font-weight:800}.brain-entry-outcome[data-result=won]{background:#e0f1df;color:#246339}.brain-entry-outcome[data-result=lost]{background:#f8e4df;color:#9a3336}.brain-entry-summary,.brain-trade-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.brain-entry-metric{min-width:0;padding:8px;background:#f4f1e5;border-radius:7px}.brain-entry-metric small,.brain-entry-metric strong{display:block;overflow-wrap:anywhere}.brain-entry-metric small{font-size:10px;color:#756b58}.brain-entry-metric strong{margin-top:2px;color:#294f34;font-size:12px;font-variant-numeric:tabular-nums}.brain-entry-metric.is-negative strong{color:#a33338}.brain-entry-sequence{min-width:0}.brain-entry-sequence-heading{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}.brain-entry-sequence-heading strong{font-size:11px;color:#35553a}.brain-entry-sequence-heading small{font-size:10px;color:#82745d}.brain-tick-row{display:grid;grid-template-columns:repeat(7,minmax(64px,1fr));gap:4px;overflow-x:auto;padding-bottom:3px}.brain-tick{padding:7px 4px;background:#f4f1e5;font-size:11px;white-space:nowrap;overflow-wrap:normal}.brain-tick small{margin-bottom:3px;font-size:9px}.brain-tick.is-entry{background:#ddf0dc}.brain-entry-more{border-top:1px solid #eadfc9;padding-top:9px}.brain-entry-more summary{cursor:pointer;color:#31583d;font-size:11px;font-weight:800}.brain-entry-more .brain-trade-facts{margin-top:8px}.brain-entry-metric.is-id{grid-column:span 2}.brain-trade-note{margin:5px 0 0}@media(max-width:430px){.brain-trade-detail{padding:10px}.brain-entry-summary{gap:4px}.brain-entry-metric{padding:6px}.brain-entry-metric strong{font-size:11px}.brain-entry-sequence-heading{display:block}.brain-entry-sequence-heading small{display:block;margin-top:2px}.brain-entry-more .brain-trade-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
   `;document.head.append(sheet);
 
 
@@ -121,14 +123,24 @@
     const detail=node('section','brain-trade-detail');
     detail.setAttribute('aria-label','Trade details');
     const context=trade && trade.context && typeof trade.context==='object' ? trade.context : {};
-    detail.append(node('h5','','At entry'));
-    const facts=node('div','brain-trade-facts');
-    const percent = value => value != null && Number.isFinite(Number(value)) ? (Number(value)*100).toFixed(1)+'%' : 'Not recorded';
-    facts.append(node('span','','Quote estimate · '+percent(context.edge)),node('span','','Confidence · '+percent(context.confidence)));
-    const amount = value => value == null || !Number.isFinite(Number(value)) ? 'Not recorded' : Number(value).toFixed(2);
-    facts.append(node('span','','Stake · '+amount(trade.stake)),node('span','','Buy price · '+amount(trade.askPrice)),node('span','','Payout · '+amount(trade.payout)),
-      node('span','','Profit · '+amount(trade.profit)),node('span','','Account · '+String(trade.accountMode || 'Not recorded')),node('span','','Contract · '+String(trade.providerContractId || 'Not recorded')));
-    detail.append(facts);
+    const amount=value => value == null || !Number.isFinite(Number(value)) ? 'Not recorded' : Number(value).toFixed(2);
+    const percent=value => value != null && Number.isFinite(Number(value)) ? (Number(value)*100).toFixed(1)+'%' : 'Not recorded';
+    const heading=node('div','brain-entry-heading');
+    const title=node('div','brain-entry-title');
+    title.append(node('small','','TRADE SNAPSHOT'),node('h5','','At entry'));
+    const result=String(trade.status||'').toLowerCase();
+    const badge=node('span','brain-entry-outcome',result==='won'?'Won':result==='lost'?'Lost':'Result');
+    badge.dataset.result=result; heading.append(title,badge); detail.append(heading);
+
+    const summary=node('div','brain-entry-summary');
+    const metric=(label,value,cls='')=>{const item=node('div','brain-entry-metric '+cls);item.append(node('small','',label),node('strong','',value));return item;};
+    summary.append(metric('Entry estimate',percent(context.edge)),metric('Stake',amount(trade.stake)),metric('Profit / loss',amount(trade.profit),Number(trade.profit)<0?'is-negative':''));
+    detail.append(summary);
+
+    const sequence=node('div','brain-entry-sequence');
+    const sequenceHeading=node('div','brain-entry-sequence-heading');
+    sequenceHeading.append(node('strong','','Price around entry'),node('small','','Final digit highlighted'));
+    sequence.append(sequenceHeading);
     const ticks=node('div','brain-tick-row');
     ticks.setAttribute('aria-label','Three ticks before entry, the entry tick, and three ticks after entry');
     const before=Array.isArray(context.before)?context.before.slice(-3):[];
@@ -138,14 +150,22 @@
       const cell=node('div','brain-tick'+(index===3?' is-entry':''));
       cell.append(node('small','',index===3?'ENTRY':index<3?String(index-3):'+'+String(index-3)));
       const quote=typeof tick?.quote==='string'?tick.quote.trim():'';
-      // Preserve the recorded quote text; only highlight its actual final digit.
-      if(quote && /\d$/.test(quote)){
+      if(quote && /\\d$/.test(quote)){
         const value=node('span','');value.append(document.createTextNode(quote.slice(0,-1)),node('b','',quote.slice(-1)));cell.append(value);
       } else cell.append(node('span','brain-tick-missing','—'));
       ticks.append(cell);
     });
-    detail.append(ticks);
-    if (!context.entryQuote || before.length<3 || after.length<3) detail.append(node('p','brain-trade-note','Some entry details were not recorded.'));
+    sequence.append(ticks);
+    if (!context.entryQuote || before.length<3 || after.length<3) sequence.append(node('p','brain-trade-note','Some prices were not recorded.'));
+    detail.append(sequence);
+
+    const more=node('details','brain-entry-more');
+    more.append(node('summary','','Trade details'));
+    const facts=node('div','brain-trade-facts');
+    facts.append(metric('Buy price',amount(trade.askPrice)),metric('Payout',amount(trade.payout)),
+      metric('Confidence',percent(context.confidence)),metric('Account',String(trade.accountMode || 'Not recorded')),
+      metric('Contract ID',String(trade.providerContractId || 'Not recorded'),'is-id'));
+    more.append(facts);detail.append(more);
     return detail;
   }
 
