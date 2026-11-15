@@ -19,7 +19,7 @@ ledger.
                           |
                           v
     src/brain/timing.ts    Wilson intervals, empirical-Bayes shrinkage,
-                           UTC hour / weekday buckets, break-even from payouts
+                           local-time hour / weekday buckets (browser IANA time zone), break-even from payouts
                           |
                           v
     src/brain/policy.ts    paper_shoot | watch | wait, with reason codes
@@ -39,7 +39,7 @@ ledger.
 The panel answers three questions with shapes before text: a **trust ring**
 (filled by settled outcomes against `BRAIN_MIN_MARKET_OUTCOMES`, pips for the
 last few tenths), a **break-even gauge** (a notch at the mark, green fill when
-paper wins sit above it, red below), and a **day map** (24 UTC bars, gold
+paper wins sit above it, red below), and a **day map** (24 local-time bars, gold
 outline on the strongest hour, ring on the current one). The default view shows
 no win-rate, break-even or P&L figures; those live in the tooltips and in the
 Training and Hours tabs, where someone is deliberately reading detail. Every
@@ -96,7 +96,7 @@ no account mode, and `PAPER_ONLY` is always present.
 - `favorable` requires the **Wilson lower bound** to clear break-even by 2%;
   `unfavorable` requires the upper bound to sit 2% below it. Everything between
   is `mixed`, and `bestHour` is `null` when nothing separates.
-- Buckets are keyed by the UTC hour of the **decision** (`opened_at`), and any
+- Buckets are keyed by the requested IANA time zone's hour on the **decision** (`opened_at`); the API defaults to UTC when no zone is supplied, and any
   outcome settled after `now` is excluded, so an evaluation cannot see the
   future (`tests/rangerBrainTiming.test.ts`).
 - Rates are shrunk toward the market's own rate, so a 3-of-3 hour cannot outrank
@@ -136,7 +136,7 @@ no account mode, and `PAPER_ONLY` is always present.
   included: the report is paper research with no balance, token or account id,
   and gating it on owner access is what kept the brain from loading in
   production. Owner-only routes keep `requireOwner` and are untouched.
-- The route memoises one report per `market`/`lookbackDays` pair for ten
+- The route memoises one report per `market`/`lookbackDays`/`timeZone` combination for ten
   seconds, so a public caller cannot force a paper-ledger rescan per request.
 - The endpoint is read-only, returns no balances, tokens or account identifiers,
   and sends `cache-control: no-store`.
