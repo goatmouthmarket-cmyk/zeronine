@@ -17,6 +17,7 @@ import {
   BRAIN_MIN_BUCKET_OUTCOMES,
   BRAIN_MIN_MARKET_OUTCOMES,
   buildTimingProfile,
+  normalizeBrainTimeZone,
   verdictLabel,
   type BrainOutcome,
   type TimingBucket,
@@ -40,6 +41,8 @@ export interface RangerBrainReport {
   schemaVersion: 1;
   /** Paper-only by construction. There is no account-mode switch here. */
   mode: 'paper';
+  dataSource: 'shared_site_paper';
+  timeZone: string;
   generatedAt: number;
   mind: BrainMindState;
   mindLabel: string;
@@ -65,6 +68,7 @@ export interface RangerBrainReport {
 export interface BrainReportOptions {
   now?: number;
   market?: string | null;
+  timeZone?: string;
   lookbackDays?: number;
   /** Injectable for tests; defaults to the persisted virtual ledger. */
   trades?: PaperTradeSummary[];
@@ -98,10 +102,10 @@ export function paperTradesToOutcomes(trades: PaperTradeSummary[]): BrainOutcome
 }
 
 const MIND_LABELS: Record<BrainMindState, string> = {
-  offline: 'OFFLINE',
-  observing: 'OBSERVING',
-  paper_hunting: 'PAPER HUNTING',
-  waiting: 'WAIT',
+  offline: 'NO PRACTICE RESULTS',
+  observing: 'STILL LEARNING',
+  paper_hunting: 'TIME TO WATCH',
+  waiting: 'NO CLEAR EDGE',
 };
 
 function mindFor(profile: TimingProfile): BrainMindState {
@@ -123,7 +127,7 @@ export function brainLessons(profile: TimingProfile, now: number): BrainLesson[]
     lessons.push({
       id: 'evidence-empty',
       topic: 'Evidence',
-      finding: `No settled virtual outcomes in the last ${profile.lookbackDays} days, so ${marketLabel} has no measurable edge yet.`,
+      finding: `I have no finished site practice results for ${marketLabel} from the last ${profile.lookbackDays} days, so I cannot point to a useful time yet.`,
       outcomes: 0,
       confidence: null,
       validity: 'provisional',
@@ -150,7 +154,7 @@ export function brainLessons(profile: TimingProfile, now: number): BrainLesson[]
     lessons.push({
       id: 'evidence-thin',
       topic: 'Evidence',
-      finding: `${BRAIN_MIN_BUCKET_OUTCOMES - profile.outcomes} more settled outcomes are needed before any hour can be called favorable.`,
+      finding: `${BRAIN_MIN_BUCKET_OUTCOMES - profile.outcomes} more settled site practice results are needed before I can judge an hour for ${marketLabel}.`,
       outcomes: profile.outcomes,
       confidence: null,
       validity: 'provisional',
@@ -163,7 +167,7 @@ export function brainLessons(profile: TimingProfile, now: number): BrainLesson[]
     lessons.push({
       id: `hour-favorable-${best.key}`,
       topic: 'Time of day',
-      finding: `${marketLabel} around ${best.label} settled ${best.wins} of ${best.outcomes} (${percent(best.winRate ?? 0)}), clearing break-even on its lower bound.`,
+      finding: `In site practice for ${marketLabel}, around ${best.label} had ${best.wins} wins from ${best.outcomes} settled results (${percent(best.winRate ?? 0)}). This is a time to watch for a fresh setup, not a promise.`,
       outcomes: best.outcomes,
       confidence: best.interval?.low ?? null,
       validity: profile.outcomes >= BRAIN_MIN_MARKET_OUTCOMES ? 'validated' : 'provisional',
@@ -177,7 +181,7 @@ export function brainLessons(profile: TimingProfile, now: number): BrainLesson[]
       lessons.push({
         id: `hour-no-winner-${closest.key}`,
         topic: 'Time of day',
-        finding: `Best-sampled hour is ${closest.label} with ${percent(closest.winRate ?? 0)} over ${closest.outcomes} outcomes, but it does not separate from break-even. No hour is favorable.`,
+        finding: `Around ${closest.label} has the largest practice sample (${closest.outcomes} results), but it has not shown a dependable advantage over break-even. I cannot call it a best time.`,
         outcomes: closest.outcomes,
         confidence: closest.interval?.low ?? null,
         validity: 'provisional',
@@ -191,7 +195,7 @@ export function brainLessons(profile: TimingProfile, now: number): BrainLesson[]
     lessons.push({
       id: 'weekday-unfavorable',
       topic: 'Time of day',
-      finding: `${badDays.map((bucket) => bucket.label).join(', ')} sit measurably below break-even for ${marketLabel}.`,
+      finding: `Site practice results for ${marketLabel} have been weaker on ${badDays.map((bucket) => bucket.label).join(', ')}. This is historical evidence, not a prediction.`,
       outcomes: badDays.reduce((sum, bucket) => sum + bucket.outcomes, 0),
       confidence: badDays[0]?.interval?.high ?? null,
       validity: 'provisional',
@@ -233,9 +237,11 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
   const trades = options.trades ?? safePaperTrades();
   const outcomes = paperTradesToOutcomes(trades);
   const lookbackDays = options.lookbackDays ?? BRAIN_DEFAULT_LOOKBACK_DAYS;
+  const timeZone = normalizeBrainTimeZone(options.timeZone);
   const market = options.market ?? dominantMarket(outcomes, now, lookbackDays);
-  const profile = buildTimingProfile(outcomes, { now, market, lookbackDays });
-  const hourKey = new Date(now).getUTCHours();
+  const profile = buildTimingProfile(outcomes, { now, market, lookbackDays, timeZone });
+  const hourValue = new Intl.DateTimeFormat('en-US', { timeZone, hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(now)).find((part) => part.type === 'hour')?.value;
+  const hourKey = Number(hourValue) % 24;
   const currentBucket = profile.hours[hourKey] ?? null;
   const mind = mindFor(profile);
   const best = profile.bestHour;
@@ -243,6 +249,8 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
   return {
     schemaVersion: 1,
     mode: 'paper',
+    dataSource: 'shared_site_paper',
+    timeZone,
     generatedAt: now,
     mind,
     mindLabel: MIND_LABELS[mind],
@@ -268,20 +276,21 @@ export function buildBrainReport(options: BrainReportOptions = {}): RangerBrainR
 }
 
 function headlineFor(profile: TimingProfile, mind: BrainMindState): string {
+  const market = profile.market ?? 'this market';
   const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
   switch (mind) {
     case 'offline':
-      return 'No settled virtual outcomes yet. The Brain is not claiming an edge.';
+      return 'No finished site practice results yet. I need evidence before I can suggest a time to watch.';
     case 'observing':
       return profile.bestHour
-        ? `${profile.outcomes} of ${BRAIN_MIN_MARKET_OUTCOMES} settled outcomes. ${profile.bestHour.label} leads so far but is not validated yet.`
-        : `${profile.outcomes} of ${BRAIN_MIN_MARKET_OUTCOMES} settled outcomes. Collecting evidence before any shot.`;
+        ? `I am still learning from ${profile.outcomes} site practice results. Around ${profile.bestHour.label} looks promising for ${market}, but there is not enough evidence to call it a reliable window.`
+        : `I have ${profile.outcomes} of ${BRAIN_MIN_MARKET_OUTCOMES} site practice results for ${market}. I am still learning and cannot name a best time yet.`;
     case 'waiting':
-      return `This market's overall record is ${percent(profile.winRate ?? 0)} against ${percent(profile.breakeven ?? 0)} break-even. Waiting.`;
+      return `Site practice results for ${market} are ${percent(profile.winRate ?? 0)} wins against an estimated ${percent(profile.breakeven ?? 0)} break-even mark. I do not see a reliable time to recommend; wait for a fresh setup.`;
     default:
       return profile.bestHour
-        ? `${profile.bestHour.label} clears break-even on ${profile.bestHour.outcomes} settled outcomes. Paper shots allowed.`
-        : 'Evidence is not yet strong enough for a paper shot.';
+        ? `The strongest-supported practice window for ${market} is around ${profile.bestHour.label} in your local time. It is a time to watch for a fresh setup, not a promise or live signal.`
+        : 'I do not have enough evidence to point to a useful practice window yet.';
   }
 }
 
