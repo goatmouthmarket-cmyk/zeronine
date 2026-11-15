@@ -2020,9 +2020,21 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         deps.multiplayerStore.listTrades(accountId, 100),
         deps.multiplayerStore.brainComparableOutcomes(ownerKey, accountId),
       ]);
+      const tradesById = new Map(accountTrades.map(trade => [String(trade.id), trade]));
       const insights = rawInsights.map(insight => {
         const stance = /\n\[Brain stance: (good|warning)\]$/.exec(insight.observation)?.[1] ?? null;
-        return { ...insight, observation: insight.observation.replace(/\n\[Brain stance: (good|warning)\]$/, ''), stance,
+        const sourceTradeId = /\n\[Trade reference: ([0-9a-f-]{36})\]/i.exec(insight.observation)?.[1] ?? null;
+        const sourceTrade = sourceTradeId ? tradesById.get(sourceTradeId) : null;
+        // The player's assessment is a judgment about the decision, separate
+        // from whether this particular settled contract won or lost.
+        const assessment = stance && sourceTradeId ? {
+          call: stance === 'good' ? 'good' : 'bad', sourceTradeId,
+          tradeResult: sourceTrade && (sourceTrade.status === 'won' || sourceTrade.status === 'lost')
+            ? sourceTrade.status : null,
+        } : null;
+        const patternMatch = /\n\[Brain pattern: (high|low):([234])\]/.exec(insight.observation);
+        const confirmedPattern = patternMatch ? { side: patternMatch[1], count: Number(patternMatch[2]) } : null;
+        return { ...insight, observation: insight.observation.replace(/\n\[Brain pattern: (high|low):[234]\]/, '').replace(/\n\[Brain stance: (good|warning)\]$/, ''), stance, assessment, confirmedPattern,
           ...(comparison.byInsight[insight.id] ?? { similarTrades: 0, similarWins: 0, similarLosses: 0 }) };
       });
       const structuredLessons = insights.filter(insight => insight.stance !== null).length;
@@ -2071,6 +2083,13 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const stance = body?.stance;
       if (stance !== 'good' && stance !== 'warning') return reply.code(400).send({ error: 'Choose good sign or warning.' });
       const observation = typeof body?.observation === 'string' ? body.observation.trim() : '';
+      const confirmedPattern = typeof body?.confirmedPattern === 'string' ? body.confirmedPattern : '';
+      const phrase = /^\s*(?:after|following)\s+(?:the\s+)?(two|three|four|2|3|4)\s+(high|low)\s+digits?[.!]?\s*$/i.exec(observation);
+      const countWords: Record<string, number> = { two: 2, three: 3, four: 4 };
+      const parsedPattern = phrase ? phrase[2].toLowerCase() + ':' + (countWords[phrase[1].toLowerCase()] || Number(phrase[1])) : '';
+      if (confirmedPattern && confirmedPattern !== parsedPattern) {
+        return reply.code(400).send({ error: 'The selected pattern no longer matches your note. Please check it again.' });
+      }
       const horizon = body?.horizon;
       const confidence = Number(body?.confidence);
       if (!['market_behavior', 'setup', 'entry_timing', 'risk'].includes(String(category))) {
@@ -2087,7 +2106,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         marketSymbol: sourceTrade.market,
         marketName: brainMarketName(sourceTrade.market),
         category: category as BrainInsightCategory,
-        observation: observation + '\n[Trade reference: ' + sourceTrade.id + ']\n[Brain stance: ' + stance + ']',
+        observation: observation + (confirmedPattern ? '\n[Brain pattern: ' + confirmedPattern + ']' : '') + '\n[Trade reference: ' + sourceTrade.id + ']\n[Brain stance: ' + stance + ']',
         expectedDirection: sourceTrade.direction as BrainExpectedDirection,
         barrier: sourceTrade.barrier,
         horizon: horizon as 'next_5' | 'next_20' | 'next_session',

@@ -13,7 +13,7 @@
     .brain-review-network svg{display:block;width:100%;height:auto}.brain-review-summary h3{margin:4px 0;color:#294f34;font-size:22px}.brain-review-summary strong{color:#285638}.brain-review-metrics{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.brain-review-metrics span{padding:4px 7px;background:#e7efdc;border-radius:6px;font-size:11px;font-weight:750;color:#31583d}
     .brain-review-form h4{margin:0 0 9px;color:#294f34;font-size:16px}.brain-review-fields{display:grid;gap:10px}.brain-review-trades{display:grid;gap:6px;max-height:200px;overflow:auto}.brain-review-trade{display:flex;align-items:center;gap:9px;width:100%;padding:9px;border:1px solid #decaa8;border-radius:9px;background:#fffdf5;color:#3d3022;text-align:left;cursor:pointer}.brain-review-trade[aria-pressed=true]{border:2px solid #388553;background:#e9f4e5}.brain-review-result{display:grid;place-items:center;width:27px;height:27px;border-radius:50%;background:#e8c9be;color:#8a302c;font-weight:900}.brain-review-trade[data-result=won] .brain-review-result{background:#cee9cd;color:#25713d}.brain-review-trade-copy{display:grid;gap:2px;flex:1;min-width:0}.brain-review-trade-copy small{color:#776b5a}.brain-review-trade strong{color:#31583d}.brain-review-label{display:grid;gap:5px;font-size:12px;font-weight:800}.brain-review-label textarea,.brain-review-label select{width:100%;min-width:0;padding:9px;border:1px solid #c8b08c;border-radius:8px;background:#fffdf7;color:#30291f;font:inherit}.brain-review-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.brain-review-save{width:100%}.brain-review-details{border-top:1px solid #e2d2b9;padding-top:10px}.brain-review-details summary{cursor:pointer;font-weight:800;color:#31583d}.brain-review-evidence:empty{display:none}.brain-evidence-compact{border-top:1px solid #e2d2b9;padding-top:10px}.brain-evidence-compact__top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:800;color:#31583d}.brain-evidence-compact__stats{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.brain-evidence-compact__stats>*{background:#e7efdc;border-radius:6px;padding:5px 7px;color:#31583d;font-size:11px}.brain-evidence-compact__details{font-size:12px;color:#665a48}.brain-review-empty{font-size:13px;color:#665a48}
 
-    .brain-goals{background:#eaf2df;border-radius:10px;padding:11px;display:grid;gap:7px;color:#234c32}.brain-goals h4{font-size:14px;margin:0}.brain-goals-list{display:grid;gap:6px}.brain-goal{display:grid;grid-template-columns:1fr auto;gap:4px;font-size:12px;font-weight:750}.brain-goal progress{grid-column:1/-1;width:100%;height:6px;accent-color:#438659}.brain-goals button{justify-self:start;border:0;border-radius:7px;background:#245d39;color:#fff;padding:7px 10px;font:700 12px system-ui;cursor:pointer}.brain-review-stance{display:flex;gap:6px;margin:0;padding:0;border:0;min-width:0}.brain-review-stance legend{font-size:12px;font-weight:800;margin-bottom:6px;color:#4f6242}.brain-review-stance label{position:relative;flex:1;min-width:0;cursor:pointer}.brain-review-stance input{position:absolute;width:1px;height:1px;opacity:0}.brain-review-stance label span{display:block;padding:10px 12px;border:0;border-radius:4px;background:#ede7d7;color:#52604a;text-align:center;font:800 12px/1.2 system-ui,sans-serif;transition:background .16s,color .16s}.brain-review-stance input:checked+span{background:#d4e9c9;color:#174e2c}.brain-review-stance label:last-child input:checked+span{background:#f6ded4;color:#8c3430}.brain-review-stance input:focus-visible+span{outline:2px solid #235c38;outline-offset:2px}
+    .brain-goals{background:#eaf2df;border-radius:10px;padding:11px;display:grid;gap:7px;color:#234c32}.brain-goals h4{font-size:14px;margin:0}.brain-goals-list{display:grid;gap:6px}.brain-goal{display:grid;grid-template-columns:1fr auto;gap:4px;font-size:12px;font-weight:750}.brain-goal progress{grid-column:1/-1;width:100%;height:6px;accent-color:#438659}.brain-goals button{justify-self:start;border:0;border-radius:7px;background:#245d39;color:#fff;padding:7px 10px;font:700 12px system-ui;cursor:pointer}.brain-review-stance{display:flex;gap:8px;margin:4px 0 6px;padding:0;border:0;min-width:0}.brain-review-stance legend{font-size:14px;font-weight:900;margin-bottom:9px;color:#284d35}.brain-review-stance label{position:relative;flex:1;min-width:0;cursor:pointer}.brain-review-stance input{position:absolute;width:1px;height:1px;opacity:0}.brain-review-stance label span{display:flex;min-height:58px;align-items:center;justify-content:center;padding:14px 8px;border:0;border-radius:4px;background:#eee7d6;color:#344d36;text-align:center;font:900 clamp(15px,2.4vw,18px)/1.15 system-ui,sans-serif;transition:background .16s,color .16s,transform .16s}.brain-review-stance input:checked+span{background:#277845;color:#fff}.brain-review-stance label:last-child input:checked+span{background:#b8403c;color:#fff}.brain-review-stance input:focus-visible+span{outline:3px solid #235c38;outline-offset:2px}
     .brain-trade-detail{padding:10px;border-radius:10px;background:#f0ead8;border:1px solid #d7c5a2;display:grid;gap:8px}.brain-trade-detail h5{margin:0;color:#31583d;font-size:13px}.brain-trade-facts{display:flex;gap:6px;flex-wrap:wrap}.brain-trade-facts span{background:#fffaf0;border-radius:6px;padding:5px 8px;color:#36543b;font-weight:800;font-size:11px}.brain-tick-row{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.brain-tick{min-width:0;text-align:center;padding:5px 2px;background:#fffaf0;border-radius:5px;color:#554a3b;font-size:clamp(8px,1.6vw,11px);overflow-wrap:anywhere}.brain-tick small{display:block;font-size:9px;color:#7e725f}.brain-tick.is-entry{background:#dbeed8;box-shadow:inset 0 0 0 1px #629369}.brain-tick b{color:#bc3039;font-size:1.15em}.brain-tick-missing{color:#887c69}.brain-trade-note{margin:0;color:#776b5a;font-size:11px;line-height:1.35}
     .brain-confidence-slider{width:100%;accent-color:#267b48}.brain-confidence-value{color:#31583d;font-size:12px}.brain-trade-facts span{overflow-wrap:anywhere}
 
@@ -169,6 +169,15 @@
     return detail;
   }
 
+  // Interpret only the explicitly supported phrase; everything else stays a note.
+  function notePattern(text) {
+    const match = /^\s*(?:after|following)\s+(?:the\s+)?(two|three|four|2|3|4)\s+(high|low)\s+digits?[.!]?\s*$/i.exec(text);
+    if (!match) return null;
+    const numbers = { two: 2, three: 3, four: 4 };
+    const count = numbers[match[1].toLowerCase()] || Number(match[1]);
+    return { count, side: match[2].toLowerCase() };
+  }
+
   function makeForm(trades) {
     const card = node('section','brain-review-form');
     card.append(node('h4','','Teach from a trade'));
@@ -198,8 +207,6 @@
       if(index===0){selected.value=String(trade.id);button.setAttribute('aria-pressed','true');showDetail(trade)}else button.setAttribute('aria-pressed','false');
     });
     form.append(choices,details);
-    const topic=node('label','brain-review-label','What did you notice?');
-    const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);form.append(topic);
     const stance=node('fieldset','brain-review-stance');
     stance.append(node('legend','','What did this tell you?'));
     [['good','Good call'],['warning','Bad call']].forEach(([value,label])=>{
@@ -207,6 +214,24 @@
       choice.append(input,node('span','',label));stance.append(choice);
     });
     form.append(stance);
+    const topic=node('label','brain-review-label','What did you notice?');
+    const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);form.append(topic);
+    const interpretation=node('div','brain-note-interpretation'); interpretation.setAttribute('aria-live','polite'); form.append(interpretation);
+    const updateInterpretation=()=>{
+      interpretation.replaceChildren();
+      const pattern=notePattern(observation.value);
+      if (!pattern) {
+        if (observation.value.trim().length >= 8) interpretation.append(node('small','','Saved as your note. Try “after 3 high digits” to teach a pattern.'));
+        return;
+      }
+      const label=node('label','brain-review-label');
+      const confirm=node('input',''); confirm.type='checkbox'; confirm.name='confirmPattern'; confirm.value=pattern.side+':'+pattern.count;
+      label.append(confirm,document.createTextNode(' I mean after '+pattern.count+' '+pattern.side+' digits ('+(pattern.side==='high'?'5–9':'0–4')+').'));
+      interpretation.append(label,node('small','','This pattern is saved for review. It does not change suggestions yet.'));
+    };
+    observation.addEventListener('input',updateInterpretation);
+
+
     const row=node('div','brain-review-row');
     const categoryLabel=node('label','brain-review-label','Your observation');
     const category=node('select','');category.name='category';
@@ -228,7 +253,7 @@
     try {
       await request('/api/ranger-brain/contributions',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({
         sourceTradeId:String(data.get('sourceTradeId')),category:data.get('category'),observation:data.get('observation'),stance:data.get('stance'),
-        confidence:Number(data.get('confidence')),horizon:data.get('horizon')
+        confidence:Number(data.get('confidence')),horizon:data.get('horizon'), confirmedPattern:data.get('confirmPattern') || null
       })});
       note='Lesson saved';formDirty=false;await load();setMessage(note,'good');
     } catch(error) {
