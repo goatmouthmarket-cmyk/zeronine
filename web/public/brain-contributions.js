@@ -386,10 +386,78 @@
     }
   }
 
+  function renderMainGrowth(data) {
+    const card = $('brainGrowthCard');
+    if (!card) return;
+    const progress = data?.progress || { level: 1, xp: 0, levelXp: 0, linkedWins: 0, total: 0 };
+    const insights = Array.isArray(data?.insights) ? data.insights : [];
+    const wins = insights.filter(item => item.outcome === 'matched').length;
+    const losses = insights.filter(item => item.outcome === 'unmatched').length;
+    const waiting = insights.filter(item => item.expectedDirection !== 'none' && item.outcome === 'pending').length;
+    const level = Number(progress.level) || 1, xp = Number(progress.xp) || 0, levelXp = Math.max(0, Math.min(100, Number(progress.levelXp) || 0));
+    card.dataset.state = data ? (waiting ? 'waiting' : wins ? 'growing' : 'learning') : note === 'guest' ? 'guest' : 'offline';
+    $('brainGrowthLevel').textContent = 'LV ' + level;
+    $('brainGrowthXP').textContent = xp + ' XP';
+    $('brainGrowthNext').textContent = levelXp + ' / 100 XP to Level ' + (level + 1);
+    $('brainGrowthProgress').setAttribute('aria-valuenow', String(levelXp));
+    $('brainGrowthFill').style.width = levelXp + '%';
+    $('brainGrowthWins').textContent = String(wins);
+    $('brainGrowthLosses').textContent = String(losses);
+    $('brainGrowthWaiting').textContent = String(waiting);
+    $('brainGrowthLessons').textContent = String(Number(progress.total) || 0);
+    $('brainGrowthText').textContent = !data
+      ? note === 'guest' ? 'Connect Deriv to save lessons to your Ranger Brain.' : 'The Brain could not load its saved lessons. Try again in a moment.'
+      : waiting ? waiting + ' lesson' + (waiting === 1 ? ' is' : 's are') + ' waiting for matching settled results.'
+        : wins || losses ? 'Your settled results are strengthening or correcting the lessons you taught.'
+          : progress.total ? 'Your lessons are saved. A matching settled trade will test each prediction.'
+            : 'Teach it what you notice. A later settled result will show whether your lesson helped.';
+    const feed = $('brainGrowthActivity');
+    feed.replaceChildren();
+    if (!insights.length) {
+      const empty = node('li', 'is-empty', data ? 'No lessons yet. Add one and start the Brain’s growth.' : 'Connect Deriv to begin a private lesson trail.');
+      feed.append(empty);
+    } else {
+      for (const insight of insights.slice(0, 3)) {
+        const row = node('li', '');
+        row.dataset.result = insight.outcome || 'pending';
+        const mark = node('span', 'brain-growth-mark', insight.outcome === 'matched' ? '✓' : insight.outcome === 'unmatched' ? '×' : '·');
+        const copy = node('span', 'brain-growth-outcome');
+        copy.append(node('b', '', insight.marketName + ' · ' + directionLabel(insight)));
+        copy.append(node('small', '', String(insight.observation || '').slice(0, 110)));
+        const status = node('strong', '', insight.outcome === 'matched' ? 'Good call · +25 XP' : insight.outcome === 'unmatched' ? 'Missed call · −20 XP' : insight.expectedDirection === 'none' ? 'Lesson saved · +10 XP' : 'Waiting for a result');
+        row.append(mark, copy, status);
+        feed.append(row);
+      }
+    }
+    const teach = $('brainGrowthTeach');
+    if (teach) teach.textContent = note === 'guest' ? 'Connect Deriv to teach' : 'Teach the Brain a lesson';
+  }
+
+  function openTeachingTask() {
+    document.getElementById('brainTabMemory')?.click();
+    let attempts = 0;
+    const reveal = () => {
+      const form = $('brainInsightForm');
+      if (form) {
+        form.hidden = false;
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        form.querySelector('textarea')?.focus({ preventScroll: true });
+        return;
+      }
+      if (attempts++ === 0) void load();
+      if (attempts < 30) setTimeout(reveal, 100);
+    };
+    setTimeout(reveal, 120);
+  }
+  $('brainGrowthTeach')?.addEventListener('click', openTeachingTask);
+  $('brainGrowthAllTasks')?.addEventListener('click', () => document.getElementById('brainTabMemory')?.click());
+  document.addEventListener('zeronine:brain-teach', openTeachingTask);
+
   function render() {
     host.replaceChildren();
     const data=state;
     syncHudTask(data?.progress || null, data?.insights || [], note === 'guest');
+    renderMainGrowth(data);
     if(!data){
       const card=node('section','brain-task-login');
       card.append(node('span','brain-task-eyebrow','PERSONAL BRAIN TASKS'));
