@@ -93,6 +93,10 @@
     .brain-review-network svg { width:100%; max-width:160px; height:auto; }
     @container (min-width:650px) { .brain-review-trades { max-height:none; overflow:visible; } .brain-review-overview { grid-template-columns:minmax(72px,110px) minmax(0,1fr); } }
     @container (max-width:520px) { .brain-tick-row { grid-template-columns:repeat(4,minmax(0,1fr)); } .brain-tick { font-size:10px; } .brain-review-overview { grid-template-columns:minmax(56px,76px) minmax(0,1fr); } }
+    @container (min-width:650px) {
+      .brain-review-selected { grid-column:2; grid-row:1 / span 3; }
+      .brain-review-save { grid-column:2; grid-row:4; justify-self:end; align-self:start; width:min(220px,100%); min-height:44px; }
+    }
     @container (max-width:300px) { .brain-tick-row { grid-template-columns:repeat(2,minmax(0,1fr)); } .brain-entry-summary { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   `;document.head.append(sheet);
 
