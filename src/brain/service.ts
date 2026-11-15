@@ -300,9 +300,9 @@ function headlineFor(profile: TimingProfile, mind: BrainMindState, displayMarket
 export function friendlyBrainMarketName(symbol: string | null | undefined): string {
   if (!symbol) return 'this market';
   const value = symbol.trim();
-  const volatility = /^R_(10|25|50|75|100)$/.exec(value);
+  const volatility = /^R_(\\d+)$/.exec(value);
   if (volatility) return `Volatility ${volatility[1]} Index`;
-  const oneSecondVolatility = /^1HZ(10|25|50|75|100)V$/.exec(value);
+  const oneSecondVolatility = /^1HZ(\\d+)V$/.exec(value);
   if (oneSecondVolatility) return `Volatility ${oneSecondVolatility[1]} (1s) Index`;
   const boom = /^BOOM(300|500|600|900|1000)$/.exec(value);
   if (boom) return `Boom ${boom[1]} Index`;
@@ -310,7 +310,11 @@ export function friendlyBrainMarketName(symbol: string | null | undefined): stri
   if (crash) return `Crash ${crash[1]} Index`;
   const jump = /^JD(10|25|50|75|100)$/.exec(value);
   if (jump) return `Jump ${jump[1]} Index`;
-  const currencies = /^frx([A-Z]{6})$/.exec(value);
+  if (value === 'RDBEAR') return 'Bear Market Index';
+  if (value === 'RDBULL') return 'Bull Market Index';
+  const step = /^stpRNG(\\d*)$/i.exec(value);
+  if (step) return step[1] ? `Step ${step[1]} Index` : 'Step Index';
+  const currencies = /^(?:frx|OTC_)([A-Z]{6})$/.exec(value);
   if (currencies) return `${currencies[1].slice(0, 3)}/${currencies[1].slice(3)} Forex`;
   if (value.startsWith('cry')) return `${value.slice(3).replace(/([A-Z]{3})([A-Z]{3})$/, '$1/$2')} Crypto`;
   return value.replace(/^([A-Z]+)_/, '$1 ').replaceAll('_', ' ')..trim();
