@@ -1283,3 +1283,49 @@ body.brain-zoomed #rangerBrainBubble { display: none !important; }
   #rangerBrainPanel .brain-task-direction-card { grid-template-columns:24px minmax(0,1fr); }
   #rangerBrainPanel .brain-task-direction-card small { font-size:8.5px; }
 }
+
+
+/* Brain workshop: one action, one connected memory store. */
+#rangerBrainPanel #brainPaneMemory .brain-teach-heading { gap:2px; padding:0 2px; }
+#rangerBrainPanel #brainPaneMemory .brain-teach-heading h3 { font-size:19px; }
+#rangerBrainPanel #brainPaneMemory .brain-teach-guide { display:none!important; }
+#rangerBrainPanel #brainContributionApp { display:grid; gap:10px; }
+#rangerBrainPanel .brain-task-form-card { gap:8px; padding:11px; }
+#rangerBrainPanel .brain-task-form-intro { display:none; }
+#rangerBrainPanel .brain-task-section-head.brain-task-memory-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:2px 0 0; }
+#rangerBrainPanel .brain-task-memory-head h4 { margin:0; color:#28583a; font:700 16px/1.1 var(--serif); }
+#rangerBrainPanel .brain-task-memory-count { padding:5px 8px; border-radius:99px; color:#315d3d; background:#e8f0df; font:800 9px/1 Inter,system-ui,sans-serif; }
+#rangerBrainPanel .brain-task-memory-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+#rangerBrainPanel .brain-task-memory-card { min-width:0; overflow:hidden; border:1px solid rgba(90,67,38,.16); border-radius:11px; background:linear-gradient(145deg,#fffdf7,#f5ecd7); }
+#rangerBrainPanel .brain-task-memory-card[open] { grid-column:1/-1; border-color:#83a372; box-shadow:0 5px 15px #49321812; }
+#rangerBrainPanel .brain-task-memory-summary { display:grid; grid-template-columns:25px minmax(0,1fr) auto; align-items:center; gap:7px; min-height:54px; padding:8px; cursor:pointer; list-style:none; }
+#rangerBrainPanel .brain-task-memory-summary::-webkit-details-marker { display:none; }
+#rangerBrainPanel .brain-task-memory-card[open] .brain-task-memory-summary { background:#f1f5e8; }
+#rangerBrainPanel .brain-task-memory-card .brain-task-memory-mark { width:24px; height:24px; font-size:12px; }
+#rangerBrainPanel .brain-task-memory-copy { display:grid; min-width:0; gap:3px; }
+#rangerBrainPanel .brain-task-memory-copy b { overflow:hidden; color:#315d3d; font:800 10px/1.2 Inter,system-ui,sans-serif; text-overflow:ellipsis; white-space:nowrap; }
+#rangerBrainPanel .brain-task-memory-copy small { overflow:hidden; color:#78694e; font:600 8px/1.2 Inter,system-ui,sans-serif; text-overflow:ellipsis; white-space:nowrap; }
+#rangerBrainPanel .brain-task-memory-result { padding:4px 5px; border-radius:6px; color:#8b692c; background:#f5e8c9; font:900 7px/1 Inter,system-ui,sans-serif; font-style:normal; letter-spacing:.05em; white-space:nowrap; }
+#rangerBrainPanel .brain-task-memory-card[data-result="matched"] .brain-task-memory-result { color:#287143; background:#deeedc; }
+#rangerBrainPanel .brain-task-memory-card[data-result="unmatched"] .brain-task-memory-result { color:#a44839; background:#f4e1d9; }
+#rangerBrainPanel .brain-task-memory-detail { display:grid; gap:7px; padding:0 10px 10px 42px; }
+#rangerBrainPanel .brain-task-memory-detail p { margin:0; color:#504432; font:550 11px/1.45 Inter,system-ui,sans-serif; overflow-wrap:anywhere; }
+#rangerBrainPanel .brain-task-memory-detail strong { color:#316543; font:800 9px/1.3 Inter,system-ui,sans-serif; }
+#rangerBrainPanel .brain-task-memory-detail small,#rangerBrainPanel .brain-task-memory-more { color:#82745b; font:600 8px/1.3 Inter,system-ui,sans-serif; }
+#rangerBrainPanel .brain-task-memory-empty { display:grid; grid-template-columns:38px minmax(0,1fr) auto; align-items:center; gap:9px; padding:10px; border:1px dashed #bba878; border-radius:12px; background:linear-gradient(110deg,#edf3e4,#fff8e7); }
+#rangerBrainPanel .brain-task-empty-network { display:grid; place-items:center; width:36px; height:36px; border-radius:50%; color:#315d3d; background:#dcebd2; font-size:22px; }
+#rangerBrainPanel .brain-task-memory-empty>div { display:grid; gap:3px; min-width:0; }
+#rangerBrainPanel .brain-task-memory-empty strong { color:#315d3d; font:800 10px/1.2 Inter,system-ui,sans-serif; }
+#rangerBrainPanel .brain-task-memory-empty small { color:#70624c; font:500 9px/1.3 Inter,system-ui,sans-serif; }
+#rangerBrainPanel .brain-task-empty-action { padding:7px 9px; border:0; border-radius:8px; color:#fff9e9; background:#286441; font:800 9px/1 Inter,system-ui,sans-serif; cursor:pointer; }
+#rangerBrainPanel .brain-contribution-status { margin:0; color:#887a61; font:600 8px/1.2 Inter,system-ui,sans-serif; }
+#rangerBrainPanel .brain-task-progress { margin:0; }
+#rangerBrainPanel .brain-task-stats { font-size:9px; }
+#rangerBrainPanel .brain-task-memory-summary:focus-visible,#rangerBrainPanel .brain-task-empty-action:focus-visible { outline:3px solid #d6ae50; outline-offset:2px; }
+@media(max-width:440px) {
+ #rangerBrainPanel .brain-task-memory-grid { grid-template-columns:1fr; }
+ #rangerBrainPanel .brain-task-memory-card[open] { grid-column:auto; }
+ #rangerBrainPanel .brain-task-memory-empty { grid-template-columns:32px minmax(0,1fr); }
+ #rangerBrainPanel .brain-task-empty-network { width:30px;height:30px; }
+ #rangerBrainPanel .brain-task-empty-action { grid-column:2; justify-self:start; }
+}
