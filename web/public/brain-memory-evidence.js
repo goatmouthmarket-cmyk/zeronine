@@ -145,7 +145,7 @@
       if (sequence !== revision) return;
       if (!result.memoryHistory) saveReports(long, Date.now());
       if (!$('rangerBrainPanel')?.hidden && !$('brainPaneMemory')?.hidden) {
-        const market = long.market ? '&market=' + encodeURIComponent(long.market) : '';
+        const market = long.marketSymbol ? '&market=' + encodeURIComponent(long.marketSymbol) : '';
         const short = await request('?lookbackDays=7' + market);
         if (sequence === revision) render(long, short.report, false, result.memoryHistory);
       }
