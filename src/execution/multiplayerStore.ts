@@ -3,6 +3,15 @@ import { createHash, randomBytes } from 'node:crypto';
 import { decryptToken, encryptToken } from '../db/crypto.ts';
 import { nextRecovery } from '../strategy/risk.ts';
 
+export type BrainInsightCategory = 'market_behavior' | 'setup' | 'entry_timing' | 'risk';
+export type BrainExpectedDirection = 'up' | 'down' | 'sideways' | 'unclear';
+export type BrainInsightOutcome = 'pending' | 'matched' | 'unmatched' | 'unclear';
+export type BrainInsightInput = { marketSymbol: string; marketName: string; category: BrainInsightCategory; observation: string; expectedDirection: BrainExpectedDirection; horizon: 'next_5' | 'next_20' | 'next_session'; confidence: number };
+export type BrainInsight = BrainInsightInput & { id: string; outcome: BrainInsightOutcome; outcomeNote: string | null; createdAt: number; reviewedAt: number | null };
+export type BrainInsightProgress = { total: number; reviewed: number; matched: number; unmatched: number; patterns: number };
+type BrainInsightRow = { id: string; market_symbol: string; market_name: string; category: BrainInsightCategory; observation: string; expected_direction: BrainExpectedDirection; horizon: BrainInsightInput['horizon']; confidence: number; outcome: BrainInsightOutcome; outcome_note: string | null; created_at: number | string; reviewed_at: number | string | null };
+const brainInsightFromRow = (row: BrainInsightRow): BrainInsight => ({ id: row.id, marketSymbol: row.market_symbol, marketName: row.market_name, category: row.category, observation: row.observation, expectedDirection: row.expected_direction, horizon: row.horizon, confidence: Number(row.confidence), outcome: row.outcome, outcomeNote: row.outcome_note, createdAt: Number(row.created_at), reviewedAt: row.reviewed_at == null ? null : Number(row.reviewed_at) });
+
 export type AccountRisk = { mode: 'base' | 'recovering'; streak: number; debt: number; attempts: number; cycleStake: number; peakBalance: number };
 
 const sessionHash = (secret: string): string => createHash('sha256').update(secret).digest('hex');
@@ -52,6 +61,90 @@ export class MultiplayerStore {
          and column_name in ('market', 'direction', 'barrier', 'stake', 'mode', 'ask_price', 'payout', 'profit', 'settled_at')`,
     );
     if (Number(details.rows[0]?.count) !== 9) throw new Error('multiplayer contract details migration is missing');
+  }
+
+  async createBrainInsight(ownerKey: string, input: BrainInsightInput): Promise<BrainInsight | null> {
+    return this.withTransaction(async client => {
+      await client.query('select pg_advisory_xact_lock(hashtext($1))', [ownerKey]);
+      const rate = await client.query<{ count: string }>(
+        "select count(*)::text as count from brain_private.insights where owner_key=$1 and created_at > now() - interval '24 hours'",
+        [ownerKey],
+      );
+      if (Number(rate.rows[0]?.count || 0) >= 20) return null;
+      const result = await client.query<BrainInsightRow>(
+        `insert into brain_private.insights
+          (owner_key, market_symbol, market_name, category, observation, expected_direction, horizon, confidence)
+         values ($1,$2,$3,$4,$5,$6,$7,$8)
+         returning id, market_symbol, market_name, category, observation, expected_direction, horizon, confidence, outcome, outcome_note,
+           (extract(epoch from created_at) * 1000)::bigint as created_at,
+           (extract(epoch from reviewed_at) * 1000)::bigint as reviewed_at`,
+        [ownerKey, input.marketSymbol, input.marketName, input.category, input.observation, input.expectedDirection, input.horizon, input.confidence],
+      );
+      return brainInsightFromRow(result.rows[0]!);
+    });
+  }
+
+  async listBrainInsights(ownerKey: string): Promise<BrainInsight[]> {
+    const result = await this.pool.query<BrainInsightRow>(
+      `select id, market_symbol, market_name, category, observation, expected_direction, horizon, confidence, outcome, outcome_note,
+        (extract(epoch from created_at) * 1000)::bigint as created_at,
+        (extract(epoch from reviewed_at) * 1000)::bigint as reviewed_at
+       from brain_private.insights where owner_key=$1 order by created_at desc limit 60`,
+      [ownerKey],
+    );
+    return result.rows.map(brainInsightFromRow);
+  }
+
+  async reviewBrainInsight(ownerKey: string, id: string, outcome: BrainInsightOutcome, note: string): Promise<BrainInsight | null> {
+    const result = await this.pool.query<BrainInsightRow>(
+      `update brain_private.insights set outcome=$3, outcome_note=$4, reviewed_at=now()
+       where owner_key=$1 and id=$2::uuid and outcome='pending'
+       returning id, market_symbol, market_name, category, observation, expected_direction, horizon, confidence, outcome, outcome_note,
+         (extract(epoch from created_at) * 1000)::bigint as created_at,
+         (extract(epoch from reviewed_at) * 1000)::bigint as reviewed_at`,
+      [ownerKey, id, outcome, note || null],
+    );
+    return result.rows[0] ? brainInsightFromRow(result.rows[0]) : null;
+  }
+
+  async brainInsightProgress(ownerKey: string): Promise<BrainInsightProgress> {
+    const result = await this.pool.query<{ total: string; reviewed: string; matched: string; unmatched: string; patterns: string }>(
+      `select
+        (select count(*) from brain_private.insights where owner_key=$1)::text as total,
+        (select count(*) from brain_private.insights where owner_key=$1 and outcome <> 'pending')::text as reviewed,
+        (select count(*) from brain_private.insights where owner_key=$1 and outcome = 'matched')::text as matched,
+        (select count(*) from brain_private.insights where owner_key=$1 and outcome = 'unmatched')::text as unmatched,
+        (select count(*) from (
+          select market_symbol, category from brain_private.insights where owner_key=$1
+          group by market_symbol, category having count(*) >= 2
+        ) repeated)::text as patterns`,
+      [ownerKey],
+    );
+    const row = result.rows[0];
+    return { total: Number(row?.total || 0), reviewed: Number(row?.reviewed || 0), matched: Number(row?.matched || 0), unmatched: Number(row?.unmatched || 0), patterns: Number(row?.patterns || 0) };
+  }
+
+  async observeBrainEvidence(report: { marketSymbol: string | null; market: string | null; lessons: Array<{ id: string; topic: string; finding: string; validity: 'provisional' | 'validated'; outcomes: number }>; updatedAt: number }, observedAt = Date.now()): Promise<Array<{ market: string; lessonId: string; topic: string; finding: string; validity: 'provisional' | 'validated'; outcomes: number; observedAt: number; evidenceAt: number }>> {
+    if (!report.marketSymbol) return [];
+    return this.withTransaction(async client => {
+      for (const lesson of report.lessons) {
+        if (!lesson.id || !lesson.finding || !Number.isFinite(lesson.outcomes) || lesson.outcomes <= 0) continue;
+        const fingerprint = lesson.validity + '|' + lesson.finding.replace(/\\d+(?:[.,]\\d+)?%?/g, '#');
+        await client.query(
+          `insert into brain_private.evidence_memory_events
+            (market_symbol, market_name, lesson_id, topic, finding, fingerprint, validity, outcomes, evidence_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           on conflict (market_symbol, lesson_id, fingerprint) do nothing`,
+          [report.marketSymbol, report.market, lesson.id, lesson.topic, lesson.finding, fingerprint, lesson.validity, lesson.outcomes, new Date(report.updatedAt || observedAt)],
+        );
+      }
+      const rows = await client.query<{ market_name: string; lesson_id: string; topic: string; finding: string; validity: 'provisional' | 'validated'; outcomes: number; created_at: Date; evidence_at: Date }>(
+        `select market_name, lesson_id, topic, finding, validity, outcomes, created_at, evidence_at
+         from brain_private.evidence_memory_events where market_symbol=$1 order by created_at desc limit 40`,
+        [report.marketSymbol],
+      );
+      return rows.rows.map(row => ({ market: row.market_name, lessonId: row.lesson_id, topic: row.topic, finding: row.finding, validity: row.validity, outcomes: Number(row.outcomes), observedAt: new Date(row.created_at).getTime(), evidenceAt: new Date(row.evidence_at).getTime() }));
+    });
   }
 
   async riskSnapshot(accountId: string, balance: number): Promise<AccountRisk> {
