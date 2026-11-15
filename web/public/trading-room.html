@@ -366,7 +366,7 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
   Promise.all([import('/ranger-auto-risk.js'), import('/ranger-auto-timing.js')])
     .then(([risk, timing]) => publish({ risk, timing, ready: true, error: '' }))
     .catch((error) => publish({ risk: null, timing: null, ready: false, error: String(error?.message || error || 'calculator unavailable') }));
-</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-6" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=float4"><style id="mobile-ranger-auto-pnl">
+</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-6" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=bubble5"><style id="mobile-ranger-auto-pnl">
 #rangerAutoMobilePnl,#rangerAutoMobilePnl[hidden]{display:none!important}
 @media(max-width:999.98px){
  .account-balance-hud>#rangerAutoMobilePnl:not([hidden]){
@@ -1181,7 +1181,7 @@ function brainTimeQuery() {
     const anchorY = glyphRect.height ? glyphRect.top + glyphRect.height / 2 : (head?.y ?? point.y - 45);
     const size = panel.getBoundingClientRect();
     if (!size.width || !size.height) return;
-    const margin = 8, gap = 8, topInset = 52;
+    const margin = 8, gap = 10, topInset = 52;
     const clamp = (value, low, high) => Math.max(low, Math.min(Math.max(low, high), value));
     const api = window.__zeronineBrainBridge;
     const pick = api?.activeSnipe?.();
