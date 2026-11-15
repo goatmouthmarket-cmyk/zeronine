@@ -590,6 +590,40 @@
     }
   }
 
+  function renderUnlockHero(data) {
+    const title=$('brainUnlockTitle'), message=$('brainUnlockText'), list=$('brainUnlockGoals'), action=$('brainUnlockAction');
+    if(!title || !message || !list || !action) return;
+    const training=data?.training, unlocked=training?.unlocked===true;
+    title.textContent=unlocked?'Suggestions unlocked':'Unlock Brain suggestions';
+    message.textContent=unlocked?'Left-click the Brain to find a setup.':data?'Teach the Brain, then let it learn from recorded trades.':note==='guest'?'Connect Deriv to start teaching.':'Training progress is unavailable right now.';
+    list.replaceChildren();
+    const labels={reviews:'Review trades',pattern:'Confirm a pattern',matches:'Matching trades',comparison:'Other trades'};
+    for(const goal of Array.isArray(training?.goals)?training.goals:[]) {
+      const current=Math.max(0,Number(goal.current)||0), target=Math.max(1,Number(goal.target)||1);
+      const row=node('div','brain-unlock-goal');
+      row.append(node('span','',labels[goal.key]||String(goal.label||'Training')),node('strong','',Math.min(current,target)+' / '+target));
+      const bar=node('progress','');bar.max=target;bar.value=Math.min(current,target);bar.setAttribute('aria-label',labels[goal.key]||String(goal.label||'Training'));row.append(bar);list.append(row);
+    }
+    const perf=$('brainUnlockPerformance');
+    if(perf) {
+      perf.replaceChildren(); perf.hidden=!unlocked;
+      if(unlocked) {
+        const results=data?.brainPerformance;
+        const settled=Math.max(0,Number(results?.settled)||0), wins=Math.max(0,Number(results?.wins)||0);
+        if(settled && results?.complete===true) {
+          const currency=String(results.currency||'');
+          const pnl=results.netProfit == null ? NaN : Number(results.netProfit);
+          const pnlText=Number.isFinite(pnl)?(pnl>=0?'+':'−')+Math.abs(pnl).toFixed(2)+(currency?' '+currency:''):'—';
+          perf.append(node('small','','Recorded manual Brain picks'),node('strong','',wins+' / '+settled+' won'),node('span','','Net '+pnlText));
+          const grossWon=results.grossWon == null ? NaN : Number(results.grossWon), grossLost=results.grossLost == null ? NaN : Number(results.grossLost);
+          if(Number.isFinite(grossWon)&&Number.isFinite(grossLost)) perf.append(node('small','','Won '+grossWon.toFixed(2)+' · Lost '+grossLost.toFixed(2)));
+        } else perf.append(node('small','',results?.complete===false?'Results are temporarily unavailable.':'No recorded suggestion results yet.'));
+      }
+    }
+    action.textContent=unlocked?'Find a setup':'See your tasks →';
+    action.onclick=()=>{if(unlocked) $('brainFindCow')?.click();else $('brainTabMemory')?.click();};
+  }
+
   function renderMainGrowth(data) {
     const card = $('brainGrowthCard');
     if (!card) return;
@@ -713,6 +747,7 @@
     try {
       const response=await request('/api/ranger-brain/contributions');
       state=response;
+      renderUnlockHero(response);
       if(response.markets?.length) {
         try {
           const market=typeof lastRoomState!=='undefined'&&lastRoomState?lastRoomState.selected:'';
@@ -742,6 +777,7 @@
       if(formDirty) return;
       state=null;
       note=error.status===401?'guest':error.status===503?'migration':'error';
+      renderUnlockHero(null);
       render();
     } finally {loading=false;}
   }

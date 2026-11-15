@@ -366,7 +366,7 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
   Promise.all([import('/ranger-auto-risk.js'), import('/ranger-auto-timing.js')])
     .then(([risk, timing]) => publish({ risk, timing, ready: true, error: '' }))
     .catch((error) => publish({ risk: null, timing: null, ready: false, error: String(error?.message || error || 'calculator unavailable') }));
-</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-6" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=fit8"><style id="mobile-ranger-auto-pnl">
+</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-6" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=unlock9"><style id="mobile-ranger-auto-pnl">
 #rangerAutoMobilePnl,#rangerAutoMobilePnl[hidden]{display:none!important}
 @media(max-width:999.98px){
  .account-balance-hud>#rangerAutoMobilePnl:not([hidden]){
@@ -432,7 +432,9 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
       </article>
       <div class="brain-overview-grid">
         <article class="brain-card brain-hero-card" id="brainHeroCard" data-state="offline">
-          <img class="brain-game-scene" src="/brain-pasture-scene.svg" alt=""><canvas id="brainHeroScene" class="brain-hero-scene" aria-hidden="true"></canvas>
+          <div class="brain-unlock-art" aria-hidden="true"><div class="brain-unlock-orbit"><img src="/brain-brand.svg" alt=""><span class="brain-unlock-spark spark-a">✦</span><span class="brain-unlock-spark spark-b">✦</span><span class="brain-unlock-cursor">↖</span></div></div>
+          <div class="brain-unlock-copy"><span class="brain-unlock-eyebrow">BUILD YOUR BRAIN</span><h3 id="brainUnlockTitle">Unlock Brain suggestions</h3><p id="brainUnlockText">Teach your Brain and watch it grow.</p><div id="brainUnlockGoals" class="brain-unlock-goals" aria-live="polite"></div><div id="brainUnlockPerformance" class="brain-unlock-performance" aria-live="polite" hidden></div><button id="brainUnlockAction" type="button">See your tasks <span aria-hidden="true">→</span></button></div>
+          <canvas id="brainHeroScene" class="brain-hero-scene" aria-hidden="true"></canvas>
           <div class="brain-hero-veil" aria-hidden="true"></div>
           <div class="brain-hero-content">
             <div class="brain-hero-status">
@@ -1302,6 +1304,6 @@ function brainTimeQuery() {
 })();
 </script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"><link rel="stylesheet" href="/pasture-ui-system.css?v=layout3" id="pasture-ui-system-css"><link rel="stylesheet" href="/pasture-cooldown-flat.css"><link rel="stylesheet" href="/pasture-typography.css"><link rel="stylesheet" href="/pasture-chat-open.css?v=mobile3"><link rel="stylesheet" href="/pasture-login-feedback.css"><link rel="stylesheet" href="/pasture-loading.css"><link rel="stylesheet" href="/pasture-risk-card.css"><link rel="stylesheet" href="/pasture-mobile-layout.css?v=brain2"><link rel="stylesheet" href="/brain-entry-status.css"><link rel="stylesheet" href="/pasture-menu-brand.css"><link rel="stylesheet" href="/pasture-contrast-fixes.css">
 <script defer src="/pasture-ui-system.js?v=market-inline2" id="pasture-ui-system-js"></script>
-<script src="/pasture-ui-refine.js?v=cooldown2" id="pasture-ui-refine-js"></script><script src="/pasture-brain-refine.js?v=20261115-5" id="pasture-brain-refine-js"></script><script src="/brain-memory-evidence.js?v=20261115-4"></script><script src="/brain-contributions.js?v=20261115-20"></script><script src="/brain-projection.js"></script><script src="/brain-loading.js"></script><script src="/pasture-cooldown-header.js"></script><script src="/pasture-chat-open.js?v=mobile3"></script><script src="/pasture-login-feedback.js"></script><script src="/pasture-risk-card.js"></script><script src="/pasture-mobile-layout.js"></script><script defer src="/brain-entry-status.js?v=body-mount1"></script><script src="/ranger-profile-sync.js"></script></body></html>
+<script src="/pasture-ui-refine.js?v=cooldown2" id="pasture-ui-refine-js"></script><script src="/pasture-brain-refine.js?v=20261115-5" id="pasture-brain-refine-js"></script><script src="/brain-memory-evidence.js?v=20261115-4"></script><script src="/brain-contributions.js?v=20261115-21"></script><script src="/brain-projection.js"></script><script src="/brain-loading.js"></script><script src="/pasture-cooldown-header.js"></script><script src="/pasture-chat-open.js?v=mobile3"></script><script src="/pasture-login-feedback.js"></script><script src="/pasture-risk-card.js"></script><script src="/pasture-mobile-layout.js"></script><script defer src="/brain-entry-status.js?v=body-mount1"></script><script src="/ranger-profile-sync.js"></script></body></html>
 
 

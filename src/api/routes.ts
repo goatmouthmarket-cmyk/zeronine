@@ -2013,7 +2013,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to keep personal Brain memories.' });
       const ownerKey = brainOwnerKey(accountId);
       await deps.multiplayerStore.syncBrainInsightOutcomes(ownerKey, accountId);
-      const [rawInsights, progress, leaderboard, accountTrades, comparison, contexts, evaluationTrades] = await Promise.all([
+      const [rawInsights, progress, leaderboard, accountTrades, comparison, contexts, evaluationTrades, brainPerformance] = await Promise.all([
         deps.multiplayerStore.listBrainInsights(ownerKey),
         deps.multiplayerStore.brainInsightProgress(ownerKey),
         deps.multiplayerStore.brainLeaderboard(10),
@@ -2021,6 +2021,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         deps.multiplayerStore.brainComparableOutcomes(ownerKey, accountId),
         deps.multiplayerStore.listTradeContexts(accountId),
         deps.multiplayerStore.listBrainEvaluationTrades(accountId),
+        deps.multiplayerStore.brainPickPerformance(accountId),
       ]);
       const tradesById = new Map(accountTrades.map(trade => [String(trade.id), trade]));
       const evaluationById = new Map(evaluationTrades.map(trade => [String(trade.id), trade]));
@@ -2097,7 +2098,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
       const latestIdea = insights.find(insight => insight.expectedDirection !== 'none') || null;
       const practiceEvidence = latestIdea ? brainDirectionalPractice(latestIdea) : null;
-      return { ok: true, insights, progress, leaderboard, markets, trades, training, practiceEvidence, evaluatedInsightId: latestIdea?.id || null };
+      return { ok: true, insights, progress, leaderboard, markets, trades, training, brainPerformance, practiceEvidence, evaluatedInsightId: latestIdea?.id || null };
     } catch {
       return reply.code(503).send({ error: 'The Brain could not reach its saved memories. Try again shortly.' });
     }

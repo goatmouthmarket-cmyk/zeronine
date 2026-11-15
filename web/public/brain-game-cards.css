@@ -444,3 +444,31 @@ html body #rangerBrainPanel:not([hidden]) {
     object-fit:contain; object-position:center bottom;
   }
 }
+
+/* Brain training artwork and unlock card */
+html body #rangerBrainPanel #brainHeroCard {position:relative;display:grid;grid-template-columns:minmax(150px,.85fr) minmax(200px,1.15fr);gap:0;min-width:0;min-height:250px;padding:0;overflow:hidden;background:#f8ecd4;border:1px solid #d2ba94;border-radius:13px}
+html body #rangerBrainPanel #brainHeroCard > .brain-hero-content,
+html body #rangerBrainPanel #brainHeroCard > .brain-hero-scene,
+html body #rangerBrainPanel #brainHeroCard > .brain-hero-veil {display:none!important}
+.brain-unlock-art{min-height:100%;display:grid;place-items:center;overflow:hidden;background:linear-gradient(180deg,#d5eabb 0%,#a8d38a 76%,#80b974 76%);padding:16px}
+.brain-unlock-orbit{position:relative;display:grid;place-items:center;width:min(100%,190px);aspect-ratio:1}
+.brain-unlock-orbit:before,.brain-unlock-orbit:after{content:'';position:absolute;border:2px solid #f7e9aa99;border-radius:50%;inset:3%;animation:brainUnlockPulse 3s ease-in-out infinite alternate}
+.brain-unlock-orbit:after{inset:15%;animation-delay:-1.5s}
+.brain-unlock-orbit img{position:relative;z-index:1;width:76%;height:76%;object-fit:contain;filter:drop-shadow(0 7px 5px #315c3455);animation:brainUnlockFloat 3s ease-in-out infinite alternate}
+.brain-unlock-spark{position:absolute;z-index:2;color:#fff7bd;font-size:23px}.brain-unlock-spark.spark-a{top:5%;right:13%}.brain-unlock-spark.spark-b{bottom:13%;left:5%;font-size:16px}
+.brain-unlock-cursor{position:absolute;z-index:3;right:4%;bottom:8%;display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#fff5d9;color:#275c3a;box-shadow:0 3px 0 #8d724f;font:bold 32px/1 system-ui}
+.brain-unlock-copy{min-width:0;display:grid;align-content:center;gap:7px;padding:14px;color:#285a3d}
+.brain-unlock-eyebrow{font:800 9px/1 system-ui;letter-spacing:.12em;color:#7b6040}
+.brain-unlock-copy h3{margin:0;font:800 clamp(16px,1.7vw,22px)/1.1 system-ui;color:#205b39}
+.brain-unlock-copy p{margin:0;font:500 12px/1.35 system-ui;color:#584a39}
+.brain-unlock-goals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px 9px}
+.brain-unlock-goal{min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 5px;font:700 10px/1.2 system-ui;color:#4c5e40}
+.brain-unlock-goal progress{grid-column:1/-1;width:100%;height:5px;accent-color:#458b55}
+.brain-unlock-copy button{justify-self:start;min-height:40px;border:0;border-radius:8px;padding:8px 13px;background:#245d3f;color:#fff9ec;font:800 12px system-ui;cursor:pointer}
+.brain-unlock-copy button:focus-visible{outline:3px solid #d69f43;outline-offset:2px}
+@keyframes brainUnlockFloat{to{transform:translateY(-5px)}}
+@keyframes brainUnlockPulse{to{transform:scale(1.08);opacity:.55}}
+@media(max-width:520px){html body #rangerBrainPanel #brainHeroCard{grid-template-columns:minmax(92px,.55fr) minmax(0,1fr);min-height:190px}.brain-unlock-art{padding:8px}.brain-unlock-copy{padding:10px;gap:5px}.brain-unlock-goals{grid-template-columns:1fr 1fr}.brain-unlock-cursor{width:30px;height:30px;font-size:23px}}
+@media(prefers-reduced-motion:reduce){.brain-unlock-orbit:before,.brain-unlock-orbit:after,.brain-unlock-orbit img{animation:none}}
+
+.brain-unlock-performance{display:flex;flex-wrap:wrap;align-items:center;gap:5px 12px;font:700 11px/1.25 system-ui;color:#285b3d}.brain-unlock-performance[hidden]{display:none}.brain-unlock-performance small{color:#695b48;font-weight:600}

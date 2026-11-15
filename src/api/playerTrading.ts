@@ -14,7 +14,7 @@ import { getSession } from '../db/store.ts';
 import { resolveStoredToken } from '../deriv/oauth.ts';
 
 type Direction = 'over' | 'under';
-type CowDisplay = { edge: number | null; confidence: number | null; shownAt: number };
+type CowDisplay = { edge: number | null; confidence: number | null; shownAt: number; brainPick: boolean };
 type Order = { market: string; direction: Direction; barrier: number; stake: number; minEdge: number; cowDisplay?: CowDisplay | null };
 type Preview = { accountId: string; order: Order; ask: number; payout: number; edge: number; expiresAt: number; mode: 'demo' | 'real' };
 type Event = { type: 'balance' | 'trade'; accountId: string; [key: string]: unknown };
@@ -75,7 +75,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     const raw = body.cowDisplay && typeof body.cowDisplay === 'object' ? body.cowDisplay as Record<string, unknown> : null;
     const bounded = (value: unknown, min: number, max: number): number | null => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : null;
     const shownAt = bounded(raw?.shownAt, Date.now() - 120_000, Date.now() + 5_000);
-    const cowDisplay = raw && shownAt !== null ? { edge: bounded(raw.edge, -1, 1), confidence: bounded(raw.confidence, 0, 1), shownAt } : null;
+    const cowDisplay = raw && shownAt !== null ? { edge: bounded(raw.edge, -1, 1), confidence: bounded(raw.confidence, 0, 1), shownAt, brainPick: raw.brainPick === true } : null;
     return { market, direction, barrier, stake, minEdge, cowDisplay };
   };
   const modelEdge = (order: Order, ask: number, payout: number): number => {
@@ -99,7 +99,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [],
         edge: Number.isFinite(edge) ? edge : null, confidence: null,
         cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null,
-        cowShownAt: order.cowDisplay?.shownAt ?? null, complete: false,
+        cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, complete: false,
       };
       const initialWrite = store.saveTradeContext(accountId, contractId, pending)
         .catch(error => { console.warn('[brain] initial trade context unavailable:', error instanceof Error ? error.message : String(error)); });
@@ -125,11 +125,11 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         const after = index >= 0 ? ticks.slice(index + 1, index + 4).map(format) : [];
         context = { entryQuote: entrySpot.toFixed(precision!), entryDigit: Number.isInteger(provider.entryDigit) ? provider.entryDigit : null,
           entryEpoch, before, after, edge: Number.isFinite(edge) ? edge : null, confidence: null,
-          cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null,
+          cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true,
           complete: index >= 3 && after.length === 3 };
         if (context.complete) break;
       }
-      if (!context) context = { entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [], edge: Number.isFinite(edge) ? edge : null, confidence: null, cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, complete: false };
+      if (!context) context = { entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [], edge: Number.isFinite(edge) ? edge : null, confidence: null, cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null, cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, complete: false };
       // Serialize writes so a slow initial save cannot overwrite the completed
       // sequence. The runner is detached from trade submission throughout.
       await initialWrite;

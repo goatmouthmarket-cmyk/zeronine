@@ -887,7 +887,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
     onConfirmed?: (tradeId: string | number) => void,
-    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number } | null,
+    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number; brainPick?: boolean } | null,
   ): Promise<boolean> => {
     if (usePlayerTrading) return previewManualNow(direction, barrier, marketSymbol ?? '', stakeOverride, onFailure, rangerAutomation, minEdge, onConfirmed, cowDisplay);
     if (guest || !marketSymbol) {
@@ -948,7 +948,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
     onConfirmed?: (tradeId: string | number) => void,
-    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number } | null,
+    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number; brainPick?: boolean } | null,
   ): Promise<boolean> => {
     setManualBusy(true);
     setManualError(false);
@@ -996,7 +996,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     rangerAutomation = false,
     minEdge: number | null = null,
     onConfirmed?: (tradeId: string | number) => void,
-    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number } | null,
+    cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number; brainPick?: boolean } | null,
   ): Promise<boolean> => {
     setManualDirection(direction);
     direction === 'over' ? setManualOverBarrier(barrier) : setManualUnderBarrier(barrier);

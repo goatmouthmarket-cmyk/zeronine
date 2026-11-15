@@ -388,6 +388,35 @@ export class MultiplayerStore {
   }
 
   /** Bounded, account-scoped samples used only by the Brain review endpoint. */
+  /** Settled player trades explicitly submitted from a held Brain pick.
+   * Older or uncaptured trades are not attributed. Values are account scoped.
+   */
+  async brainPickPerformance(accountId: string): Promise<{ settled: number; wins: number; losses: number; netProfit: number | null; grossWon: number | null; grossLost: number | null; complete: boolean } | null> {
+    try {
+      const result = await this.pool.query<{ settled: string; wins: string; losses: string; missing_profit: string; net_profit: string | null; gross_won: string | null; gross_lost: string | null }>(
+        `select count(*)::text as settled,
+          count(*) filter (where c.status='won')::text as wins,
+          count(*) filter (where c.status='lost')::text as losses,
+          count(*) filter (where c.profit is null)::text as missing_profit,
+          sum(c.profit)::text as net_profit,
+          sum(greatest(c.profit, 0))::text as gross_won,
+          sum(least(c.profit, 0))::text as gross_lost
+         from multiplayer_private.contracts c
+         join multiplayer_private.trade_context t on t.contract_id=c.id and t.account_id=c.account_id
+         where c.account_id=$1 and c.status in ('won','lost') and c.settled_at is not null
+           and t.context->'brainPick' = 'true'::jsonb`, [accountId]);
+      const row = result.rows[0];
+      const settled = Number(row?.settled || 0), missing = Number(row?.missing_profit || 0);
+      return { settled, wins: Number(row?.wins || 0), losses: Number(row?.losses || 0),
+        netProfit: settled && !missing ? Number(row.net_profit) : null,
+        grossWon: settled && !missing ? Number(row.gross_won) : null,
+        grossLost: settled && !missing ? Math.abs(Number(row.gross_lost)) : null, complete: missing === 0 };
+    } catch (error) {
+      if ((error as { code?: string }).code === '42P01') return null;
+      throw error;
+    }
+  }
+
   async listBrainEvaluationTrades(accountId: string): Promise<Array<Record<string, unknown>>> {
     try {
       const result = await this.pool.query(
