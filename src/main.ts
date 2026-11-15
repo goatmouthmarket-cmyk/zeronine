@@ -457,7 +457,7 @@ async function main(): Promise<void> {
   const pastureRenderer = fs.readFileSync(path.join(framePublic, 'trading-room-core.js'), 'utf8');
   const rendererTag = '<script src="/trading-room-core.js?v=20261115-9"></script>';
   if (!rawPastureHtml.includes(rendererTag)) throw new Error('Pasture renderer script tag is missing');
-  const pastureHtml = rawPastureHtml.replace(rendererTag, `<script>${pastureRenderer}</script>`);
+  const pastureHtml = rawPastureHtml.replace(rendererTag, () => `<script>${pastureRenderer}</script>`);
   const servePastureFrame = async (_request: unknown, reply: any) => reply
     .type('text/html; charset=utf-8')
     .header('Cache-Control', 'no-store, max-age=0')
