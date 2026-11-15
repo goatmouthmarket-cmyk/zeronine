@@ -19,6 +19,7 @@ import { momentumEntryGuard } from '../momentum/observer.ts';
 import { decryptToken, encryptToken } from '../db/crypto.ts';
 import { createPlayerSession, playerForSession, revokePlayerSession } from './playerSessions.ts';
 import { getRangerProfile, normalizeRangerProfile, saveRangerProfile } from './rangerProfile.ts';
+import type { BrainInsightCategory, BrainExpectedDirection, BrainInsightOutcome } from '../execution/multiplayerStore.ts';
 import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
 import {
   buildAuthorizeUrl,
@@ -36,7 +37,7 @@ import { entryLabDashboardState, type EntryResearchRuntime } from '../testlab/en
 import type { TestConfig } from '../testlab/backtest.ts';
 import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPatterns } from '../testlab/patterns.ts';
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
-import { buildBrainReport } from '../brain/service.ts';
+import { buildBrainReport, friendlyBrainMarketName } from '../brain/service.ts';
 import { normalizeBrainTimeZone } from '../brain/timing.ts';
 import { observeBrainMemory, type BrainMemoryEvent } from '../brain/memory.ts';
 import {
@@ -1951,6 +1952,114 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
   // every pasture visitor reads the same brain. Memoised for ten seconds so a
   // public route cannot be used to rescan the paper ledger on every request.
   const brainCache = new Map<string, { at: number; report: ReturnType<typeof buildBrainReport>; memoryHistory: BrainMemoryEvent[]; memoryAvailable: boolean }>();
+  const brainOwnerKey = (accountId: string): string => createHmac('sha256', config.sessionSecret).update(accountId).digest('hex');
+  const sameOriginBrainWrite = (req: FastifyRequest): boolean => {
+    const origin = req.headers.origin;
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const host = String(Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost || req.headers.host || '').split(',')[0].trim().toLowerCase();
+    if (typeof origin !== 'string' || !host) return false;
+    try {
+      const parsed = new URL(origin);
+      return parsed.host.toLowerCase() === host && (config.nodeEnv !== 'production' || parsed.protocol === 'https:');
+    } catch { return false; }
+  };
+  const brainMarketName = (symbol: string): string => {
+    try {
+      if (deps.registry.symbols().includes(symbol)) {
+        const display = deps.registry.snapshot(symbol).display;
+        if (display && display !== symbol) return display;
+      }
+    } catch { /* Use a friendly deterministic fallback when a market is not live. */ }
+    return friendlyBrainMarketName(symbol);
+  };
+
+  app.get('/api/ranger-brain/contributions', async (req, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    if (!deps.multiplayerStore) return reply.code(503).send({ error: 'The Brain memory store is not ready yet.' });
+    try {
+      const accountId = await rangerProfileAccount(req);
+      if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to keep personal Brain memories.' });
+      const ownerKey = brainOwnerKey(accountId);
+      const [insights, progress] = await Promise.all([
+        deps.multiplayerStore.listBrainInsights(ownerKey),
+        deps.multiplayerStore.brainInsightProgress(ownerKey),
+      ]);
+      const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
+      return { ok: true, insights, progress, markets };
+    } catch {
+      return reply.code(503).send({ error: 'The Brain could not reach its saved memories. Try again shortly.' });
+    }
+  });
+
+  app.post('/api/ranger-brain/contributions', async (req, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    if (!sameOriginBrainWrite(req)) return reply.code(403).send({ error: 'This Brain note could not be verified. Refresh the pasture and try again.' });
+    if (!deps.multiplayerStore) return reply.code(503).send({ error: 'The Brain memory store is not ready yet.' });
+    try {
+      const accountId = await rangerProfileAccount(req);
+      if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to save a Brain memory.' });
+      const body = req.body as Record<string, unknown> | undefined;
+      const marketSymbol = typeof body?.marketSymbol === 'string' ? body.marketSymbol.trim() : '';
+      const category = body?.category;
+      const observation = typeof body?.observation === 'string' ? body.observation.trim() : '';
+      const expectedDirection = body?.expectedDirection;
+      const horizon = body?.horizon;
+      const confidence = Number(body?.confidence);
+      if (!marketSymbol || marketSymbol.length > 64 || !deps.registry.symbols().includes(marketSymbol)) {
+        return reply.code(400).send({ error: 'Choose a market currently available in the pasture.' });
+      }
+      if (!['market_behavior', 'setup', 'entry_timing', 'risk'].includes(String(category))) {
+        return reply.code(400).send({ error: 'Choose what your observation is about.' });
+      }
+      if (observation.length < 8 || observation.length > 500) {
+        return reply.code(400).send({ error: 'Write between 8 and 500 characters about what you noticed.' });
+      }
+      if (!['up', 'down', 'sideways', 'unclear'].includes(String(expectedDirection))
+        || !['next_5', 'next_20', 'next_session'].includes(String(horizon))
+        || !Number.isInteger(confidence) || confidence < 1 || confidence > 5) {
+        return reply.code(400).send({ error: 'Choose an expected move, time window, and confidence.' });
+      }
+      const insight = await deps.multiplayerStore.createBrainInsight(brainOwnerKey(accountId), {
+        marketSymbol,
+        marketName: brainMarketName(marketSymbol),
+        category: category as BrainInsightCategory,
+        observation,
+        expectedDirection: expectedDirection as BrainExpectedDirection,
+        horizon: horizon as 'next_5' | 'next_20' | 'next_session',
+        confidence,
+      });
+      if (!insight) return reply.code(429).send({ error: 'You have added the daily limit of 20 Brain memories. Come back tomorrow to add more.' });
+      return reply.code(201).send({ ok: true, insight });
+    } catch {
+      return reply.code(503).send({ error: 'The Brain could not save that memory to Supabase. Your note was not saved; try again shortly.' });
+    }
+  });
+
+  app.post('/api/ranger-brain/contributions/:id/outcome', async (req, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    if (!sameOriginBrainWrite(req)) return reply.code(403).send({ error: 'This Brain note could not be verified. Refresh the pasture and try again.' });
+    if (!deps.multiplayerStore) return reply.code(503).send({ error: 'The Brain memory store is not ready yet.' });
+    try {
+      const accountId = await rangerProfileAccount(req);
+      if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to review this memory.' });
+      const insightId = String((req.params as { id?: string }).id || '');
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(insightId)) {
+        return reply.code(400).send({ error: 'That Brain memory could not be found.' });
+      }
+      const body = req.body as { outcome?: unknown; note?: unknown } | undefined;
+      if (!['matched', 'unmatched', 'unclear'].includes(String(body?.outcome))) {
+        return reply.code(400).send({ error: 'Choose whether the idea matched, did not match, or was unclear.' });
+      }
+      const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 300) : '';
+      const ownerKey = brainOwnerKey(accountId);
+      const insight = await deps.multiplayerStore.reviewBrainInsight(ownerKey, insightId, body!.outcome as BrainInsightOutcome, note);
+      if (!insight) return reply.code(404).send({ error: 'This memory was already reviewed or could not be found.' });
+      return { ok: true, insight, progress: await deps.multiplayerStore.brainInsightProgress(ownerKey) };
+    } catch {
+      return reply.code(503).send({ error: 'The Brain could not save this outcome to Supabase. Try again shortly.' });
+    }
+  });
+
   app.get('/api/ranger-brain/status', async (req, reply) => {
     reply.header('cache-control', 'no-store');
     const query = req.query as { market?: string; lookbackDays?: string; timeZone?: string };
@@ -1962,13 +2071,20 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
     const now = Date.now();
     const cached = brainCache.get(key);
     if (cached && now - cached.at < 10_000) return { report: cached.report, memoryHistory: cached.memoryHistory, memoryAvailable: cached.memoryAvailable };
-    const report = buildBrainReport({ market, lookbackDays: lookback, timeZone });
+    const buildReport = (marketSymbol: string | null, marketName?: string) => buildBrainReport({ market: marketSymbol, marketName, lookbackDays: lookback, timeZone });
+    const initialReport = buildReport(market);
+    const report = initialReport.marketSymbol
+      ? buildReport(initialReport.marketSymbol, brainMarketName(initialReport.marketSymbol))
+      : initialReport;
     let memoryHistory: BrainMemoryEvent[] = [];
     let memoryAvailable = true;
     try {
       // Keep the shared server journal canonical; only the reader-facing report is localized.
-      const memoryReport = timeZone === 'UTC' ? report : buildBrainReport({ market, lookbackDays: lookback, timeZone: 'UTC' });
-      memoryHistory = observeBrainMemory(memoryReport, now);
+      const memoryReport = timeZone === 'UTC'
+        ? report
+        : buildBrainReport({ market: report.marketSymbol, marketName: report.market, lookbackDays: lookback, timeZone: 'UTC' });
+      if (!deps.multiplayerStore) throw new Error('Brain Supabase memory store unavailable');
+      memoryHistory = await deps.multiplayerStore.observeBrainEvidence(memoryReport, now);
     } catch { memoryAvailable = false; }
     brainCache.set(key, { at: now, report, memoryHistory, memoryAvailable });
     while (brainCache.size > 64) brainCache.delete(String(brainCache.keys().next().value));
