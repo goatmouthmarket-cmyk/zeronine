@@ -366,7 +366,7 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
   Promise.all([import('/ranger-auto-risk.js'), import('/ranger-auto-timing.js')])
     .then(([risk, timing]) => publish({ risk, timing, ready: true, error: '' }))
     .catch((error) => publish({ risk: null, timing: null, ready: false, error: String(error?.message || error || 'calculator unavailable') }));
-</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-5" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=scene2"><style id="mobile-ranger-auto-pnl">
+</script><link rel="stylesheet" href="/pasture-ui-refine.css" id="pasture-ui-refine-css"><link rel="stylesheet" href="/pasture-brain-refine.css?v=20261115-6" id="pasture-brain-refine-css"><link rel="stylesheet" href="/pasture-responsive-menus.css"><link rel="stylesheet" href="/brain-game-cards.css?v=scene2"><style id="mobile-ranger-auto-pnl">
 #rangerAutoMobilePnl { display:none; }
 #rangerAutoMobilePnl[hidden] { display:none !important; }
 @media (max-width:999.98px) {
@@ -418,8 +418,8 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
   </header>
   <div class="ranger-brain-tabs" role="tablist" aria-label="Ranger Brain sections">
     <button id="brainTabMind" type="button" role="tab" aria-controls="brainPaneMind" aria-selected="true" data-tab="mind" title="My Brain"><span class="brain-tab-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7.7 2.8c-1.7-.7-3.5.2-3.5 1.8 0 .3.1.6.2.9-.9.4-1.4 1.1-1.4 2 0 .8.4 1.4 1 1.8-.1.2-.1.5-.1.7 0 1.1.9 1.9 2 1.9.7 0 1.3-.3 1.8-.9V2.8Z"/><path d="M8.3 2.8c1.7-.7 3.5.2 3.5 1.8 0 .3-.1.6-.2.9.9.4 1.4 1.1 1.4 2 0 .8-.4 1.4-1 1.8.1.2.1.5.1.7 0 1.1-.9 1.9-2 1.9-.7 0-1.3-.3-1.8-.9V2.8Z"/></svg></span><span>My Brain</span></button>
-    <button id="brainTabLearned" type="button" role="tab" aria-controls="brainPaneLearned" aria-selected="false" data-tab="learned" title="Lessons"><span class="brain-tab-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.4 3.4c2-.7 4-.7 5.6.6 1.6-1.3 3.6-1.3 5.6-.6v9.2c-2-.7-4-.7-5.6.6-1.6-1.3-3.6-1.3-5.6-.6V3.4Z"/><path d="M8 4v9.2"/></svg></span><span>Lessons</span></button>
-    <button id="brainTabMemory" type="button" role="tab" aria-controls="brainPaneMemory" aria-selected="false" data-tab="memory" title="Tasks"><span class="brain-tab-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="3" width="11.2" height="3.2" rx="1"/><path d="M3.4 6.2v5.6c0 .7.6 1.2 1.2 1.2h6.8c.7 0 1.2-.5 1.2-1.2V6.2M6.4 9h3.2"/></svg></span><span>Tasks</span></button>
+    
+    <button id="brainTabMemory" type="button" role="tab" aria-controls="brainPaneMemory" aria-selected="false" data-tab="memory" title="Teach & memories"><span class="brain-tab-icon" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="3" width="11.2" height="3.2" rx="1"/><path d="M3.4 6.2v5.6c0 .7.6 1.2 1.2 1.2h6.8c.7 0 1.2-.5 1.2-1.2V6.2M6.4 9h3.2"/></svg></span><span>Teach</span></button>
   </div>
   <div class="ranger-brain-body">
     <section id="brainPaneMind" role="tabpanel" aria-labelledby="brainTabMind">
@@ -562,15 +562,8 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
     </section>
     <section id="brainPaneMemory" role="tabpanel" aria-labelledby="brainTabMemory" hidden>
       <div class="brain-pane-head brain-teach-heading">
-        <span class="brain-eyebrow">YOUR BRAIN · LESSON WORKSHOP</span>
-        <h3>Teach it what you notice</h3>
-        <p>Share a pattern, a timing idea, or a warning sign. Your lesson stays private to your Deriv account, then waits for a matching settled result to check it.</p>
-      </div>
-      <div class="brain-teach-guide" aria-label="How teaching the Brain works">
-        <img src="/brain-brand.svg" alt="" aria-hidden="true">
-        <article><span class="brain-teach-step">01 · NOTICE</span><strong>What caught your eye?</strong><small>Describe a pattern, moment, or risk sign in your own words.</small></article>
-        <article><span class="brain-teach-step">02 · TEACH</span><strong>Share your best read</strong><small>Choose Over, Under, or save an observation without a prediction.</small></article>
-        <article><span class="brain-teach-step">03 · CHECK</span><strong>Let results answer</strong><small>A later matching settled trade checks the lesson and updates your Brain XP.</small></article>
+        <span class="brain-eyebrow">YOUR BRAIN</span>
+        <h3>Teach &amp; memories</h3>
       </div>
       <canvas id="brainMemoryScene" class="brain-card-scene brain-memory-scene" aria-hidden="true"></canvas>
       <div id="brainContributionApp" class="brain-contribution-app" aria-live="polite"><p class="brain-contribution-status">Loading your Brain lessons…</p></div>
@@ -2906,6 +2899,6 @@ function brainTimeQuery() {
 })();
 </script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"><link rel="stylesheet" href="/pasture-ui-system.css?v=layout2" id="pasture-ui-system-css"><link rel="stylesheet" href="/pasture-cooldown-flat.css"><link rel="stylesheet" href="/pasture-typography.css"><link rel="stylesheet" href="/pasture-chat-open.css?v=mobile3"><link rel="stylesheet" href="/pasture-login-feedback.css"><link rel="stylesheet" href="/pasture-loading.css"><link rel="stylesheet" href="/pasture-risk-card.css"><link rel="stylesheet" href="/pasture-mobile-layout.css"><link rel="stylesheet" href="/brain-entry-status.css"><link rel="stylesheet" href="/pasture-menu-brand.css"><link rel="stylesheet" href="/pasture-contrast-fixes.css">
 <script src="/pasture-ui-system.js?v=market-inline1" id="pasture-ui-system-js"></script>
-<script src="/pasture-ui-refine.js?v=cooldown2" id="pasture-ui-refine-js"></script><script src="/pasture-brain-refine.js?v=20261115-3" id="pasture-brain-refine-js"></script><script src="/brain-memory-evidence.js?v=20261115-4"></script><script src="/brain-contributions.js?v=20261115-9"></script><script src="/brain-projection.js"></script><script src="/brain-loading.js"></script><script src="/pasture-cooldown-header.js"></script><script src="/pasture-chat-open.js?v=mobile3"></script><script src="/pasture-login-feedback.js"></script><script src="/pasture-risk-card.js"></script><script src="/pasture-mobile-layout.js"></script><script src="/brain-entry-status.js"></script><script src="/ranger-profile-sync.js"></script></body></html>
+<script src="/pasture-ui-refine.js?v=cooldown2" id="pasture-ui-refine-js"></script><script src="/pasture-brain-refine.js?v=20261115-3" id="pasture-brain-refine-js"></script><script src="/brain-memory-evidence.js?v=20261115-4"></script><script src="/brain-contributions.js?v=20261115-10"></script><script src="/brain-projection.js"></script><script src="/brain-loading.js"></script><script src="/pasture-cooldown-header.js"></script><script src="/pasture-chat-open.js?v=mobile3"></script><script src="/pasture-login-feedback.js"></script><script src="/pasture-risk-card.js"></script><script src="/pasture-mobile-layout.js"></script><script src="/brain-entry-status.js"></script><script src="/ranger-profile-sync.js"></script></body></html>
 
 
