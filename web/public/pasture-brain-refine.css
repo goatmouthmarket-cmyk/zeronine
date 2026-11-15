@@ -994,3 +994,34 @@ body.brain-zoomed #rangerBrainPanel { animation: brainPanelIn .2s ease; }
 #rangerBrainPanel .brain-pips[hidden] { display: none; }
 
 body.brain-zoomed #rangerBrainBubble { display: none !important; }
+
+
+/* The timing label is a useful state cue, not a decorative caption. */
+#rangerBrainPanel .brain-patterns-card #brainWindowNote {
+  max-width: min(210px, 55%);
+  padding: 5px 8px;
+  border: 1px solid #c8b58d;
+  border-radius: 8px;
+  background: #f7efd9;
+  color: #526044;
+  font: 800 9px/1.3 var(--sans);
+  letter-spacing: .02em;
+  text-align: center;
+}
+#rangerBrainPanel .brain-patterns-card #brainWindowNote[data-state="now"] {
+  border-color: #6c9d66;
+  background: #e6f2dc;
+  color: #225f37;
+}
+#rangerBrainPanel .brain-patterns-card #brainWindowNote[data-state="best"] {
+  border-color: #c5a35d;
+  background: #fff2cf;
+  color: #71511d;
+}
+#rangerBrainPanel .brain-patterns-card #brainWindowNote[data-state="learning"] {
+  background: #eee8d8;
+  color: #6d6657;
+}
+@media (max-width: 430px) {
+  #rangerBrainPanel .brain-patterns-card #brainWindowNote { max-width: 48%; font-size: 8px; }
+}
