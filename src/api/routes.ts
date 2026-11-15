@@ -39,7 +39,7 @@ import { buildCalibrationReport, listPatterns as listStoredPatterns, scanPattern
 import { buildDecisionEvidenceReport } from '../testlab/evidence.ts';
 import { buildBrainReport, friendlyBrainMarketName, paperTradesToOutcomes } from '../brain/service.ts';
 import { BRAIN_MIN_BUCKET_OUTCOMES, classifyBucket, normalizeBrainTimeZone, wilsonInterval } from '../brain/timing.ts';
-import { observeBrainMemory, type BrainMemoryEvent } from '../brain/memory.ts';
+import type { BrainMemoryEvent } from '../brain/memory.ts';
 import {
   type TradeRow,
   clearSession,
