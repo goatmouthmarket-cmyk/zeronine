@@ -139,7 +139,8 @@
     const sequence = ++revision;
     try {
       const room = typeof lastRoomState === 'undefined' ? null : lastRoomState;
-      const selectedMarket = room && typeof room.selected === 'string' ? room.selected : '';\n      const result = await request(reportQuery(30, selectedMarket));
+      const selectedMarket = room && typeof room.selected === 'string' ? room.selected : '';
+      const result = await request(reportQuery(30, selectedMarket));
       const long = result.report;
       if (sequence !== revision) return;
       if (!result.memoryHistory) saveReports(long, Date.now());
