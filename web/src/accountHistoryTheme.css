@@ -687,3 +687,9 @@
   .pasture-detail-panel[aria-label="Account"] .connect-card,
   .pasture-detail-panel[aria-label="Account"] .ranger-wardrobe { padding: 11px !important; }
 }
+
+/* Connect panel: use the game mark and make the signed-in balance a clear focal point. */
+.pasture-detail-panel[aria-label="Account"] .connect-card-emblem.connect-game-mark { overflow:hidden; padding:5px; background:linear-gradient(145deg,#fff4d6,#e9c68d); }
+.pasture-detail-panel[aria-label="Account"] .connect-card-emblem.connect-game-mark img { display:block; width:100%; height:100%; object-fit:contain; }
+.pasture-detail-panel[aria-label="Account"] .connect-card .account-balance-card { margin:10px 0; }
+.pasture-detail-panel[aria-label="Account"] .connect-card .account-balance-card strong { font-size:clamp(25px,7vw,34px); }
