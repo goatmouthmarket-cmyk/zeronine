@@ -423,6 +423,43 @@ button:not(:disabled),a[href],summary,select{cursor:pointer}button:disabled{curs
   </div>
   <div class="ranger-brain-body">
     <section id="brainPaneMind" role="tabpanel" aria-labelledby="brainTabMind">
+      <article class="brain-growth-card" id="brainGrowthCard" data-state="loading" aria-labelledby="brainGrowthTitle">
+        <div class="brain-growth-top">
+          <div class="brain-growth-visual" aria-hidden="true">
+            <img src="/brain-brand.svg" alt="">
+            <svg viewBox="0 0 120 92" focusable="false">
+              <path d="M60 12 29 31 16 58 41 75 60 80 82 70 104 51 91 25 60 12M29 31l53 39M16 58l75-33M41 75l50-50M60 12 60 80M29 31l75 20M16 58l76 12" />
+              <circle cx="60" cy="12" r="4"/><circle cx="29" cy="31" r="4"/><circle cx="16" cy="58" r="4"/><circle cx="41" cy="75" r="4"/><circle cx="60" cy="80" r="5"/><circle cx="82" cy="70" r="4"/><circle cx="104" cy="51" r="4"/><circle cx="91" cy="25" r="4"/>
+            </svg>
+            <span class="brain-growth-level" id="brainGrowthLevel">LV 1</span>
+          </div>
+          <div class="brain-growth-copy">
+            <span class="brain-eyebrow">THE RANGER BRAIN · GROWTH</span>
+            <h3 id="brainGrowthTitle">Build a sharper Brain</h3>
+            <p id="brainGrowthText">Teach it what you notice. Later settled results show which lessons held up.</p>
+            <div class="brain-growth-xp">
+              <div class="brain-growth-xp-label"><strong id="brainGrowthXP">0 XP</strong><span id="brainGrowthNext">0 / 100 XP to Level 2</span></div>
+              <div class="brain-growth-xp-track" id="brainGrowthProgress" role="progressbar" aria-label="Brain level progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="brainGrowthFill"></i></div>
+            </div>
+          </div>
+        </div>
+        <div class="brain-growth-results" aria-label="Lesson outcomes">
+          <div data-result="matched"><strong id="brainGrowthWins">0</strong><span>Good calls</span></div>
+          <div data-result="unmatched"><strong id="brainGrowthLosses">0</strong><span>Missed calls</span></div>
+          <div data-result="pending"><strong id="brainGrowthWaiting">0</strong><span>Waiting</span></div>
+          <div data-result="lessons"><strong id="brainGrowthLessons">0</strong><span>Lessons taught</span></div>
+        </div>
+        <div class="brain-growth-footer">
+          <div class="brain-growth-trail">
+            <div class="brain-growth-trail-heading"><strong>Recent lesson results</strong><button id="brainGrowthAllTasks" type="button">See all tasks <span aria-hidden="true">→</span></button></div>
+            <ol id="brainGrowthActivity" aria-live="polite"><li class="is-empty">Your first lesson will appear here.</li></ol>
+          </div>
+          <div class="brain-growth-actions">
+            <p><b>Teach +10 XP</b> · matching win +25 XP · matching loss −20 XP. Results must settle; trades alone earn no points.</p>
+            <button id="brainGrowthTeach" type="button" class="brain-growth-teach">Teach the Brain a lesson <span aria-hidden="true">＋10 XP</span></button>
+          </div>
+        </div>
+      </article>
       <div class="brain-overview-grid">
         <article class="brain-card brain-hero-card" id="brainHeroCard" data-state="offline">
           <img class="brain-game-scene" src="/brain-pasture-scene.svg" alt=""><canvas id="brainHeroScene" class="brain-hero-scene" aria-hidden="true"></canvas>
