@@ -22,6 +22,20 @@
     return Number.isNaN(result.getTime()) ? 'not available' : result.toLocaleString();
   };
   const percent = value => Number.isFinite(value) ? (value * 100).toFixed(1) + '%' : 'unavailable';
+  const localZone = () => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+  };
+  const reportQuery = (days, market) => {
+    const params = new URLSearchParams({ lookbackDays: String(days), timeZone: localZone() });
+    if (market) params.set('market', market);
+    return '?' + params.toString();
+  };
+  const localizeFinding = (value, timeZone) => String(value || '').replace(/\\b(\\d{1,2}):00 UTC\\b/g, (_match, hourText) => {
+    const now = new Date();
+    const instant = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), Number(hourText) || 0));
+    const label = new Intl.DateTimeFormat(undefined, { timeZone: timeZone || localZone(), hour: 'numeric', minute: '2-digit' }).format(instant);
+    return label + ' your local time';
+  });
   // Sample counts and percentages move on every outcome. Record a new finding
   // when its meaning or validation changes, not for a count-only refresh.
   const findingShape = value => String(value || '').replace(/\d+(?:[.,]\d+)?%?/g, '#');
@@ -75,12 +89,12 @@
     if (!root) return;
     root.replaceChildren();
     root.append(text('h3', '', 'Evidence memory'));
-    root.append(text('p', 'brain-memory-updated', error ? 'Could not refresh the paper evidence. Saved observations remain below.' : 'Paper research · ' + String(long?.market || 'No market yet') + ' · checked ' + date(long?.generatedAt)));
+    root.append(text('p', 'brain-memory-updated', error ? 'Could not refresh the paper evidence. Saved observations remain below.' : 'Shared site practice results · ' + String(long?.market || 'No market yet') + ' · your local time · checked ' + date(long?.generatedAt)));
     const windows = document.createElement('div');
     windows.className = 'brain-memory-windows';
     windows.append(makeWindow('Recent · 7 days', short), makeWindow('Longer view · ' + (Number(long?.lookbackDays) || 30) + ' days', long));
     root.append(windows);
-    root.append(text('p', 'brain-memory-caveat', 'These windows summarize stored paper results for the same market. They are research, not a guarantee or an account trade.'));
+    root.append(text('p', 'brain-memory-caveat', 'These are shared site practice results for this market, not your Deriv account history or a live read of the market. They are a guide to past results, not a promise.'));
     root.append(text('h4', '', 'Current findings'));
     const current = document.createElement('div');
     current.className = 'brain-memory-findings';
@@ -106,7 +120,7 @@
       const card = document.createElement('article');
       card.className = 'brain-memory-finding';
       card.append(text('strong', '', item.topic + ' · ' + (item.validity === 'validated' ? 'Checked' : 'Still checking')));
-      card.append(text('p', '', item.finding));
+      card.append(text('p', '', localizeFinding(item.finding, long?.timeZone)));
       card.append(text('small', '', 'Observed ' + date(item.observedAt || item.recordedAt) + ' · ' + item.outcomes + ' paper results · latest evidence ' + date(item.evidenceAt)));
       findings.append(card);
     }
@@ -124,7 +138,7 @@
     active = true;
     const sequence = ++revision;
     try {
-      const result = await request('?lookbackDays=30');
+      const room = typeof lastRoomState === 'undefined' ? null : lastRoomState;\n      const selectedMarket = room && typeof room.selected === 'string' ? room.selected : '';\n      const result = await request(reportQuery(30, selectedMarket));
       const long = result.report;
       if (sequence !== revision) return;
       if (!result.memoryHistory) saveReports(long, Date.now());
