@@ -560,3 +560,7 @@ html body #rangerBrainPanel .brain-nerve-intro-cursor { position:absolute; z-ind
 html body #rangerBrainPanel .brain-nerve-more { justify-self:start; min-height:40px; padding:8px 12px; border:0; border-radius:8px; background:#245d3f; color:#fff9ec; font:800 12px system-ui; cursor:pointer; }
 html body #rangerBrainPanel .brain-nerve-more:focus-visible { outline:3px solid #d69f43; outline-offset:2px; }
 @media(max-width:700px){html body #rangerBrainPanel .brain-nerve-intro-art{height:110px;min-height:110px}}
+
+/* Leave breathing room around the floating Brain window. */
+html body #rangerBrainPanel:not([hidden]){width:min(780px,calc(100vw - 48px));max-width:calc(100vw - 48px);max-height:min(640px,calc(100dvh - min(120px, max(64px, 15dvh)) - 24px));}
+@media(max-width:700px){html body #rangerBrainPanel:not([hidden]){width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - min(120px, max(64px, 15dvh)) - 12px);}}
