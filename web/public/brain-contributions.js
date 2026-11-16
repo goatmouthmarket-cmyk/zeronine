@@ -176,6 +176,40 @@
       #rangerBrainPanel .brain-growth-card .brain-memory-cylinder::after{height:9px}
     }
     @media(prefers-reduced-motion:reduce){#rangerBrainPanel .brain-growth-card .brain-memory-cylinder::before{transition:none}}
+
+    /* Compact teaching flow; expand tasks or prices only when needed. */
+    .brain-review-card { gap:6px; padding:8px; }
+    .brain-review-form h4 { font-size:14px; margin:0 0 5px; }
+    .brain-goals { padding:7px 9px; gap:5px; }
+    .brain-goals-summary { cursor:pointer; font:800 12px/1.3 system-ui,sans-serif; color:#245b3a; }
+    .brain-goals-list { margin-top:7px; }
+    .brain-review-input-column { gap:5px; }
+    .brain-review-stance { margin:0; gap:5px; }
+    .brain-review-stance legend { font-size:12px; margin-bottom:4px; }
+    .brain-review-stance label span { min-height:44px; padding:8px 6px; font-size:14px; }
+    .brain-review-label { gap:3px; font-size:11px; }
+    .brain-review-note textarea { min-height:44px; padding:6px 8px; resize:vertical; }
+    .brain-review-row { gap:5px; }
+    .brain-review-label select { min-height:40px; padding:6px; }
+    .brain-trade-detail { padding:8px; gap:6px; }
+    .brain-entry-heading, .brain-entry-summary { min-width:0; }
+    .brain-entry-metric { padding:5px 6px; }
+    .brain-review-price-details { min-width:0; }
+    .brain-review-price-details > summary { cursor:pointer; color:#285a3b; font:800 11px/1.3 system-ui,sans-serif; padding:5px 0; }
+    .brain-review-price-details .brain-entry-sequence + .brain-entry-sequence { margin-top:6px; }
+    .brain-review-details, .brain-evidence-compact { padding-top:5px; }
+    @container (max-width:650px) {
+      .brain-review-fields { gap:6px; }
+      .brain-review-save { width:100%; min-height:44px; }
+      .brain-entry-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
+      .brain-entry-metric small { font-size:9px; }
+      .brain-entry-metric strong { font-size:11px; overflow-wrap:anywhere; }
+    }
+    @media(max-height:600px) {
+      .brain-review-card { gap:4px; padding:6px; }
+      .brain-review-stance label span { min-height:40px; }
+      .brain-review-note textarea { min-height:40px; }
+    }
   `;document.head.append(sheet);
 
 
@@ -295,6 +329,13 @@
     summary.append(metric('Cow edge at shot',percent(context.cowEdge)),metric('Cow confidence',percent(context.cowConfidence)),metric('Profit / loss',amount(trade.profit),Number(trade.profit)<0?'is-negative':''));
     detail.append(summary);
 
+    // On compact screens keep the trade summary visible and make the full
+    // seven-tick sequences available with one tap rather than clipping them.
+    const priceSection=node('details','brain-review-price-details');
+    priceSection.open = !window.matchMedia('(max-width: 700px), (max-height: 600px)').matches;
+    priceSection.append(node('summary','','Entry & exit prices'));
+    detail.append(priceSection);
+
     const addPriceSequence = (label, quote, digit, preceding, following) => {
       const before = Array.isArray(preceding) ? preceding.slice(-3) : [];
       const after = Array.isArray(following) ? following.slice(0, 3) : [];
@@ -319,14 +360,14 @@
       });
       sequence.append(ticks);
       if (!quote || before.length < 3 || after.length < 3) sequence.append(node('p', 'brain-trade-note', 'Some prices were not recorded.'));
-      detail.append(sequence);
+      priceSection.append(sequence);
     };
     const exit = context.exit && typeof context.exit === 'object' ? context.exit : {};
     const entryTime = Number(context.entryEpoch), exitTime = Number(exit.epoch);
     const sameRecordedPoint = context.entryEpoch != null && exit.epoch != null && Number.isFinite(entryTime) && Number.isFinite(exitTime) && entryTime === exitTime && context.entryQuote != null && exit.quote != null && String(context.entryQuote) === String(exit.quote);
     if (sameRecordedPoint) {
       addPriceSequence('Entry / exit', context.entryQuote, context.entryDigit, context.before, context.after);
-      detail.append(node('p', 'brain-trade-note', 'Deriv recorded the same price and second for entry and exit. More than one tick can share a second.'));
+      priceSection.append(node('p', 'brain-trade-note', 'Deriv recorded the same price and second for entry and exit. More than one tick can share a second.'));
     } else {
       addPriceSequence('Entry', context.entryQuote, context.entryDigit, context.before, context.after);
       addPriceSequence('Exit', exit.quote, exit.digit, exit.before, exit.after);
@@ -869,9 +910,9 @@
   document.addEventListener('zeronine:brain-teach', openTeachingTask);
 
   function renderTraining(training) {
-    const card=node('section','brain-goals');
+    const card=node('details','brain-goals');
     const unlocked=training?.unlocked === true;
-    card.append(node('h4','',unlocked?'Brain suggestions unlocked':'Unlock Brain suggestions'));
+    card.append(node('summary','brain-goals-summary',unlocked?'Brain suggestions ready · Tasks':'Brain tasks · View progress'));
     const list=node('div','brain-goals-list');
     const goals=Array.isArray(training?.goals)?training.goals:[];
     if (!goals.length) {
@@ -887,7 +928,6 @@
       const bar=node('progress','');bar.max=target;bar.value=Math.min(current,target);bar.setAttribute('aria-label',label);row.append(bar);list.append(row);
     }
     card.append(list);
-    if(!unlocked){const action=node('button','','Teach a lesson');action.type='button';action.addEventListener('click',()=>{const field=$('brainInsightForm')?.querySelector('textarea');field?.scrollIntoView({behavior:'smooth',block:'center'});field?.focus({preventScroll:true})});card.append(action)}
     return card;
   }
 
@@ -913,7 +953,9 @@
     status.id='brainTaskStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');card.append(status);
     const memories=node('details','brain-review-details');
     memories.append(node('summary','','Saved lessons · '+insights.length),renderInsights(insights,data.trades));card.append(memories);
-    const evidence=node('div','brain-review-evidence');evidence.id='brainEvidenceSlot';card.append(evidence);
+    const practice=node('details','brain-review-details brain-review-practice');
+    practice.append(node('summary','','Practice snapshot'));
+    const evidence=node('div','brain-review-evidence');evidence.id='brainEvidenceSlot';practice.append(evidence);card.append(practice);
     host.append(card);
   }
   async function load() {

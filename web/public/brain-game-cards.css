@@ -564,3 +564,32 @@ html body #rangerBrainPanel .brain-nerve-more:focus-visible { outline:3px solid 
 /* Leave breathing room around the floating Brain window. */
 html body #rangerBrainPanel:not([hidden]){width:min(780px,calc(100vw - 48px));max-width:calc(100vw - 48px);max-height:min(640px,calc(100dvh - min(120px, max(64px, 15dvh)) - 24px));}
 @media(max-width:700px){html body #rangerBrainPanel:not([hidden]){width:min(560px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - min(120px, max(64px, 15dvh)) - 12px);}}
+
+/* Fit the smaller floating window while retaining a scroll fallback for short screens. */
+html body #rangerBrainPanel .brain-head {padding:5px 8px;gap:6px;min-height:40px}
+html body #rangerBrainPanel .ranger-brain-tabs {padding:3px 6px;gap:5px}
+html body #rangerBrainPanel .ranger-brain-tabs button {min-height:38px;padding:4px 8px}
+html body #rangerBrainPanel .ranger-brain-body {padding:6px;min-height:0;overflow:auto}
+html body #rangerBrainPanel #brainPaneMind:not([hidden]) {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start;gap:6px}
+html body #rangerBrainPanel #brainPaneMind > .brain-growth-card {grid-column:1;min-width:0;height:auto;padding:7px;gap:5px}
+html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid {grid-column:2;min-width:0;height:auto;display:grid;grid-template-columns:minmax(0,1fr);gap:5px}
+html body #rangerBrainPanel #brainHeroCard {min-height:0;height:auto}
+html body #rangerBrainPanel .brain-growth-visual {width:100%;max-height:clamp(105px,24dvh,195px);min-height:0;aspect-ratio:280/190}
+html body #rangerBrainPanel .brain-nerve-detail {padding:8px;gap:5px}
+html body #rangerBrainPanel .brain-nerve-intro-art {height:clamp(76px,16dvh,125px);min-height:0}
+html body #rangerBrainPanel .brain-nerve-detail h3 {font-size:clamp(14px,2vw,19px);line-height:1.15}
+html body #rangerBrainPanel .brain-nerve-detail p {font-size:12px;line-height:1.25}
+html body #rangerBrainPanel .brain-nerve-chart {padding:7px;gap:5px}
+html body #rangerBrainPanel .brain-nerve-row {font-size:11px;line-height:1.2}
+html body #rangerBrainPanel .brain-growth-card .brain-memory-meter {min-height:65px;margin:2px 0 0;padding:6px 8px;gap:6px;grid-template-columns:42px minmax(0,1fr) auto}
+html body #rangerBrainPanel .brain-growth-card .brain-memory-cylinder {width:38px;height:50px}
+@media(max-width:520px){
+ html body #rangerBrainPanel #brainPaneMind:not([hidden]){grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:5px}
+ html body #rangerBrainPanel .brain-head {grid-template-columns:28px minmax(0,1fr) 38px 38px}
+ html body #rangerBrainPanel .brain-growth-visual {max-height:clamp(100px,22dvh,155px)}
+ html body #rangerBrainPanel .brain-nerve-intro-art {height:clamp(70px,14dvh,100px)}
+ html body #rangerBrainPanel .brain-nerve-detail {padding:7px;gap:4px}
+ html body #rangerBrainPanel .brain-growth-card .brain-memory-meter {grid-template-columns:34px minmax(0,1fr);min-height:52px;padding:5px}
+ html body #rangerBrainPanel .brain-growth-card .brain-memory-cylinder {width:30px;height:42px}
+}
+@media(max-width:330px){html body #rangerBrainPanel #brainPaneMind:not([hidden]){grid-template-columns:minmax(0,1fr)}html body #rangerBrainPanel #brainPaneMind > .brain-growth-card,html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid{grid-column:1}}
