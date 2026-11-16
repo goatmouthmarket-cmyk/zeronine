@@ -500,3 +500,20 @@ html body #rangerBrainPanel .brain-growth-visual .neural-pulses{fill:#fff1a9;fil
 html body #rangerBrainPanel .brain-growth-visual .brain-growth-level{z-index:2}
 @media(max-width:700px){html body #rangerBrainPanel .brain-growth-visual{min-height:110px;max-height:170px}}
 @media(prefers-reduced-motion:reduce){html body #rangerBrainPanel .brain-growth-visual .neural-pulses{display:none}html body #rangerBrainPanel .brain-growth-visual .neural-new{transition:none}}
+
+/* The connection map is the focal point; old lesson feed is retained hidden for legacy updates. */
+html body #rangerBrainPanel .brain-growth-footer { display:none !important; }
+html body #rangerBrainPanel .brain-growth-card { position:relative; }
+html body #rangerBrainPanel .brain-growth-top { grid-template-columns:minmax(0,1fr); gap:6px; }
+html body #rangerBrainPanel .brain-growth-visual { width:100%; max-width:none; max-height:none; min-height:0; aspect-ratio:280/190; }
+html body #rangerBrainPanel .brain-growth-visual .brain-neural-art { width:100%; height:100%; max-width:none; max-height:none; overflow:visible; }
+html body #rangerBrainPanel .neural-nodes circle { cursor:pointer; pointer-events:all; transition:transform .18s,fill .18s,filter .18s; transform-box:fill-box; transform-origin:center; }
+html body #rangerBrainPanel .neural-nodes circle:hover, html body #rangerBrainPanel .neural-nodes circle:focus-visible { fill:#ffdb64; filter:drop-shadow(0 0 5px #80c56a); transform:scale(1.9); outline:none; }
+html body #rangerBrainPanel .neural-nodes circle:focus-visible { stroke:#1b6138; stroke-width:2.5; }
+html body #rangerBrainPanel .brain-neural-popup { position:absolute; z-index:30; inset:auto 8px 8px; max-height:min(240px,65%); overflow:auto; padding:12px; border-radius:12px; background:#fffaf0; color:#33432e; box-shadow:0 8px 28px #18371c55; font:500 12px/1.4 system-ui,sans-serif; }
+html body #rangerBrainPanel .brain-neural-popup[hidden] { display:none; }
+html body #rangerBrainPanel .brain-neural-popup strong,html body #rangerBrainPanel .brain-neural-popup p { display:block; margin:0 24px 6px 0; overflow-wrap:anywhere; }
+html body #rangerBrainPanel .brain-neural-popup small { color:#615441; }
+html body #rangerBrainPanel .brain-neural-popup button { position:absolute; top:5px; right:6px; width:32px; height:32px; border:0; background:transparent; color:#31593c; font:700 22px/1 system-ui; cursor:pointer; }
+@media(max-width:700px){html body #rangerBrainPanel .brain-growth-top{grid-template-columns:minmax(0,1fr)}html body #rangerBrainPanel .brain-growth-visual{max-height:min(42vh,260px);aspect-ratio:280/190}}
+@media(prefers-reduced-motion:reduce){html body #rangerBrainPanel .neural-nodes circle{transition:none}}
