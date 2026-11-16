@@ -631,3 +631,76 @@ html body #rangerBrainPanel #brainPaneMind:not([hidden]) { align-content:start; 
 html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid { height:auto; align-self:start; align-content:start; grid-template-rows:auto; }
 html body #rangerBrainPanel #brainHeroCard, html body #rangerBrainPanel .brain-nerve-detail { height:auto; min-height:0; align-self:start; }
 html body #rangerBrainPanel #brainThoughts:empty { display:none; }
+
+
+/* My Brain: the neural map fills the left; detail and memory sit on the right. */
+html body #rangerBrainPanel #brainPaneMind:not([hidden]) {
+  display:grid; grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);
+  align-items:stretch; gap:8px; min-width:0;
+}
+html body #rangerBrainPanel #brainPaneMind > .brain-growth-card {
+  grid-column:1; min-width:0; height:100%; padding:8px;
+  display:grid; grid-template-rows:minmax(0,1fr) auto; align-content:stretch; gap:6px;
+}
+html body #rangerBrainPanel .brain-growth-top {
+  display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto;
+  align-content:stretch; min-width:0; gap:5px;
+}
+html body #rangerBrainPanel .brain-growth-visual {
+  width:100%; height:100%; max-width:none; max-height:none;
+  min-height:clamp(180px,30dvh,300px); aspect-ratio:280 / 190;
+}
+html body #rangerBrainPanel .brain-growth-visual .brain-neural-art {
+  display:block; width:100%; height:100%; max-width:none; max-height:none;
+}
+html body #rangerBrainPanel .brain-growth-copy { min-width:0; }
+html body #rangerBrainPanel .brain-growth-copy :is(.brain-eyebrow,h3,p) { display:none; }
+html body #rangerBrainPanel .brain-growth-results { display:none; }
+html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid {
+  grid-column:2; min-width:0; height:100%; align-self:stretch; display:grid;
+  grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; gap:8px;
+}
+html body #rangerBrainPanel #brainHeroCard {
+  grid-column:1; grid-row:1; min-width:0; height:auto; min-height:0; align-self:stretch;
+}
+html body #rangerBrainPanel #brainHeroCard + #brainMemoryMeter {
+  grid-column:1; grid-row:2; display:grid; grid-template-columns:52px minmax(0,1fr) auto;
+  align-items:center; gap:10px; width:100%; min-width:0; min-height:72px;
+  margin:0; padding:8px 12px; border:0; border-radius:12px;
+  background:linear-gradient(120deg,#e5f2d8,#f6eed6); color:#244e35; text-align:left; cursor:pointer;
+}
+html body #rangerBrainPanel #brainMemoryMeter .brain-memory-cylinder {
+  position:relative; display:block; width:42px; height:58px; overflow:hidden;
+  border:2px solid #51815c; border-radius:50% / 13%; background:#fbfff5;
+}
+html body #rangerBrainPanel #brainMemoryMeter .brain-memory-cylinder::before {
+  content:''; position:absolute; left:0; right:0; bottom:0; height:var(--memory-fill,0%);
+  background:linear-gradient(#b9e99f,#53a56b); transition:height .7s ease;
+}
+html body #rangerBrainPanel #brainMemoryMeter .brain-memory-cylinder::after {
+  content:''; position:absolute; top:0; left:0; right:0; height:9px;
+  border-radius:50%; background:#e3f4da; border-bottom:1px solid #80aa82;
+}
+html body #rangerBrainPanel #brainMemoryMeter .brain-memory-copy { display:grid; gap:4px; min-width:0; line-height:1.2; }
+html body #rangerBrainPanel #brainMemoryMeter .brain-memory-copy strong { font-size:clamp(15px,1.5vw,19px); overflow-wrap:anywhere; }
+html body #rangerBrainPanel #brainMemoryMeter .brain-memory-copy small { font-size:11px; color:#53674d; overflow-wrap:anywhere; }
+html body #rangerBrainPanel #brainMemoryMeter::after { content:'›'; color:#447d50; font:700 24px/1 system-ui; }
+html body #rangerBrainPanel #brainMemoryMeter:focus-visible { outline:3px solid #246b45; outline-offset:2px; }
+html body #rangerBrainPanel .brain-growth-card.brain-growth-celebrate .brain-neural-art {
+  animation:brainGrowthCelebration 1.2s ease-out;
+}
+@keyframes brainGrowthCelebration {
+  0% { transform:scale(1); filter:brightness(1); }
+  35% { transform:scale(1.035); filter:brightness(1.18) drop-shadow(0 0 8px #99d47b); }
+  100% { transform:scale(1); filter:brightness(1); }
+}
+@media (max-width:500px) {
+  html body #rangerBrainPanel #brainPaneMind:not([hidden]) { grid-template-columns:minmax(0,1fr); }
+  html body #rangerBrainPanel #brainPaneMind > .brain-growth-card,
+  html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid { grid-column:1; }
+  html body #rangerBrainPanel .brain-growth-visual { min-height:150px; max-height:240px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  html body #rangerBrainPanel .brain-growth-card.brain-growth-celebrate .brain-neural-art { animation:none; }
+  html body #rangerBrainPanel #brainMemoryMeter .brain-memory-cylinder::before { transition:none; }
+}

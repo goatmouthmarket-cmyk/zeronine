@@ -6,6 +6,7 @@
   const $ = id => document.getElementById(id);
   const svgNs = 'http://www.w3.org/2000/svg';
   let state = null, loading = false, note = '', formDirty = false;
+  let awaitingGrowthLessonId = null, growthCelebrationTimer = 0;
   let reloadQueued = false, recentTradeSignature = null, recentTradeAccount = null;
   let refreshTimers = [], pendingAnimationTimer = 0;
   let preferredTradeId = null, seenMemoryTradeIds = null;
@@ -517,12 +518,20 @@
     const form=event.currentTarget, data=new FormData(form), submit=form.querySelector('button[type="submit"]');
     if(!data.get('sourceTradeId')){setMessage('Choose a settled trade first.','bad');return;}
     submit.disabled=true;submit.textContent='Saving…';setMessage('Saving your lesson…','busy');
+    const savedAccount = recentTradeAccount;
     try {
-      await request('/api/ranger-brain/contributions',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({
+      const saved = await request('/api/ranger-brain/contributions',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({
         sourceTradeId:String(data.get('sourceTradeId')),category:data.get('category'),observation:data.get('observation'),stance:data.get('stance'),
         confidence:Number(data.get('confidence')),horizon:data.get('horizon'), confirmedPattern:data.get('confirmPattern') || null
       })});
-      note='Lesson saved';formDirty=false;await load();setMessage(note,'good');
+      // The lesson is already saved. Switch tabs immediately, then animate only
+      // after an account-scoped refresh confirms the new lesson is present.
+      if (savedAccount !== recentTradeAccount) return;
+      note='Lesson saved'; formDirty=false;
+      awaitingGrowthLessonId = saved?.insight?.id == null ? null : String(saved.insight.id);
+      $('brainTabMind')?.click();
+      await load();
+      setMessage(note,'good');
     } catch(error) {
       setMessage(error.message||'Could not save your lesson. Try again.','bad');submit.disabled=false;submit.textContent='Save lesson';
     }
@@ -909,7 +918,8 @@
     const visual = card.querySelector('.brain-growth-visual');
     const storage = data?.storage;
     const available = storage && storage.measurement === 'estimated_row_bytes' && Number.isFinite(Number(storage.bytes)) && Number.isFinite(Number(storage.lessons)) && Number.isFinite(Number(storage.trades));
-    const lessons = available ? Math.max(0, Math.floor(Number(storage.lessons))) : 0;
+    // Progress is refreshed with lessons; the byte estimate may be cached briefly.
+    const lessons = available ? Math.max(0, Math.floor(Number(storage.lessons)), Math.floor(Number(data?.progress?.total) || 0)) : 0;
     const trades = available ? Math.max(0, Math.floor(Number(storage.trades))) : 0;
     // Visual stages represent saved activity; they are not an intelligence score.
     const growth = available ? Math.min(1, Math.log1p(lessons * 8 + trades) / Math.log1p(1000)) : 0;
@@ -923,9 +933,12 @@
       const title = node('strong', ''); title.id = 'brainMemorySize';
       const sub = node('small', ''); sub.id = 'brainMemoryCounts';
       copy.append(title, sub); meter.append(cylinder, copy);
-      const results = card.querySelector('.brain-growth-results');
-      if (results) results.insertAdjacentElement('afterend', meter); else card.append(meter);
+      const hero = $('brainHeroCard');
+      if (hero) hero.insertAdjacentElement('afterend', meter); else card.append(meter);
     }
+    // Place storage after the info card, including if it was mounted earlier.
+    const hero = $('brainHeroCard');
+    if (hero && meter.previousElementSibling !== hero) hero.insertAdjacentElement('afterend', meter);
     // This monotonic scale visualizes actual estimated bytes and is not a quota.
     const memoryBytes = available ? Math.max(0, Number(storage.bytes)) : 0;
     const memoryFill = available ? Math.min(100, Math.log1p(memoryBytes) / Math.log1p(1073741824) * 100) : 0;
@@ -1094,6 +1107,17 @@
         return;
       }
       render();
+      if (awaitingGrowthLessonId && Array.isArray(response.insights) && response.insights.some(item => String(item.id) === awaitingGrowthLessonId)) {
+        awaitingGrowthLessonId = null;
+        const card = $('brainGrowthCard');
+        if (card) {
+          card.classList.remove('brain-growth-celebrate');
+          void card.offsetWidth;
+          card.classList.add('brain-growth-celebrate');
+          clearTimeout(growthCelebrationTimer);
+          growthCelebrationTimer = setTimeout(() => card.classList.remove('brain-growth-celebrate'), 1800);
+        }
+      }
     } catch(error) {
       // A transient refresh must not erase an unsaved lesson.
       if(formDirty) return;
@@ -1146,6 +1170,7 @@
     if(account!==recentTradeAccount) {
       const hadAccount=recentTradeAccount!==null;
       recentTradeAccount=account; recentTradeSignature=signature; seenMemoryTradeIds=null;
+      awaitingGrowthLessonId=null; clearTimeout(growthCelebrationTimer); $('brainGrowthCard')?.classList.remove('brain-growth-celebrate');
       for(const timer of refreshTimers) clearTimeout(timer); refreshTimers=[];
       clearTimeout(pendingAnimationTimer); const banner=$('brainTradeSync'); if(banner)banner.hidden=true;
       preferredTradeId=null;
