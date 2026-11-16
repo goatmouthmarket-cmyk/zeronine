@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 
 const core = readFileSync(new URL('../web/public/trading-room-core.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
+const playerTrading = readFileSync(new URL('../src/api/playerTrading.ts', import.meta.url), 'utf8');
 
 type MockElement = {
   hidden: boolean;
@@ -122,6 +123,10 @@ test('Ranger only kills one cow for the market and contract actually submitted b
   assert.match(core, /lastSubmittedTrade/);
   assert.match(core, /run\.lastSubmittedTrade = \{ contractId: bought\.contractId/);
   assert.match(core, /playerConnectionReady!==true/);
+  assert.match(core, /function rangerPastureContracts\(\)/);
+  assert.match(core, /red:config\.red,pastureContracts/);
+  assert.match(playerTrading, /run\.config\.pastureContracts\.some\(contract => contract\.market === candidate\.market && contract\.direction === candidate\.direction && contract\.barrier === candidate\.barrier\)/);
+  assert.doesNotMatch(playerTrading, /if \(run\?\.running\) stopRangerRun\(run, 'Player connection closed\.'\)/);
 });
 
 test('the automatic trade list uses a bounded vertical layout without horizontal scrolling', () => {

@@ -235,6 +235,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     direction: Direction | null;
     barrier: number | null;
     market: string | null;
+    pastureContracts: Array<{ market: string; direction: Direction; barrier: number }>;
     green: boolean;
     gold: boolean;
     red: boolean;
@@ -332,11 +333,22 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     if (barrierValue !== null && (!Number.isInteger(barrierValue) || (direction === 'over' ? barrierValue < 0 || barrierValue > 8 : barrierValue < 1 || barrierValue > 9))) throw new Error('invalid Ranger Auto barrier');
     const market = typeof body.market === 'string' && registry.has(body.market) ? body.market : null;
     if (body.market !== undefined && body.market !== null && !market) throw new Error('invalid Ranger Auto market');
+    if (!Array.isArray(body.pastureContracts) || body.pastureContracts.length < 1 || body.pastureContracts.length > 32) throw new Error('wait for the pasture market cows to load before starting Ranger Auto');
+    const pastureContracts = [...new Map(body.pastureContracts.map((value) => {
+      if (!value || typeof value !== 'object') throw new Error('invalid pasture market contract');
+      const contract = value as Record<string, unknown>;
+      const contractMarket = typeof contract.market === 'string' && registry.has(contract.market) ? contract.market : null;
+      const contractDirection = contract.direction === 'over' || contract.direction === 'under' ? contract.direction : null;
+      const contractBarrier = Number(contract.barrier);
+      if (!contractMarket || !contractDirection || !Number.isInteger(contractBarrier) || (contractDirection === 'over' ? contractBarrier < 0 || contractBarrier > 8 : contractBarrier < 1 || contractBarrier > 9)) throw new Error('invalid pasture market contract');
+      const parsed = { market: contractMarket, direction: contractDirection, barrier: contractBarrier };
+      return [`${parsed.market}|${parsed.direction}|${parsed.barrier}`, parsed] as const;
+    })).values()];
     const green = body.green === undefined ? true : body.green === true;
     const gold = body.gold === undefined ? true : body.gold === true;
     const red = body.red === undefined ? true : body.red === true;
     if (!green && !gold && !red) throw new Error('enable at least one Ranger Auto ring');
-    return { stake, maxStake, minEdge, minWin, maxTrades, maxRunLoss, takeProfit, lossLimit, cooldownSeconds, shots, direction, barrier: barrierValue, market, green, gold, red };
+    return { stake, maxStake, minEdge, minWin, maxTrades, maxRunLoss, takeProfit, lossLimit, cooldownSeconds, shots, direction, barrier: barrierValue, market, pastureContracts, green, gold, red };
   }
 
   function rangerCandidates(run: RangerRun): RangerPick[] {
@@ -354,6 +366,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     for (const candidate of pick.candidates) {
       const snapshot = snapshots.get(candidate.market);
       if (!snapshot || !snapshot.fresh || (run.config.market && candidate.market !== run.config.market)) continue;
+      if (!run.config.pastureContracts.some(contract => contract.market === candidate.market && contract.direction === candidate.direction && contract.barrier === candidate.barrier)) continue;
       const digits = snapshot.recentDigits;
       const quotes = snapshot.recentQuotes;
       const high = digits.filter(digit => digit >= 5).length;
@@ -774,7 +787,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (!bucket) { bucket = new Set(); listeners.set(accountId, bucket); }
       bucket.add(send);
       const heartbeat = setInterval(() => { void stillAuthorized().then(ok => { if (!ok) socket.close(1008, 'session expired'); }).catch(() => socket.close(1011, 'session unavailable')); }, 15_000);
-      const cleanup = () => { clearInterval(heartbeat); bucket!.delete(send); if (bucket!.size === 0) { listeners.delete(accountId); const run = rangerRuns.get(accountId); if (run?.running) stopRangerRun(run, 'Player connection closed.'); } };
+      const cleanup = () => { clearInterval(heartbeat); bucket!.delete(send); if (bucket!.size === 0) listeners.delete(accountId); };
       socket.on('close', cleanup); socket.on('error', cleanup);
       socket.send(JSON.stringify({ type: 'hello', accountId }));
     })().catch(() => socket.close(1011, 'session unavailable'));
