@@ -772,12 +772,12 @@
     try { return localStorage.getItem('ranger-brain-suggestion-mode') === 'training' ? 'training' : 'normal'; } catch { return 'normal'; }
   }
   async function suggest() {
-    if (trainingCheckPending) return;
     if (suggestionMode() === 'normal') {
       const result = bridge()?.suggest?.();
       runCapture(result);
       return result;
     }
+    if (trainingCheckPending) return;
     const account = currentAccount();
     if (!account) {
       runCapture({ status: 'none', reason: 'Connect your account and teach the Brain first.' });
