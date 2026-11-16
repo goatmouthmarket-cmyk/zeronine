@@ -115,6 +115,13 @@ test('two signed players and the owner trade only their accounts, including manu
     const own = await app.inject({ method: 'POST', url: '/api/player/trade/confirm', headers: { cookie: alice }, payload: { previewId, idempotencyKey: 'alice-request-0001' } });
     assert.equal(own.statusCode, 200, own.body);
     assert.deepEqual(bought, ['VRTC111']);
+    const autoStart = await app.inject({ method: 'POST', url: '/api/player/automation/start', headers: { cookie: alice }, payload: { stake: 1, minWin: 0.7, shots: 1, maxTrades: 0, green: true, gold: true, red: true } });
+    assert.equal(autoStart.statusCode, 200, autoStart.body);
+    assert.equal(autoStart.json().state.running, true);
+    assert.equal(autoStart.json().state.phase, 'waiting-settlement');
+    assert.deepEqual(bought, ['VRTC111'], 'starting through an open contract waits and does not place another trade');
+    const autoStop = await app.inject({ method: 'POST', url: '/api/player/automation/stop', headers: { cookie: alice } });
+    assert.equal(autoStop.statusCode, 200, autoStop.body);
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.deepEqual(receivedAlice, ['hello', 'trade']);
     assert.deepEqual(receivedBob, ['hello']);

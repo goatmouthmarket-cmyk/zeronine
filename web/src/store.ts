@@ -940,6 +940,7 @@ export interface State {
   markets: Market[];
   session: SessionInfo | null;
   playerSession: SessionInfo | null;
+  playerConnectionOpen: boolean;
   playerRecovery: Recovery | null;
   playerTrades: TradeRow[];
   /** Session health for the Derby player login, separate from the owner session. */
@@ -988,6 +989,7 @@ const initial: State = {
   markets: [],
   session: null,
   playerSession: null,
+  playerConnectionOpen: false,
   playerRecovery: null,
   playerTrades: [],
   playerAuthStatus: 'idle',
@@ -1560,7 +1562,7 @@ function applyCoreState(s: State & { public_dashboard?: boolean; public_deriv_lo
       feed: s.feed,
       markets,
       session: s.session,
-      ...(accountChanged ? { playerSession: null, playerRecovery: null, playerTrades: [], digitRemainingLoss: null, digitTradeEvidence: [] } : {}),
+      ...(accountChanged ? { playerSession: null, playerConnectionOpen: false, playerRecovery: null, playerTrades: [], digitRemainingLoss: null, digitTradeEvidence: [] } : {}),
       recovery: s.recovery,
       settings: s.settings,
       automation: s.automation,
@@ -1628,6 +1630,7 @@ export async function refreshPlayerState(refreshAfterPending = false, force = fa
       if (state.owner && state.multiplayerEnabled && state.session?.loginid !== response.session.loginid) return;
       set({
         playerSession: response.session,
+        ...(state.playerSession?.loginid !== response.session.loginid ? { playerConnectionOpen: false } : {}),
         playerRecovery: response.risk ? { ...response.risk, last_win_epoch: 0, updated_at: 0 } : null,
         playerTrades: response.trades.map(playerTradeRow),
         playerAuthStatus: 'live',
@@ -1639,7 +1642,7 @@ export async function refreshPlayerState(refreshAfterPending = false, force = fa
       const decision = classifyPlayerStateFailure(error);
       if (decision.clearSession) {
         // Verified 401/revocation: the backend no longer honours this session.
-        set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: decision.status, playerAuthMessage: decision.message, playerAccountSwitch: null });
+        set({ playerSession: null, playerConnectionOpen: false, playerRecovery: null, playerTrades: [], playerAuthStatus: decision.status, playerAuthMessage: decision.message, playerAccountSwitch: null });
         return;
       }
       // Outage or transport failure: keep the last verified session on screen so a
@@ -1683,7 +1686,7 @@ export async function selectPlayerAccount(accountId: string): Promise<void> {
   // Confirmed switch: nothing from the previous account may be shown as the new one.
   playerSocket?.close();
   playerStateRequest++;
-  set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: 'reconnecting', playerAuthMessage: '' });
+  set({ playerSession: null, playerConnectionOpen: false, playerRecovery: null, playerTrades: [], playerAuthStatus: 'reconnecting', playerAuthMessage: '' });
   await refreshPlayerState(true);
   connectPlayerWs();
 }
@@ -1693,18 +1696,22 @@ export async function logoutPlayer(): Promise<void> {
   playerSocket?.close();
   playerStateRequest++;
   playerStateRefreshQueued = false;
-  set({ playerSession: null, playerRecovery: null, playerTrades: [], playerAuthStatus: 'signed-out', playerAuthMessage: 'Signed out', playerAccountSwitch: null });
+  set({ playerSession: null, playerConnectionOpen: false, playerRecovery: null, playerTrades: [], playerAuthStatus: 'signed-out', playerAuthMessage: 'Signed out', playerAccountSwitch: null });
 }
 
 let playerSocket: WebSocket | null = null;
 function connectPlayerWs(): void {
   if (!state.playerSession || playerSocket || typeof WebSocket !== 'function') return;
+  const accountId = state.playerSession.loginid;
+  set({ playerConnectionOpen: false });
   const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/player-ws`);
   playerSocket = socket;
   socket.onmessage = (message) => {
     try {
       const event = JSON.parse(String(message.data));
-      if (event.type === 'balance') {
+      if (event.type === 'hello' && event.accountId === accountId && state.playerSession?.loginid === accountId) {
+        set({ playerConnectionOpen: true });
+      } else if (event.type === 'balance') {
         const balance = Number(event.balance);
         if (state.playerSession?.loginid === event.accountId && Number.isFinite(balance) && balance >= 0) {
           set({ playerSession: { ...state.playerSession, balance } });
@@ -1715,7 +1722,7 @@ function connectPlayerWs(): void {
     } catch { /* Ignore malformed events. */ }
   };
   socket.onclose = () => {
-    if (playerSocket === socket) playerSocket = null;
+    if (playerSocket === socket) { playerSocket = null; set({ playerConnectionOpen: false }); }
     if (state.playerSession) window.setTimeout(connectPlayerWs, 5000);
   };
   socket.onerror = () => socket.close();
@@ -2064,7 +2071,7 @@ export async function switchDerivAccount(accountId: string): Promise<SessionInfo
   });
   signalStabilizer.reset();
   playerStateRequest++;
-  set({ session: res.session, trades: [], playerSession: null, playerRecovery: null, playerTrades: [], digitTradeEvidence: [], digitRemainingLoss: null, performance: null, recovery: null, contract: null, contracts: {}, decision: null });
+  set({ session: res.session, trades: [], playerSession: null, playerConnectionOpen: false, playerRecovery: null, playerTrades: [], digitTradeEvidence: [], digitRemainingLoss: null, performance: null, recovery: null, contract: null, contracts: {}, decision: null });
   await refreshTrades();
   if (state.multiplayerEnabled) await refreshPlayerState();
   return res.session;

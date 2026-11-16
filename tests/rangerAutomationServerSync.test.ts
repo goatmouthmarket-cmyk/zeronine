@@ -109,6 +109,8 @@ test('server-selected Ranger candidates move and aim the visible avatar without 
   assert.match(core, /if\(rangerAutoServerOwned\)\{updateRangerServerVisual\(\);return\}/);
   assert.match(core, /sendPasture\(\{type:"shot",x:target\.x,y:target\.y\}\)/);
   assert.match(core, /serverAutoVisual=true/);
+  assert.match(core, /if\(!s\.target\.serverAutoVisual\)onCowDefeated\(s\.target\)/);
+  assert.match(core, /playerConnectionReady!==true/);
 });
 
 test('the automatic trade list uses a bounded vertical layout without horizontal scrolling', () => {

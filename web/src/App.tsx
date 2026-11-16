@@ -1282,6 +1282,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     owner: Boolean(s.owner),
     accountMode: s.session?.mode ?? null,
     accountId: s.session?.loginid ?? null,
+    playerConnectionReady: !usePlayerTrading || s.playerConnectionOpen,
     authStatus: base.playerAuthStatus,
     wsStatus: s.ws,
     remainingLoss: usePlayerTrading ? { amount: s.playerRecovery?.debt ?? 0, lastSettledTradeId: null } : s.digitRemainingLoss,
@@ -1313,7 +1314,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [base.playerAuthStatus, digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.feed?.connected, s.digitRemainingLoss, s.owner, s.paperSimulation?.phase, s.paperSimulation?.totalTrades, s.paperSimulation?.wins, s.paperSimulation?.losses, s.paperSimulation?.netPnl, s.paperSimulation?.openContract, s.paperSimulation?.lastSettled, s.paperSimulation?.recentTrades, s.playerRecovery?.debt, s.session, s.testRuns, s.testlab, usePlayerTrading]);
+  }), [base.playerAuthStatus, digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.feed?.connected, s.digitRemainingLoss, s.owner, s.paperSimulation?.phase, s.paperSimulation?.totalTrades, s.paperSimulation?.wins, s.paperSimulation?.losses, s.paperSimulation?.netPnl, s.paperSimulation?.openContract, s.paperSimulation?.lastSettled, s.paperSimulation?.recentTrades, s.playerConnectionOpen, s.playerRecovery?.debt, s.session, s.testRuns, s.testlab, usePlayerTrading]);
 
   const postRoomLayout = useCallback(() => {
     const header = document.querySelector('.app[data-page="home"] .view-home .header') as HTMLElement | null;

@@ -266,6 +266,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     lastAttemptEpoch: number;
     cooldownUntil: number;
     pendingContractId: string | null;
+    waitingForExternalContract: boolean;
     timer: NodeJS.Timeout | null;
     busy: boolean;
   };
@@ -418,11 +419,17 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const info = await account(run.accountId, token);
       if (info.mode !== run.mode) { stopRangerRun(run, 'Deriv account mode changed.'); return; }
       if (run.pendingContractId) { run.phase = 'waiting-settlement'; return; }
+      if (run.waitingForExternalContract) {
+        const openContractIds = await (await clients.connect(run.accountId, token)).getOpenContractIds();
+        if (openContractIds.size > 0) { run.phase = 'waiting-settlement'; return; }
+        run.waitingForExternalContract = false;
+        run.reason = null;
+      }
       const active = await store.activeContract(run.accountId);
       if (active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing')) {
-        run.pendingContractId = active.provider_contract_id ?? null;
+        run.pendingContractId = active.status === 'purchasing' ? null : active.provider_contract_id ?? null;
         run.phase = 'waiting-settlement';
-        if (active.provider_contract_id) monitor(run.accountId, await clients.connect(run.accountId, token));
+        if (run.pendingContractId) monitor(run.accountId, await clients.connect(run.accountId, token));
         return;
       }
       if (run.cooldownUntil > now) { run.phase = 'cooldown'; run.updatedAt = now; return; }
@@ -564,19 +571,27 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (current?.running) return { ok: true, state: rangerRunState(current, user.accountId) };
       const active = await store.activeContract(user.accountId);
       const client = await clients.connect(user.accountId, user.token);
-      if (active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing') || (await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'account has an open or uncertain contract');
+      const openContractIds = await client.getOpenContractIds();
       if (!(listeners.get(user.accountId)?.size)) return fail(reply, 409, 'keep the authenticated player connection open to run Ranger Auto');
+      const activeContract = active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing') ? active : null;
+      const waitingForExistingContract = Boolean(activeContract || openContractIds.size > 0);
       const sessionSecret = user.source === 'player' ? secretFor(req) : null;
       const run: RangerRun = {
         accountId: user.accountId, mode: info.mode, source: user.source, sessionSecret,
         ownerAuthorized: () => isOwner(req), token: user.token, config,
-        running: true, phase: 'starting', reason: null, startedAt: Date.now(), updatedAt: Date.now(),
+        running: true, phase: waitingForExistingContract ? 'waiting-settlement' : 'starting',
+        reason: waitingForExistingContract ? 'Waiting for the existing account contract to settle.' : null,
+        startedAt: Date.now(), updatedAt: Date.now(),
         tradesDone: 0, wins: 0, losses: 0, lossStreak: 0, runProfit: 0,
         candidate: null, confirmKey: '', confirmEpoch: 0, confirmations: 0, lastAttemptEpoch: 0,
-        cooldownUntil: 0, pendingContractId: null, timer: null, busy: false,
+        cooldownUntil: 0,
+        pendingContractId: activeContract?.status === 'purchasing' ? null : activeContract?.provider_contract_id ?? null,
+        waitingForExternalContract: openContractIds.size > 0 && !activeContract,
+        timer: null, busy: false,
         armedUntil: info.mode === 'real' ? rangerArms.get(user.accountId) ?? 0 : 0,
       };
       rangerRuns.set(user.accountId, run);
+      if (run.pendingContractId) monitor(user.accountId, client);
       startRangerTimer(run);
       return { ok: true, state: rangerRunState(run, user.accountId) };
     } catch (error) {
