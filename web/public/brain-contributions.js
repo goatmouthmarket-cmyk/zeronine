@@ -655,9 +655,10 @@
   function renderUnlockHero(data) {
     const title=$('brainUnlockTitle'), message=$('brainUnlockText'), list=$('brainUnlockGoals'), action=$('brainUnlockAction');
     if(!title || !message || !list || !action) return;
-    const training=data?.training, unlocked=training?.unlocked===true;
-    title.textContent=unlocked?'Suggestions unlocked':'Unlock Brain suggestions';
-    message.textContent=unlocked?'Left-click the Brain to find a setup.':data?'Teach the Brain, then let it learn from recorded trades.':note==='guest'?'Connect Deriv to start teaching.':'Training progress is unavailable right now.';
+    const mode = window.__brainSuggestionMode === 'training' ? 'training' : 'normal';
+    const training=data?.training, unlocked=mode==='normal' || training?.unlocked===true;
+    title.textContent=mode==='normal'?'Normal mode ready':unlocked?'Suggestions unlocked':'Unlock Brain suggestions';
+    message.textContent=mode==='normal'?'Left-click the Brain to find a setup.':unlocked?'Left-click the Brain to find a setup.':data?'Teach the Brain, then let it learn from recorded trades.':note==='guest'?'Connect Deriv to start teaching.':'Training progress is unavailable right now.';
     list.replaceChildren();
     const labels={reviews:'Review trades',pattern:'Confirm a pattern',matches:'Matching trades',comparison:'Other trades'};
     for(const goal of Array.isArray(training?.goals)?training.goals:[]) {
@@ -999,6 +1000,7 @@
     scheduleTradeRefresh(settled?'Adding trade to Memories · gathering prices':'Trade placed · waiting for its result');
   });
 
+  document.addEventListener('zeronine:brain-mode-change',()=>renderUnlockHero(state));
   document.getElementById('brainTabMemory')?.addEventListener('click',()=>setTimeout(load,100));
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)load();});
   document.addEventListener('zeronine:brain-report',()=>load());

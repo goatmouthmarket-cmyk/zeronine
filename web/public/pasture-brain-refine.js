@@ -651,7 +651,7 @@
     else if (snipe.limited) parts.push('Stake capped by your account limits.');
     if (Number(snipe.edge) > 0) parts.push('Fresh price and positive estimated edge.');
     else parts.push('Selected from the current live setups.');
-    parts.push(snipe.lessonContext || 'Your lessons are still learning for this setup.');
+    if (suggestionMode() === 'training') parts.push(snipe.lessonContext || 'Your lessons are still learning for this setup.');
     return parts.join(' ');
   }
 
@@ -766,8 +766,18 @@
   }
 
   let trainingCheckPending = false;
+  function suggestionMode() {
+    if (window.__brainSuggestionMode === 'training') return 'training';
+    if (window.__brainSuggestionMode === 'normal') return 'normal';
+    try { return localStorage.getItem('ranger-brain-suggestion-mode') === 'training' ? 'training' : 'normal'; } catch { return 'normal'; }
+  }
   async function suggest() {
     if (trainingCheckPending) return;
+    if (suggestionMode() === 'normal') {
+      const result = bridge()?.suggest?.();
+      runCapture(result);
+      return result;
+    }
     const account = currentAccount();
     if (!account) {
       runCapture({ status: 'none', reason: 'Connect your account and teach the Brain first.' });
@@ -779,7 +789,7 @@
       if (!response.ok) throw new Error('Training unavailable');
       const body = await response.json();
       // A response for a previous account must never unlock the current one.
-      if (account !== currentAccount()) return;
+      if (account !== currentAccount() || suggestionMode() !== 'training') return;
       if (body?.training?.unlocked !== true) {
         runCapture({ status: 'none', reason: 'Complete your Brain training goals to unlock suggestions.' });
         return;
