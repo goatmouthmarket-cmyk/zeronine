@@ -623,3 +623,11 @@ html body #rangerBrainPanel #brainPaneMind:not([hidden]) { align-items:start; }
 html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid { height:auto; align-content:start; grid-template-rows:auto; }
 html body #rangerBrainPanel #brainHeroCard { height:auto; min-height:0; align-self:start; grid-template-rows:auto; }
 html body #rangerBrainPanel .brain-nerve-detail { height:auto; }
+
+/* Fit the floating panel to content and allow long tabs to scroll. */
+html body #rangerBrainPanel:not([hidden]) { height:auto; min-height:0; grid-template-rows:auto auto minmax(0,1fr); align-content:start; }
+html body #rangerBrainPanel .ranger-brain-body { min-height:0; height:auto; align-content:start; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
+html body #rangerBrainPanel #brainPaneMind:not([hidden]) { align-content:start; grid-auto-rows:max-content; }
+html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid { height:auto; align-self:start; align-content:start; grid-template-rows:auto; }
+html body #rangerBrainPanel #brainHeroCard, html body #rangerBrainPanel .brain-nerve-detail { height:auto; min-height:0; align-self:start; }
+html body #rangerBrainPanel #brainThoughts:empty { display:none; }
