@@ -616,3 +616,10 @@ html body #rangerBrainPanel .brain-nerve-intro-art { width:100%; height:clamp(10
 html body #rangerBrainPanel .brain-nerve-more { margin-top:auto; }
 @media(max-width:700px) { html body #rangerBrainPanel .brain-nerve-detail {padding:10px;gap:8px} html body #rangerBrainPanel .brain-nerve-intro-art {height:clamp(90px,16dvh,130px)} }
 @media(max-width:380px) { html body #rangerBrainPanel .brain-nerve-chart {grid-template-columns:minmax(0,1fr)} }
+
+/* Let the Brain window fit its contents instead of stretching empty cards. */
+html body #rangerBrainPanel:not([hidden]) { grid-template-rows:auto auto auto; height:auto; }
+html body #rangerBrainPanel #brainPaneMind:not([hidden]) { align-items:start; }
+html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid { height:auto; align-content:start; grid-template-rows:auto; }
+html body #rangerBrainPanel #brainHeroCard { height:auto; min-height:0; align-self:start; grid-template-rows:auto; }
+html body #rangerBrainPanel .brain-nerve-detail { height:auto; }
