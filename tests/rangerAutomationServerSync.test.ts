@@ -73,7 +73,8 @@ test('server Ranger state drives the displayed realized P&L and settlement summa
   context.rangerAutoServerState.wins = 7;
   render(state);
   assert.equal(elements.get('rangerAutoPnl')?.textContent, '+3.25 USD');
-  assert.match(elements.get('rangerAutoRecent')?.children[0]?.children[1]?.textContent ?? '', /2 settled/);
+  assert.equal(elements.get('rangerAutoRecent')?.children[0]?.children[0]?.textContent, 'R_5 OVER 5 · 1.00');
+  assert.equal(elements.get('rangerAutoRecent')?.children[0]?.children[1]?.textContent, '+2.00 USD');
 });
 
 test('server-selected Ranger candidates move and aim the visible avatar without starting a second trade', () => {
