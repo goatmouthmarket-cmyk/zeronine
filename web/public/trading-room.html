@@ -151,9 +151,9 @@
 .ranger-auto-pnl strong{color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
 .ranger-auto-pnl strong[data-negative="true"]{color:#fff}
 #rangerAutoActivity>small{display:block;margin:4px 0;color:#fff;font-size:9px;font-weight:750;text-shadow:0 1px 3px #000}
-#rangerAutoRecent{display:grid;gap:3px;max-height:105px;margin:0;padding:0;overflow:auto;list-style:none}
-#rangerAutoRecent li{display:flex;justify-content:space-between;gap:6px;color:#fff;font-size:9px;font-weight:750;line-height:1.35;text-shadow:0 1px 3px #000}
-#rangerAutoRecent li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rangerAutoRecent{display:grid;gap:3px;max-height:150px;margin:0;padding:0;overflow-y:auto;overflow-x:hidden;list-style:none}
+#rangerAutoRecent li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px;min-width:0;color:#fff;font-size:9px;font-weight:750;line-height:1.25;text-shadow:0 1px 3px #000}
+#rangerAutoRecent li span{min-width:0;overflow-wrap:anywhere;white-space:normal}
 #rangerAutoRecent li strong{color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums}
 #rangerAutoRecent li[data-status="lost"] strong,#rangerAutoRecent li[data-status="won"] strong{color:#fff}
 #rangerAutoRecent .ranger-auto-empty{color:#fff}

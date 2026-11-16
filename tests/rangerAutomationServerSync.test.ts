@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
 const core = readFileSync(new URL('../web/public/trading-room-core.js', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
 
 type MockElement = {
   hidden: boolean;
@@ -41,7 +42,7 @@ test('server Ranger state drives the displayed realized P&L and settlement summa
     document: { createElement: () => element() },
     rangerAutoActive: true,
     rangerAutoServerOwned: true,
-    rangerAutoServerState: { phase: 'waiting-settlement', runProfit: 2.5, tradesDone: 1, wins: 1, losses: 0 },
+    rangerAutoServerState: { phase: 'waiting-settlement', startedAt: 100, runProfit: 2.5, tradesDone: 6, wins: 6, losses: 0 },
     rangerAutoTradeIds: new Set<number>(),
     rangerAutoRunTradeIds: new Set<number>(),
     rangerAutoTrackedTrades: () => [],
@@ -53,15 +54,23 @@ test('server Ranger state drives the displayed realized P&L and settlement summa
     innerHeight: 800,
   };
   const render = runInNewContext(`${core.slice(start, end)}; renderRangerAutoActivity`, context) as (state: unknown) => void;
-  const state = { currency: 'USD', trades: [] };
+  const state = {
+    currency: 'USD',
+    trades: Array.from({ length: 6 }, (_, index) => ({
+      id: index + 1, origin: 'bot', ts: 100 + index, market: `R_${index}`, direction: 'over',
+      barrier: index, stake: 1, profit: 2, status: 'won',
+    })),
+  };
 
   render(state);
   assert.equal(elements.get('rangerAutoPnl')?.textContent, '+2.50 USD');
-  assert.match(elements.get('rangerAutoRecent')?.children[0]?.children[0]?.textContent ?? '', /waiting settlement/);
+  assert.equal(elements.get('rangerAutoRecent')?.children.length, 5);
+  assert.equal(elements.get('rangerAutoRecent')?.children[0]?.children[0]?.textContent, 'R_5 OVER 5 · 1.00');
+  assert.equal(elements.get('rangerAutoRecent')?.children[0]?.children[1]?.textContent, '+2.00 USD');
 
   context.rangerAutoServerState.runProfit = 3.25;
-  context.rangerAutoServerState.tradesDone = 2;
-  context.rangerAutoServerState.wins = 2;
+  context.rangerAutoServerState.tradesDone = 7;
+  context.rangerAutoServerState.wins = 7;
   render(state);
   assert.equal(elements.get('rangerAutoPnl')?.textContent, '+3.25 USD');
   assert.match(elements.get('rangerAutoRecent')?.children[0]?.children[1]?.textContent ?? '', /2 settled/);
@@ -72,10 +81,12 @@ test('server-selected Ranger candidates move and aim the visible avatar without 
   const end = core.indexOf('function updateRangerAutomation(', start);
   assert.ok(start >= 0 && end > start, 'server visual controller exists');
 
-  const target = { x: 500, y: 400, alive: true, contract: { symbol: 'R_100', kind: 'over', barrier: 1 } };
+  const target = { x: 500, y: 400, alive: true, serverAutoVisual: false, tradeIntent: undefined, contract: { symbol: 'R_100', kind: 'over', barrier: 1 } };
   const context = {
     rangerAutoServerState: { phase: 'waiting-settlement', candidate: { market: 'R_100', direction: 'over', barrier: 1 } },
     rangerAutoServerVisualTarget: null as typeof target | null,
+    target: null as typeof target | null,
+    rangerAutoShots: 3,
     cows: [target],
     ghostCow: null,
     player: { x: 100, y: 100, tx: 100, ty: 100 },
@@ -89,7 +100,17 @@ test('server-selected Ranger candidates move and aim the visible avatar without 
   assert.equal(context.player.tx, 395);
   assert.equal(context.player.ty, 470);
   assert.equal(context.rangerAutoServerVisualTarget, target);
+  assert.equal(context.target, target);
+  assert.equal(target.serverAutoVisual, true);
+  assert.equal(target.tradeIntent, undefined);
   assert.equal(context.rangerAnim.patrolWaiting, false);
   assert.equal(context.rangerAnim.inspectCow, null);
   assert.match(core, /if\(rangerAutoServerOwned\)\{updateRangerServerVisual\(\);return\}/);
+  assert.match(core, /sendPasture\(\{type:"shot",x:target\.x,y:target\.y\}\)/);
+  assert.match(core, /serverAutoVisual=true/);
+});
+
+test('the automatic trade list uses a bounded vertical layout without horizontal scrolling', () => {
+  assert.match(html, /#rangerAutoRecent\{[^}]*overflow-y:auto;overflow-x:hidden/);
+  assert.match(html, /#rangerAutoRecent li\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
 });
