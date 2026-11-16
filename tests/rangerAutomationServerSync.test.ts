@@ -7,6 +7,15 @@ const core = readFileSync(new URL('../web/public/trading-room-core.js', import.m
 const html = readFileSync(new URL('../web/public/trading-room.html', import.meta.url), 'utf8');
 const playerTrading = readFileSync(new URL('../src/api/playerTrading.ts', import.meta.url), 'utf8');
 
+test('Ranger starts its pasture automation while Railway automation is archived', () => {
+  const start = core.slice(core.indexOf('function startRangerAuto(){'), core.indexOf('const guestAutoPaperLastTicks'));
+  assert.match(start, /rangerAutoServerOwned=false/);
+  assert.match(start, /cow\.serverAutoVisual=false/);
+  assert.match(start, /updateRangerAutomation\(\)/);
+  assert.doesNotMatch(start, /zeronine:room-auto-start/);
+  assert.match(playerTrading, /ENABLE_RAILWAY_RANGER_AUTO !== 'true'/);
+});
+
 type MockElement = {
   hidden: boolean;
   textContent: string;
@@ -124,7 +133,6 @@ test('Ranger only kills one cow for the market and contract actually submitted b
   assert.match(core, /run\.lastSubmittedTrade = \{ contractId: bought\.contractId/);
   assert.match(core, /playerConnectionReady!==true/);
   assert.match(core, /function rangerPastureContracts\(\)/);
-  assert.match(core, /red:config\.red,pastureContracts/);
   assert.match(playerTrading, /run\.config\.pastureContracts\.some\(contract => contract\.market === candidate\.market && contract\.direction === candidate\.direction && contract\.barrier === candidate\.barrier\)/);
   assert.doesNotMatch(playerTrading, /if \(run\?\.running\) stopRangerRun\(run, 'Player connection closed\.'\)/);
 });

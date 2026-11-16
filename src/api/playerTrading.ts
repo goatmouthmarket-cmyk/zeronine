@@ -573,6 +573,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     if (!validOrigin(req)) return fail(reply, 403, 'origin rejected');
     const user = await principal(req);
     if (!user) return fail(reply, 401, 'player session required');
+    if (process.env.ENABLE_RAILWAY_RANGER_AUTO !== 'true') return fail(reply, 410, 'Railway Ranger Auto is archived; use pasture Ranger Auto.');
     let config: RangerRunConfig;
     try { config = parseRangerConfig(req.body); } catch (error) { return fail(reply, 400, error instanceof Error ? error.message : 'invalid Ranger Auto settings'); }
     try {
