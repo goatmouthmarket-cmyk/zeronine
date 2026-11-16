@@ -260,6 +260,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     lossStreak: number;
     runProfit: number;
     candidate: { market: string; direction: Direction; barrier: number } | null;
+    lastSubmittedTrade: { contractId: string; market: string; direction: Direction; barrier: number } | null;
     confirmKey: string;
     confirmEpoch: number;
     confirmations: number;
@@ -276,11 +277,11 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
   const rangerAuthCheckedAt = new Map<string, number>();
 
   function rangerRunState(run: RangerRun | undefined, accountId: string, armedUntil = 0): Record<string, unknown> {
-    if (!run) return { running: false, phase: 'idle', startedAt: null, tradesDone: 0, wins: 0, losses: 0, runProfit: 0, reason: null, candidate: null, account: { loginid: accountId }, armedUntil: armedUntil || null };
+    if (!run) return { running: false, phase: 'idle', startedAt: null, tradesDone: 0, wins: 0, losses: 0, runProfit: 0, reason: null, candidate: null, lastSubmittedTrade: null, account: { loginid: accountId }, armedUntil: armedUntil || null };
     return {
       running: run.running, phase: run.phase, startedAt: run.startedAt, updatedAt: run.updatedAt,
       tradesDone: run.tradesDone, wins: run.wins, losses: run.losses, runProfit: run.runProfit,
-      reason: run.reason, candidate: run.candidate, config: run.config,
+      reason: run.reason, candidate: run.candidate, lastSubmittedTrade: run.lastSubmittedTrade, config: run.config,
       account: { loginid: run.accountId, mode: run.mode },
       armedUntil: run.mode === 'real' ? rangerArms.get(run.accountId) ?? null : null,
       cooldownUntil: run.cooldownUntil || null,
@@ -498,6 +499,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         boughtContractId = bought.contractId;
         await store.markPurchased(run.accountId, reservationId, bought.contractId, bought.buyPrice, bought.payout);
         run.pendingContractId = bought.contractId;
+        run.lastSubmittedTrade = { contractId: bought.contractId, market: order.market, direction: order.direction, barrier: order.barrier };
         run.phase = 'waiting-settlement'; run.updatedAt = Date.now();
         publish({ type: 'trade', accountId: run.accountId, contractId: bought.contractId, status: 'open' });
         captureTradeContext(run.accountId, bought.contractId, order, liveEdge, client);
@@ -583,7 +585,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         reason: waitingForExistingContract ? 'Waiting for the existing account contract to settle.' : null,
         startedAt: Date.now(), updatedAt: Date.now(),
         tradesDone: 0, wins: 0, losses: 0, lossStreak: 0, runProfit: 0,
-        candidate: null, confirmKey: '', confirmEpoch: 0, confirmations: 0, lastAttemptEpoch: 0,
+        candidate: null, lastSubmittedTrade: null, confirmKey: '', confirmEpoch: 0, confirmations: 0, lastAttemptEpoch: 0,
         cooldownUntil: 0,
         pendingContractId: activeContract?.status === 'purchasing' ? null : activeContract?.provider_contract_id ?? null,
         waitingForExternalContract: openContractIds.size > 0 && !activeContract,

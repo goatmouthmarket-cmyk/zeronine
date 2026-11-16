@@ -77,15 +77,16 @@ test('server Ranger state drives the displayed realized P&L and settlement summa
   assert.equal(elements.get('rangerAutoRecent')?.children[0]?.children[1]?.textContent, '+2.00 USD');
 });
 
-test('server-selected Ranger candidates move and aim the visible avatar without starting a second trade', () => {
+test('Ranger only kills one cow for the market and contract actually submitted by the server', () => {
   const start = core.indexOf('function updateRangerServerVisual(');
   const end = core.indexOf('function updateRangerAutomation(', start);
   assert.ok(start >= 0 && end > start, 'server visual controller exists');
 
   const target = { x: 500, y: 400, alive: true, serverAutoVisual: false, tradeIntent: undefined, contract: { symbol: 'R_100', kind: 'over', barrier: 1 } };
   const context = {
-    rangerAutoServerState: { phase: 'waiting-settlement', candidate: { market: 'R_100', direction: 'over', barrier: 1 } },
+    rangerAutoServerState: { running: true, phase: 'waiting-settlement', candidate: { market: 'R_100', direction: 'over', barrier: 1 }, lastSubmittedTrade: { contractId: 'contract-1', market: 'R_100', direction: 'over', barrier: 1 } },
     rangerAutoServerVisualTarget: null as typeof target | null,
+    rangerAutoServerVisualConsumedId: '',
     target: null as typeof target | null,
     rangerAutoShots: 3,
     cows: [target],
@@ -106,10 +107,20 @@ test('server-selected Ranger candidates move and aim the visible avatar without 
   assert.equal(target.tradeIntent, undefined);
   assert.equal(context.rangerAnim.patrolWaiting, false);
   assert.equal(context.rangerAnim.inspectCow, null);
+  context.rangerAutoServerVisualConsumedId = 'contract-1';
+  update();
+  assert.equal(context.target, null, 'the same submitted contract cannot trigger another cow kill');
+  assert.equal(context.rangerAutoServerVisualTarget, null);
+  context.rangerAutoServerVisualConsumedId = '';
+  context.rangerAutoServerState = { running: true, phase: 'confirming-signal', candidate: { market: 'R_100', direction: 'over', barrier: 1 } };
+  update();
+  assert.equal(context.target, null, 'a market candidate without a submitted contract cannot trigger a kill');
   assert.match(core, /if\(rangerAutoServerOwned\)\{updateRangerServerVisual\(\);return\}/);
   assert.match(core, /sendPasture\(\{type:"shot",x:target\.x,y:target\.y\}\)/);
   assert.match(core, /serverAutoVisual=true/);
   assert.match(core, /if\(!s\.target\.serverAutoVisual\)onCowDefeated\(s\.target\)/);
+  assert.match(core, /lastSubmittedTrade/);
+  assert.match(core, /run\.lastSubmittedTrade = \{ contractId: bought\.contractId/);
   assert.match(core, /playerConnectionReady!==true/);
 });
 
