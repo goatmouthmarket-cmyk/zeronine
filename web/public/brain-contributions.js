@@ -79,6 +79,8 @@
     }
 
     /* Fit the teaching surface without scroll regions inside individual cards. */
+    .brain-entry-sent{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:8px;background:#e8f2df;color:#24583a}
+    .brain-entry-sent>span{display:grid;gap:2px}.brain-entry-sent small{font-size:10px;color:#596b4c}.brain-entry-sent strong{font-size:13px}.brain-entry-sent strong b{color:#185c34}
     .brain-review-trades { display:grid; gap:4px; max-height:none; overflow:visible; min-width:0; }
     .brain-review-picker-label { font-size:11px; font-weight:800; color:#405c40; }
     .brain-review-picker { display:grid; grid-template-columns:36px minmax(0,1fr) 36px; gap:5px; align-items:stretch; min-width:0; }
@@ -336,6 +338,25 @@
     priceSection.append(node('summary','','Entry & exit prices'));
     detail.append(priceSection);
 
+    // The last feed price seen when the app sent the order is a separate
+    // event from Deriv's contract entry and settlement. Never infer it from
+    // either provider spot if the snapshot wasn't captured.
+    const sent = context.shot && typeof context.shot === 'object' ? context.shot :
+      context.shotTick && typeof context.shotTick === 'object' ? context.shotTick : {};
+    const sentQuote = sent.quote == null ? '' : String(sent.quote).trim();
+    const sentRow = node('div', 'brain-entry-sent');
+    const sentPrice = node('strong', '');
+    if (sentQuote && /\d$/.test(sentQuote)) {
+      sentPrice.append(document.createTextNode(sentQuote.slice(0, -1)), node('b', '', sentQuote.slice(-1)));
+    } else sentPrice.textContent = 'Not recorded';
+    const sentEpoch = Number(sent.epoch);
+    const sentTime = sent.epoch != null && Number.isFinite(sentEpoch) && sentEpoch > 0
+      ? new Date(sentEpoch * 1000).toLocaleTimeString(undefined, {hour:'numeric',minute:'2-digit',second:'2-digit'}) : '';
+    const sentCopy = node('span', '');
+    sentCopy.append(node('small', '', 'App price when sent'), sentPrice);
+    sentRow.append(sentCopy, node('small', '', sentTime || 'Time not recorded'));
+    priceSection.append(sentRow);
+    priceSection.append(node('p', 'brain-trade-note', 'The app price is the last tick seen when the order was sent. Entry and exit below are reported by Deriv.'));
     const addPriceSequence = (label, quote, digit, preceding, following) => {
       const before = Array.isArray(preceding) ? preceding.slice(-3) : [];
       const after = Array.isArray(following) ? following.slice(0, 3) : [];
@@ -366,11 +387,11 @@
     const entryTime = Number(context.entryEpoch), exitTime = Number(exit.epoch);
     const sameRecordedPoint = context.entryEpoch != null && exit.epoch != null && Number.isFinite(entryTime) && Number.isFinite(exitTime) && entryTime === exitTime && context.entryQuote != null && exit.quote != null && String(context.entryQuote) === String(exit.quote);
     if (sameRecordedPoint) {
-      addPriceSequence('Entry / exit', context.entryQuote, context.entryDigit, context.before, context.after);
+      addPriceSequence('Deriv entry / exit', context.entryQuote, context.entryDigit, context.before, context.after);
       priceSection.append(node('p', 'brain-trade-note', 'Deriv recorded the same price and second for entry and exit. More than one tick can share a second.'));
     } else {
-      addPriceSequence('Entry', context.entryQuote, context.entryDigit, context.before, context.after);
-      addPriceSequence('Exit', exit.quote, exit.digit, exit.before, exit.after);
+      addPriceSequence('Deriv entry', context.entryQuote, context.entryDigit, context.before, context.after);
+      addPriceSequence('Deriv exit', exit.quote, exit.digit, exit.before, exit.after);
     }
 
 

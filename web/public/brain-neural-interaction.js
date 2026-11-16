@@ -17,11 +17,12 @@
     return el;
   }
   function message(title, copy) {
-    detail.replaceChildren(
-      node('span', 'brain-nerve-kicker', 'YOUR CONNECTIONS'),
-      node('h3', '', title),
-      node('p', '', copy)
-    );
+    const header = node('div', 'brain-nerve-heading');
+    const mark = node('span', 'brain-nerve-heading-icon', '✦'); mark.setAttribute('aria-hidden', 'true');
+    const heading = node('div', 'brain-nerve-heading-copy');
+    heading.append(node('span', 'brain-nerve-kicker', 'YOUR CONNECTION'), node('h3', '', title));
+    header.append(mark, heading);
+    detail.replaceChildren(header, node('p', 'brain-nerve-note', copy));
   }
   function showIntro() {
     detail.replaceChildren();
@@ -29,8 +30,10 @@
     const orbit = node('span', 'brain-nerve-intro-orbit');
     const image = node('img', ''); image.src = '/brain-brand.svg?v=neural2'; image.alt = '';
     art.append(orbit, image, node('span', 'brain-nerve-intro-dot'), node('span', 'brain-nerve-intro-cursor', '↖'));
-    detail.append(art, node('span', 'brain-nerve-kicker', 'YOUR CONNECTIONS'),
+    const intro = node('div', 'brain-nerve-intro-copy');
+    intro.append(node('span', 'brain-nerve-kicker', 'YOUR CONNECTIONS'),
       node('h3', '', 'Explore your Brain'), node('p', '', 'Tap a glowing point to see its lesson.'));
+    detail.append(art, intro);
   }
   function setActive(circle) {
     active = circle;
@@ -41,7 +44,9 @@
     const wins = Math.max(0, Math.min(count, Number(group?.wins) || 0));
     const rate = count ? Math.round(wins / count * 100) : 0;
     const row = node('div', 'brain-nerve-row');
-    row.append(node('span', '', label), node('strong', '', count ? wins + ' / ' + count + ' won' : 'No trades yet'));
+    const caption = node('span', 'brain-nerve-row-label', label);
+    const result = node('strong', '', count ? wins + ' / ' + count + ' won' : 'No trades yet');
+    row.append(caption, result);
     const track = node('span', 'brain-nerve-track');
     track.setAttribute('aria-hidden', 'true');
     const fill = node('i', ''); fill.style.setProperty('--win-width', rate + '%'); track.append(fill);

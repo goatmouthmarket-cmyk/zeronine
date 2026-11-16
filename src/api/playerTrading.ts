@@ -120,7 +120,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
           continue;
         }
         const entryEpoch = Number(provider.entryTickTime), entrySpot = Number(provider.entrySpot);
-        const ticks = registry.snapshot(order.market).recentTicks;
+        const ticks = registry.captureTicks(order.market);
         const matches = ticks.flatMap((tick, index) => tick.epoch === entryEpoch && tick.quote.toFixed(precision!) === entrySpot.toFixed(precision!) ? [index] : []);
         const format = (tick: { quote: number; digit: number; epoch: number }) => ({ quote: tick.quote.toFixed(precision!), digit: tick.digit, epoch: tick.epoch });
         const index = matches.length === 1 ? matches[0] : -1;
@@ -136,7 +136,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const shot = order.cowDisplay?.shotTick;
       const precision = getPrecision(order.market);
       if (shot && Number.isInteger(precision) && precision! >= 0 && precision! <= 12) {
-        const feed = registry.snapshot(order.market).recentTicks;
+        const feed = registry.captureTicks(order.market);
         const indices = feed.flatMap((tick, index) => tick.epoch === shot.epoch && tick.quote.toFixed(precision!) === shot.quote.toFixed(precision!) ? [index] : []);
         const formatShot = (tick: {quote: number; digit: number; epoch: number}) => ({quote: tick.quote.toFixed(precision!), digit: tick.digit, epoch: tick.epoch});
         const index = indices.length === 1 ? indices[0] : -1;
@@ -170,7 +170,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         if (!Number.isInteger(precision) || precision! < 0 || precision! > 12 ||
             !Number.isFinite(provider.exitSpot) || !Number.isFinite(provider.exitTickTime)) continue;
         const epoch = Number(provider.exitTickTime), spot = Number(provider.exitSpot);
-        const ticks = registry.snapshot(market).recentTicks;
+        const ticks = registry.captureTicks(market);
         const matches = ticks.flatMap((tick, index) =>
           tick.epoch === epoch && tick.quote.toFixed(precision!) === spot.toFixed(precision!) ? [index] : []);
         const index = matches.length === 1 ? matches[0] : -1;

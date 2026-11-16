@@ -17,10 +17,13 @@ export interface FeedCallbacks {
 }
 
 const RECENT_WINDOW = 60;
+// Additional in-memory history is reserved for trade replay and never enters signal math.
+const CAPTURE_WINDOW = 240;
 
 export class MarketRegistry {
   private buffers = new Map<string, Array<{ quote: number; epoch: number; digit: number }>>();
   private displays = new Map<string, string>();
+  private captureBuffers = new Map<string, Array<{ quote: number; epoch: number; digit: number }>>();
   private cb: FeedCallbacks;
 
   constructor(cb: FeedCallbacks) {
@@ -37,12 +40,15 @@ export class MarketRegistry {
 
   ensure(symbol: string): void {
     if (!this.buffers.has(symbol)) this.buffers.set(symbol, []);
+    if (!this.captureBuffers.has(symbol)) this.captureBuffers.set(symbol, []);
   }
 
   push(symbol: string, quote: number, epoch: number, digit: number): void {
     const buf = this.buffers.get(symbol);
     if (!buf) return;
     buf.push({ quote, epoch, digit });
+    const capture = this.captureBuffers.get(symbol);
+    if (capture) { capture.push({ quote, epoch, digit }); if (capture.length > CAPTURE_WINDOW) capture.shift(); }
     if (buf.length > RECENT_WINDOW) buf.shift();
     this.cb.onTick(this.snapshot(symbol));
   }
@@ -51,7 +57,16 @@ export class MarketRegistry {
     if (!this.buffers.has(symbol) || ticks.length === 0) return;
     const clean = ticks.filter((tick) => Number.isFinite(tick.quote) && Number.isFinite(tick.epoch)).sort((a, b) => a.epoch - b.epoch);
     this.buffers.set(symbol, clean.slice(-RECENT_WINDOW));
+    // Preserve live ticks that arrived while history was being requested.
+    // Same-second history is excluded because arrival ordering is ambiguous.
+    const live = this.captureBuffers.get(symbol) ?? [];
+    const older = live.length ? clean.filter(tick => tick.epoch < live[0].epoch) : clean;
+    this.captureBuffers.set(symbol, [...older, ...live].slice(-CAPTURE_WINDOW));
     this.cb.onTick(this.snapshot(symbol));
+  }
+
+  captureTicks(symbol: string): Array<{ epoch: number; quote: number; digit: number }> {
+    return (this.captureBuffers.get(symbol) ?? []).map(tick => ({ ...tick }));
   }
 
   snapshot(symbol: string): MarketSnapshot {

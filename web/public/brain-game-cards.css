@@ -593,3 +593,26 @@ html body #rangerBrainPanel .brain-growth-card .brain-memory-cylinder {width:38p
  html body #rangerBrainPanel .brain-growth-card .brain-memory-cylinder {width:30px;height:42px}
 }
 @media(max-width:330px){html body #rangerBrainPanel #brainPaneMind:not([hidden]){grid-template-columns:minmax(0,1fr)}html body #rangerBrainPanel #brainPaneMind > .brain-growth-card,html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid{grid-column:1}}
+
+/* Make the selected connection a complete visual card. */
+html body #rangerBrainPanel #brainHeroCard { height:100%; align-self:stretch; }
+html body #rangerBrainPanel .brain-nerve-detail {
+  box-sizing:border-box; display:grid; grid-template-columns:minmax(0,1fr); grid-auto-rows:max-content;
+  align-content:start; gap:clamp(8px,1.2vw,14px); width:100%; height:100%; min-width:0;
+  padding:clamp(12px,1.5vw,20px); background:linear-gradient(145deg,#fffaf0,#f0f5e5);
+}
+html body #rangerBrainPanel .brain-nerve-heading { display:grid; grid-template-columns:38px minmax(0,1fr); align-items:center; gap:10px; min-width:0; }
+html body #rangerBrainPanel .brain-nerve-heading-icon { display:grid; place-items:center; width:38px; height:38px; border-radius:12px; background:#d9eacb; color:#27704a; font:800 20px/1 system-ui; }
+html body #rangerBrainPanel .brain-nerve-heading-copy, html body #rangerBrainPanel .brain-nerve-intro-copy { min-width:0; display:grid; gap:5px; }
+html body #rangerBrainPanel .brain-nerve-detail h3 { font-size:clamp(16px,1.45vw,21px); line-height:1.2; text-wrap:balance; overflow-wrap:normal; word-break:normal; }
+html body #rangerBrainPanel .brain-nerve-detail p { font-size:clamp(12px,1vw,14px); line-height:1.4; text-wrap:pretty; overflow-wrap:anywhere; }
+html body #rangerBrainPanel .brain-nerve-note { padding:10px 12px; background:#fffdf6; border-radius:10px; }
+html body #rangerBrainPanel .brain-nerve-chart { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; padding:0; background:transparent; }
+html body #rangerBrainPanel .brain-nerve-row { display:grid; grid-template-columns:minmax(0,1fr); align-content:start; gap:7px; min-width:0; padding:10px; border-radius:10px; background:#e8f0df; }
+html body #rangerBrainPanel .brain-nerve-row-label { line-height:1.25; text-wrap:balance; }
+html body #rangerBrainPanel .brain-nerve-row strong { font-size:clamp(12px,1.1vw,15px); overflow-wrap:anywhere; }
+html body #rangerBrainPanel .brain-nerve-track { grid-column:1; }
+html body #rangerBrainPanel .brain-nerve-intro-art { width:100%; height:clamp(100px,19dvh,180px); }
+html body #rangerBrainPanel .brain-nerve-more { margin-top:auto; }
+@media(max-width:700px) { html body #rangerBrainPanel .brain-nerve-detail {padding:10px;gap:8px} html body #rangerBrainPanel .brain-nerve-intro-art {height:clamp(90px,16dvh,130px)} }
+@media(max-width:380px) { html body #rangerBrainPanel .brain-nerve-chart {grid-template-columns:minmax(0,1fr)} }
