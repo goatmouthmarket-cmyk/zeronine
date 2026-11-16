@@ -704,3 +704,21 @@ html body #rangerBrainPanel .brain-growth-card.brain-growth-celebrate .brain-neu
   html body #rangerBrainPanel .brain-growth-card.brain-growth-celebrate .brain-neural-art { animation:none; }
   html body #rangerBrainPanel #brainMemoryMeter .brain-memory-cylinder::before { transition:none; }
 }
+
+
+/* Keep the connection card at its natural height; place memory storage below it. */
+html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid {
+  height:auto; min-height:0; align-self:start; align-content:start;
+  grid-template-rows:max-content max-content;
+}
+html body #rangerBrainPanel #brainHeroCard {
+  height:auto; min-height:0; align-self:start; grid-row:1;
+}
+html body #rangerBrainPanel .brain-nerve-detail {
+  height:auto; min-height:0; align-content:start;
+}
+@media (max-width:500px) {
+  html body #rangerBrainPanel #brainPaneMind > .brain-overview-grid {
+    grid-template-rows:max-content max-content;
+  }
+}

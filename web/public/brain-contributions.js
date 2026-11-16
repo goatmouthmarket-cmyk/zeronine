@@ -228,7 +228,9 @@
     .brain-tick { min-width:0; white-space:nowrap; overflow-wrap:normal; word-break:normal; font-variant-numeric:tabular-nums; }
     .brain-tick small { white-space:normal; overflow-wrap:normal; }
     .brain-tick-price { display:inline-block; white-space:nowrap; letter-spacing:-.02em; }
-  `;document.head.append(sheet);
+  `;
+  sheet.textContent += "\n    @container (min-width:650px) {\n      .brain-review-input-column .brain-review-save {\n        grid-column:auto; grid-row:auto; justify-self:start; align-self:start;\n        width:min(220px,100%); min-height:42px; margin:0;\n      }\n    }\n    @container (max-width:649px) {\n      .brain-review-input-column .brain-review-save {\n        grid-column:auto; grid-row:auto; justify-self:start;\n        width:min(260px,100%); min-height:42px; margin:0;\n      }\n    }\n  ";
+  document.head.append(sheet);
 
 
   const node = (tag, cls, text) => {
@@ -434,8 +436,16 @@
   function makeForm(trades) {
     const card = node('section','brain-review-form');
     card.append(node('h4','','Teach from a trade'));
-    if (!trades.length) {
-      card.append(node('p','brain-review-empty','Your settled trades will appear here. Choose one to teach the Brain what you noticed.'));
+    const reviewedTradeIds = new Set((state?.insights || [])
+      .map(insight => insight.assessment?.sourceTradeId)
+      .filter(Boolean)
+      .map(String));
+    const availableTrades = (Array.isArray(trades) ? trades : [])
+      .filter(trade => !reviewedTradeIds.has(String(trade.id)));
+    if (!availableTrades.length) {
+      card.append(node('p','brain-review-empty',trades?.length
+        ? 'All caught up. Each settled trade can only be taught once.'
+        : 'Your settled trades will appear here. Choose one to teach the Brain what you noticed.'));
       return card;
     }
     const form=node('form','brain-review-fields'); form.id='brainInsightForm';
@@ -443,7 +453,7 @@
     const details=node('div','brain-review-selected');
     const showDetail=trade=>{details.replaceChildren(tradeDetail(trade));details.dataset.snapshotSignature=JSON.stringify([trade.id,trade.status,trade.profit,trade.askPrice,trade.payout,trade.context]);};
     const selected=node('input',''); selected.type='hidden'; selected.name='sourceTradeId'; form.append(selected);
-    let list=trades.slice(0,100);
+    let list=availableTrades.slice(0,100);
     let current=Math.max(0,list.findIndex(trade=>String(trade.id)===String(preferredTradeId)));
     const drawChoice=()=>{
       const trade=list[current], result=String(trade.status||'').toLowerCase();
@@ -468,8 +478,11 @@
     selected.value=String(list[current].id); preferredTradeId=selected.value; showDetail(list[current]); drawChoice();
     // Preserve the selected trade and unsaved lesson fields while new trades arrive.
     form.refreshTradeChoices=nextTrades=>{
-      if(!Array.isArray(nextTrades)||!nextTrades.length)return;
-      const next=nextTrades.slice(0,100), index=next.findIndex(trade=>String(trade.id)===selected.value);
+      if(!Array.isArray(nextTrades))return;
+      const reviewed = new Set((state?.insights || []).map(insight => insight.assessment?.sourceTradeId).filter(Boolean).map(String));
+      const next=nextTrades.filter(trade=>!reviewed.has(String(trade.id))).slice(0,100);
+      if(!next.length)return;
+      const index=next.findIndex(trade=>String(trade.id)===selected.value);
       if(index<0)return;
       const changed=JSON.stringify(list.map(item=>[item.id,item.status,item.profit]))!==JSON.stringify(next.map(item=>[item.id,item.status,item.profit]));
       list=next; current=index; if(changed)drawChoice();
@@ -508,8 +521,8 @@
     const confidenceLabel=node('label','brain-review-label','Your confidence');
     const confidence=node('input','brain-confidence-slider');confidence.type='range';confidence.name='confidence';confidence.min='1';confidence.max='5';confidence.step='1';confidence.value='3';confidence.setAttribute('aria-label','Your confidence, from 1 to 5');const confidenceValue=node('output','brain-confidence-value','3 / 5');confidence.addEventListener('input',()=>{confidenceValue.textContent=confidence.value+' / 5'});confidenceLabel.append(confidence,confidenceValue);
     row.append(categoryLabel,confidenceLabel);inputColumn.append(row);
+    const submit=node('button','brain-task-primary brain-review-save','Save lesson');submit.type='submit';inputColumn.append(submit);
     const horizon=node('input','');horizon.type='hidden';horizon.name='horizon';horizon.value='next_session';form.append(horizon);
-    const submit=node('button','brain-task-primary brain-review-save','Save lesson');submit.type='submit';form.append(submit);
     form.addEventListener('input',()=>{formDirty=true});form.addEventListener('change',()=>{formDirty=true});form.addEventListener('submit',submitInsight);
     card.append(form);return card;
   }
