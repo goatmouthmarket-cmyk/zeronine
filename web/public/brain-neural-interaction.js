@@ -9,6 +9,51 @@
   if (!card || !panel || !detail || !circles.length) return;
   let active = null;
   let revision = 0;
+  let lessonsCache = [];
+  let lookupRevision = 0;
+  function updatePoints(insights) {
+    lessonsCache = Array.isArray(insights) ? insights : [];
+    circles.forEach((point, index) => {
+      const lesson = lessonsCache[index];
+      point.dataset.connection = lesson ? 'saved' : 'empty';
+      const name = lesson ? (lesson.marketName || 'Saved lesson') : 'Empty connection';
+      point.setAttribute('aria-label', lesson ? 'Saved lesson: ' + name : 'Empty connection ' + (index + 1));
+    });
+  }
+  const legend = document.createElement('div');
+  legend.className = 'brain-nerve-legend';
+  legend.innerHTML = '<span><i class="is-saved"></i>Saved lesson</span><span><i class="is-empty"></i>Empty</span>';
+  visual.append(legend);
+  const styles = document.createElement('style');
+  styles.textContent = `
+    html body #rangerBrainPanel .neural-nodes circle[data-connection="saved"] { fill:#f7cf55; stroke:#17633d; stroke-width:2; filter:drop-shadow(0 0 4px #83d875); }
+    html body #rangerBrainPanel .neural-nodes circle[data-connection="empty"] { fill:#f8f4df; stroke:#93a48b; stroke-width:1.3; filter:none; }
+    html body #rangerBrainPanel .neural-nodes circle[data-connection]:hover,
+    html body #rangerBrainPanel .neural-nodes circle[data-connection]:focus-visible { stroke:#174c30; stroke-width:2.5; filter:drop-shadow(0 0 6px #63c983); transform:scale(1.8); }
+    html body #rangerBrainPanel .neural-nodes circle[data-connection][aria-pressed="true"] { fill:#ffd85a; stroke:#164e30; stroke-width:2.5; filter:drop-shadow(0 0 6px #63c983); }
+    .brain-nerve-legend { position:absolute; bottom:4px; left:50%; transform:translateX(-50%); z-index:4; display:flex; gap:10px; align-items:center; justify-content:center; white-space:nowrap; pointer-events:none; font:700 10px/1.2 system-ui,sans-serif; color:#31573b; }
+    .brain-nerve-legend span { display:flex; gap:4px; align-items:center; }
+    .brain-nerve-legend i { display:block; width:8px; height:8px; border-radius:50%; border:1px solid #789475; background:#f8f4df; }
+    .brain-nerve-legend .is-saved { background:#f7cf55; border-color:#17633d; box-shadow:0 0 4px #83d875; }
+    @media (max-width:420px){ .brain-nerve-legend { font-size:9px; gap:6px; } }
+    @media (prefers-reduced-motion:reduce){html body #rangerBrainPanel .neural-nodes circle[data-connection]{transition:none}}
+  `;
+  document.head.append(styles);
+  async function refreshPoints() {
+    const serial = ++lookupRevision;
+    try {
+      const response = await fetch('/api/ranger-brain/contributions', {credentials:'same-origin',cache:'no-store'});
+      if (!response.ok) throw new Error('unavailable');
+      const body = await response.json();
+      if (serial === lookupRevision) updatePoints(body.insights);
+    } catch { if (serial === lookupRevision) updatePoints([]); }
+  }
+  updatePoints([]);
+  document.addEventListener('brain:lessons-updated', event => {
+    lookupRevision++;
+    updatePoints(event.detail?.insights);
+  });
+  document.addEventListener('zeronine:brain-report', () => { if (!panel.hidden) void refreshPoints(); });
 
   function node(tag, className, content) {
     const el = document.createElement(tag);
@@ -106,8 +151,8 @@
     });
   });
   new MutationObserver(() => {
-    if (!panel.hidden) return;
-    revision++; setActive(null);
+    if (!panel.hidden) { void refreshPoints(); return; }
+    revision++; lookupRevision++; setActive(null);
     showIntro();
   }).observe(panel, { attributes:true, attributeFilter:['hidden'] });
 })();

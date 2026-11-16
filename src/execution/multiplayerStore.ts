@@ -168,11 +168,19 @@ export class MultiplayerStore {
 
   // Account-scoped estimates of saved row bytes; not database quota or disk usage.
   // Cache briefly to avoid scanning the account on every Brain refresh.
+  private readonly brainStorageGeneration = new Map<string, number>();
+  private invalidateBrainStorage(accountId: string): void {
+    // Account-specific generation also prevents an in-flight stale read being cached.
+    if (this.brainStorageGeneration.size >= 1000 && !this.brainStorageGeneration.has(accountId)) this.brainStorageGeneration.clear();
+    this.brainStorageGeneration.set(accountId, (this.brainStorageGeneration.get(accountId) ?? 0) + 1);
+    for (const key of this.brainStorageCache.keys()) if (key.endsWith(':' + accountId)) this.brainStorageCache.delete(key);
+  }
   private readonly brainStorageCache = new Map<string, { until: number; value: { bytes: number; lessons: number; trades: number; snapshots: number; measurement: 'estimated_row_bytes' } }>();
   async brainStorageUsage(ownerKey: string, accountId: string): Promise<{ bytes: number; lessons: number; trades: number; snapshots: number; measurement: 'estimated_row_bytes' }> {
     const key = ownerKey + ':' + accountId;
     const cached = this.brainStorageCache.get(key);
     if (cached && cached.until > Date.now()) return cached.value;
+    const generation = this.brainStorageGeneration.get(accountId) ?? 0;
     const result = await this.pool.query<{ lessons: string; trades: string; snapshots: string; bytes: string }>(
       `select
         (select count(*) from brain_private.insights i where i.owner_key=$1)::text as lessons,
@@ -188,7 +196,7 @@ export class MultiplayerStore {
       trades: Math.max(0, Number(row?.trades || 0)), snapshots: Math.max(0, Number(row?.snapshots || 0)),
       measurement: 'estimated_row_bytes' as const };
     if (this.brainStorageCache.size >= 1000) this.brainStorageCache.clear();
-    this.brainStorageCache.set(key, { until: Date.now() + 30000, value });
+    if ((this.brainStorageGeneration.get(accountId) ?? 0) === generation) this.brainStorageCache.set(key, { until: Date.now() + 30000, value });
     return value;
   }
 
@@ -366,6 +374,7 @@ export class MultiplayerStore {
        where account_id=$1 and id=$2 and status in ('purchasing','unknown')`, [accountId, id, providerContractId, askPrice, payout],
     );
     if (result.rowCount !== 1) throw new Error('account reservation not found');
+    this.invalidateBrainStorage(accountId);
   }
 
   /** Release a reservation only after the matching provider contract settles. */
@@ -411,6 +420,7 @@ export class MultiplayerStore {
       on conflict (contract_id) do update set context=trade_context.context || excluded.context, updated_at=now()`,
       [accountId, providerContractId, JSON.stringify(context)]);
     if (!result.rowCount) throw new Error('No matching contract found for trade context');
+    this.invalidateBrainStorage(accountId);
   }
 
   /** Bounded, account-scoped samples used only by the Brain review endpoint. */

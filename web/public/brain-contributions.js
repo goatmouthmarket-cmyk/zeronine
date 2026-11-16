@@ -10,6 +10,7 @@
   let reloadQueued = false, recentTradeSignature = null, recentTradeAccount = null;
   let refreshTimers = [], pendingAnimationTimer = 0;
   let preferredTradeId = null, seenMemoryTradeIds = null;
+  let lastGrowthTradeCount = null;
   const sheet=document.createElement('style');
   sheet.textContent=`
     .brain-review-card{background:#fff8e9;border:1px solid #d2b88c;border-radius:16px;padding:16px;color:#3d3022;display:grid;gap:14px}
@@ -921,6 +922,17 @@
     // Progress is refreshed with lessons; the byte estimate may be cached briefly.
     const lessons = available ? Math.max(0, Math.floor(Number(storage.lessons)), Math.floor(Number(data?.progress?.total) || 0)) : 0;
     const trades = available ? Math.max(0, Math.floor(Number(storage.trades))) : 0;
+    // The count comes from saved account records, so never animate a speculative trade.
+    if (available) {
+      if (lastGrowthTradeCount !== null && trades > lastGrowthTradeCount) {
+        card.classList.remove('brain-growth-celebrate');
+        void card.offsetWidth;
+        card.classList.add('brain-growth-celebrate');
+        clearTimeout(growthCelebrationTimer);
+        growthCelebrationTimer = setTimeout(() => card.classList.remove('brain-growth-celebrate'), 1800);
+      }
+      lastGrowthTradeCount = trades;
+    }
     // Visual stages represent saved activity; they are not an intelligence score.
     const growth = available ? Math.min(1, Math.log1p(lessons * 8 + trades) / Math.log1p(1000)) : 0;
     if (visual) { visual.style.setProperty('--neural-growth', growth.toFixed(3)); visual.dataset.neuralStage = String(Math.min(5, Math.floor(growth * 6))); }
@@ -1074,6 +1086,7 @@
       seenMemoryTradeIds=new Set(freshTrades.map(trade=>String(trade.id)));
       if(arrived) { if(!formDirty)preferredTradeId=null; showTradeSync('Trade added to Memories · gathering prices'); }
       state=response;
+      document.dispatchEvent(new CustomEvent('brain:lessons-updated',{detail:{insights:Array.isArray(response.insights)?response.insights:[]}}));
       renderUnlockHero(response);
       syncHudTask(response.progress || null, response.insights || [], false);
       const growthCard = $('brainGrowthCard');
@@ -1169,7 +1182,8 @@
     const signature=JSON.stringify(trades.map(trade=>[String(trade.id),String(trade.status||'')]));
     if(account!==recentTradeAccount) {
       const hadAccount=recentTradeAccount!==null;
-      recentTradeAccount=account; recentTradeSignature=signature; seenMemoryTradeIds=null;
+      recentTradeAccount=account; recentTradeSignature=signature; seenMemoryTradeIds=null; lastGrowthTradeCount=null;
+      document.dispatchEvent(new CustomEvent('brain:lessons-updated',{detail:{insights:[]}}));
       awaitingGrowthLessonId=null; clearTimeout(growthCelebrationTimer); $('brainGrowthCard')?.classList.remove('brain-growth-celebrate');
       for(const timer of refreshTimers) clearTimeout(timer); refreshTimers=[];
       clearTimeout(pendingAnimationTimer); const banner=$('brainTradeSync'); if(banner)banner.hidden=true;
