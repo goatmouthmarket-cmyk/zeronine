@@ -202,7 +202,7 @@ function replayRiskAllowed(st: ReplayState, settings: Parameters<typeof replayOn
   if (st.streak + 1 > settings.max_consecutive_losses) return false;
   if (settings.max_drawdown_pct > 0 && st.peakBalance > 0
     && (st.peakBalance - st.balance) / st.peakBalance >= settings.max_drawdown_pct / 100) return false;
-  if (st.debt > 0.005 && (st.cycleStake + stake > settings.max_recovery_exposure || st.debt >= settings.max_recovery_debt)) return false;
+  if (st.debt > 0.005 && st.cycleStake + stake > settings.max_recovery_exposure) return false;
   return true;
 }
 
@@ -217,7 +217,6 @@ function replayOne(
     strategy_multiplier: number;
     recovery_buffer: number;
     chase_amortize: number;
-    max_recovery_debt: number;
     max_recovery_exposure: number;
     max_drawdown_pct: number;
   },
@@ -371,7 +370,6 @@ function replayOne(
           multiplier: settingsLike.strategy_multiplier,
           recoveryBuffer: settingsLike.recovery_buffer,
           chaseAmortize: settingsLike.chase_amortize,
-          maxRecoveryDebt: settingsLike.max_recovery_debt,
           maxRecoveryExposure: settingsLike.max_recovery_exposure,
           maxDrawdownPct: settingsLike.max_drawdown_pct,
         };
@@ -455,7 +453,6 @@ export async function runBacktest(opts: BacktestOptions = {}): Promise<BacktestO
     strategy_multiplier: 3,
     recovery_buffer: 0.5,
     chase_amortize: 0.35,
-    max_recovery_debt: 50,
     max_recovery_exposure: 100,
     max_drawdown_pct: 20,
     pattern_weight: getSettings().pattern_weight,

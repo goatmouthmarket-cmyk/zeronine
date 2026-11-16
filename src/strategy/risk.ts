@@ -33,7 +33,6 @@ export function buildRecoveryContext(settings: SettingsRow, accountId?: string, 
     multiplier: settings.strategy_multiplier,
     recoveryBuffer: settings.recovery_buffer,
     chaseAmortize: settings.chase_amortize,
-    maxRecoveryDebt: settings.max_recovery_debt,
     maxRecoveryExposure: settings.max_recovery_exposure,
     maxDrawdownPct: settings.max_drawdown_pct,
   };
@@ -50,7 +49,6 @@ export function riskCheck(params: {
   accountId?: string;
   /** User-confirmed manual orders do not inherit strategy-run stop limits. */
   skipStrategyCaps?: boolean;
-  skipRecoveryDebtCap?: boolean;
   /** Multi-lot routes enforce their own bounded product/account admission. */
   skipOpenContractCheck?: boolean;
   lane?: 'digit' | 'multiplier' | 'momentum' | 'gold';
@@ -91,9 +89,6 @@ export function riskCheck(params: {
   if (!params.skipStrategyCaps && context.debt > 0.005) {
     if (context.cycleStake + stake > settings.max_recovery_exposure) {
       return { ok: false, reason: `recovery exposure cap (${settings.max_recovery_exposure}) would be exceeded` };
-    }
-    if (!params.skipRecoveryDebtCap && context.debt >= settings.max_recovery_debt) {
-      return { ok: false, reason: `recovery debt cap (${settings.max_recovery_debt}) reached` };
     }
   }
 

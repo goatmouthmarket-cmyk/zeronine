@@ -26,6 +26,26 @@ test('risk check has no daily loss gate', async () => {
   assert.deepEqual(result, { ok: true, reason: 'ok' });
 });
 
+test('risk check allows recovery debt above the legacy debt threshold', async () => {
+  const [{ buildRecoveryContext, riskCheck }, { getSettings }] = await Promise.all([
+    import('../src/strategy/risk.ts'), import('../src/db/store.ts'),
+  ]);
+  const settings = {
+    ...getSettings(),
+    max_recovery_debt: 1,
+    max_recovery_exposure: 1_000,
+    max_consecutive_losses: 10,
+    max_drawdown_pct: 0,
+  };
+  const context = buildRecoveryContext(settings, undefined, {
+    mode: 'recovering', streak: 1, debt: 500, attempts: 1, cycleStake: 0, peakBalance: 100,
+  });
+  const result = riskCheck({
+    stake: 1, settings, balance: 100, context, lastTradeAt: 0, tradeGapMs: 0, now: Date.now(),
+  });
+  assert.deepEqual(result, { ok: true, reason: 'ok' });
+});
+
 test('explicit manual trades bypass strategy caps while automated trades retain them', async () => {
   const [{ buildRecoveryContext, riskCheck }, { getSettings }] = await Promise.all([
     import('../src/strategy/risk.ts'), import('../src/db/store.ts'),

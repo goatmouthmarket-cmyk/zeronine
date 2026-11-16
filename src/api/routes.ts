@@ -1092,8 +1092,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       now: Date.now(),
       // Gold multipliers are not digit-recovery bets. Keep the shared balance,
       // drawdown, loss-streak, cooldown, and open-contract rails, but do not
-      // reject a manual Gold order solely because the digit strategy has debt.
-      skipRecoveryDebtCap: true,
       lane: 'gold',
       skipOpenContractCheck: true,
     });
@@ -1501,9 +1499,6 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       lastTradeAt: 0,
       tradeGapMs: 0,
       now: Date.now(),
-      // Momentum demo orders never join the digit recovery cycle, so its debt
-      // cap must not gate them; every other rail above still applies.
-      skipRecoveryDebtCap: true,
       lane: 'momentum',
       skipOpenContractCheck: true,
     });

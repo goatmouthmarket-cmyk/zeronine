@@ -32,7 +32,6 @@ function ctx(patch: Partial<RecoveryContext> = {}): RecoveryContext {
     multiplier: 3,
     recoveryBuffer: 0.5,
     chaseAmortize: 0.35,
-    maxRecoveryDebt: 50,
     maxRecoveryExposure: 100,
     maxDrawdownPct: 20,
     ...patch,
@@ -119,14 +118,14 @@ test('chase keeps escalating beyond max_stake when the required stake overflows'
   assert.ok(Math.abs(d.stake - 3.5 / 0.2) < 1e-6, `stake ${d.stake} (should not be capped)`);
 });
 
-test('holds when debt cap is reached', () => {
+test('recovery automation continues above the former debt cap', () => {
   const d = planRecovery(
     ladder(),
-    ctx({ strategy: 'martingale', mode: 'recovering', streak: 0, debt: 60, maxRecoveryDebt: 50 }),
+    ctx({ strategy: 'martingale', mode: 'recovering', streak: 0, debt: 60 }),
     pref,
   );
-  assert.equal(d.holds, true);
-  assert.match(d.holdReason ?? '', /debt cap/);
+  assert.equal(d.holds, false);
+  assert.ok(d.stake > 0, 'automation must receive an executable recovery stake');
 });
 
 test('holds when exposure cap would be exceeded', () => {

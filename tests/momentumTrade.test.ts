@@ -136,7 +136,7 @@ test('explicit Momentum trade is demo-only and records the selected research con
   await app.close();
 });
 
-test('Momentum trades bypass the recovery debt cap while the digit risk gate keeps it', async () => {
+test('the former recovery debt cap no longer blocks digit or Momentum risk admission', async () => {
   const [{ default: Fastify }, hubMod, marketMod, feedMod, autoMod, paperMod, routesMod, store, cfg, risk] = await Promise.all([
     import('fastify'),
     import('../src/api/hub.ts'),
@@ -164,8 +164,7 @@ test('Momentum trades bypass the recovery debt cap while the digit risk gate kee
   const digitGate = risk.riskCheck({
     stake: 3, settings, balance: 250, context, lastTradeAt: 0, tradeGapMs: 0, now: Date.now(),
   });
-  assert.equal(digitGate.ok, false);
-  assert.match(digitGate.reason, /recovery debt cap/);
+  assert.deepEqual(digitGate, { ok: true, reason: 'ok' });
 
   const hub = new hubMod.Hub();
   const registry = new marketMod.MarketRegistry({ onTick: () => undefined });
