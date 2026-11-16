@@ -212,6 +212,20 @@
       .brain-review-stance label span { min-height:40px; }
       .brain-review-note textarea { min-height:40px; }
     }
+
+    .brain-hud-goals[hidden]{display:none!important}
+    .brain-hud-goals{position:fixed;z-index:120;box-sizing:border-box;max-width:calc(100vw - 16px);max-height:min(65dvh,420px);overflow:auto;padding:12px;background:#fff6e4;color:#294b32;border-radius:12px;box-shadow:0 8px 28px #10281f55;font:600 12px/1.3 system-ui,sans-serif}
+    .brain-hud-goals-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;font-size:14px}
+    .brain-hud-goals-close{border:0;background:transparent;color:#294b32;font-size:24px;line-height:1;min-width:38px;min-height:38px;cursor:pointer}
+    .brain-hud-goal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 8px;margin:8px 0}
+    .brain-hud-goal progress{grid-column:1/-1;width:100%;height:7px;accent-color:#438659}
+    .brain-hud-goals-open{width:100%;min-height:42px;margin-top:8px;border:0;border-radius:8px;background:#245d39;color:#fff9ec;font:800 12px system-ui;cursor:pointer}
+    .brain-hud-goals button:focus-visible{outline:3px solid #d69f43;outline-offset:2px}
+    /* Keep full prices together; wrap the tiles, not digits within a price. */
+    .brain-tick-row { grid-template-columns:repeat(auto-fit,minmax(min(100%, 100px),1fr)); gap:4px; }
+    .brain-tick { min-width:0; white-space:nowrap; overflow-wrap:normal; word-break:normal; font-variant-numeric:tabular-nums; }
+    .brain-tick small { white-space:normal; overflow-wrap:normal; }
+    .brain-tick-price { display:inline-block; white-space:nowrap; letter-spacing:-.02em; }
   `;document.head.append(sheet);
 
 
@@ -373,7 +387,8 @@
         cell.append(node('small', '', index === 3 ? label.toUpperCase() : index < 3 ? String(index - 3) : '+' + String(index - 3)));
         const price = typeof tick?.quote === 'string' ? tick.quote.trim() : '';
         if (price && /\d$/.test(price)) {
-          const value = node('span', '');
+          const value = node('span', 'brain-tick-price');
+          if (price.length > 12) value.style.fontSize = Math.max(8, Math.min(11, 120 / price.length)).toFixed(1) + 'px';
           value.append(document.createTextNode(price.slice(0, -1)), node('b', '', price.slice(-1)));
           cell.append(value);
         } else cell.append(node('span', 'brain-tick-missing', '—'));
@@ -702,50 +717,105 @@
     return section;
   }
 
+  const missionHud = $('missionHud');
+  let hudGoalsPanel = null;
+  function goalLabel(goal) {
+    const labels = {reviews:'Review your trades',pattern:'Confirm a pattern',matches:'See the pattern again',comparison:'Compare other trades'};
+    return labels[goal.key] || String(goal.label || 'Brain task');
+  }
+  function positionHudGoals() {
+    if (!missionHud || !hudGoalsPanel || hudGoalsPanel.hidden) return;
+    const rect = missionHud.getBoundingClientRect();
+    const width = Math.min(300, window.innerWidth - 16);
+    hudGoalsPanel.style.width = width + 'px';
+    hudGoalsPanel.style.left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left)) + 'px';
+    hudGoalsPanel.style.top = Math.max(8, Math.min(window.innerHeight - hudGoalsPanel.offsetHeight - 8, rect.bottom + 8)) + 'px';
+  }
+  function ensureHudGoals() {
+    if (hudGoalsPanel) return hudGoalsPanel;
+    const panel = node('section', 'brain-hud-goals');
+    panel.id = 'brainHudGoals';
+    panel.hidden = true;
+    panel.setAttribute('aria-label', 'Brain tasks');
+    panel.setAttribute('role', 'region');
+    document.body.append(panel);
+    hudGoalsPanel = panel;
+    missionHud?.setAttribute('aria-controls', panel.id);
+    missionHud?.setAttribute('aria-expanded', 'false');
+    return panel;
+  }
   function syncHudTask(progress, insights, guest) {
-    const card = $('missionHud');
-    const title = $('missionTitle');
-    const count = $('missionProgress');
+    const card = $('missionHud'), title = $('missionTitle'), count = $('missionProgress');
     if (!card || !title || !count) return;
+    const goals = Array.isArray(state?.training?.goals) ? state.training.goals : [];
+    const next = goals.find(goal => Math.max(0, Number(goal.current) || 0) < Math.max(1, Number(goal.target) || 1));
     const label = card.querySelector('.mission-copy small');
     if (label && label.textContent !== 'BRAIN TASK') label.textContent = 'BRAIN TASK';
-    const pending = insights.filter(item => item.confirmedPattern && (!item.patternEvidence || item.patternEvidence.pending)).length;
-    if (guest) {
-      if (title.textContent !== 'Connect to teach') title.textContent = 'Connect to teach';
-      if (count.textContent !== 'OPEN BRAIN') count.textContent = 'OPEN BRAIN';
-    } else if (!progress) {
-      if (title.textContent !== 'Brain task unavailable') title.textContent = 'Brain task unavailable';
-      if (count.textContent !== 'RETRY') count.textContent = 'RETRY';
-    } else if (progress.total === 0) {
-      if (title.textContent !== 'Teach your first lesson') title.textContent = 'Teach your first lesson';
-      if (count.textContent !== '0 / 1') count.textContent = '0 / 1';
-    } else if (pending > 0) {
-      if (title.textContent !== 'Check a lesson') title.textContent = 'Check a lesson';
-      if (count.textContent !== pending + ' TO CHECK') count.textContent = pending + ' TO CHECK';
-    } else if (progress.linkedWins > 0) {
-      if (title.textContent !== 'Build on your insight') title.textContent = 'Build on your insight';
-      if (count.textContent !== progress.linkedWins + ' WINS') count.textContent = progress.linkedWins + ' WINS';
-    } else {
-      if (title.textContent !== 'Teach another lesson') title.textContent = 'Teach another lesson';
-      if (count.textContent !== progress.total + ' SAVED') count.textContent = progress.total + ' SAVED';
-    }
-    card.setAttribute('aria-label', 'Brain task: ' + title.textContent + '. ' + count.textContent + '. Open Brain Tasks.');
+    let titleText, countText;
+    if (guest) { titleText='Connect to teach'; countText='OPEN'; }
+    else if (!progress) { titleText='Brain tasks unavailable'; countText='RETRY'; }
+    else if (next) {
+      titleText=goalLabel(next);
+      countText=Math.min(Math.max(0,Number(next.current)||0),Math.max(1,Number(next.target)||1))+' / '+Math.max(1,Number(next.target)||1);
+    } else if (goals.length) { titleText='Brain tasks complete'; countText='READY'; }
+    else { titleText='Brain tasks unavailable'; countText='RETRY'; }
+    if (title.textContent !== titleText) title.textContent=titleText;
+    if (count.textContent !== countText) count.textContent=countText;
+    card.setAttribute('aria-label','Brain task: '+titleText+'. '+countText+'. View tasks.');
+    if (hudGoalsPanel && !hudGoalsPanel.hidden) renderHudGoals();
   }
-
-  const missionHud = $('missionHud');
-  if (missionHud) {
-    missionHud.addEventListener('click', () => {
-      const menu = window.__zeronineBrainMenu;
-      if (menu && typeof menu.open === 'function') menu.open();
-      else $('rangerBrainGlyph')?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-      setTimeout(() => $('brainTabMemory')?.click(), 80);
+  function renderHudGoals() {
+    const panel=ensureHudGoals();
+    panel.replaceChildren();
+    const head=node('div','brain-hud-goals-head');
+    head.append(node('strong','','Brain tasks'));
+    const dismiss=node('button','brain-hud-goals-close','×');
+    dismiss.type='button'; dismiss.setAttribute('aria-label','Close Brain tasks');
+    dismiss.addEventListener('click',()=>closeHudGoals(true)); head.append(dismiss); panel.append(head);
+    if (!state) panel.append(node('p','',note==='guest'?'Connect Deriv to save your progress.':'Progress is temporarily unavailable.'));
+    else {
+      const goals=Array.isArray(state.training?.goals)?state.training.goals:[];
+      if (!goals.length) panel.append(node('p','','Progress is temporarily unavailable.'));
+      for (const goal of goals) {
+        const row=node('div','brain-hud-goal');
+        const current=Math.max(0,Number(goal.current)||0), target=Math.max(1,Number(goal.target)||1);
+        row.append(node('span','',goalLabel(goal)),node('strong','',Math.min(current,target)+' / '+target));
+        const bar=node('progress',''); bar.max=target; bar.value=Math.min(current,target); bar.setAttribute('aria-label',goalLabel(goal)); row.append(bar);
+        panel.append(row);
+      }
+    }
+    const open=node('button','brain-hud-goals-open','Teach the Brain');
+    open.type='button'; open.addEventListener('click',()=>{
+      closeHudGoals();
+      const menu=window.__zeronineBrainMenu;
+      if (menu && typeof menu.open==='function') menu.open();
+      else $('rangerBrainGlyph')?.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+      setTimeout(()=>$('brainTabMemory')?.click(),80);
     });
-    const title = $('missionTitle'), count = $('missionProgress');
-    if (title && count && typeof MutationObserver === 'function') {
-      new MutationObserver(() => syncHudTask(state?.progress || null, state?.insights || [], note === 'guest'))
-        .observe(title.parentElement, { childList: true, subtree: true, characterData: true });
-      new MutationObserver(() => syncHudTask(state?.progress || null, state?.insights || [], note === 'guest'))
-        .observe(count, { childList: true, subtree: true, characterData: true });
+    panel.append(open);
+    requestAnimationFrame(positionHudGoals);
+  }
+  function closeHudGoals(restoreFocus=false) {
+    if (!hudGoalsPanel) return;
+    hudGoalsPanel.hidden=true; missionHud?.setAttribute('aria-expanded','false');
+    if (restoreFocus) missionHud?.focus({preventScroll:true});
+  }
+  if (missionHud) {
+    missionHud.addEventListener('click',event=>{
+      event.stopPropagation();
+      const panel=ensureHudGoals();
+      if (!panel.hidden) { closeHudGoals(); return; }
+      panel.hidden=false; missionHud.setAttribute('aria-expanded','true'); renderHudGoals(); void load();
+    });
+    document.addEventListener('pointerdown',event=>{
+      if (hudGoalsPanel && !hudGoalsPanel.hidden && !hudGoalsPanel.contains(event.target) && !missionHud.contains(event.target)) closeHudGoals();
+    });
+    document.addEventListener('keydown',event=>{ if(event.key==='Escape' && hudGoalsPanel && !hudGoalsPanel.hidden){event.preventDefault();closeHudGoals(true);} });
+    window.addEventListener('resize',positionHudGoals);
+    const title=$('missionTitle'), count=$('missionProgress');
+    if(title && count && typeof MutationObserver==='function') {
+      new MutationObserver(()=>syncHudTask(state?.progress||null,state?.insights||[],note==='guest')).observe(title.parentElement,{childList:true,subtree:true,characterData:true});
+      new MutationObserver(()=>syncHudTask(state?.progress||null,state?.insights||[],note==='guest')).observe(count,{childList:true,subtree:true,characterData:true});
     }
   }
 
@@ -968,7 +1038,6 @@
     }
     const insights=data.insights||[],progress=data.progress||{total:0,reviewed:0,matched:0,unmatched:0,patterns:0,xp:0,level:1,levelXp:0,linkedWins:0};
     const card=node('section','brain-review-card');
-    card.append(renderTraining(data.training));
     card.append(makeForm(Array.isArray(data.trades)?data.trades:[]));
     const status=node('p','brain-contribution-status',note);
     status.id='brainTaskStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');card.append(status);
@@ -993,6 +1062,7 @@
       if(arrived) { if(!formDirty)preferredTradeId=null; showTradeSync('Trade added to Memories · gathering prices'); }
       state=response;
       renderUnlockHero(response);
+      syncHudTask(response.progress || null, response.insights || [], false);
       const growthCard = $('brainGrowthCard');
       if (growthCard) updateMemoryGrowth(growthCard, response);
       if(response.markets?.length) {
