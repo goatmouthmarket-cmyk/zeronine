@@ -141,6 +141,41 @@
     .brain-memory-popup[hidden]{display:none}
     .brain-memory-popup strong{font-size:14px}.brain-memory-popup p{margin:6px 0 0}.brain-memory-popup small{display:block;margin-top:6px;color:#66583e}
     @media(prefers-reduced-motion:reduce){.brain-memory-cylinder::before{transition:none}}
+
+    /* Make saved memory a prominent part of the Brain, with room for counts. */
+    #rangerBrainPanel .brain-growth-card .brain-memory-meter{
+      display:grid;grid-template-columns:62px minmax(0,1fr) auto;align-items:center;
+      gap:12px;min-height:94px;margin:4px 0 0;padding:10px 14px;border:0;border-radius:14px;
+      background:linear-gradient(120deg,#e5f2d8,#f6eed6);color:#244e35;text-align:left;cursor:pointer;
+    }
+    #rangerBrainPanel .brain-growth-card .brain-memory-cylinder{
+      width:52px;height:72px;border:2px solid #51815c;border-radius:50% / 13%;
+      background:#fbfff5;box-shadow:inset 0 0 0 2px #fff8,0 3px 8px #284c2b20;
+    }
+    #rangerBrainPanel .brain-growth-card .brain-memory-cylinder::before{
+      height:var(--memory-fill,0%);background:linear-gradient(#b9e99f,#53a56b);transition:height .7s ease;
+    }
+    #rangerBrainPanel .brain-growth-card .brain-memory-cylinder::after{
+      height:12px;background:#e3f4da;border-bottom:1px solid #80aa82;
+    }
+    #rangerBrainPanel .brain-growth-card .brain-memory-copy{display:grid;gap:5px;min-width:0;line-height:1.2}
+    #rangerBrainPanel .brain-growth-card .brain-memory-copy strong{font-size:clamp(15px,1.5vw,20px);overflow-wrap:anywhere}
+    #rangerBrainPanel .brain-growth-card .brain-memory-copy small{font-size:clamp(10px,1vw,12px);color:#53674d;overflow-wrap:anywhere}
+    #rangerBrainPanel .brain-growth-card .brain-memory-meter::after{content:'›';font:700 24px/1 system-ui;color:#447d50}
+    #rangerBrainPanel .brain-growth-card .brain-memory-meter:hover{filter:brightness(.97)}
+    #rangerBrainPanel .brain-growth-card .brain-memory-meter:focus-visible{outline:3px solid #246b45;outline-offset:2px}
+    #rangerBrainPanel .brain-growth-card .brain-growth-copy{display:flex;align-items:center;gap:8px;min-width:0}
+    #rangerBrainPanel .brain-growth-card .brain-growth-copy .brain-eyebrow,
+    #rangerBrainPanel .brain-growth-card .brain-growth-copy h3,
+    #rangerBrainPanel .brain-growth-card .brain-growth-copy p{display:none}
+    #rangerBrainPanel .brain-growth-card .brain-growth-xp{flex:1;min-width:0;margin:0}
+    #rangerBrainPanel .brain-growth-card .brain-growth-results{display:none}
+    @media(max-width:520px){
+      #rangerBrainPanel .brain-growth-card .brain-memory-meter{grid-template-columns:46px minmax(0,1fr) auto;min-height:72px;gap:8px;padding:8px 10px}
+      #rangerBrainPanel .brain-growth-card .brain-memory-cylinder{width:38px;height:54px}
+      #rangerBrainPanel .brain-growth-card .brain-memory-cylinder::after{height:9px}
+    }
+    @media(prefers-reduced-motion:reduce){#rangerBrainPanel .brain-growth-card .brain-memory-cylinder::before{transition:none}}
   `;document.head.append(sheet);
 
 
@@ -714,9 +749,9 @@
     memoryPopup.replaceChildren(node('strong', '', 'Saved memory'));
     if (!latestMemory) memoryPopup.append(node('p', '', 'Memory size is temporarily unavailable.'));
     else {
-      memoryPopup.append(node('p', '', formatMemoryBytes(latestMemory.bytes) + ' estimated saved data'),
+      memoryPopup.append(node('p', '', formatMemoryBytes(latestMemory.bytes) + ' saved'),
         node('p', '', latestMemory.lessons + ' lessons · ' + latestMemory.trades + ' trades · ' + latestMemory.snapshots + ' snapshots'),
-        node('small', '', 'Estimated saved rows; database indexes and overhead are excluded. The cylinder uses a logarithmic scale up to 1 GB; it is not a storage limit.'));
+        node('small', '', 'Approximate saved data. The fill is a visual guide, not a storage limit.'));
     }
     positionMemoryPopup();
   }
@@ -766,9 +801,9 @@
     latestMemory = available ? { bytes: memoryBytes, lessons, trades, snapshots: Math.max(0, Math.floor(Number(storage.snapshots) || 0)) } : null;
     if (memoryPopup && !memoryPopup.hidden) renderMemoryPopup();
     $('brainMemorySize').textContent = available ? formatMemoryBytes(storage.bytes) + ' saved' : 'Memory size unavailable';
-    $('brainMemoryCounts').textContent = available ? lessons + ' lessons · ' + trades + ' trades' : 'Saved memory is temporarily unavailable';
-    meter.title = available ? 'Estimated size of saved rows, excluding database overhead. The cylinder uses a logarithmic 1 GB visual scale, not a storage limit.' : 'Saved memory could not be measured.';
-    meter.setAttribute('aria-label', available ? 'Estimated saved memory ' + formatMemoryBytes(storage.bytes) + ', ' + lessons + ' lessons, ' + trades + ' trades. The fill uses a logarithmic 1 GB visual scale, not a storage limit.' : 'Saved memory temporarily unavailable');
+    $('brainMemoryCounts').textContent = available ? lessons + ' lessons · ' + trades + ' trades · tap for details' : 'Saved memory is temporarily unavailable';
+    meter.title = available ? 'Approximate saved data. Fill is a visual guide, not a storage limit.' : 'Saved memory could not be measured.';
+    meter.setAttribute('aria-label', available ? 'Saved memory: about ' + formatMemoryBytes(storage.bytes) + ', ' + lessons + ' lessons, ' + trades + ' trades. Select for details.' : 'Saved memory temporarily unavailable');
   }
 
   function renderMainGrowth(data) {

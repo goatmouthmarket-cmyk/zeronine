@@ -1,81 +1,108 @@
-/* Interactive points show account-scoped saved lessons; artwork is illustrative. */
+/* Display a saved lesson beside the neural map. Each point is illustrative. */
 (() => {
   'use strict';
   const card = document.getElementById('brainGrowthCard');
   const visual = card?.querySelector('.brain-growth-visual');
   const panel = document.getElementById('rangerBrainPanel');
+  const detail = document.getElementById('brainNerveDetail');
   const circles = visual ? [...visual.querySelectorAll('.neural-nodes circle')] : [];
-  if (!card || !visual || !panel || !circles.length) return;
-  const popup = document.createElement('div');
-  popup.className = 'brain-neural-popup';
-  popup.hidden = true;
-  popup.setAttribute('role', 'dialog');
-  popup.setAttribute('aria-label', 'Brain connection details');
-  card.append(popup);
-  let activeCircle = null;
-  let requestId = 0;
-  function close(restoreFocus = false) {
-    requestId++;
-    popup.hidden = true;
-    popup.replaceChildren();
-    if (restoreFocus) activeCircle?.focus();
-    activeCircle = null;
+  if (!card || !panel || !detail || !circles.length) return;
+  let active = null;
+  let revision = 0;
+
+  function node(tag, className, content) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (content != null) el.textContent = String(content);
+    return el;
   }
-  function item(tag, value) {
-    const element = document.createElement(tag);
-    element.textContent = String(value ?? '');
-    return element;
+  function message(title, copy) {
+    detail.replaceChildren(
+      node('span', 'brain-nerve-kicker', 'YOUR CONNECTIONS'),
+      node('h3', '', title),
+      node('p', '', copy)
+    );
   }
-  function showMessage(title, message) {
-    popup.replaceChildren();
-    const closeButton = item('button', '×');
-    closeButton.type = 'button';
-    closeButton.setAttribute('aria-label', 'Close connection details');
-    closeButton.addEventListener('click', () => close(true));
-    popup.append(closeButton, item('strong', title), item('p', message));
+  function showIntro() {
+    detail.replaceChildren();
+    const art = node('div', 'brain-nerve-intro-art'); art.setAttribute('aria-hidden', 'true');
+    const orbit = node('span', 'brain-nerve-intro-orbit');
+    const image = node('img', ''); image.src = '/brain-brand.svg?v=neural2'; image.alt = '';
+    art.append(orbit, image, node('span', 'brain-nerve-intro-dot'), node('span', 'brain-nerve-intro-cursor', '↖'));
+    detail.append(art, node('span', 'brain-nerve-kicker', 'YOUR CONNECTIONS'),
+      node('h3', '', 'Explore your Brain'), node('p', '', 'Tap a glowing point to see its lesson.'));
+  }
+  function setActive(circle) {
+    active = circle;
+    for (const point of circles) point.setAttribute('aria-pressed', String(point === circle));
+  }
+  function formatGroup(group, label) {
+    const count = Math.max(0, Number(group?.trades) || 0);
+    const wins = Math.max(0, Math.min(count, Number(group?.wins) || 0));
+    const rate = count ? Math.round(wins / count * 100) : 0;
+    const row = node('div', 'brain-nerve-row');
+    row.append(node('span', '', label), node('strong', '', count ? wins + ' / ' + count + ' won' : 'No trades yet'));
+    const track = node('span', 'brain-nerve-track');
+    track.setAttribute('aria-hidden', 'true');
+    const fill = node('i', ''); fill.style.setProperty('--win-width', rate + '%'); track.append(fill);
+    row.append(track);
+    return row;
   }
   async function open(circle, index) {
-    if (activeCircle === circle && !popup.hidden) { close(true); return; }
     document.dispatchEvent(new CustomEvent('brain:close-detail', {detail:{source:'neural'}}));
-    activeCircle = circle;
-    popup.hidden = false;
-    showMessage('Connection', 'Loading your lesson…');
-    const serial = ++requestId;
+    setActive(circle);
+    const serial = ++revision;
+    message('Opening connection', 'Finding your lesson…');
     try {
-      const response = await fetch('/api/ranger-brain/contributions', {credentials:'same-origin', cache:'no-store'});
+      const response = await fetch('/api/ranger-brain/contributions', { credentials:'same-origin', cache:'no-store' });
       if (!response.ok) throw new Error('unavailable');
       const data = await response.json();
-      if (serial !== requestId || popup.hidden) return;
+      if (serial !== revision || panel.hidden || active !== circle) return;
       const lessons = Array.isArray(data.insights) ? data.insights : [];
       const lesson = lessons[index];
       if (!lesson) {
-        showMessage('New connection', lessons.length
-          ? 'This point will represent a future saved lesson.'
-          : 'Save a lesson to start filling your connections.');
+        message('New connection', lessons.length ? 'A future lesson can grow here.' : 'Save a lesson to grow this connection.');
         return;
       }
-      const setup = [lesson.marketName || 'Market', lesson.expectedDirection === 'over' ? 'Over ' + lesson.barrier : lesson.expectedDirection === 'under' ? 'Under ' + lesson.barrier : 'Observation'].join(' · ');
-      showMessage(setup, String(lesson.observation || 'Your saved lesson'));
+      const direction = lesson.expectedDirection === 'over' ? 'Over ' + lesson.barrier
+        : lesson.expectedDirection === 'under' ? 'Under ' + lesson.barrier : 'Your note';
+      const title = (lesson.marketName || 'Your lesson') + ' · ' + direction;
+      const copy = String(lesson.observation || 'Your saved lesson')
+        .replace(/\n\[Trade reference: [^\]]+\]$/, '');
+      message(title, copy);
       const evidence = lesson.patternEvidence;
-      const count = Math.max(0, Number(evidence?.matched?.trades) || 0);
-      popup.append(item('small', lesson.confirmedPattern ? (count ? 'Recorded pattern matches: ' + count : 'Waiting for recorded pattern matches.') : 'Saved note. A pattern has not been confirmed.'));
+      if (!lesson.confirmedPattern) {
+        detail.append(node('small', 'brain-nerve-foot', 'Saved note. Confirm a pattern to track it.'));
+      } else if (!evidence) {
+        detail.append(node('small', 'brain-nerve-foot', 'Pattern results are unavailable right now.'));
+      } else if (evidence.supported === false) {
+        detail.append(node('small', 'brain-nerve-foot', 'Not enough recorded prices to check this pattern.'));
+      } else {
+        const chart = node('div', 'brain-nerve-chart');
+        chart.setAttribute('aria-label', 'Recorded trade results');
+        chart.append(formatGroup(evidence.matched, 'Pattern seen'), formatGroup(evidence.comparable, 'Other trades'));
+        detail.append(chart, node('small', 'brain-nerve-foot', 'Your recorded trades. Past results do not predict the next trade.'));
+      }
+      const more = node('button', 'brain-nerve-more', 'See lessons →');
+      more.type = 'button'; more.addEventListener('click', () => document.getElementById('brainTabMemory')?.click());
+      detail.append(more);
     } catch {
-      if (serial === requestId && !popup.hidden) showMessage('Connection unavailable', 'Connect your account and try again.');
+      if (serial === revision && !panel.hidden) message('Connection unavailable', 'Connect your account and try again.');
     }
   }
   circles.forEach((circle, index) => {
     circle.setAttribute('role', 'button');
     circle.setAttribute('tabindex', '0');
     circle.setAttribute('aria-label', 'View connection ' + (index + 1));
+    circle.setAttribute('aria-pressed', 'false');
     circle.addEventListener('click', event => { event.stopPropagation(); void open(circle, index); });
     circle.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); void open(circle, index); }
     });
   });
-  document.addEventListener('pointerdown', event => {
-    if (!popup.hidden && !popup.contains(event.target) && !event.target.closest?.('.neural-nodes circle')) close();
-  });
-  document.addEventListener('keydown', event => { if (event.key === 'Escape' && !popup.hidden) { event.stopPropagation(); close(true); } }, true);
-  document.addEventListener('brain:close-detail', event => { if (event.detail?.source !== 'neural' && !popup.hidden) close(); });
-  new MutationObserver(() => { if (panel.hidden && !popup.hidden) close(); }).observe(panel, {attributes:true, attributeFilter:['hidden']});
+  new MutationObserver(() => {
+    if (!panel.hidden) return;
+    revision++; setActive(null);
+    showIntro();
+  }).observe(panel, { attributes:true, attributeFilter:['hidden'] });
 })();
