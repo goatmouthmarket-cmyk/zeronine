@@ -679,13 +679,17 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     if (!user) return fail(reply, 401, 'player session required');
     let order: Order;
     try { order = parseOrder(req.body); } catch (error) { return fail(reply, 400, error instanceof Error ? error.message : 'invalid order'); }
+    const rejectPreview = (reason: string) => {
+      console.warn('[player trading] preview rejected: ' + reason);
+      return fail(reply, 409, reason);
+    };
     let stage = 'Deriv account';
     try {
       const info = await account(user.accountId, user.token);
       const settings = getSettings();
       // The operator picks the stake on an explicit order; the balance rail in
       // riskCheck below is the sizing limit here, not the bot's MAX_STAKE cap.
-      if (!registry.snapshot(order.market).fresh) return fail(reply, 409, 'market feed is stale');
+      if (!registry.snapshot(order.market).fresh) return rejectPreview('market feed is stale');
       stage = 'account risk';
       const riskState = await store.riskSnapshot(user.accountId, info.balance);
       const risk = riskCheck({ stake: order.stake, settings, balance: info.balance,
@@ -693,17 +697,17 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         tradeGapMs: 0, now: Date.now(), accountId: `deriv:${user.accountId}`,
         skipStrategyCaps: true,
         lane: 'digit' });
-      if (!risk.ok) return fail(reply, 409, `trade blocked: ${risk.reason}`);
+      if (!risk.ok) return rejectPreview(`trade blocked: ${risk.reason}`);
       stage = 'Deriv connection';
       const client = await clients.connect(user.accountId, user.token);
-      if (await reconcile(user.accountId, client)) return fail(reply, 409, 'account has an open or uncertain contract');
-      if ((await client.getOpenContractIds()).size > 0) return fail(reply, 409, 'Deriv account already has an open contract');
+      if (await reconcile(user.accountId, client)) return rejectPreview('account has an open or uncertain contract');
+      if ((await client.getOpenContractIds()).size > 0) return rejectPreview('Deriv account already has an open contract');
       stage = 'Deriv quote';
       const offered = await quote(client, order, info.currency);
-      if (!Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice || offered.askPrice > info.balance) return fail(reply, 409, 'invalid or unaffordable quote');
+      if (!Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice || offered.askPrice > info.balance) return rejectPreview('invalid or unaffordable quote');
       const edge = modelEdge(order, offered.askPrice, offered.payout);
       // A zero (or absent) minimum means the operator asked for no edge filter.
-      if (order.minEdge > 0 && edge < order.minEdge) return fail(reply, 409, 'quote does not meet minimum edge');
+      if (order.minEdge > 0 && edge < order.minEdge) return rejectPreview('quote does not meet minimum edge');
       const previewId = randomUUID();
       const expiresAt = Date.now() + 30_000;
       for (const [id, preview] of previews) if (preview.expiresAt <= Date.now()) previews.delete(id);

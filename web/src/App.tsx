@@ -714,6 +714,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const [rangerAutoRunning, setRangerAutoRunning] = useState(false);
   const [settlementBusy, setSettlementBusy] = useState(false);
   const [manualBusy, setManualBusy] = useState(false);
+  const playerPreviewInFlight = useRef(false);
   const [manualMsg, setManualMsg] = useState('');
   const [manualError, setManualError] = useState(false);
   const [resettingPerformance, setResettingPerformance] = useState(false);
@@ -950,6 +951,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     onConfirmed?: (tradeId: string | number) => void,
     cowDisplay?: { edge: number | null; confidence: number | null; shownAt: number; brainPick?: boolean; shotTick?: { quote: number; digit: number; epoch: number } | null } | null,
   ): Promise<boolean> => {
+    if (playerPreviewInFlight.current) {
+      onFailure?.('A trade is already being checked. Wait for it to finish.');
+      return false;
+    }
+    playerPreviewInFlight.current = true;
     setManualBusy(true);
     setManualError(false);
     setManualMsg('Requesting a live quote...');
@@ -983,6 +989,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       onFailure?.(message);
       return false;
     } finally {
+      playerPreviewInFlight.current = false;
       setManualBusy(false);
     }
   };
