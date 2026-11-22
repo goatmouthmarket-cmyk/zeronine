@@ -53,3 +53,5 @@
 - Never fill unavailable market statistics with placeholder percentages. Show recorded values or a waiting state, and label estimated win probability separately from measured accuracy.
 - A lesson-match badge identifies repeated confirmed conditions; only an applied lesson represents an evidence-backed probability adjustment. Keep these states and their saved lesson IDs distinct.
 - Shared virtual-paper signals must carry their stated payout ratio; never substitute an unrelated simulator default for a Core contract.
+
+- Inline the pasture renderer through src/api/pastureFrame.ts; never hard-code its asset cache version in server startup. Run tests/pastureFrame.test.ts after changing the iframe HTML, renderer or loader.
