@@ -45,6 +45,23 @@ and adverse effects may affect probability after sufficient forward evidence;
 correlated rules do not stack. Range combinations are evaluated but do not yet
 adjust the digit model. Missing data never becomes a fabricated outcome.
 
+## Pasture indicators
+
+Core setup metadata distinguishes waiting prices, an unfavorable estimate, a
+positive estimate needing a quote, and a positive quoted return. The canvas
+displays these facts without creating a second prediction formula. Win chance
+is an estimate, not a measured prediction-accuracy score.
+
+A lesson match means the stored conditions currently repeat. It may still need
+evidence and never increases probability on its own. A lesson applied badge
+identifies an adjustment actually included in Core; an adverse adjustment is
+shown as caution. Range conditions match the displayed decision facts, while
+unsupported combinations remain display-only. Badges open the saved lesson.
+
+Shared Ghost practice carries the candidate payout ratio explicitly. Missing
+pricing is skipped rather than replaced with a generic simulator payout. These
+virtual records remain separate from broker results and lesson validation.
+
 ## Research and activation
 
 Research uses virtual money, live proposal prices and a future next-tick fill.

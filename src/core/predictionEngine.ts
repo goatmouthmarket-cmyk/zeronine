@@ -25,6 +25,11 @@ export interface CoreMarketInput {
   payoutRatios?: readonly { direction: CoreDirection; barrier: number; ratio: number; quotedAt?: number }[];
 }
 export interface CoreEvidenceGroup { trades: number; wins: number; profit: number; stake: number }
+export interface CoreLessonConditions {
+  digitSequence?: { side: 'high' | 'low'; count: 2 | 3 };
+  edge?: { min?: number; max?: number };
+  confidence?: { min?: number; max?: number };
+}
 export interface CoreLessonEvidence {
   id: string;
   marketSymbol: string;
@@ -32,6 +37,7 @@ export interface CoreLessonEvidence {
   barrier: number | null;
   createdAt: number;
   confirmedPattern: { side: 'high' | 'low'; count: number } | null;
+  confirmedConditions?: CoreLessonConditions | null;
   patternEvidence: {
     supported: boolean;
     forwardOnly: boolean;
@@ -41,6 +47,13 @@ export interface CoreLessonEvidence {
     matched: CoreEvidenceGroup;
     comparable: CoreEvidenceGroup;
   } | null;
+}
+export interface CoreSetup {
+  readonly state: 'waiting_prices' | 'wait' | 'check_quote' | 'quoted_edge';
+  readonly label: string;
+  readonly reason: string;
+  readonly lesson: 'supports' | 'caution' | 'none';
+  readonly probabilityKind: 'estimate';
 }
 export interface CoreDecision {
   engineVersion: typeof CORE_ENGINE_VERSION;
@@ -70,10 +83,26 @@ export interface CoreDecision {
   fresh: boolean;
   hitSignal: boolean;
   lessonIds: readonly string[];
+  readonly lessonMatches: readonly Readonly<{ id: string; state: 'matched' | 'applied' | 'caution' }>[];
   features: Readonly<{ samples: number; wins: number; empiricalWin: number; priorSamples: number; lessonAdjustment: number }>;
   evidence: Readonly<{ samples: number; lessonsUsed: number; status: 'collecting' | 'observed'; calibrated: false }>;
   payoutSource: 'estimate' | 'live_quote';
+  readonly setup: Readonly<CoreSetup>;
   quote: Readonly<{ ask: number; payout: number; breakeven: number; edge: number; expectedROI: number; quotedAt: number }> | null;
+}
+/** Presentation of existing decision facts, never an additional trading or risk gate. */
+export function deriveCoreSetup(decision: Pick<CoreDecision, 'fresh' | 'expectedROI' | 'payoutSource' | 'features'>): Readonly<CoreSetup> {
+  const adjustment = decision.features.lessonAdjustment;
+  const lesson = adjustment > 0 ? 'supports' : adjustment < 0 ? 'caution' : 'none';
+  const state = !decision.fresh ? 'waiting_prices' : !Number.isFinite(decision.expectedROI) || decision.expectedROI <= 0
+    ? 'wait' : decision.payoutSource === 'live_quote' ? 'quoted_edge' : 'check_quote';
+  const copy = {
+    waiting_prices: ['Waiting for prices', 'Fresh prices are needed to check this setup.'],
+    wait: ['Wait', decision.payoutSource === 'live_quote' ? 'The current quote does not offer a positive estimated return.' : 'The estimated payout does not offer a positive estimated return.'],
+    check_quote: ['Check quote', 'This estimate needs a current payout quote.'],
+    quoted_edge: ['Quote checked', 'The current quote offers a positive estimated return; a win is not guaranteed.'],
+  } as const;
+  return freeze({ state, label: copy[state][0], reason: copy[state][1], lesson, probabilityKind: 'estimate' as const });
 }
 const PRIOR_SAMPLES = 200;
 const MAX_TICKS = 1000;
@@ -122,11 +151,47 @@ function validGroup(group: CoreEvidenceGroup): boolean {
     Number.isInteger(group.wins) && group.wins >= 0 && group.wins <= group.trades &&
     Number.isFinite(group.profit) && Number.isFinite(group.stake) && group.stake > 0;
 }
+/** A repeated confirmed condition is a match, not evidence that it predicts wins. */
+function matchesLesson(
+  lesson: CoreLessonEvidence, market: string, direction: CoreDirection, barrier: number,
+  ticks: readonly CoreTick[], probability: number, edge: number, now: number,
+): boolean {
+  if (!lesson.id || lesson.marketSymbol !== market || lesson.expectedDirection !== direction || lesson.barrier !== barrier ||
+      !Number.isFinite(lesson.createdAt) || lesson.createdAt > now) return false;
+  const conditions: (Omit<CoreLessonConditions, 'digitSequence'> & {
+    digitSequence?: { side: 'high' | 'low'; count: number };
+  }) | null = lesson.confirmedConditions === undefined
+    ? lesson.confirmedPattern ? { digitSequence: lesson.confirmedPattern } : null : lesson.confirmedConditions;
+  if (!conditions || !Object.keys(conditions).length || Object.keys(conditions).some(key => !['digitSequence', 'edge', 'confidence'].includes(key))) return false;
+  if (conditions.digitSequence !== undefined) {
+    const sequence = conditions.digitSequence;
+    if (!sequence || ![2, 3].includes(sequence.count) || !['high', 'low'].includes(sequence.side)) return false;
+    const recent = ticks.slice(-sequence.count);
+    if (recent.length !== sequence.count || recent.some((tick, index) => !Number.isSafeInteger(tick.sequence) || !tick.segment ||
+        (index > 0 && (tick.segment !== recent[index - 1].segment || tick.sequence !== recent[index - 1].sequence! + 1)) ||
+        (sequence.side === 'high' ? tick.digit < 5 : tick.digit > 4))) return false;
+  }
+  for (const name of ['edge', 'confidence'] as const) {
+    if (conditions[name] === undefined) continue;
+    const range = conditions[name], value = name === 'edge' ? edge : probability;
+    if (!range || !Number.isFinite(value) || (range.min === undefined && range.max === undefined)) return false;
+    const floor = name === 'edge' ? -1 : 0;
+    if ((range.min !== undefined && (!Number.isFinite(range.min) || range.min < floor || range.min > 1)) ||
+        (range.max !== undefined && (!Number.isFinite(range.max) || range.max < floor || range.max > 1)) ||
+        (range.min !== undefined && range.max !== undefined && range.min > range.max) ||
+        (range.min !== undefined && value < range.min) || (range.max !== undefined && value > range.max)) return false;
+  }
+  return true;
+}
 function lessonLift(
   lesson: CoreLessonEvidence, market: string, direction: CoreDirection, barrier: number,
   ticks: readonly CoreTick[], now: number,
 ): number {
   const rule = lesson.confirmedPattern, e = lesson.patternEvidence;
+  // Richer rules can be displayed as matches; only the supported digit-only
+  // evidence adapter is currently allowed to change the probability.
+  if (lesson.confirmedConditions !== undefined && (!lesson.confirmedConditions ||
+      Object.keys(lesson.confirmedConditions).some(key => key !== 'digitSequence'))) return 0;
   if (!lesson.id || lesson.marketSymbol !== market || lesson.expectedDirection !== direction || lesson.barrier !== barrier ||
       !rule || ![2, 3].includes(rule.count) || !['high', 'low'].includes(rule.side) ||
       !e?.supported || e.forwardOnly !== true || e.complete !== true ||
@@ -183,7 +248,11 @@ export function rankCoreCandidates(
         const probability = clamp(observed + adjustment, .001, .999);
         const ratio = .95 / baseWin;
         const edge = probability - 1 / ratio, expectedROI = probability * ratio - 1;
-        const decision: CoreDecision = {
+        // Display-only range rules use the same final facts shown on the cow.
+        // They cannot weight the prediction, so this introduces no feedback loop.
+        const matchedLessons = lessons.filter(lesson => matchesLesson(lesson, market.symbol, direction, barrier, ticks,
+          probability, edge, now));
+        const facts: Omit<CoreDecision, 'setup'> = {
           engineVersion: CORE_ENGINE_VERSION,
           decisionId: ['core-v1', encodeURIComponent(market.symbol), last.segment ?? 'segment', last.sequence ?? last.epoch, dataKey, direction, barrier].join(':'),
           market: market.symbol, display: market.display || market.symbol, direction, barrier, duration: 1, durationUnit: 't', at: now,
@@ -192,10 +261,13 @@ export function rankCoreCandidates(
           consistency: ticks.length / (ticks.length + PRIOR_SAMPLES), entropy: distributionEntropy,
           momentum: observed, shortLongDeviation: 0, transitionProb: baseWin, transitionSamples: 0,
           learnedWin: used ? probability : null, fresh, hitSignal: false, lessonIds: used ? [used.id] : [],
+          lessonMatches: matchedLessons.map(lesson => ({ id: lesson.id,
+            state: lesson.id === used?.id ? adjustment < 0 ? 'caution' as const : 'applied' as const : 'matched' as const })),
           features: { samples: ticks.length, wins, empiricalWin: empirical, priorSamples: PRIOR_SAMPLES, lessonAdjustment: adjustment },
           evidence: { samples: ticks.length, lessonsUsed: used ? 1 : 0, status: ticks.length >= 200 ? 'observed' : 'collecting', calibrated: false },
           payoutSource: 'estimate', quote: null,
         };
+        const decision: CoreDecision = { ...facts, setup: deriveCoreSetup(facts) };
         const offered = market.payoutRatios?.find(q => q.direction === direction && q.barrier === barrier &&
           Number.isFinite(q.quotedAt) && q.quotedAt! >= last.epoch * 1000 && q.quotedAt! <= now && now - q.quotedAt! <= 5000 && q.ratio > 1);
         out.push(offered ? evaluateCoreQuote(decision, 1, offered.ratio, offered.quotedAt) : freeze(decision));
@@ -216,8 +288,9 @@ export function evaluateCoreQuote(decision: CoreDecision, ask: number, payout: n
   if (!Number.isFinite(ask) || ask <= 0 || !Number.isFinite(payout) || payout <= ask || !Number.isFinite(quotedAt) ||
       quotedAt < decision.cutoff.epoch * 1000) throw new RangeError('Invalid live quote');
   const breakeven = ask / payout, edge = decision.probability - breakeven, expectedROI = decision.probability * payout / ask - 1;
-  return freeze({
+  const quoted = {
     ...decision, estPayout: payout / ask, edge, expectedROI, quality: expectedROI, payoutSource: 'live_quote' as const,
     quote: { ask, payout, breakeven, edge, expectedROI, quotedAt },
-  });
+  };
+  return freeze({ ...quoted, setup: deriveCoreSetup(quoted) });
 }

@@ -14,15 +14,15 @@ const LESSONS: Lesson[] = [
   { title: 'Welcome to the pasture', body: 'Each cow represents a possible digit trade. Let’s learn the controls in a safe practice pasture.', tip: 'Everything here is simulated. No account, live ticks, or money are used.' },
   { title: 'Move your ranger', body: 'Click or tap an open patch of grass to walk there. On a keyboard, use WASD or the arrow keys.', tip: 'On desktop, scroll to zoom. On touchscreens, pinch to zoom.', exercise: 'move' },
   { title: 'Meet the markets', body: 'Each cow shows a market, such as Volatility 50. A market has its own changing stream of prices and final digits.', tip: 'Volatility 50 (1s) and Volatility 50 are different markets. Tap a cow to inspect its example.', exercise: 'cow' },
-  { title: 'Read the cow’s bubble', body: 'OVER 2 means the final digit must be greater than 2. UNDER 7 means it must be less than 7. The barrier itself loses.', tip: 'Confidence is an estimate. L and H count recent low digits (0–4) and high digits (5–9).' },
-  { title: 'Understand edge', body: 'Edge compares the estimated chance of winning with the chance needed to break even at the estimated payout.', tip: 'Compare the green positive edge with the weaker red negative example. Both are estimates, not promises, and can change.' },
-  { title: 'What the rings mean', body: 'Green marks the strongest fresh positive edge. A yellow ring marks the highest confidence-weighted return estimate.', tip: 'A red ring marks a fresh entry signal. A cow can have more than one highlight; none guarantees a win.' },
+  { title: 'Read the cow’s bubble', body: 'OVER 2 means the final digit must be greater than 2. UNDER 7 means it must be less than 7. The barrier itself loses.', tip: 'EST WIN is the estimated chance of winning. Wait means the current setup is not worth checking.' },
+  { title: 'Understand edge', body: 'Edge compares the estimated chance of winning with the chance needed to break even at the estimated payout.', tip: 'An estimated edge uses an assumed payout. Check quote means the actual payout still needs checking. Estimates can change.' },
+  { title: 'What the rings mean', body: 'A quiet ring means Wait. Amber means Check quote. Green means a received quote currently covers the estimated risk.', tip: 'The gold star marks the best positive estimate. A blue Brain badge opens a matching lesson. Lesson match and Lesson applied are different; neither promises a win.' },
   { title: 'Aim at a cow', body: 'When signed in, left-click or tap a cow. The ranger moves into position and shoots automatically; the health bar shows progress.', tip: 'As a guest, both click types make paper trades and leave the cow unharmed. When signed in, defeating a cow can submit the selected contract, subject to account and risk checks.', exercise: 'aim' },
   { title: 'Read the ranger’s bubble', body: 'The bubble shows status, market, direction, barrier, stake and style, plus the quote freshness and estimated edge when available.', tip: 'After settlement, the digit and WON or LOST result appear with profit or loss and any remaining session loss. Tap the bubble to dismiss it.' },
   { title: 'Try a paper shot', body: 'As a guest, left-click, right-click or tap a cow to make a paper trade. When signed in, use right-click or press and hold on touch.', tip: 'In the game, a fresh live market tick is needed; the result uses the next tick. Paper trades leave the cow unharmed and use no account money.', exercise: 'paper' },
   { title: 'Set your trade', body: 'Open Markets to choose your stake, bet style, manual shot count, and minimum edge, and see live targets and recent bets.', tip: 'The cow setup and edge are locked on the first fresh shooting tick. The feed must be fresh, and the actual Deriv quote can still change. Recovery styles can increase stakes after losses.', exercise: 'markets' },
   { title: 'Meet Ranger Auto', body: 'Use the play icon to open automation controls. The icon shows pause and “Running” when Auto is active; opening it does not pause trading.', tip: 'Ranger Auto selects eligible highlighted cows after three fresh confirming ticks. Signals can disappear or change.', exercise: 'auto' },
-  { title: 'Set limits first', body: 'Choose your stake, bet style and limits. Entry settings also control minimum edge, ring colors, shot counts and optional paper tests.', tip: 'Auto checks three fresh ticks before shooting. Paper-test results are research only and do not change account trades.' },
+  { title: 'Set limits first', body: 'Choose your stake, bet style and limits. Entry settings also control minimum edge, setup choices, shot counts and optional paper tests.', tip: 'Auto checks three fresh ticks before shooting. Paper-test results are research only and do not change account trades.' },
   { title: 'Start and pause Auto', body: 'Try the start control in this simulation. In the game the same control pauses the running ranger.', tip: 'Real-account automation requires owner authorization and arming. Account, risk, quote and single-open-contract safeguards still apply.', exercise: 'start' },
   { title: 'Follow the run', body: 'While Auto runs, current-run P&L and its latest automatic trades appear in the pasture.', tip: 'The ghost scout and paper results are virtual research. They do not change your Deriv balance or account P&L.' },
   { title: 'Explore the pasture', body: 'Use the level and mission panel to see progress, and the heart icon to check connection health or recover a stuck view.', tip: 'Levels and missions track game progress. Cooldowns give you a break between eligible trades.' },
@@ -46,7 +46,7 @@ const START: Point = { x: 355, y: 390 };
 function Cow({ point, highlight = false }: { point: Point; highlight?: boolean }): JSX.Element {
   return <g transform={`translate(${point.x} ${point.y})`} aria-hidden="true">
     <ellipse cx="2" cy="23" rx="43" ry="13" fill="#1a3623" opacity=".4" />
-    {highlight && <><ellipse cx="0" cy="20" rx="57" ry="25" fill="none" stroke="#38ed86" stroke-width="4" opacity=".9" /><ellipse cx="0" cy="20" rx="51" ry="19" fill="none" stroke="#ffe37b" stroke-width="3" opacity=".9" /></>}
+    {highlight && <><ellipse cx="0" cy="20" rx="57" ry="25" fill="none" stroke="#dfb65c" stroke-width="3" opacity=".9" /><circle cx="44" cy="0" r="9" fill="#efce6c" /><text x="44" y="4" text-anchor="middle" font-size="11" fill="#66502a">★</text></>}
     <path d="M-38 -4 Q-54 -10 -47 12" fill="none" stroke="#cbb99b" stroke-width="3" />
     <path d="M-30 5h9v34h-9zM18 5h10v34H18z" fill="#b9ac97" />
     <path d="M-30 35h11v5h-11zM17 35h12v5H17z" fill="#645044" />
@@ -269,7 +269,7 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
           <circle cx={player.x + 98} cy={player.y + 35} r="12" />
           <text x={player.x + 60} y={player.y + 58}>TAP GRASS</text>
         </g>}
-        {step === 5 && <ellipse cx={cow.x} cy={cow.y + 20} rx="65" ry="31" fill="none" stroke="#ff4057" stroke-width="4" />}
+        {step === 5 && <g transform={`translate(${cow.x - 55} ${cow.y - 57})`}><rect width="110" height="24" rx="6" fill="#dceef1" /><image href="/brain-brand.svg" x="2" y="2" width="20" height="20" /><text x="26" y="16" fill="#244f68" font-size="10" font-weight="800">Lesson match</text></g>}
         {!(autoRunning && autoTarget === 1 && autoPhase === 'result') && <g key={`second-${hits}-${autoPhase}`} class={autoRunning && autoTarget === 1 && hits > 0 ? 'guide-cow-impact' : ''}><Cow point={secondCow} highlight={autoRunning && autoTarget === 1} /></g>}
         {!(autoRunning && autoCompleted >= 1) && <g key={`hit-${hits}-${autoPhase}`} class={hits > 0 && !aimDone && (!autoRunning || autoTarget === 0) || autoRunning && autoTarget === 0 && autoPhase === 'result' ? 'guide-cow-impact' : ''}><Cow point={cow} highlight /></g>}
         {[2, 5, 6, 8].includes(step) && <g class="guide-svg-highlight" pointer-events="none">
@@ -294,10 +294,10 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
           <rect x={cow.x - 56} y={cow.y - 40} width="125" height="90" fill="transparent" />
         </g>
         <g class="guide-market-card" transform={`translate(${cow.x - 85} 174)`} role="button" tabIndex={0} aria-label="Inspect Volatility 50 market bubble" onClick={(event) => { event.stopPropagation(); selectCow(); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectCow(); } }}>
-          <rect width="170" height="68" rx="8" fill="#10271e" stroke={selected ? '#ffe37b' : '#38ed86'} stroke-width="2" />
+          <rect width="170" height="68" rx="8" fill="#10271e" stroke={selected ? '#ffe37b' : '#dfb65c'} stroke-width="2" />
           <text x="9" y="16" fill="#fff4cf" font-size="10" font-weight="800">Volatility 50 (1s)</text>
-          <text x="9" y="33" fill="#90ed9e" font-size="11" font-weight="900">↑ OVER 2</text>
-          <text x="105" y="33" fill="#e9efe3" font-size="8" font-weight="800">76% CONF</text>
+          <text x="9" y="33" fill="#90ed9e" font-size="11" font-weight="900">OVER 2</text>
+          <text x="105" y="33" fill="#e9efe3" font-size="8" font-weight="800">76% EST WIN</text>
           <rect x="8" y="40" width="68" height="17" rx="4" fill="#165331" />
           <text x="12" y="52" fill="#8cf0a7" font-size="9" font-weight="900">▲ +4% EDGE</text>
           <text x="101" y="52" fill="#e8eddf" font-size="8" font-weight="800">L 24 · H 26</text>
@@ -307,8 +307,8 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
         <g class="guide-weak-card" transform={`translate(${Math.max(compact ? 255 : 0, secondCow.x - 85)} 118)`} aria-label={autoRunning ? 'Second example signal: Volatility 10, positive edge' : 'Weaker example: Volatility 10, 51 percent confidence and negative 4 percent edge'}>
           <rect width="170" height="61" rx="8" fill="#10271e" stroke="#b47d70" stroke-width="1" />
           <text x="9" y="15" fill="#fff4cf" font-size="10" font-weight="800">Volatility 10</text>
-          <text x="9" y="31" fill="#f3c5b6" font-size="10" font-weight="900">↓ UNDER 7</text>
-          <text x="105" y="31" fill="#e9efe3" font-size="8" font-weight="800">{autoRunning ? '74% CONF' : '51% CONF'}</text>
+          <text x="9" y="31" fill="#f3c5b6" font-size="10" font-weight="900">UNDER 7</text>
+          <text x="105" y="31" fill="#e9efe3" font-size="8" font-weight="800">{autoRunning ? '74% EST WIN' : '51% EST WIN'}</text>
           <rect x="8" y="38" width="68" height="16" rx="4" fill={autoRunning ? '#165331' : '#742d35'} />
           <text x="12" y="50" fill={autoRunning ? '#8cf0a7' : '#ffb9b0'} font-size="9" font-weight="900">{autoRunning ? '▲ +3% EDGE' : '▼ -4% EDGE'}</text>
           <text x="96" y="50" fill="#e8eddf" font-size="8" font-weight="800">EXAMPLE</text>
@@ -362,3 +362,4 @@ export function PastureTutorialGame({ onExit, onConnect }: { onExit: () => void;
     </section>
   </section>;
 }
+

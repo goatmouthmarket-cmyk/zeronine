@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
+import type { CoreLessonEvidence } from './predictionEngine.ts';
 import { evaluateLessonRule, normalizeLessonConditions, type CoreLessonRule, type EvidenceTrade, type LessonConditions } from './lessonRules.ts';
 
 type Queryable = Pick<Pool, 'query'>;
@@ -8,11 +9,7 @@ type Group = { trades: number; wins: number; profit: number; stake: number };
 export type CoreLessonSummary = CoreLessonRule & {
   matched: Group; comparable: Group; skipped: number; firstEvaluatedAt: number | null; lastEvaluatedAt: number | null;
   status: 'needs_examples' | 'helping' | 'not_helping_yet';
-  engineEvidence: {
-    id: string; marketSymbol: string; expectedDirection: 'over' | 'under'; barrier: number; createdAt: number;
-    confirmedPattern: { side: 'high' | 'low'; count: 2 | 3 };
-    patternEvidence: { supported: true; forwardOnly: true; complete: true; firstEvaluatedAt: number; lastEvaluatedAt: number; matched: Group; comparable: Group };
-  } | null;
+  engineEvidence: CoreLessonEvidence | null;
 };
 export type SaveCoreLesson = {
   sourceTradeId: string; marketSymbol: string; expectedDirection: 'over' | 'under'; barrier: number;
@@ -229,11 +226,16 @@ export class CoreEvidenceStore {
         : delta<0&&p-q < -2*se);
       // Complex conditions are evaluated without turning them into misleading
       // digit-only engine evidence. The current adapter supports digit rules.
-      const supported=!!rule.conditions.digitSequence&&!rule.conditions.edge&&!rule.conditions.confidence;
-      const engineEvidence=supported&&first!=null&&last!=null ? {
+      let confirmedConditions:LessonConditions|null=null;
+      try { confirmedConditions=normalizeLessonConditions(rule.conditions); } catch { /* Invalid historical rules cannot match or change a prediction. */ }
+      const supported=!!confirmedConditions?.digitSequence&&!confirmedConditions.edge&&!confirmedConditions.confidence;
+      const engineEvidence:CoreLessonEvidence|null=confirmedConditions ? {
         id:rule.id,marketSymbol:rule.marketSymbol,expectedDirection:rule.expectedDirection,barrier:rule.barrier,createdAt:rule.createdAt,
-        confirmedPattern:rule.conditions.digitSequence!,
-        patternEvidence:{supported:true as const,forwardOnly:true as const,complete:true as const,firstEvaluatedAt:first,lastEvaluatedAt:last,matched,comparable},
+        confirmedConditions,
+        confirmedPattern:confirmedConditions.digitSequence??null,
+        patternEvidence:supported&&first!=null&&last!=null
+          ? {supported:true,forwardOnly:true,complete:true,firstEvaluatedAt:first,lastEvaluatedAt:last,matched,comparable}
+          : null,
       }:null;
       return {...rule,matched,comparable,skipped,firstEvaluatedAt:first,lastEvaluatedAt:last,
         status:!enough?'needs_examples':helping?'helping':'not_helping_yet',engineEvidence};

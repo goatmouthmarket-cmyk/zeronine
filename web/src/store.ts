@@ -156,6 +156,16 @@ export interface FeedStatus {
 }
 
 export interface SignalCandidate {
+  engineVersion?: 'core-v1';
+  payoutSource?: 'estimate' | 'live_quote';
+  setup?: Readonly<{
+    state: 'waiting_prices' | 'wait' | 'check_quote' | 'quoted_edge';
+    label: string; reason: string;
+    lesson: 'supports' | 'caution' | 'none';
+    probabilityKind: 'estimate';
+  }>;
+  lessonMatches?: ReadonlyArray<{ id: string; state: 'matched' | 'applied' | 'caution' }>;
+  lessonIds?: readonly string[];
   market: string;
   direction: 'over' | 'under';
   barrier: number;
@@ -1073,6 +1083,12 @@ function set(patch: Partial<State>, notify = true): void {
     (next as Record<keyof State, State[keyof State]>)[key] = value;
   }
   if (!changed) return;
+  const previousAccount = state.owner ? state.session?.loginid : state.playerSession?.loginid;
+  const nextAccount = next.owner ? next.session?.loginid : next.playerSession?.loginid;
+  if (previousAccount !== nextAccount) {
+    next.coreCandidates = [];
+    next.coreAutoEnabled = false;
+  }
   state = next;
   if (notify) notifyListeners();
 }

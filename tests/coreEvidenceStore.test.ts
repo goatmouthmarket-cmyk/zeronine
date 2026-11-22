@@ -2,6 +2,36 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CoreEvidenceStore } from '../src/core/coreEvidenceStore.ts';
 
+test('confirmed rules remain available for match badges before any later outcomes exist',async()=>{
+ const createdAt=new Date('2026-11-20T12:00:00Z');
+ const rows=[{id:insightId,version:1,account_id:'account-a',source_trade_id:sourceId,market_symbol:'R_100',
+  expected_direction:'over',barrier:2,mode:'demo',stance:'good',conditions:{digitSequence:{side:'high',count:3}},
+  note:'A confirmed pattern',confidence:4,created_at:createdAt,matched_trades:0,matched_wins:0,matched_profit:0,matched_stake:0,
+  comparison_trades:0,comparison_wins:0,comparison_profit:0,comparison_stake:0,skipped:0,first_evaluated:null,last_evaluated:null}];
+ const db={query:async(_sql:string,values:unknown[])=>{assert.deepEqual(values,['account-a']);return{rows};}};
+ const store=new CoreEvidenceStore(db as unknown as ConstructorParameters<typeof CoreEvidenceStore>[0]);
+ const [summary]=await store.lessonSummaries('account-a');
+ assert.equal(summary.status,'needs_examples');assert.ok(summary.engineEvidence);
+ assert.deepEqual(summary.engineEvidence.confirmedConditions,{digitSequence:{side:'high',count:3}});
+ assert.equal(summary.engineEvidence.patternEvidence,null,'No unearned weights are fabricated');
+});
+
+test('complex confirmed rules expose the full condition for matching but never digit-only weights',async()=>{
+ const row={id:insightId,version:1,account_id:'account-a',source_trade_id:sourceId,market_symbol:'R_100',
+  expected_direction:'over',barrier:2,mode:'demo',stance:'good',conditions:{digitSequence:{side:'high',count:3},edge:{min:.01,max:.03}},
+  note:'Only with a similar edge',confidence:4,created_at:new Date('2026-11-20T12:00:00Z'),
+  matched_trades:100,matched_wins:98,matched_profit:20,matched_stake:100,
+  comparison_trades:100,comparison_wins:50,comparison_profit:-20,comparison_stake:100,skipped:0,
+  first_evaluated:Date.parse('2026-11-21T12:00:00Z'),last_evaluated:Date.parse('2026-11-21T13:00:00Z')};
+ const db={query:async()=>({rows:[row,{...row,id:sourceId,conditions:{},note:'Only a note'}]})};
+ const store=new CoreEvidenceStore(db as unknown as ConstructorParameters<typeof CoreEvidenceStore>[0]);
+ const [complex,empty]=await store.lessonSummaries('account-a');
+ assert.deepEqual(complex.engineEvidence?.confirmedConditions,row.conditions);
+ assert.equal(complex.engineEvidence?.patternEvidence,null,'A range-restricted rule is not evaluated as an unrestricted digit rule');
+ assert.equal(empty.engineEvidence,null,'Free text and empty conditions never create a match');
+});
+
+
 type Query = { sql:string; values:unknown[] };
 const sourceId='11111111-2222-4333-8444-555555555555';
 const insightId='66666666-7777-4888-8999-aaaaaaaaaaaa';

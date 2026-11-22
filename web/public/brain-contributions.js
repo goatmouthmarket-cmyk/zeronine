@@ -6,6 +6,7 @@
   const $ = id => document.getElementById(id);
   const svgNs = 'http://www.w3.org/2000/svg';
   let state = null, loading = false, note = '', formDirty = false;
+  let focusedCoreLessonId = null, lessonFocusPending = false;
   let awaitingGrowthLessonId = null, growthCelebrationTimer = 0;
   let reloadQueued = false, recentTradeSignature = null, recentTradeAccount = null;
   let refreshTimers = [], pendingAnimationTimer = 0;
@@ -666,6 +667,37 @@
     return wrap;
   }
 
+  function focusSavedLesson() {
+    if (!focusedCoreLessonId || !lessonFocusPending) return false;
+    const card = Array.from(host.querySelectorAll('[data-core-lesson-id]'))
+      .find(item => item.dataset.coreLessonId === focusedCoreLessonId);
+    if (!card) return false;
+    for (let parent = card; parent && parent !== host; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    const summary = card.querySelector('summary');
+    summary?.focus({preventScroll:true});
+    card.scrollIntoView({block:'nearest',inline:'nearest',behavior:'auto'});
+    lessonFocusPending = false;
+    return true;
+  }
+  window.addEventListener('zeronine:brain-lesson-focus', event => {
+    const lessonId = event.detail?.lessonId;
+    if (typeof lessonId !== 'string' || !/^[0-9a-f-]{36}$/i.test(lessonId)) return;
+    focusedCoreLessonId = lessonId; lessonFocusPending = true;
+    const menu = window.__zeronineBrainMenu;
+    if (menu && typeof menu.open === 'function') menu.open();
+    else $('rangerBrainGlyph')?.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+    setTimeout(() => {
+      $('brainTabMemory')?.click();
+      const saved = host.querySelector('[data-brain-saved-lessons]');
+      if (saved && state) {
+        saved.replaceChildren(node('summary','','Saved lessons · '+(state.insights||[]).length),renderInsights(state.insights||[],state.trades));
+      }
+      if (!focusSavedLesson()) void load();
+    },80);
+  });
+
   function renderInsights(insights, trades) {
     const section=node('section','brain-task-insights');
     section.setAttribute('aria-labelledby','brainTaskMemoryTitle');
@@ -682,7 +714,10 @@
     }
     const tradeById = new Map((Array.isArray(trades)?trades:[]).map(trade=>[String(trade.id),trade]));
     const list=node('div','brain-task-memory-grid');
-    for(const insight of insights.slice(0,24)){
+    const visibleInsights = insights.slice(0,24);
+    const focusedInsight = focusedCoreLessonId && insights.find(item => String(item.coreLesson?.id || '') === focusedCoreLessonId);
+    if (focusedInsight && !visibleInsights.includes(focusedInsight)) visibleInsights.push(focusedInsight);
+    for(const insight of visibleInsights){
       const evidence=insight.patternEvidence && typeof insight.patternEvidence==='object' ? insight.patternEvidence : null;
       const matched=evidence?.matched || null, comparable=evidence?.comparable || null;
       const seen=Math.max(0,Number(matched?.trades)||0), wins=Math.max(0,Number(matched?.wins)||0);
@@ -690,6 +725,7 @@
       const patternText=pattern && (pattern.side==='high'||pattern.side==='low') && [2,3].includes(Number(pattern.count))
         ? 'After '+pattern.count+' '+pattern.side+' digits' : insight.coreLesson ? [insight.conditions?.edge?'Similar edge':'',insight.conditions?.confidence?'Similar confidence':''].filter(Boolean).join(' · ') : '';
       const card=node('details','brain-task-memory-card');card.dataset.result='pending';
+      if (insight.coreLesson?.id) card.dataset.coreLessonId = String(insight.coreLesson.id);
       const summary=node('summary','brain-task-memory-summary');
       const mark=node('span','brain-task-memory-mark',patternText?'✦':'•');
       const copy=node('span','brain-task-memory-copy');
@@ -1117,11 +1153,13 @@
     const status=node('p','brain-contribution-status',note);
     status.id='brainTaskStatus';status.setAttribute('role','status');status.setAttribute('aria-live','polite');card.append(status);
     const memories=node('details','brain-review-details');
+    memories.dataset.brainSavedLessons = 'true';
     memories.append(node('summary','','Saved lessons · '+insights.length),renderInsights(insights,data.trades));card.append(memories);
     const practice=node('details','brain-review-details brain-review-practice');
     practice.append(node('summary','','Practice snapshot'));
     const evidence=node('div','brain-review-evidence');evidence.id='brainEvidenceSlot';practice.append(evidence);card.append(practice);
     host.append(card);
+    focusSavedLesson();
   }
   async function load() {
     if(document.hidden) return;
@@ -1148,6 +1186,11 @@
         } catch {}
       }
       if(formDirty) {
+        if (lessonFocusPending) {
+          const saved = host.querySelector('[data-brain-saved-lessons]');
+          if (saved) saved.replaceChildren(node('summary','','Saved lessons · '+(response.insights||[]).length),renderInsights(response.insights||[],response.trades));
+          focusSavedLesson();
+        }
         const form=host.querySelector('#brainInsightForm');
         if(typeof form?.refreshTradeChoices==='function') form.refreshTradeChoices(response.trades);
         // The server can finish gathering entry ticks while the player is
@@ -1233,6 +1276,7 @@
     if(account!==recentTradeAccount) {
       const hadAccount=recentTradeAccount!==null;
       recentTradeAccount=account; recentTradeSignature=signature; seenMemoryTradeIds=null; lastGrowthTradeCount=null;
+      focusedCoreLessonId=null; lessonFocusPending=false;
       document.dispatchEvent(new CustomEvent('brain:lessons-updated',{detail:{insights:[]}}));
       awaitingGrowthLessonId=null; clearTimeout(growthCelebrationTimer); $('brainGrowthCard')?.classList.remove('brain-growth-celebrate');
       for(const timer of refreshTimers) clearTimeout(timer); refreshTimers=[];

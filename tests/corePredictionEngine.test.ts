@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { coreBaseWin, rankCoreCandidates, findCoreDecision, evaluateCoreQuote, type CoreMarketInput, type CoreLessonEvidence } from '../src/core/predictionEngine.ts';
+import { coreBaseWin, rankCoreCandidates, findCoreDecision, evaluateCoreQuote, deriveCoreSetup, type CoreMarketInput, type CoreLessonEvidence } from '../src/core/predictionEngine.ts';
 
 const NOW = 1_800_000_000_000;
 const market = (digits = Array.from({length:60}, (_,i)=>i%10)): CoreMarketInput => ({
@@ -107,4 +107,96 @@ test('a reliable adverse pattern lowers confidence based on outcomes, without st
   const duplicate={...warning,id:'same-warning'};
   assert.equal(findCoreDecision(m,'over',1,[warning,duplicate],NOW)?.probability,learned.probability);
   assert.equal(findCoreDecision(m,'under',8,[warning],NOW)?.features.lessonAdjustment,0);
+});
+
+test('setup states reflect estimate and quote value without changing probabilities',()=>{
+  const baseline=pick();
+  assert.equal(baseline.setup.state,'wait');
+  assert.equal(baseline.setup.probabilityKind,'estimate');
+  const positive=pick(market(Array(100).fill(9)));
+  assert.equal(positive.setup.state,'check_quote');
+  assert.equal(positive.setup.label,'Check quote');
+  const checked=evaluateCoreQuote(baseline,1,1.5,NOW);
+  assert.equal(checked.setup.state,'quoted_edge');
+  assert.equal(checked.setup.label,'Quote checked');
+  assert.equal(checked.probability,baseline.probability);
+  const costly=evaluateCoreQuote(positive,1,1.01,NOW);
+  assert.equal(costly.setup.state,'wait');
+  assert.equal(costly.probability,positive.probability);
+  assert.equal(deriveCoreSetup({...checked,fresh:false}).state,'waiting_prices');
+  assert.equal(deriveCoreSetup({...checked,expectedROI:0}).state,'wait');
+  assert.ok(Object.isFrozen(checked.setup));
+  assert.throws(()=>{(checked.setup as {label:string}).label='Buy now'},TypeError);
+});
+
+test('verified lesson support or caution is separate from entry timing',()=>{
+  const m=market([1,2,3,5,7,9]);
+  const supported=findCoreDecision(m,'over',1,[lesson()],NOW)!;
+  assert.equal(supported.setup.lesson,'supports');
+  const warning=lesson();
+  warning.patternEvidence!.matched={trades:100,wins:50,profit:-40,stake:100};
+  warning.patternEvidence!.comparable={trades:100,wins:95,profit:12,stake:100};
+  const cautioned=findCoreDecision(m,'over',1,[warning],NOW)!;
+  assert.equal(cautioned.setup.lesson,'caution');
+  assert.equal(pick().setup.lesson,'none');
+  for(const decision of [supported,cautioned]){
+    assert.doesNotMatch(JSON.stringify(decision.setup),/bet now|timing|fresh signal/i);
+    assert.equal(evaluateCoreQuote(decision,1,1.5,NOW).setup.lesson,decision.setup.lesson);
+  }
+});
+
+test('a confirmed repeating lesson is visible before evidence can affect probability',()=>{
+  const m=market([1,2,3,5,7,9]),base=findCoreDecision(m,'over',1,[],NOW)!;
+  const pending=lesson();pending.patternEvidence=null;
+  pending.confirmedConditions={digitSequence:{side:'high',count:3},edge:{min:-.1,max:0},confidence:{min:.7,max:.9}};
+  const matched=findCoreDecision(m,'over',1,[pending],NOW)!;
+  assert.deepEqual(matched.lessonMatches,[{id:pending.id,state:'matched'}]);
+  assert.deepEqual(matched.lessonIds,[]);
+  assert.equal(matched.probability,base.probability);
+  assert.equal(matched.setup.lesson,'none');
+  assert.ok(Object.isFrozen(matched.lessonMatches));assert.ok(Object.isFrozen(matched.lessonMatches[0]));
+  assert.deepEqual(evaluateCoreQuote(matched,1,1.5,NOW).lessonMatches,matched.lessonMatches);
+  // A richer rule is not silently treated as the currently supported digit-only weighting rule.
+  pending.patternEvidence=lesson().patternEvidence;
+  assert.equal(findCoreDecision(m,'over',1,[pending],NOW)!.probability,base.probability);
+});
+
+test('lesson matches distinguish applied support from adverse evidence',()=>{
+  const m=market([1,2,3,5,7,9]);
+  const positive=lesson();positive.confirmedConditions={digitSequence:{side:'high',count:3}};
+  const applied=findCoreDecision(m,'over',1,[positive],NOW)!;
+  assert.deepEqual(applied.lessonMatches,[{id:positive.id,state:'applied'}]);
+  assert.deepEqual(applied.lessonIds,[positive.id]);
+  const negative=lesson();negative.patternEvidence!.matched={trades:100,wins:50,profit:-40,stake:100};
+  negative.patternEvidence!.comparable={trades:100,wins:95,profit:12,stake:100};
+  assert.deepEqual(findCoreDecision(m,'over',1,[negative],NOW)!.lessonMatches,[{id:negative.id,state:'caution'}]);
+});
+
+test('display-only ranges use the final cow probability after supported lesson weighting',()=>{
+  const m=market([1,2,3,5,7,9]),base=findCoreDecision(m,'over',1,[],NOW)!;
+  const lift=lesson(),weighted=findCoreDecision(m,'over',1,[lift],NOW)!;
+  const displayRule=lesson();displayRule.id='visible-range';displayRule.patternEvidence=null;
+  displayRule.confirmedPattern=null;
+  displayRule.confirmedConditions={confidence:{min:(base.probability+weighted.probability)/2},edge:{min:(base.edge+weighted.edge)/2}};
+  assert.deepEqual(findCoreDecision(m,'over',1,[displayRule],NOW)!.lessonMatches,[]);
+  const result=findCoreDecision(m,'over',1,[lift,displayRule],NOW)!;
+  assert.equal(result.probability,weighted.probability);
+  assert.deepEqual(result.lessonMatches,[{id:lift.id,state:'applied'},{id:displayRule.id,state:'matched'}]);
+});
+
+test('lesson correlation requires complete confirmed conditions and contiguous recorded prices',()=>{
+  const m=market([1,2,3,5,7,9]);
+  const pending=lesson();pending.patternEvidence=null;
+  pending.confirmedConditions={digitSequence:{side:'high',count:3}};
+  const noMatch=(l:CoreLessonEvidence,input=m)=>assert.deepEqual(findCoreDecision(input,'over',1,[l],NOW)!.lessonMatches,[]);
+  noMatch({...pending,confirmedConditions:{}});
+  noMatch({...pending,confirmedConditions:null,confirmedPattern:null});
+  noMatch({...pending,confirmedConditions:{confidence:{min:.9}}});
+  noMatch({...pending,confirmedConditions:{edge:{min:0}}});
+  noMatch({...pending,confirmedConditions:{edge:{min:.1,max:0}}});
+  noMatch({...pending,createdAt:NOW+1});noMatch({...pending,marketSymbol:'R_10'});
+  noMatch({...pending,expectedDirection:'under'});noMatch({...pending,barrier:2});
+  const gap=market([1,2,3,5,7,9]);gap.recentTicks=gap.recentTicks.map((t,i)=>({...t,sequence:i===5?99:t.sequence}));noMatch(pending,gap);
+  const unidentified=market([5,7,9]);unidentified.recentTicks=unidentified.recentTicks.map(t=>({...t,sequence:undefined}));noMatch(pending,unidentified);
+  noMatch(pending,market([7,9]));noMatch(pending,market([5,4,9]));
 });

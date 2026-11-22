@@ -20,10 +20,8 @@ test('Core routes preserve account isolation, quote math and manual trading with
   const connected=new WeakMap<PrivateClient,string>(),sessions=new Map([
     ['session-alice',{accountId:'VRTC_CORE_ALICE',token:'fake-alice'}],['session-bob',{accountId:'VRTC_CORE_BOB',token:'fake-bob'}],['session-charlie',{accountId:'VRTC_CORE_CHARLIE',token:'fake-charlie'}],
   ]);
-  const now=Date.now(),epoch=Math.floor(now/1000),registry=new MarketRegistry({onTick:()=>{}});
+  const now=Date.now();let epoch=Math.floor(now/1000);const registry=new MarketRegistry({onTick:()=>{}});
   registry.ensure('R_10');registry.setDisplay('R_10','Volatility 10');setPrecision('R_10',1);
-  for(let index=0;index<40;index++){const digit=index%10;registry.push('R_10',100+digit/10,epoch-43+index,digit);}
-  registry.push('R_10',100.5,epoch-2,5);registry.push('R_10',100.6,epoch-1,6);registry.push('R_10',100.7,epoch,7);
   let migrationReady=false,failInitialContext=true,quoteMultiplier=2;
   const buys:string[]=[],writes:Array<{accountId:string;context:Record<string,unknown>}>=[],attempts:Array<{accountId:string;attempt:Record<string,unknown>}>=[];
   const active=new Map<string,{id:string;status:string;provider_contract_id:string|null;market:string}>();
@@ -81,6 +79,11 @@ test('Core routes preserve account isolation, quote math and manual trading with
     await app.register(websocket);
     app.get('/test/session/:name',(req,reply)=>{const name=(req.params as {name:string}).name;reply.setCookie('deriv_cows_session','session-'+name,{signed:true,path:'/'});return{ok:true};});
     registerPlayerTrading(app,store as never,registry);
+    await app.ready();
+    // Native module/bootstrap latency must not turn controlled test prices stale.
+    epoch=Math.floor(Date.now()/1000);
+    for(let index=0;index<40;index++){const digit=index%10;registry.push('R_10',100+digit/10,epoch-43+index,digit);}
+    registry.push('R_10',100.5,epoch-2,5);registry.push('R_10',100.6,epoch-1,6);registry.push('R_10',100.7,epoch,7);
     const cookieFor=async(name:string)=>String((await app.inject({method:'GET',url:'/test/session/'+name})).headers['set-cookie']).split(';')[0];
     const alice=await cookieFor('alice'),bob=await cookieFor('bob'),charlie=await cookieFor('charlie');
     const order={market:'R_10',direction:'over',barrier:2,stake:1,minEdge:0};

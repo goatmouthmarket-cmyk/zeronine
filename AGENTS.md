@@ -49,3 +49,7 @@
 
 - Research qualification uses recent account/version/policy evidence across explicit runs; restarting virtual funds must not erase losing results or bypass evidence expiry.
 - Collapsing Research UI never starts or stops a run. Show actual server state, clear private data on account changes, and keep paper results separate from account funds.
+
+- Never fill unavailable market statistics with placeholder percentages. Show recorded values or a waiting state, and label estimated win probability separately from measured accuracy.
+- A lesson-match badge identifies repeated confirmed conditions; only an applied lesson represents an evidence-backed probability adjustment. Keep these states and their saved lesson IDs distinct.
+- Shared virtual-paper signals must carry their stated payout ratio; never substitute an unrelated simulator default for a Core contract.

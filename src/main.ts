@@ -1,3 +1,4 @@
+import { paperSignalFromHubEvent } from './simulation/paperSignal.ts';
 import { rankCoreCandidates, isCorePastureCandidate } from './core/predictionEngine.ts';
 import Fastify from 'fastify';
 import * as fs from 'node:fs';
@@ -48,62 +49,11 @@ import { DerivGoldFeed } from './gold/derivFeed.ts';
 import { GoldResearchService } from './gold/researchService.ts';
 import { GoldSentimentWorker, DEFAULT_GOLD_SENTIMENT_FEEDS, type GoldSentimentFeedConfig } from './gold/sentimentWorker.ts';
 import type { PaperSignal, PaperSimulationEvent } from './simulation/paperSimulator.ts';
-import type { Direction } from './core/digitMath.ts';
 import { observeResearchOutcome } from './intelligence/researchCalibration.ts';
 import { winDigits } from './core/digitMath.ts';
 import { EntryResearchRuntime } from './testlab/entryRuntime.ts';
 import type { EntryMethodId, EntryProduct } from './testlab/entry.ts';
 import { TelemetryService } from './telemetry/service.ts';
-
-function paperSignalFromHubEvent(
-  event: Record<string, unknown>,
-  stake: number,
-  strategyMode: string,
-  botMode: string,
-): PaperSignal | null {
-  const raw = event.signal as { holds?: unknown; candidates?: unknown; reason?: unknown } | undefined;
-  if (raw?.holds || !Array.isArray(raw?.candidates)) return null;
-  const candidates = raw.candidates as Record<string, unknown>[];
-  // Continuous virtual research concentrates on the four manual plays used in
-  // the cockpit. This never changes live account execution or sizing.
-  const candidate = candidates.find((item) => (
-    (item.direction === 'over' && (item.barrier === 1 || item.barrier === 2))
-    || (item.direction === 'under' && (item.barrier === 7 || item.barrier === 8))
-  )) ?? candidates[0];
-  if (!candidate) return null;
-  const direction = candidate.direction;
-  const market = candidate.market;
-  const barrier = candidate.barrier;
-  if (
-    typeof market !== 'string'
-    || (direction !== 'over' && direction !== 'under')
-    || !Number.isInteger(barrier)
-  ) return null;
-  return {
-    market,
-    direction: direction as Direction,
-    barrier: barrier as number,
-    stake,
-    estWin: typeof candidate.estWin === 'number' ? candidate.estWin : undefined,
-    edge: typeof candidate.edge === 'number' ? candidate.edge : undefined,
-    id: `${Number.isFinite(event.ts) ? event.ts : Date.now()}:${market}:${direction}:${barrier}`,
-    issuedAt: Number.isFinite(event.ts) ? Number(event.ts) : Date.now(),
-    reason: typeof raw?.reason === 'string' ? raw.reason : 'shared configured scanner candidate',
-    strategyMode,
-    botMode,
-    evidence: {
-      est_win: typeof candidate.estWin === 'number' ? candidate.estWin : null,
-      edge: typeof candidate.edge === 'number' ? candidate.edge : null,
-      expected_roi: typeof candidate.expectedROI === 'number' ? candidate.expectedROI : null,
-      consistency: typeof candidate.consistency === 'number' ? candidate.consistency : null,
-      entropy: typeof candidate.entropy === 'number' ? candidate.entropy : null,
-      momentum: typeof candidate.momentum === 'number' ? candidate.momentum : null,
-      short_long_deviation: typeof candidate.shortLongDeviation === 'number' ? candidate.shortLongDeviation : null,
-      transition_probability: typeof candidate.transitionProb === 'number' ? candidate.transitionProb : null,
-      learned_win: typeof candidate.learnedWin === 'number' ? candidate.learnedWin : null,
-    },
-  };
-}
 
 async function main(): Promise<void> {
   getDb();
