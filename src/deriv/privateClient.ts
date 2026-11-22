@@ -259,8 +259,9 @@ export class DerivPrivateClient {
   private handleMessage(msg: Record<string, any>): void {
     if (msg.msg_type === 'ping') return;
     if (msg.msg_type === 'balance') {
-      const balance = msg.balance?.balance;
-      if (typeof balance === 'number') {
+      const rawBalance = msg.balance?.balance;
+      const balance = (typeof rawBalance === 'number' || (typeof rawBalance === 'string' && rawBalance.trim() !== '')) ? Number(rawBalance) : NaN;
+      if (Number.isFinite(balance) && balance >= 0) {
         this.persistBalance(balance);
         this.onBalance?.(balance);
       }
