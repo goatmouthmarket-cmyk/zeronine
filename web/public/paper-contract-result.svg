@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" fill="none">
+  <title>A virtual practice contract with the ranger's bow and cow target</title>
+  <ellipse cx="83" cy="105" rx="61" ry="8" fill="#295737" opacity=".14"/>
+  <path d="M51 13h61l16 16v68l-8-4-8 5-8-5-8 5-8-5-8 5-8-5-8 5-13-5Z" fill="#fff0cb" stroke="#68472f" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M112 13v17h16" fill="#dfc396" stroke="#68472f" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M64 29h30M65 80h47m-47 8h32" stroke="#ae9064" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="89" cy="54" r="21" fill="#dcebc4" stroke="#729457" stroke-width="2"/>
+  <path d="m77 45-5-8 10 3m16 5 7-7-1 12" fill="#bd8b5e" stroke="#68472f" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M75 50q2-12 14-12 15 0 16 15v8q-4 8-16 8-12 0-15-8Z" fill="#fff0cb" stroke="#68472f" stroke-width="2"/>
+  <path d="M77 42q9-6 13 0l-4 10-10 1Z" fill="#79523d"/>
+  <circle cx="83" cy="51" r="1.8" fill="#352a22"/><circle cx="97" cy="51" r="1.8" fill="#352a22"/>
+  <ellipse cx="90" cy="61" rx="12" ry="7" fill="#efaaa0" stroke="#aa7669" stroke-width="1.5"/>
+  <circle cx="86" cy="61" r="1.5" fill="#82564d"/><circle cx="95" cy="61" r="1.5" fill="#82564d"/>
+  <path d="M29 28q39 29 0 62" stroke="#543b29" stroke-width="7" stroke-linecap="round"/>
+  <path d="M29 28q32 29 0 62" stroke="#af7a45" stroke-width="4" stroke-linecap="round"/>
+  <path d="M29 28v62" stroke="#eee0b4" stroke-width="2"/>
+  <path d="M14 61h49" stroke="#68472f" stroke-width="3" stroke-linecap="round"/>
+  <path d="m64 61-9-5v10Z" fill="#b96e56"/><path d="m22 61-8-5H8l6 5-6 5h6Z" fill="#9ebc79"/>
+  <path d="m133 49 6-5m-4 16h9m-10 12 6 5" stroke="#bfa04f" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

@@ -321,6 +321,12 @@
     recent: new Map(),
     history: [],
   };
+  let researchViewOpen = false;
+  window.addEventListener('zeronine:core-research-view', event => {
+    researchViewOpen = event.detail?.open === true;
+    positionLane();
+    if (!researchViewOpen) flush();
+  });
 
   function maxToasts() {
     return innerWidth <= 999 ? 2 : 3;
@@ -339,14 +345,14 @@
   // controls parked along the bottom edge that a lane must never cover.
   function bottomChromeTop() {
     let top = innerHeight - 90;
-    ['#inspector', '#pastureChat', '#healthDock', '#mobileControls', '.mobileZoom', '#mobileNav'].forEach((sel) => {
+    ['#inspector', '#chatForm', '#chatToggle', '#chatMessages:not(:empty)', '#healthDock', '#mobileControls', '.mobileZoom', '#mobileNav'].forEach((sel) => {
       const el = document.querySelector(sel);
       if (!el) return;
       const style = getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden') return;
+      if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return;
       const rect = el.getBoundingClientRect();
       if (rect.height < 8 || rect.top < innerHeight * 0.45) return;
-      top = Math.min(top, rect.top);
+      top = Math.min(top, rect.top - 8);
     });
     return top;
   }
@@ -360,17 +366,20 @@
     const width = desktopInline
       ? Math.min(330, Math.max(180, flipLeft ? anchor.left - 18 : rightSpace))
       : Math.min(330, Math.max(0, innerWidth - 24));
+    const research = rectOf('#coreResearchHud');
     const left = desktopInline
       ? (flipLeft ? Math.max(8, anchor.left - width - 8) : Math.min(innerWidth - width - 8, anchor.right + 8))
+      : research && research.left >= width + 16 ? research.left - width - 8
+      : research && innerWidth - research.right >= width + 16 ? research.right + 8
       : Math.max(8, Math.min(innerWidth - width - 8, anchor ? anchor.left : 8));
-    const below = !desktopInline && anchor && anchor.top < state.headerH + 150;
+    const below = !desktopInline && !research && anchor && anchor.top < state.headerH + 150;
     const floor = desktopInline
       ? innerHeight - state.headerH - 8
-      : Math.max(state.headerH + 90, anchor ? anchor.top - 8 : bottomChromeTop());
+      : Math.max(state.headerH + 90, research ? bottomChromeTop() : anchor ? anchor.top - 8 : bottomChromeTop());
     lane.dataset.side = 'left';
     lane.style.left = left + 'px';
     lane.style.right = 'auto';
-    lane.style.width = desktopInline ? width + 'px' : '';
+    lane.style.width = width + 'px';
     lane.style.maxHeight = Math.max(80, Math.min(innerHeight * 0.38, desktopInline ? floor - state.headerH - 16 : below ? innerHeight - anchor.bottom - 16 : floor - state.headerH - 16)) + 'px';
     const inlineTop = desktopInline ? anchor.top + (anchor.height - lane.offsetHeight) / 2 : 0;
     lane.style.top = desktopInline
@@ -378,7 +387,7 @@
       : below ? anchor.bottom + 8 + 'px' : 'auto';
     lane.style.bottom = desktopInline || below ? 'auto' : Math.max(8, innerHeight - floor) + 'px';
     const available = desktopInline ? floor - state.headerH - 16 : below ? innerHeight - anchor.bottom - 16 : floor - state.headerH - 16;
-    lane.dataset.room = !state.menu && available >= 80 ? 'true' : 'false';
+    lane.dataset.room = !state.menu && !researchViewOpen && available >= 80 ? 'true' : 'false';
   }
 
   function pruneRecent(now) {
@@ -448,8 +457,11 @@
     if (item.type === 'paper_result') {
       const art = document.createElement('img');
       art.className = 'dc-toast-game-art';
-      art.src = '/brain-pasture-scene.svg';
+      art.src = '/paper-contract-result.svg';
       art.alt = '';
+      art.width = 160;
+      art.height = 120;
+      art.decoding = 'async';
       icon.appendChild(art);
     } else {
       icon.textContent = TYPES[item.type].icon;
@@ -558,6 +570,7 @@
   }
 
   function flush() {
+    if (researchViewOpen) return;
     if (!state.menu && !state.modal) {
       while (notifications.active.length < maxToasts() && notifications.queue.length) {
         renderToast(notifications.queue.shift());
@@ -588,7 +601,7 @@
       return;
     }
 
-    if (state.modal) {
+    if (state.modal || researchViewOpen) {
       notifications.queue.push(item);
       emit('toast', { action: 'queued', type: item.type });
       return;
@@ -824,4 +837,5 @@
   positionLane();
   emit('ready');
 })();
+
 

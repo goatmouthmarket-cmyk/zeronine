@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" fill="none">
+  <title>Brain sensor studying a pasture cow</title>
+  <ellipse cx="172" cy="153" rx="137" ry="13" fill="#295737" opacity=".14"/>
+  <g stroke-linejoin="round">
+    <path d="M15 129v18h8v-18m7 0v18h8v-18" fill="#414744" stroke="#394038" stroke-width="2"/>
+    <path d="M12 144h12v5H12m16-5h12v5H28" fill="#755338"/>
+    <path d="M11 102h26l2 30H12Z" fill="#326db1" stroke="#284c62" stroke-width="2"/>
+    <path d="M12 124h27v5H12" fill="#987346"/>
+    <circle cx="24" cy="88" r="12" fill="#cba17d" stroke="#68472f" stroke-width="1.5"/>
+    <path d="M12 86q0-14 12-14t12 14l-9-6-10 5Z" fill="#523c2c"/>
+    <circle cx="25" cy="88" r="1.4" fill="#30271f"/><circle cx="32" cy="88" r="1.4" fill="#30271f"/>
+    <path d="m13 109 10 10m13-9 15 7 19-7" stroke="#c69b75" stroke-width="5" stroke-linecap="round"/>
+    <path d="m36 105 3 10" stroke="#e0c78d" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <path d="M50 134h51l12 15H39z" fill="#678956" stroke="#543b29" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M73 77v58h10V77" fill="#f4dfb6" stroke="#543b29" stroke-width="3"/>
+  <rect x="44" y="35" width="69" height="58" rx="15" fill="#fff0cb" stroke="#543b29" stroke-width="3"/>
+  <path d="M67 49c-10-3-17 7-13 15-7 5-3 17 5 18 4 7 14 6 19 1 5 5 16 5 19-3 9-3 10-15 3-20 1-10-11-16-18-10-4-5-11-5-15-1Z" fill="#e8b9a0" stroke="#895a41" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M78 52v29m-12-25c7 0 8 6 4 9m-12-1c8-2 11 4 9 8m-7 7c0-7 6-9 11-5m17-20c-8 1-9 7-5 10m13 0c-8-2-11 4-8 9m7 6c-1-6-7-8-12-5" stroke="#a36f50" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="104" cy="44" r="5" fill="#a8d48b" stroke="#426d40" stroke-width="2"/>
+  <path d="M116 64h16m-8-8 8 8-8 8" stroke="#376b45" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m134 63 41-25m-41 25 42 56" stroke="#659658" stroke-width="2" stroke-dasharray="4 6" opacity=".65"/>
+  <path d="M179 30h15m-15 0v15m113-15h-15m15 0v15M179 134h15m-15 0v-15m113 15h-15m15 0v-15" stroke="#3c7d4e" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="234" cy="134" rx="56" ry="10" fill="#2d5934" opacity=".22"/>
+  <path d="m194 101-3 32h12l5-28m43-1 3 29h12l-1-38" fill="#e7d1ad" stroke="#63452f" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M187 80q-17 2-17 20 0 8-7 9" stroke="#f4dfb6" stroke-width="4" stroke-linecap="round"/>
+  <ellipse cx="225" cy="82" rx="45" ry="31" fill="#fff0cb" stroke="#63452f" stroke-width="3"/>
+  <path d="m198 58-12 18 8 19 16-4 7-18-9-17m29-3 18 8 11 19-14 17-16-7 6-16Z" fill="#79523d"/>
+  <path d="m259 63-8-17 17 8m19 8 10-16-1 21" fill="#bd8b5e" stroke="#63452f" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M253 72q8-21 27-15 23 8 23 28l-9 19h-33q-17-9-8-32Z" fill="#fff0cb" stroke="#63452f" stroke-width="3"/>
+  <circle cx="271" cy="75" r="2.8" fill="#352a22"/><circle cx="289" cy="76" r="2.8" fill="#352a22"/>
+  <ellipse cx="282" cy="95" rx="18" ry="11" fill="#efaaa0" stroke="#aa7669" stroke-width="2"/>
+  <circle cx="276" cy="95" r="2" fill="#82564d"/><circle cx="289" cy="95" r="2" fill="#82564d"/>
+  <circle cx="224" cy="80" r="17" fill="#d6edb9" fill-opacity=".58" stroke="#4c985f" stroke-width="2"/>
+  <path d="M214 80h20m-10-10v20" stroke="#3d7d4e" stroke-width="2" stroke-linecap="round"/>
+  <rect x="101" y="114" width="51" height="28" rx="6" fill="#fff3d7" stroke="#876847" stroke-width="2"/>
+  <path d="m109 133 8-8 8 4 8-9 11 5" stroke="#51844c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m25 146 4-6 4 6m94 7 3-6 4 6" stroke="#6b9656" stroke-width="2" stroke-linecap="round"/>
+</svg>

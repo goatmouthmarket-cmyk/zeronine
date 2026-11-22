@@ -123,7 +123,7 @@ export function CoreResearchPanel({ onBack }: { onBack: () => void }): JSX.Eleme
   return <article class="core-research" aria-labelledby="core-research-title">
     <header class="core-research-heading">
       <button type="button" class="core-research-back" onClick={onBack} aria-label="Back to the pasture">←</button>
-      <img src="/brain-brand.svg" alt="" />
+      <img src="/research-logbook.svg" alt="" />
       <div><small>CORE · OVER / UNDER</small><h1 id="core-research-title">Research pasture</h1></div>
       <span class="core-research-virtual">Virtual only</span>
     </header>
@@ -131,7 +131,7 @@ export function CoreResearchPanel({ onBack }: { onBack: () => void }): JSX.Eleme
       <section class="core-research-field" aria-label="Ghost scout virtual trading">
         <div class="core-research-field-top"><span class={running ? 'is-running' : ''}>{running ? 'Scout active' : 'Scout resting'}</span><strong>{stageLabel(run?.phase)}</strong></div>
         <div class={'core-research-scene' + (shot ? ' is-shooting' : '')}>
-          <img class="core-research-pasture-art" src="/brain-pasture-scene.svg" alt="The game's ranger scouting a cow for a virtual trade" />
+          <img class="core-research-pasture-art" src="/research-scanner.svg" alt="The game's ranger scouting a cow for a virtual trade" />
           <span class="core-research-scan" aria-hidden="true" />
           <span class="core-research-arrow" aria-hidden="true">➜</span>
           <span class="core-research-ghost-label">GHOST SCOUT</span>

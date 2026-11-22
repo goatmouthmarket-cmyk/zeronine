@@ -21,7 +21,7 @@ test('missing, duplicate or unsafe renderer input is rejected explicitly', () =>
   assert.throws(() => inlinePastureRenderer(tag+tag, ''), /exactly one/);
   assert.throws(() => inlinePastureRenderer(tag, 'const bad="</script>";'), /terminator/);
 });
-test('the deployed pasture HTML and renderer inline into syntactically valid scripts', () => {
+test('the runtime pasture source HTML and renderer inline into syntactically valid scripts', () => {
   const html = readFileSync(new URL('../web/public/trading-room.html',import.meta.url),'utf8');
   const renderer = readFileSync(new URL('../web/public/trading-room-core.js',import.meta.url),'utf8');
   const inline = inlinePastureRenderer(html, renderer); let parsed=0;

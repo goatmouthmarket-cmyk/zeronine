@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" fill="none">
+  <title>Research logbook and a lens checking recorded results</title>
+  <ellipse cx="78" cy="105" rx="63" ry="8" fill="#295737" opacity=".14"/>
+  <path d="M20 32q26-9 53 2 24-11 50-2v62q-24-5-50 5-25-10-53-5Z" fill="#bb9561" stroke="#543b29" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M24 24q24-7 49 5v62q-23-12-49-4Zm49 5q23-12 46-5v63q-22-4-46 4Z" fill="#fff0cb" stroke="#684c31" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M73 31v58" stroke="#c7a87a" stroke-width="2"/>
+  <path d="m34 40 11 1m-11 12 23 3m-23 11 22 3m32-28 20-4m-20 15 18-3m-18 14 20-3" stroke="#aa8a5e" stroke-width="3" stroke-linecap="round"/>
+  <path d="m35 80 6-6 7 2 10-10m30 13 6-8 8 1 8-12" stroke="#53834a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m46 17 9-6 10 5 9-7 11 6 8-3" stroke="#658a51" stroke-width="2" stroke-linecap="round" stroke-dasharray="3 4"/>
+  <circle cx="111" cy="68" r="23" fill="#e0edc7" fill-opacity=".9" stroke="#543b29" stroke-width="4"/>
+  <circle cx="111" cy="68" r="17" fill="#fff8df" stroke="#83a66b" stroke-width="2"/>
+  <path d="m127 86 15 15" stroke="#543b29" stroke-width="10" stroke-linecap="round"/>
+  <path d="m128 86 13 13" stroke="#a97b49" stroke-width="5" stroke-linecap="round"/>
+  <path d="m100 70 6-8 7 11 10-14" stroke="#3c7d4e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="100" cy="70" r="2.5" fill="#d7b24f"/><circle cx="113" cy="73" r="2.5" fill="#d7b24f"/>
+</svg>

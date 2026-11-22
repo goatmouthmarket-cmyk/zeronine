@@ -654,21 +654,31 @@ body[data-dc-menu]:not([data-dc-menu=""]) #guestBanner { visibility: hidden; }
 
 
 
-/* Paper results use the pasture's own Ranger and cow illustration. */
+/* Keep the full game artwork in its own column, separate from result text. */
 .dc-toast[data-type="paper_result"] {
+  grid-template-columns: 64px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 10px;
+  min-height: 82px;
   border: 1px solid #c6a66e;
   background: linear-gradient(135deg, #fff9e8 0%, #f5e9c8 58%, #e3edcf 100%);
   box-shadow: 0 3px 0 #a98550, 0 10px 24px #23351f38;
 }
 .dc-toast[data-type="paper_result"] .dc-toast-icon {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  overflow: hidden;
-  border: 1px solid #c4a36a;
-  border-radius: 10px;
-  background: #e9f0db;
+  width: 64px;
+  height: 60px;
+  min-width: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .dc-toast-game-art { display: block; width: 100%; height: 100%; object-fit: contain; }
+.dc-toast[data-type="paper_result"] .dc-toast-body { display: grid; gap: 3px; min-width: 0; white-space: normal; }
+.dc-toast[data-type="paper_result"] .dc-toast-body strong { margin: 0; line-height: 1.25; }
+.dc-toast[data-type="paper_result"] .dc-toast-body > span { display: block; white-space: normal; overflow-wrap: anywhere; }
+.dc-toast[data-type="paper_result"] .dc-toast-close { width: 24px; height: 24px; min-width: 0; align-self: start; }
 .dc-toast[data-type="paper_result"] .dc-toast-body strong { color: #315d39; }
 .dc-toast[data-type="paper_result"] .dc-toast-detail { color: #735426; font-weight: 800; }
+@media(max-width:340px){.dc-toast[data-type="paper_result"]{grid-template-columns:54px minmax(0,1fr)22px;gap:8px;padding:8px}.dc-toast[data-type="paper_result"] .dc-toast-icon{width:54px;height:50px}.dc-toast[data-type="paper_result"] .dc-toast-close{width:22px;height:22px}}
+
