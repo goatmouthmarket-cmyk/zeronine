@@ -775,7 +775,8 @@
     return section;
   }
 
-  const missionHud = $('missionHud');
+  const researchHudEnabled = document.documentElement.dataset.coreResearchHud === 'true';
+  const missionHud = researchHudEnabled ? null : $('missionHud');
   let hudGoalsPanel = null;
   function goalLabel(goal) {
     const labels = {reviews:'Review your trades',pattern:'Confirm a pattern',matches:'See the pattern again',comparison:'Compare other trades'};
@@ -803,6 +804,7 @@
     return panel;
   }
   function syncHudTask(progress, insights, guest) {
+    if (researchHudEnabled) return;
     const card = $('missionHud'), title = $('missionTitle'), count = $('missionProgress');
     if (!card || !title || !count) return;
     const goals = Array.isArray(state?.training?.goals) ? state.training.goals : [];

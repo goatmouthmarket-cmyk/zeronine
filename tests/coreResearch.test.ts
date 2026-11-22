@@ -126,7 +126,7 @@ test('Auto activation requires completed evidence and explicit saved consent, an
  const restored=new CoreResearch(()=>[s.market],s.persistence,{now:()=>BASE+200000,intervalMs:false});
  await restored.restore('a');assert.equal(restored.snapshot('a').autoEnabled,true);
  const newer=restored.start('a',{...s.config,takeProfit:0,maxLoss:0},async()=>({askPrice:1,payout:1.2}),()=>[],async()=>true);
- assert.equal(newer.autoEnabled,true);assert.equal(newer.canActivate,false);
+ assert.equal(newer.autoEnabled,true);assert.equal(newer.canActivate,true);assert.equal(newer.readiness.settled,200);
  s.advance(8*86400000);assert.equal(s.research.snapshot('a').autoEnabled,false);assert.equal(s.research.snapshot('a').canActivate,false);
  s.research.close();restored.close();await s.research.flush();await restored.flush();
 });
@@ -165,4 +165,96 @@ test('empty saved research reads are cached briefly and default snapshots have c
  assert.equal(s.research.snapshot('a').readiness.modelBrier,null);
  s.advance(30001);await s.research.restore('a');assert.equal(reads,2);
  s.research.close();
+});
+
+test('short target-limited runs accumulate pilot evidence while each virtual bankroll remains separate',async()=>{
+ const s=setup(),config={...s.config,takeProfit:.1};
+ s.research.start('a',config,async()=>({askPrice:1,payout:1.2}),()=>[],async()=>true);
+ await s.research.step('a');let row=s.research.snapshot('a').recent[0];
+ s.append(row.direction==='over'?row.barrier+1:row.barrier-1);await s.research.step('a');
+ assert.equal(s.research.snapshot('a').running,false);assert.equal(s.research.snapshot('a').readiness.settled,1);
+ const next=s.research.start('a',config,async()=>({askPrice:1,payout:1.2}),()=>[],async()=>true);
+ assert.equal(next.run?.netProfit,0);assert.equal(next.run?.balance,100);assert.equal(next.readiness.settled,1);
+ await s.research.step('a');row=s.research.snapshot('a').recent[0];
+ s.append(row.direction==='over'?row.barrier+1:row.barrier-1);await s.research.step('a');
+ const snapshot=s.research.snapshot('a');
+ assert.equal(snapshot.running,false);assert.equal(snapshot.run?.settled,1);
+ assert.equal(snapshot.readiness.settled,2);assert.equal(snapshot.readiness.runCount,2);
+ assert.ok(Math.abs(snapshot.readiness.netProfit-.4)<1e-12);
+ s.research.close();await s.research.flush();
+});
+test('restarting research retains previous losses and missing examples in the pilot record',async()=>{
+ const s=setup(),quote=async()=>({askPrice:1,payout:1.2});
+ s.research.start('a',s.config,quote,()=>[],async()=>true);
+ await s.research.step('a');s.append(s.research.snapshot('a').recent[0].barrier);await s.research.step('a');
+ s.research.stop('a');s.research.start('a',s.config,quote,()=>[],async()=>true);
+ await s.research.step('a');s.append(9,{gap:2});await s.research.step('a');
+ s.research.stop('a');const next=s.research.start('a',s.config,quote,()=>[],async()=>true);
+ assert.equal(next.run?.netProfit,0);assert.equal(next.run?.missing,0);
+ assert.equal(next.readiness.netProfit,-1);assert.equal(next.readiness.missing,1);
+ assert.equal(next.readiness.settled,1);assert.equal(next.readiness.fills,2);
+ s.research.close();await s.research.flush();
+});
+test('expired or account/policy-incompatible pilot records cannot carry evidence into a new run',async()=>{
+ const s=setup(),quote=async()=>({askPrice:1,payout:1.2});
+ s.research.start('a',s.config,quote,()=>[],async()=>true);await s.research.step('a');
+ const row=s.research.snapshot('a').recent[0];s.append(row.barrier);await s.research.step('a');s.research.stop('a');
+ s.advance(8*86400000);
+ const fresh=s.research.start('a',s.config,quote,()=>[],async()=>true);
+ assert.equal(fresh.readiness.settled,0);assert.equal(fresh.readiness.netProfit,0);assert.equal(fresh.readiness.runCount,1);
+ const wrongAccount=setup();const saved={...fresh.run!,pilotEvidence:{...fresh.run!.pilotEvidence!,accountId:'someone-else'}};
+ wrongAccount.persistence.runs.set('a',saved);await wrongAccount.research.restore('a');
+ assert.equal(wrongAccount.research.start('a',wrongAccount.config,quote,()=>[],async()=>true).readiness.settled,0);
+ const wrongPool=setup();wrongPool.persistence.runs.set('a',{...saved,startedAt:BASE,pilotEvidence:{...saved.pilotEvidence,startedAt:BASE,accountId:'a',contractPolicy:'different-pool'}});
+ await wrongPool.research.restore('a');
+ assert.equal(wrongPool.research.start('a',wrongPool.config,quote,()=>[],async()=>true).readiness.settled,0);
+ s.research.close();wrongAccount.research.close();wrongPool.research.close();
+ await s.research.flush();await wrongAccount.research.flush();await wrongPool.research.flush();
+});
+test('an active run crossing evidence expiry starts a fresh pilot without reviving old outcomes',async()=>{
+ const s=setup(),quote=async()=>({askPrice:1,payout:1.2});
+ s.research.start('a',s.config,quote,()=>[],async()=>true);await s.research.step('a');
+ s.append(s.research.snapshot('a').recent[0].barrier);await s.research.step('a');
+ assert.equal(s.research.snapshot('a').readiness.netProfit,-1);
+ s.advance(8*86400000);s.append(9);
+ await s.research.step('a');const row=s.research.snapshot('a').recent[0];
+ s.append(row.direction==='over'?row.barrier+1:row.barrier-1);await s.research.step('a');
+ const next=s.research.snapshot('a');
+ assert.equal(next.run?.settled,2);assert.equal(next.readiness.settled,1);
+ assert.ok(Math.abs(next.readiness.netProfit-.2)<1e-12);assert.equal(next.readiness.fills,1);
+ s.research.close();await s.research.flush();
+});
+
+test('activation expires with the oldest pilot evidence even when activation itself is recent',async()=>{
+ const s=setup();
+ const saved={id:'oldest-window',engineVersion:'core-v1',contractPolicy:'balanced-over-under-v1',stake:1,startingBalance:100,takeProfit:0,maxLoss:0,balance:110,
+  startedAt:BASE-6*86400000,settled:200,wins:180,losses:20,netProfit:10,maxDrawdown:2,peakBalance:110,phase:'Paused',running:false,
+  missing:0,baselineExpectedWins:160,predictedExpectedWins:162,fills:200,totalStaked:200,
+  probabilitySquaredError:15,baselineSquaredError:20,quoteBreakevenSum:190,lastSettledAt:BASE-1000,autoEnabled:false,activationEvidence:null};
+ s.persistence.runs.set('a',saved);
+ await s.research.restore('a');assert.equal(s.research.snapshot('a').canActivate,true);
+ await s.research.activate('a');assert.equal(s.research.snapshot('a').autoEnabled,true);
+ s.advance(2*86400000);assert.equal(s.research.snapshot('a').autoEnabled,false);
+ assert.equal(s.research.snapshot('a').canActivate,false);
+ s.research.close();await s.research.flush();
+});
+
+test('legacy interrupted fills count as missing in both coverage and derived pilot exactly once',async()=>{
+ const s=setup();
+ s.research.start('a',s.config,async()=>({askPrice:1,payout:1.2}),()=>[],async()=>true);
+ await s.research.step('a');s.research.close();await s.research.flush();
+ const saved={...s.persistence.runs.get('a')!};delete saved.pilotEvidence;s.persistence.runs.set('a',saved);
+ for(const [id,result] of s.persistence.results){const legacy={...result};delete legacy.pilotWindowStartedAt;s.persistence.results.set(id,legacy);}
+ const restored=new CoreResearch(()=>[],s.persistence,{now:()=>BASE+10000,intervalMs:false});
+ await restored.restore('a');await restored.flush();
+ assert.equal(restored.snapshot('a').coverage.missing,1);
+ assert.equal(restored.snapshot('a').readiness.missing,1);
+ assert.equal(restored.snapshot('a').readiness.fills,1);
+ assert.equal([...s.persistence.results.values()][0].status,'missing');
+ await restored.restore('a');assert.equal(restored.snapshot('a').readiness.missing,1);
+ const secondRestart=new CoreResearch(()=>[],s.persistence,{now:()=>BASE+11000,intervalMs:false});
+ await secondRestart.restore('a');await secondRestart.flush();
+ assert.equal(secondRestart.snapshot('a').coverage.missing,1);
+ assert.equal(secondRestart.snapshot('a').readiness.missing,1);
+ restored.close();secondRestart.close();await restored.flush();await secondRestart.flush();
 });

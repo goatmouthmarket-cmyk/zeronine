@@ -46,3 +46,6 @@
 - Keep the research and pasture contract policy/version identical. Never activate Auto using evidence from another policy.
 - Preserve immutable account-scoped decision and contract identities; distinguish recorded, missing and virtual evidence.
 - Human notes become model inputs only through confirmed versioned rules and later matching evidence.
+
+- Research qualification uses recent account/version/policy evidence across explicit runs; restarting virtual funds must not erase losing results or bypass evidence expiry.
+- Collapsing Research UI never starts or stops a run. Show actual server state, clear private data on account changes, and keep paper results separate from account funds.

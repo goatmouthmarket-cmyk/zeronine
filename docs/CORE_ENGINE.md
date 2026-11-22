@@ -54,9 +54,17 @@ restores paused; no process restart silently resumes a run.
 
 Core Auto activation requires explicit user action and a completed forward pilot:
 200 settlements, positive virtual net return, at most 5% missing fills, and
-probability error no worse than its baseline. Evidence is policy/version scoped
-and expires after seven days. This is a pilot gate, not proof of profitability.
+probability error no worse than its baseline. The recent Core record carries
+across explicit virtual runs for the same account, engine and contract policy;
+restarting a run never erases losses from that record. Its oldest evidence
+expires after seven days. Each run retains its own virtual funds and stop limits.
+This is a pilot gate, not proof of profitability.
 Existing broker risk, single-open-contract and real-account protections remain.
+
+The pasture Research banner controls the same server runner as /research.
+Collapsing it only hides details; only an explicit pause or a run limit stops
+the scout. Research results check Core and gate the trial. Reviewed trades and
+confirmed lessons remain the source of learned probability adjustments.
 
 ## Checks
 
