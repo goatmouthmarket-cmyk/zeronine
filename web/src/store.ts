@@ -87,6 +87,9 @@ export interface Settings {
 
 export interface TradeRow {
   id: number;
+  canonical_id?: string;
+  engine_version?: string;
+  decision_id?: string;
   account_id?: string;
   ts: number;
   market: string;
@@ -931,6 +934,8 @@ export interface GoldModuleState {
 }
 
 export interface State {
+  coreCandidates: SignalCandidate[];
+  coreAutoEnabled: boolean;
   publicDashboard?: boolean;
   publicDerivLogin?: boolean;
   multiplayerEnabled?: boolean;
@@ -984,6 +989,8 @@ export interface State {
 }
 
 const initial: State = {
+  coreCandidates: [],
+  coreAutoEnabled: false,
   ws: 'connecting',
   feed: null,
   markets: [],
@@ -1594,13 +1601,13 @@ function playerTradeRow(raw: Record<string, unknown>): TradeRow {
   const direction = raw.direction === 'under' ? 'under' : 'over';
   const status = raw.status === 'open' ? 'pending' : raw.status === 'unknown' ? 'timeout' : raw.status === 'purchasing' ? 'purchasing' : raw.status;
   return {
-    id: playerTradeId(String(raw.id)), account_id: `deriv:${String(raw.account_id)}`,
+    id: playerTradeId(String(raw.id)), canonical_id:String(raw.id), engine_version:raw.engine_version?String(raw.engine_version):undefined, decision_id:raw.decision_id?String(raw.decision_id):undefined, account_id: `deriv:${String(raw.account_id)}`,
     ts: Date.parse(String(raw.created_at)) || 0, market: String(raw.market),
     contract_type: direction === 'under' ? 'DIGITUNDER' : 'DIGITOVER', barrier: Number(raw.barrier),
     duration: 1, duration_unit: 't', stake: Number(raw.stake), ask_price: Number(raw.ask_price),
-    payout: Number(raw.payout), est_win: 0, profit: Number(raw.profit),
+    payout: Number(raw.payout), est_win: Number(raw.core_probability)||0, profit: Number(raw.profit),
     status: status as TradeRow['status'], contract_id: String(raw.provider_contract_id ?? ''),
-    purchase_id: String(raw.id), reason: 'player manual trade', origin: 'manual',
+    purchase_id: String(raw.id), reason: raw.source === 'auto' ? 'Core Auto trade' : raw.source === 'brain' ? 'Core Brain trade' : 'player manual trade', origin: raw.source === 'auto' ? 'bot' : 'manual',
     resolved_at: raw.settled_at ? Date.parse(String(raw.settled_at)) : 0,
   };
 }
@@ -1713,7 +1720,7 @@ function connectPlayerWs(): void {
         set({ playerConnectionOpen: true });
       } else if (event.type === 'balance') {
         const balance = Number(event.balance);
-        if (state.playerSession?.loginid === event.accountId && Number.isFinite(balance) && balance >= 0) {
+        if (state.playerSession && state.playerSession.loginid === event.accountId && Number.isFinite(balance) && balance >= 0) {
           set({ playerSession: { ...state.playerSession, balance } });
         }
       } else if (event.type === 'trade' && state.playerSession?.loginid === event.accountId) {
@@ -1754,7 +1761,30 @@ export async function syncCoreState(): Promise<void> {
   await refreshCoreState();
 }
 
+
+let corePollingStarted=false;
+let corePollingBusy=false;
+async function refreshCorePredictions():Promise<void>{
+  if(corePollingBusy||document.hidden)return;
+  corePollingBusy=true;
+  const account=state.owner?state.session?.loginid:state.playerSession?.loginid;
+  try{
+    const response=await api<{accountId:string|null;engineVersion:string;candidates:SignalCandidate[];autoEnabled?:boolean}>('/api/core/candidates');
+    const current=state.owner?state.session?.loginid:state.playerSession?.loginid;
+    if(current!==account||response.accountId!==(current??null))return;
+    set({coreCandidates:Array.isArray(response.candidates)?response.candidates:[],coreAutoEnabled:response.autoEnabled===true});
+  }catch{set({coreCandidates:[],coreAutoEnabled:false});}
+  finally{corePollingBusy=false;}
+}
+function startCorePredictions(){
+  if(corePollingStarted)return;corePollingStarted=true;
+  void refreshCorePredictions();
+  window.setInterval(()=>{void refreshCorePredictions();},1000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshCorePredictions();});
+}
+
 export async function bootstrap(): Promise<void> {
+  startCorePredictions();
   signalStabilizer.reset();
   if (state.markets.length === 0) {
     const cachedMarkets = readCachedPublicMarkets();
@@ -2495,3 +2525,4 @@ export async function runPatternScan(): Promise<void> {
     await loadPatternsData();
   }
 }
+

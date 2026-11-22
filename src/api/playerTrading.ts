@@ -1,3 +1,5 @@
+import { CoreRuntime } from '../core/coreRuntime.ts';
+import { evaluateCoreQuote, type CoreDecision } from '../core/predictionEngine.ts';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
@@ -8,18 +10,19 @@ import type { MarketRegistry } from '../core/marketState.ts';
 import { buildRecoveryContext, riskCheck } from '../strategy/risk.ts';
 import { getSettings } from '../db/store.ts';
 import { estimateWinRate, winDigits, getPrecision } from '../core/digitMath.ts';
-import { pickSignal, type SignalCandidate } from '../strategy/signal.ts';
 import { isOwner } from './access.ts';
 import { getSession } from '../db/store.ts';
 import { resolveStoredToken } from '../deriv/oauth.ts';
 
 type Direction = 'over' | 'under';
 type CowDisplay = { edge: number | null; confidence: number | null; shownAt: number; brainPick: boolean; shotTick: { quote: number; digit: number; epoch: number } | null };
-type Order = { market: string; direction: Direction; barrier: number; stake: number; minEdge: number; cowDisplay?: CowDisplay | null };
+type Order = { market: string; direction: Direction; barrier: number; stake: number; minEdge: number; cowDisplay?: CowDisplay | null; source?: 'manual' | 'auto' | 'brain'; coreDecision?: CoreDecision | null };
 type Preview = { accountId: string; order: Order; ask: number; payout: number; edge: number; expiresAt: number; mode: 'demo' | 'real' };
 type Event = { type: 'balance' | 'trade'; accountId: string; [key: string]: unknown };
 
 export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerStore, registry: MarketRegistry): void {
+  const core = new CoreRuntime(registry, store.coreEvidence);
+  app.addHook('onClose', async () => core.close());
   const previews = new Map<string, Preview>();
   const listeners = new Map<string, Set<(event: Event) => void>>();
   const publish = (event: Event): void => { for (const send of listeners.get(event.accountId) ?? []) send(event); };
@@ -79,13 +82,17 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     const tickQuote = bounded(tick?.quote, 0, 1e15), tickEpoch = bounded(tick?.epoch, Math.floor(Date.now()/1000)-135, Math.floor(Date.now()/1000)+5), tickDigit = bounded(tick?.digit, 0, 9);
     const shotTick = tickQuote !== null && tickEpoch !== null && tickDigit !== null && Number.isInteger(tickDigit) ? { quote: tickQuote, epoch: tickEpoch, digit: tickDigit } : null;
     const cowDisplay = raw && shownAt !== null ? { edge: bounded(raw.edge, -1, 1), confidence: bounded(raw.confidence, 0, 1), shownAt, brainPick: raw.brainPick === true, shotTick } : null;
-    return { market, direction, barrier, stake, minEdge, cowDisplay };
+    return { market, direction, barrier, stake, minEdge, cowDisplay, source:body.rangerAutomation===true?'auto':cowDisplay?.brainPick?'brain':'manual' };
   };
   const modelEdge = (order: Order, ask: number, payout: number): number => {
-    const dist = registry.snapshot(order.market).dist;
-    const sample = dist.reduce((sum, count) => sum + count, 0);
-    const prior = winDigits(order.direction, order.barrier).length / 10;
-    return (estimateWinRate(dist, order.direction, order.barrier) + prior * 20) / (sample + 20) - ask / payout;
+    if (!order.coreDecision) return NaN;
+    order.coreDecision = evaluateCoreQuote(order.coreDecision, ask, payout);
+    return order.coreDecision.edge;
+  };
+  const auditCoreAttempt = (accountId:string,order:Order,status:string,contractId:string|null=null,providerContractId:string|null=null,reason:string|null=null):void => {
+    const decision=order.coreDecision,decisionId=decision?accountId+':'+decision.decisionId+':'+decision.probability:null;
+    const saved=decision?store.coreEvidence.saveDecision(accountId,{...decision,id:decisionId!}):Promise.resolve();
+    void saved.then(()=>store.coreEvidence.recordAttempt(accountId,{decisionId,contractId,providerContractId,source:order.source||'manual',status,ask:decision?.quote?.ask??null,payout:decision?.quote?.payout??null,reason})).catch(()=>{});
   };
   const quote = async (client: DerivPrivateClient, order: Order, currency: string) => client.getQuote({
     direction: order.direction, barrier: order.barrier, amount: order.stake,
@@ -102,7 +109,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         entryQuote: null, entryDigit: null, entryEpoch: null, before: [], after: [],
         edge: Number.isFinite(edge) ? edge : null, confidence: null,
         cowEdge: order.cowDisplay?.edge ?? null, cowConfidence: order.cowDisplay?.confidence ?? null,
-        cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, shotTick: order.cowDisplay?.shotTick ?? null, complete: false,
+        cowShownAt: order.cowDisplay?.shownAt ?? null, brainPick: order.cowDisplay?.brainPick === true, shotTick: order.cowDisplay?.shotTick ?? null, complete: false, source:order.source||'manual', engineVersion:'core-v1', decisionId:order.coreDecision?.decisionId??null,
+        coreDecision:order.coreDecision??null, coreProbability:order.coreDecision?.probability??null, coreCutoff:order.coreDecision?.cutoff??null, lessonIds:order.coreDecision?.lessonIds??[],
       };
       const initialWrite = store.saveTradeContext(accountId, contractId, pending)
         .catch(error => { console.warn('[brain] initial trade context unavailable:', error instanceof Error ? error.message : String(error)); });
@@ -122,7 +130,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         const entryEpoch = Number(provider.entryTickTime), entrySpot = Number(provider.entrySpot);
         const ticks = registry.captureTicks(order.market);
         const matches = ticks.flatMap((tick, index) => tick.epoch === entryEpoch && tick.quote.toFixed(precision!) === entrySpot.toFixed(precision!) ? [index] : []);
-        const format = (tick: { quote: number; digit: number; epoch: number }) => ({ quote: tick.quote.toFixed(precision!), digit: tick.digit, epoch: tick.epoch });
+        const format = (tick: { quote: number; digit: number; epoch: number; sequence?: number; segment?: string }) => ({ quote: tick.quote.toFixed(precision!), digit: tick.digit, epoch: tick.epoch, sequence:tick.sequence??null, segment:tick.segment??null });
         const index = matches.length === 1 ? matches[0] : -1;
         const before = index >= 0 ? ticks.slice(Math.max(0, index - 3), index).map(format) : [];
         const after = index >= 0 ? ticks.slice(index + 1, index + 4).map(format) : [];
@@ -147,7 +155,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       // Serialize writes so a slow initial save cannot overwrite the completed
       // sequence. The runner is detached from trade submission throughout.
       await initialWrite;
-      await store.saveTradeContext(accountId, contractId, context);
+      await store.saveTradeContext(accountId, contractId, {...pending,...context});
     })().catch(error => { console.warn('[brain] trade context unavailable:', error instanceof Error ? error.message : String(error)); });
   };
   // This runs after settlement and never blocks a purchase or the settlement
@@ -198,6 +206,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (result.settled && (result.status === 'won' || result.status === 'lost')) {
         await store.recordSettlement(accountId, active.provider_contract_id, result.status, result.profit);
         captureExitContext(accountId, active.provider_contract_id, active.market, result, client);
+        void store.coreEvidence.requestEvaluation(accountId).then(()=>core.refresh(accountId)).catch(()=>{});
         publish({ type: 'trade', accountId, contractId: active.provider_contract_id, status: result.status, profit: result.profit });
         const rangerRun = rangerRuns.get(accountId);
         if (rangerRun?.pendingContractId === active.provider_contract_id) settleRangerRun(rangerRun, result.status, result.profit);
@@ -240,7 +249,6 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     gold: boolean;
     red: boolean;
   };
-  type RangerPick = SignalCandidate & { p: number; score: number; digitSamples: number; riseSamples: number; hitSignal: boolean; epoch: number };
   type RangerRun = {
     accountId: string;
     mode: 'demo' | 'real';
@@ -273,9 +281,6 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     busy: boolean;
   };
   const RANGER_ARM_MS = 10 * 60 * 1000;
-  const RANGER_AUTH_CHECK_MS = 15_000;
-  const RANGER_RUN_INTERVAL_MS = 750;
-  const rangerAuthCheckedAt = new Map<string, number>();
 
   function rangerRunState(run: RangerRun | undefined, accountId: string, armedUntil = 0): Record<string, unknown> {
     if (!run) return { running: false, phase: 'idle', startedAt: null, tradesDone: 0, wins: 0, losses: 0, runProfit: 0, reason: null, candidate: null, lastSubmittedTrade: null, account: { loginid: accountId }, armedUntil: armedUntil || null };
@@ -317,232 +322,47 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     } else run.phase = 'scanning';
   }
 
-  function parseRangerConfig(input: unknown): RangerRunConfig {
-    const body = input && typeof input === 'object' ? input as Record<string, unknown> : {};
-    const number = (key: string, fallback: number): number => body[key] === undefined ? fallback : Number(body[key]);
-    const stake = number('stake', NaN), maxStake = number('maxStake', stake);
-    const minEdge = number('minEdge', 0), minWin = number('minWin', 0.7);
-    const maxTrades = number('maxTrades', 0), maxRunLoss = number('maxRunLoss', 0);
-    const takeProfit = number('takeProfit', 0), lossLimit = number('lossLimit', 0);
-    const cooldownSeconds = number('cooldownSeconds', 60), shots = number('shots', 3);
-    if (!Number.isFinite(stake) || stake <= 0 || !Number.isFinite(maxStake) || maxStake <= 0 || stake > maxStake) throw new Error('invalid Ranger Auto stake or maximum stake');
-    if (![minEdge, minWin, maxTrades, maxRunLoss, takeProfit, lossLimit, cooldownSeconds, shots].every(Number.isFinite)) throw new Error('invalid Ranger Auto configuration');
-    if (minEdge < 0 || minEdge > 1 || minWin < 0.7 || minWin > 0.99 || maxTrades < 0 || maxTrades > 1000 || maxRunLoss < 0 || takeProfit < 0 || lossLimit < 0 || lossLimit > 100 || cooldownSeconds < 1 || cooldownSeconds > 3600 || shots < 1 || shots > 5 || !Number.isInteger(maxTrades) || !Number.isInteger(lossLimit) || !Number.isInteger(cooldownSeconds) || !Number.isInteger(shots)) throw new Error('Ranger Auto settings are outside the allowed range');
-    const direction = body.direction === 'over' || body.direction === 'under' ? body.direction : null;
-    const barrierValue = body.barrier === undefined || body.barrier === null ? null : Number(body.barrier);
-    if (barrierValue !== null && (!Number.isInteger(barrierValue) || (direction === 'over' ? barrierValue < 0 || barrierValue > 8 : barrierValue < 1 || barrierValue > 9))) throw new Error('invalid Ranger Auto barrier');
-    const market = typeof body.market === 'string' && registry.has(body.market) ? body.market : null;
-    if (body.market !== undefined && body.market !== null && !market) throw new Error('invalid Ranger Auto market');
-    if (!Array.isArray(body.pastureContracts) || body.pastureContracts.length < 1 || body.pastureContracts.length > 32) throw new Error('wait for the pasture market cows to load before starting Ranger Auto');
-    const pastureContracts = [...new Map(body.pastureContracts.map((value) => {
-      if (!value || typeof value !== 'object') throw new Error('invalid pasture market contract');
-      const contract = value as Record<string, unknown>;
-      const contractMarket = typeof contract.market === 'string' && registry.has(contract.market) ? contract.market : null;
-      const contractDirection = contract.direction === 'over' || contract.direction === 'under' ? contract.direction : null;
-      const contractBarrier = Number(contract.barrier);
-      if (!contractMarket || !contractDirection || !Number.isInteger(contractBarrier) || (contractDirection === 'over' ? contractBarrier < 0 || contractBarrier > 8 : contractBarrier < 1 || contractBarrier > 9)) throw new Error('invalid pasture market contract');
-      const parsed = { market: contractMarket, direction: contractDirection, barrier: contractBarrier };
-      return [`${parsed.market}|${parsed.direction}|${parsed.barrier}`, parsed] as const;
-    })).values()];
-    const green = body.green === undefined ? true : body.green === true;
-    const gold = body.gold === undefined ? true : body.gold === true;
-    const red = body.red === undefined ? true : body.red === true;
-    if (!green && !gold && !red) throw new Error('enable at least one Ranger Auto ring');
-    return { stake, maxStake, minEdge, minWin, maxTrades, maxRunLoss, takeProfit, lossLimit, cooldownSeconds, shots, direction, barrier: barrierValue, market, pastureContracts, green, gold, red };
-  }
-
-  function rangerCandidates(run: RangerRun): RangerPick[] {
-    const allowed = run.config.direction
-      ? run.config.barrier === null
-        ? Array.from({ length: 9 }, (_, index) => ({ direction: run.config.direction as Direction, barrier: run.config.direction === 'over' ? index : index + 1 }))
-        : [{ direction: run.config.direction, barrier: run.config.barrier }]
-      : run.config.barrier === null ? null : [
-          { direction: 'over' as Direction, barrier: run.config.barrier },
-          { direction: 'under' as Direction, barrier: run.config.barrier },
-        ];
-    const pick = pickSignal(registry, run.config.minWin, -1, (symbol, count) => registry.snapshot(symbol).recentDigits.slice(-count), 500, allowed);
-    const snapshots = new Map(registry.allSnapshots().map(snapshot => [snapshot.symbol, snapshot] as const));
-    const candidates: RangerPick[] = [];
-    for (const candidate of pick.candidates) {
-      const snapshot = snapshots.get(candidate.market);
-      if (!snapshot || !snapshot.fresh || (run.config.market && candidate.market !== run.config.market)) continue;
-      if (!run.config.pastureContracts.some(contract => contract.market === candidate.market && contract.direction === candidate.direction && contract.barrier === candidate.barrier)) continue;
-      const digits = snapshot.recentDigits;
-      const quotes = snapshot.recentQuotes;
-      const high = digits.filter(digit => digit >= 5).length;
-      const wins = digits.filter(digit => candidate.direction === 'over' ? digit > candidate.barrier : digit < candidate.barrier).length;
-      const alignedRate = digits.length ? wins / digits.length : 0.5;
-      const empiricalP = digits.length ? (wins + candidate.estWin * 10) / (digits.length + 10) : candidate.estWin;
-      const empiricalWeight = digits.length ? Math.min(0.3, digits.length / (digits.length + 18) * 0.3) : 0;
-      const alignedQuotes: number[] = [];
-      for (let index = 1; index < quotes.length; index++) {
-        if (candidate.direction === 'over' ? quotes[index] > quotes[index - 1] : quotes[index] < quotes[index - 1]) alignedQuotes.push(quotes[index]);
-      }
-      const riseSamples = Math.max(0, quotes.length - 1);
-      const alignedRise = riseSamples ? alignedQuotes.length / riseSamples : 0.5;
-      const rawP = candidate.estWin;
-      const hlAdjustment = digits.length >= 20 ? ((candidate.direction === 'over' ? high : digits.length - high) / digits.length - 0.5) * 0.12 : 0;
-      const riseAdjustment = riseSamples >= 8 ? (alignedRise - 0.5) * 0.1 : 0;
-      const p = Math.max(0.01, Math.min(0.99, rawP * (1 - empiricalWeight) + empiricalP * empiricalWeight + hlAdjustment + riseAdjustment));
-      const ratio = candidate.estPayout;
-      const edge = p - (ratio > 0 ? 1 / ratio : candidate.baseWin);
-      const score = p * ratio - 1;
-      const hitSignal = digits.length >= 30 && riseSamples >= 12 && alignedRise >= 0.65 && alignedRate >= 0.55 && p >= 0.7 && edge > 0;
-      if (p < run.config.minWin || edge <= 0 || edge < run.config.minEdge) continue;
-      candidates.push({ ...candidate, p, edge, score, digitSamples: digits.length, riseSamples, hitSignal, epoch: snapshot.lastEpoch });
-    }
-    if (!candidates.length) return [];
-    const bestEdge = [...candidates].sort((a, b) => b.edge - a.edge || b.score - a.score)[0];
-    const bestScore = [...candidates].sort((a, b) => b.score - a.score || b.edge - a.edge)[0];
-    return candidates.filter(candidate =>
-      (run.config.green && candidate === bestEdge) ||
-      (run.config.gold && candidate === bestScore) ||
-      (run.config.red && candidate.hitSignal)
-    ).sort((a, b) => b.score - a.score || b.edge - a.edge || b.p - a.p);
-  }
-
-  async function runnerAuthorized(run: RangerRun, force = false): Promise<string | null> {
-    const now = Date.now();
-    const checkedAt = rangerAuthCheckedAt.get(run.accountId) ?? 0;
-    if (!force && now - checkedAt < RANGER_AUTH_CHECK_MS) return run.token;
-    rangerAuthCheckedAt.set(run.accountId, now);
-    if (run.source === 'owner') {
-      const session = getSession();
-      if (!run.ownerAuthorized() || !session || session.loginid !== run.accountId) return null;
-      try { return await resolveStoredToken(); } catch { return null; }
-    }
-    try {
-      const current = await store.resolveSession(run.sessionSecret);
-      if (!current || current.accountId !== run.accountId || current.expiresAt <= now) return null;
-      run.token = current.token;
-      return current.token;
-    } catch { return null; }
-  }
-
-  async function tickRangerRun(run: RangerRun): Promise<void> {
-    if (!run.running || run.busy) return;
-    run.busy = true;
-    try {
-      const now = Date.now();
-      if (run.mode === 'real') {
-        const armedUntil = rangerArms.get(run.accountId) ?? 0;
-        if (armedUntil <= now || armedUntil !== run.armedUntil) { stopRangerRun(run, 'Real-money authorization expired.'); return; }
-      }
-      const token = await runnerAuthorized(run);
-      if (!token) { stopRangerRun(run, 'Deriv session expired or changed.'); return; }
-      const info = await account(run.accountId, token);
-      if (info.mode !== run.mode) { stopRangerRun(run, 'Deriv account mode changed.'); return; }
-      if (run.pendingContractId) { run.phase = 'waiting-settlement'; return; }
-      if (run.waitingForExternalContract) {
-        const openContractIds = await (await clients.connect(run.accountId, token)).getOpenContractIds();
-        if (openContractIds.size > 0) { run.phase = 'waiting-settlement'; return; }
-        run.waitingForExternalContract = false;
-        run.reason = null;
-      }
-      const active = await store.activeContract(run.accountId);
-      if (active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing')) {
-        run.pendingContractId = active.status === 'purchasing' ? null : active.provider_contract_id ?? null;
-        run.phase = 'waiting-settlement';
-        if (run.pendingContractId) monitor(run.accountId, await clients.connect(run.accountId, token));
-        return;
-      }
-      if (run.cooldownUntil > now) { run.phase = 'cooldown'; run.updatedAt = now; return; }
-      if (run.cooldownUntil) { run.cooldownUntil = 0; run.phase = 'scanning'; }
-      const picks = rangerCandidates(run);
-      if (!picks.length) {
-        run.candidate = null; run.confirmKey = ''; run.confirmEpoch = 0; run.confirmations = 0;
-        run.phase = 'waiting-signal'; run.updatedAt = now; return;
-      }
-      const selected = picks[0];
-      const key = selected.market + '|' + selected.direction + '|' + selected.barrier;
-      run.candidate = { market: selected.market, direction: selected.direction, barrier: selected.barrier };
-      if (key !== run.confirmKey) { run.confirmKey = key; run.confirmEpoch = 0; run.confirmations = 0; run.lastAttemptEpoch = 0; }
-      if (selected.epoch > run.confirmEpoch) { run.confirmEpoch = selected.epoch; run.confirmations += 1; }
-      if (run.confirmations < run.config.shots) { run.phase = 'confirming-signal'; run.updatedAt = now; return; }
-      if (selected.epoch <= run.lastAttemptEpoch) { run.phase = 'waiting-next-tick'; run.updatedAt = now; return; }
-      run.lastAttemptEpoch = selected.epoch;
-      run.phase = 'quoting'; run.updatedAt = now;
-      const order: Order = { market: selected.market, direction: selected.direction, barrier: selected.barrier, stake: run.config.stake, minEdge: run.config.minEdge };
-      if (!registry.snapshot(order.market).fresh) { run.phase = 'waiting-feed'; return; }
-      const riskSettings = getSettings();
-      const riskState = await store.riskSnapshot(run.accountId, info.balance);
-      const risk = riskCheck({ stake: order.stake, settings: riskSettings, balance: info.balance,
-        context: buildRecoveryContext(riskSettings, undefined, riskState), lastTradeAt: 0,
-        tradeGapMs: 0, now, accountId: 'deriv:' + run.accountId,
-        skipStrategyCaps: false, lane: 'digit' });
-      if (!risk.ok) { stopRangerRun(run, 'Trade blocked by account risk: ' + risk.reason); return; }
-      const client = await clients.connect(run.accountId, token);
-      if (await reconcile(run.accountId, client)) { run.phase = 'waiting-settlement'; return; }
-      if ((await client.getOpenContractIds()).size > 0) { run.phase = 'waiting-settlement'; return; }
-      const offered = await quote(client, order, info.currency);
-      if (!Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice || offered.askPrice > info.balance) { run.phase = 'waiting-quote'; return; }
-      const liveEdge = modelEdge(order, offered.askPrice, offered.payout);
-      if (order.minEdge > 0 && liveEdge < order.minEdge) { run.phase = 'waiting-edge'; return; }
-      if (!registry.snapshot(order.market).fresh) { run.phase = 'waiting-feed'; return; }
-      const stillAuthorized = await runnerAuthorized(run, true);
-      if (!run.running || !stillAuthorized) { if (run.running) stopRangerRun(run, 'Deriv session expired or changed.'); return; }
-      const confirmRiskState = await store.riskSnapshot(run.accountId, info.balance);
-      const confirmRisk = riskCheck({ stake: order.stake, settings: riskSettings, balance: info.balance,
-        context: buildRecoveryContext(riskSettings, undefined, confirmRiskState), lastTradeAt: 0,
-        tradeGapMs: 0, now: Date.now(), accountId: 'deriv:' + run.accountId,
-        skipStrategyCaps: false, lane: 'digit' });
-      if (!confirmRisk.ok) { stopRangerRun(run, 'Trade blocked by account risk: ' + confirmRisk.reason); return; }
-      const reservationId = await store.reserve(run.accountId, randomUUID(), { ...order, mode: info.mode });
-      let buyAttempted = false;
-      let boughtContractId: string | null = null;
-      try {
-        if (!run.running || (run.mode === 'real' && (rangerArms.get(run.accountId) ?? 0) <= Date.now())) {
-          await store.cancelBeforeBuy(run.accountId, reservationId);
-          if (run.running) stopRangerRun(run, 'Real-money authorization expired.');
-          return;
-        }
-        const buyAuthorization = await runnerAuthorized(run, true);
-        if (!run.running || !buyAuthorization) {
-          await store.cancelBeforeBuy(run.accountId, reservationId);
-          if (run.running) stopRangerRun(run, 'Deriv session expired or changed.');
-          return;
-        }
-        if (client.connectedAccountId !== run.accountId || (await client.getOpenContractIds()).size > 0) {
-          await store.cancelBeforeBuy(run.accountId, reservationId);
-          run.phase = 'waiting-settlement';
-          return;
-        }
-        buyAttempted = true;
-        const bought = await client.placeBuy(offered.id, offered.askPrice);
-        boughtContractId = bought.contractId;
-        await store.markPurchased(run.accountId, reservationId, bought.contractId, bought.buyPrice, bought.payout);
-        run.pendingContractId = bought.contractId;
-        run.lastSubmittedTrade = { contractId: bought.contractId, market: order.market, direction: order.direction, barrier: order.barrier };
-        run.phase = 'waiting-settlement'; run.updatedAt = Date.now();
-        publish({ type: 'trade', accountId: run.accountId, contractId: bought.contractId, status: 'open' });
-        captureTradeContext(run.accountId, bought.contractId, order, liveEdge, client);
-        monitor(run.accountId, client);
-      } catch (error) {
-        if (buyAttempted) {
-          try { await store.markUnknown(run.accountId, reservationId, boughtContractId); } catch { /* reservation remains fail-closed */ }
-          stopRangerRun(run, 'Purchase outcome uncertain; account locked for reconciliation.');
-        } else {
-          await store.cancelBeforeBuy(run.accountId, reservationId);
-          run.phase = 'waiting-quote'; run.updatedAt = Date.now();
-        }
-      }
-    } catch (error) {
-      run.phase = 'error'; run.reason = error instanceof Error ? error.message : 'Ranger Auto cycle failed';
-      run.updatedAt = Date.now();
-    } finally {
-      run.busy = false;
-    }
-  }
-
-  function startRangerTimer(run: RangerRun): void {
-    if (run.timer) clearInterval(run.timer);
-    run.timer = setInterval(() => { void tickRangerRun(run); }, RANGER_RUN_INTERVAL_MS);
-    void tickRangerRun(run);
-  }
-
   const fail = (reply: { code: (code: number) => unknown }, status: number, message: string, extra?: Record<string, unknown>) => { reply.code(status); return { error: message, ...extra }; };
 
-
+  app.get('/api/core/candidates', async (req, reply) => {
+    reply.header('cache-control','private, no-store');
+    const user=await principal(req);
+    if(user){void core.refresh(user.accountId);void core.research.restore(user.accountId).catch(()=>{});}
+    return {engineVersion:'core-v1',accountId:user?.accountId??null,candidates:core.candidates(user?.accountId),autoEnabled:user?core.research.snapshot(user.accountId).autoEnabled:false};
+  });
+  app.get('/api/core/research', async (req, reply) => {
+    reply.header('cache-control','private, no-store');
+    const user=await principal(req);if(!user)return fail(reply,401,'Connect Deriv to keep your research.');
+    if(!await store.coreEvidence.health().catch(()=>false))return {available:false,running:false,engineVersion:'core-v1',reason:'Core storage needs its database update.',run:null,recent:[],coverage:{complete:0,missing:0}};
+    await core.research.restore(user.accountId);
+    return core.research.snapshot(user.accountId);
+  });
+  app.post('/api/core/research/start', async (req, reply) => {
+    if(!validOrigin(req))return fail(reply,403,'origin rejected');
+    const user=await principal(req);if(!user)return fail(reply,401,'Connect Deriv to keep your research.');
+    if(!await store.coreEvidence.health().catch(()=>false))return fail(reply,503,'Core storage needs its database update.');
+    const body=(req.body||{}) as Record<string,unknown>;
+    try{
+      await core.refresh(user.accountId);
+      const secret=secretFor(req);
+      const authorized=async()=>user.source==='owner'?isOwner(req)&&getSession()?.loginid===user.accountId:(await store.resolveSession(secret))?.accountId===user.accountId;
+      return core.research.start(user.accountId,{stake:Number(body.stake),startingBalance:Number(body.startingBalance),takeProfit:Number(body.takeProfit??0),maxLoss:Number(body.maxLoss??0)},
+        async(decision,stake)=>{const info=await account(user.accountId,user.token,'state');const client=await clients.connect(user.accountId,user.token);
+          return client.getQuote({direction:decision.direction,barrier:decision.barrier,amount:stake,currency:info.currency,duration:1,durationUnit:'t',symbol:decision.market});},
+        ()=>core.lessons(user.accountId),authorized);
+    }catch(error){return fail(reply,400,error instanceof Error?error.message:'Research could not start.');}
+  });
+  app.post('/api/core/research/stop', async (req, reply) => {
+    if(!validOrigin(req))return fail(reply,403,'origin rejected');
+    const user=await principal(req);if(!user)return fail(reply,401,'player session required');
+    return core.research.stop(user.accountId);
+  });
+  app.post('/api/core/research/activate', async (req, reply) => {
+    if(!validOrigin(req))return fail(reply,403,'origin rejected');
+    const user=await principal(req);if(!user)return fail(reply,401,'player session required');
+    try{await core.research.restore(user.accountId);return await core.research.activate(user.accountId);}
+    catch(error){return fail(reply,409,error instanceof Error?error.message:'Collect research results first.');}
+  });
   app.post('/api/player/automation/arm', async (req, reply) => {
     if (!validOrigin(req)) return fail(reply, 403, 'origin rejected');
     const user = await principal(req);
@@ -573,46 +393,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     if (!validOrigin(req)) return fail(reply, 403, 'origin rejected');
     const user = await principal(req);
     if (!user) return fail(reply, 401, 'player session required');
-    if (process.env.ENABLE_RAILWAY_RANGER_AUTO !== 'true') return fail(reply, 410, 'Railway Ranger Auto is archived; use pasture Ranger Auto.');
-    let config: RangerRunConfig;
-    try { config = parseRangerConfig(req.body); } catch (error) { return fail(reply, 400, error instanceof Error ? error.message : 'invalid Ranger Auto settings'); }
-    try {
-      const info = await account(user.accountId, user.token);
-      if (info.mode === 'real') {
-        const armedUntil = rangerArms.get(user.accountId) ?? 0;
-        if (armedUntil <= Date.now()) return fail(reply, 403, 'arm real-money automation for 10 minutes before starting');
-      }
-      const current = rangerRuns.get(user.accountId);
-      // Repeated start requests should restore the existing run in the UI, not report a failure.
-      if (current?.running) return { ok: true, state: rangerRunState(current, user.accountId) };
-      const active = await store.activeContract(user.accountId);
-      const client = await clients.connect(user.accountId, user.token);
-      const openContractIds = await client.getOpenContractIds();
-      if (!(listeners.get(user.accountId)?.size)) return fail(reply, 409, 'keep the authenticated player connection open to run Ranger Auto');
-      const activeContract = active && (active.status === 'open' || active.status === 'unknown' || active.status === 'purchasing') ? active : null;
-      const waitingForExistingContract = Boolean(activeContract || openContractIds.size > 0);
-      const sessionSecret = user.source === 'player' ? secretFor(req) : null;
-      const run: RangerRun = {
-        accountId: user.accountId, mode: info.mode, source: user.source, sessionSecret,
-        ownerAuthorized: () => isOwner(req), token: user.token, config,
-        running: true, phase: waitingForExistingContract ? 'waiting-settlement' : 'starting',
-        reason: waitingForExistingContract ? 'Waiting for the existing account contract to settle.' : null,
-        startedAt: Date.now(), updatedAt: Date.now(),
-        tradesDone: 0, wins: 0, losses: 0, lossStreak: 0, runProfit: 0,
-        candidate: null, lastSubmittedTrade: null, confirmKey: '', confirmEpoch: 0, confirmations: 0, lastAttemptEpoch: 0,
-        cooldownUntil: 0,
-        pendingContractId: activeContract?.status === 'purchasing' ? null : activeContract?.provider_contract_id ?? null,
-        waitingForExternalContract: openContractIds.size > 0 && !activeContract,
-        timer: null, busy: false,
-        armedUntil: info.mode === 'real' ? rangerArms.get(user.accountId) ?? 0 : 0,
-      };
-      rangerRuns.set(user.accountId, run);
-      if (run.pendingContractId) monitor(user.accountId, client);
-      startRangerTimer(run);
-      return { ok: true, state: rangerRunState(run, user.accountId) };
-    } catch (error) {
-      return fail(reply, 503, error instanceof Error ? error.message : 'Ranger Auto could not start');
-    }
+    // The archived runner cannot be revived by an old environment variable.
+    return fail(reply, 410, 'Railway Ranger Auto is archived; use pasture Ranger Auto.');
   });
 
   app.post('/api/player/automation/stop', async (req, reply) => {
@@ -681,6 +463,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     try { order = parseOrder(req.body); } catch (error) { return fail(reply, 400, error instanceof Error ? error.message : 'invalid order'); }
     const rejectPreview = (reason: string) => {
       console.warn('[player trading] preview rejected: ' + reason);
+      auditCoreAttempt(user.accountId,order,'preview_rejected',null,null,reason);
       return fail(reply, 409, reason);
     };
     let stage = 'Deriv account';
@@ -702,12 +485,21 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       const client = await clients.connect(user.accountId, user.token);
       if (await reconcile(user.accountId, client)) return rejectPreview('account has an open or uncertain contract');
       if ((await client.getOpenContractIds()).size > 0) return rejectPreview('Deriv account already has an open contract');
+      if(order.source==='auto'){
+        await core.research.restore(user.accountId);
+        if(!core.research.snapshot(user.accountId).autoEnabled)return rejectPreview('Core is collecting research results. Open Research before enabling Auto.');
+      }
       stage = 'Deriv quote';
+      order.coreDecision=core.decision(user.accountId,order.market,order.direction,order.barrier);
+      if(!order.coreDecision)return rejectPreview('market feed is stale');
       const offered = await quote(client, order, info.currency);
+      order.coreDecision=core.decision(user.accountId,order.market,order.direction,order.barrier);
+      if(!order.coreDecision)return rejectPreview('market feed is stale');
       if (!Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice || offered.askPrice > info.balance) return rejectPreview('invalid or unaffordable quote');
       const edge = modelEdge(order, offered.askPrice, offered.payout);
       // A zero (or absent) minimum means the operator asked for no edge filter.
-      if (order.minEdge > 0 && edge < order.minEdge) return rejectPreview('quote does not meet minimum edge');
+      if ((order.source === 'auto' && edge <= 0) || (order.minEdge > 0 && edge < order.minEdge)) return rejectPreview('quote does not meet minimum edge');
+      auditCoreAttempt(user.accountId,order,'quoted');
       const previewId = randomUUID();
       const expiresAt = Date.now() + 30_000;
       for (const [id, preview] of previews) if (preview.expiresAt <= Date.now()) previews.delete(id);
@@ -750,8 +542,10 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       if (await reconcile(user.accountId, client)) return fail(reply, 409, 'account has an open or uncertain contract');
       const offered = await quote(client, order, info.currency);
       if (offered.askPrice > preview.ask * 1.02 || offered.payout < preview.payout * .98 || offered.askPrice > info.balance || !Number.isFinite(offered.askPrice) || offered.askPrice <= 0 || !Number.isFinite(offered.payout) || offered.payout <= offered.askPrice) return fail(reply, 409, 'quote changed; review again');
+      order.coreDecision=core.decision(user.accountId,order.market,order.direction,order.barrier);
+      if(!order.coreDecision)return fail(reply,409,'market feed is stale');
       const entryEdge = modelEdge(order, offered.askPrice, offered.payout);
-      if ((order.minEdge > 0 && entryEdge < order.minEdge) || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'market no longer meets entry conditions');
+      if ((order.source === 'auto' && entryEdge <= 0) || (order.minEdge > 0 && entryEdge < order.minEdge) || !registry.snapshot(order.market).fresh) return fail(reply, 409, 'market no longer meets entry conditions');
       try { reservation = await store.reserve(user.accountId, body.idempotencyKey, { ...order, mode: info.mode }); }
       catch { return fail(reply, 409, 'account has an open or uncertain contract'); }
       if (client.connectedAccountId !== user.accountId) throw new Error('connected account changed');
@@ -762,6 +556,8 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
       await store.markPurchased(user.accountId, reservation, bought.contractId, bought.buyPrice, bought.payout);
       publish({ type: 'trade', accountId: user.accountId, contractId: bought.contractId, status: 'open' });
       captureTradeContext(user.accountId, bought.contractId, order, entryEdge, client);
+      auditCoreAttempt(user.accountId,order,'purchased',reservation,bought.contractId);
+
       monitor(user.accountId, client);
       return { ok: true, reservationId: reservation, contractId: bought.contractId, ask: bought.buyPrice, payout: bought.payout };
     } catch {
@@ -769,6 +565,7 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
         if (buyAttempted) { try { await store.markUnknown(user.accountId, reservation, boughtContractId); } catch { /* retain the active reservation */ } }
         else await store.cancelBeforeBuy(user.accountId, reservation);
       }
+      auditCoreAttempt(user.accountId,order,buyAttempted?'uncertain':'confirm_rejected',reservation,boughtContractId);
       return fail(reply, buyAttempted ? 502 : 409, buyAttempted ? 'purchase outcome uncertain; account remains locked for reconciliation' : 'trade was not submitted');
     }
   });
@@ -798,3 +595,4 @@ export function registerPlayerTrading(app: FastifyInstance, store: MultiplayerSt
     })().catch(() => socket.close(1011, 'session unavailable'));
   });
 }
+

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { getPrecision } from './digitMath.ts';
 export interface MarketSnapshot {
   symbol: string;
   display: string;
@@ -18,12 +20,15 @@ export interface FeedCallbacks {
 
 const RECENT_WINDOW = 60;
 // Additional in-memory history is reserved for trade replay and never enters signal math.
-const CAPTURE_WINDOW = 240;
+const CAPTURE_WINDOW = 1000;
 
 export class MarketRegistry {
-  private buffers = new Map<string, Array<{ quote: number; epoch: number; digit: number }>>();
+  private readonly segment = randomUUID();
+  private readonly segments = new Map<string,string>();
+  private readonly sequences = new Map<string, number>();
+  private buffers = new Map<string, Array<{ quote: number; epoch: number; digit: number; sequence?: number; segment?: string }>>();
   private displays = new Map<string, string>();
-  private captureBuffers = new Map<string, Array<{ quote: number; epoch: number; digit: number }>>();
+  private captureBuffers = new Map<string, Array<{ quote: number; epoch: number; digit: number; sequence?: number; segment?: string }>>();
   private cb: FeedCallbacks;
 
   constructor(cb: FeedCallbacks) {
@@ -44,11 +49,15 @@ export class MarketRegistry {
   }
 
   push(symbol: string, quote: number, epoch: number, digit: number): void {
+    const sequence = (this.sequences.get(symbol) ?? 0) + 1;
+    this.sequences.set(symbol, sequence);
     const buf = this.buffers.get(symbol);
     if (!buf) return;
     buf.push({ quote, epoch, digit });
     const capture = this.captureBuffers.get(symbol);
-    if (capture) { capture.push({ quote, epoch, digit }); if (capture.length > CAPTURE_WINDOW) capture.shift(); }
+    const previous=capture?.[capture.length-1];
+    if(!this.segments.has(symbol)||(previous&&(epoch<previous.epoch||epoch-previous.epoch>15)))this.segments.set(symbol,randomUUID());
+    if (capture) { capture.push({ quote, epoch, digit, sequence, segment: this.segments.get(symbol)||this.segment }); if (capture.length > CAPTURE_WINDOW) capture.shift(); }
     if (buf.length > RECENT_WINDOW) buf.shift();
     this.cb.onTick(this.snapshot(symbol));
   }
@@ -65,8 +74,12 @@ export class MarketRegistry {
     this.cb.onTick(this.snapshot(symbol));
   }
 
-  captureTicks(symbol: string): Array<{ epoch: number; quote: number; digit: number }> {
+  captureTicks(symbol: string): Array<{ epoch: number; quote: number; digit: number; sequence?: number; segment?: string }> {
     return (this.captureBuffers.get(symbol) ?? []).map(tick => ({ ...tick }));
+  }
+
+  coreMarkets() {
+    return this.allSnapshots().map(market => ({ symbol:market.symbol, display:market.display, fresh:market.fresh, precision:getPrecision(market.symbol), recentTicks:this.captureTicks(market.symbol).filter(tick=>tick.sequence!==undefined) }));
   }
 
   snapshot(symbol: string): MarketSnapshot {
@@ -101,3 +114,4 @@ export class MarketRegistry {
     return this.symbols().map((s) => this.snapshot(s));
   }
 }
+

@@ -4,7 +4,7 @@
 
 - This is a Node 24+ ESM TypeScript service. It runs `.ts` files directly with Node's native type stripping; retain `"type": "module"` and use explicit `.ts` extensions for local server and test imports.
 - `src/` contains Fastify server and API wiring, Deriv clients, SQLite persistence, core digit math and state, strategy automation, and test-lab logic. Keep domain work in its existing layer; routes should coordinate rather than absorb strategy or persistence rules.
-- `web/` is a Preact, Vite, and Tailwind dashboard. Use `npm run web:dev` for the client on port 5173 and `npm run dev` for the API on port 8010. Fastify serves the committed `web/dist` bundle in production.
+- `web/` is a Preact, Vite, and Tailwind dashboard. Use `npm run web:dev` for the client on port 5173 and `npm run dev` for the API on port 8010. Fastify serves `web/dist` in production; Railway builds that ignored directory from the tracked web sources on each deployment.
 - SQLite data lives under `DATA_DIR` (default `data/`) and is ignored. Do not commit `.env`, data, logs, or `node_modules`; update `.env.example` for configuration additions.
 
 ## Change Expectations
@@ -38,3 +38,11 @@
 
 - For an authorized multi-step implementation, make a concrete plan, carry out each batch, and continue through verification and delivery without stopping after a plan, investigation, or partial implementation. Research missing technical details and resolve routine decisions autonomously. Ask only when essential information or authorization is genuinely unavailable; clearly report any actual blocker and completed work.
 - After each completed task, commit the verified changes and push the current branch unless the user directs otherwise.
+
+
+## Core Engine Rules
+
+- Game predictions come from the shared server Core engine. Never blend probability or rerank independently in browser code.
+- Keep the research and pasture contract policy/version identical. Never activate Auto using evidence from another policy.
+- Preserve immutable account-scoped decision and contract identities; distinguish recorded, missing and virtual evidence.
+- Human notes become model inputs only through confirmed versioned rules and later matching evidence.

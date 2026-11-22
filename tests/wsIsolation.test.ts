@@ -132,7 +132,7 @@ test('signed players automatically share pasture presence, chat, and cow kills',
     const guestWelcome = await waitFor(guest.events, 'welcome');
     assert.match(guestWelcome.id, /^g-/);
     assert.equal(guestWelcome.players.length, 3, 'guest shares the main pasture with both Deriv players');
-    assert.equal(guestWelcome.players.find(player => player.id === guestWelcome.id)?.guest, true);
+    assert.equal(guestWelcome.players.find((player: {id:string;guest?:boolean}) => player.id === guestWelcome.id)?.guest, true);
   } finally {
     alice.socket.terminate(); bob?.socket.terminate(); guest?.socket.terminate();
     await app.close();
@@ -217,3 +217,4 @@ test('reconnecting reuses one authenticated Ranger and stale sockets cannot remo
     config.nodeEnv = oldEnv;
   }
 });
+

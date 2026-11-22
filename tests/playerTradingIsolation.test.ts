@@ -26,11 +26,13 @@ test('two signed players and the owner trade only their accounts, including manu
   const originalSnapshot = DerivPrivateClient.prototype.getContractSnapshot;
   const connected = new WeakMap<PrivateClientType, string>();
   const bought: string[] = [];
+  const testClients = new Set<PrivateClientType>();
   let bobBalance = 100;
   let quotes = 0;
   const active = new Map<string, { id: string; status: string; provider_contract_id: string | null }>();
   const sessions = new Map([['secret-alice', { accountId: 'VRTC111', token: 'token-alice' }], ['secret-bob', { accountId: 'VRTC222', token: 'token-bob' }]]);
   const store = {
+    coreEvidence: { health:async()=>false,drainEvidenceJobs:async()=>{},lessonSummaries:async()=>[],saveDecision:async()=>{},recordAttempt:async()=>{},requestEvaluation:async()=>{},readResearchRun:async()=>null,readResearchResults:async()=>[] },
     resolveSession: async (secret: string) => sessions.get(secret) ?? null,
     riskSnapshot: async () => ({ mode: 'recovering', streak: 1, debt: 1, attempts: 1, cycleStake: 1, peakBalance: 200 }),
     activeContract: async (accountId: string) => active.get(accountId) ?? null,
@@ -54,7 +56,7 @@ test('two signed players and the owner trade only their accounts, including manu
     const accountId = token.endsWith('alice') ? 'VRTC111' : token.endsWith('owner') ? 'VRTC333' : 'VRTC222';
     return Response.json({ data: [{ account_id: accountId, account_type: 'demo', currency: 'USD', balance: accountId === 'VRTC222' ? bobBalance : 100 }] });
   }) as typeof fetch;
-  DerivPrivateClient.prototype.connect = async function (_token, accountId) { connected.set(this, accountId!); return { loginid: accountId!, balance: 100, currency: 'USD', mode: 'demo' }; };
+  DerivPrivateClient.prototype.connect = async function (_token, accountId) { connected.set(this, accountId!); testClients.add(this); return { loginid: accountId!, balance: accountId==='VRTC222'?bobBalance:100, currency: 'USD', mode: 'demo' }; };
   Object.defineProperty(DerivPrivateClient.prototype, 'isConnected', { configurable: true, get() { return connected.has(this); } });
   Object.defineProperty(DerivPrivateClient.prototype, 'connectedAccountId', { configurable: true, get() { return connected.get(this) ?? null; } });
   DerivPrivateClient.prototype.getOpenContractIds = async () => new Set();
@@ -72,8 +74,8 @@ test('two signed players and the owner trade only their accounts, including manu
     app.get('/test/owner-cookie', (_req, reply) => { reply.setCookie('zeronine_owner', config.dashboardAdminToken, { signed: true, path: '/' }); return { ok: true }; });
     const registry = new MarketRegistry({ onTick: () => undefined });
     // The shared market is fresh and has a known digit sample.
-    (registry as unknown as { has: (symbol: string) => boolean; snapshot: (symbol: string) => unknown }).has = () => true;
-    (registry as unknown as { snapshot: (symbol: string) => unknown }).snapshot = () => ({ fresh: true, recentDigits: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dist: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] });
+    registry.ensure('R_10');
+    registry.push('R_10',100.1,Math.floor(Date.now()/1000),1);
     registerPlayerTrading(app, store as never, registry);
     const cookieFor = async (name: string) => String((await app.inject({ method: 'GET', url: `/test/cookie/${name}` })).headers['set-cookie']).split(';', 1)[0];
     const alice = await cookieFor('alice'), bob = await cookieFor('bob');
@@ -95,6 +97,7 @@ test('two signed players and the owner trade only their accounts, including manu
     const beforeZero = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: bob }, payload: order });
     assert.equal(beforeZero.statusCode, 200, beforeZero.body);
     bobBalance = 0;
+    for(const client of testClients)if(connected.get(client)==='VRTC222')(client as unknown as {persistBalance:(balance:number)=>void}).persistBalance(0);
     const zeroState = await app.inject({ method: 'GET', url: '/api/player/trading/state', headers: { cookie: bob } });
     assert.equal(zeroState.statusCode, 200, zeroState.body);
     assert.equal(zeroState.json().session.balance, 0, 'zero-balance account remains visible');
@@ -106,6 +109,7 @@ test('two signed players and the owner trade only their accounts, including manu
     assert.equal(quotes, previousQuotes, 'zero balance stops both paths before requesting a quote');
     assert.deepEqual(bought, [], 'zero balance never places an order');
     bobBalance = 100;
+    for(const client of testClients)if(connected.get(client)==='VRTC222')(client as unknown as {persistBalance:(balance:number)=>void}).persistBalance(100);
     const preview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: alice }, payload: order });
     assert.equal(preview.statusCode, 200, preview.body);
     const previewId = preview.json().previewId;
@@ -120,7 +124,7 @@ test('two signed players and the owner trade only their accounts, including manu
     assert.deepEqual(bought, ['VRTC111'], 'archived Railway Ranger Auto cannot place another trade');
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.deepEqual(receivedAlice, ['hello', 'trade']);
-    assert.deepEqual(receivedBob, ['hello']);
+    assert.deepEqual(receivedBob, ['hello', 'balance', 'balance'], 'only Bob receives his balance subscription updates');
     const duplicate = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: alice }, payload: order });
     assert.equal(duplicate.statusCode, 409);
     const bobPreview = await app.inject({ method: 'POST', url: '/api/player/trade/preview', headers: { cookie: bob }, payload: order });
@@ -168,3 +172,4 @@ test('two signed players and the owner trade only their accounts, including manu
     config.dashboardAdminToken = originalAdminToken;
   }
 });
+

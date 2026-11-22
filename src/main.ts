@@ -1,3 +1,4 @@
+import { rankCoreCandidates, isCorePastureCandidate } from './core/predictionEngine.ts';
 import Fastify from 'fastify';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -496,7 +497,7 @@ async function main(): Promise<void> {
       }
       const pathname = new URL(req.url, 'http://localhost').pathname.replace(/\/+$/, '') || '/';
       const appPaths = new Set([
-        '/', '/history', '/lab', '/account', '/privacy', '/how-to-play',
+        '/', '/history', '/lab', '/account', '/privacy', '/how-to-play', '/research',
         '/terms', '/refunds', '/cookies', '/gold', '/bot',
       ]);
       if (appPaths.has(pathname)) {
@@ -522,6 +523,8 @@ async function main(): Promise<void> {
     console.warn('[server] web/dist missing — run `npm run build:web` (dashboard will not be served)');
   }
 
+  let coreSignalTimer:ReturnType<typeof setInterval>|null=null;
+  app.addHook('onClose',async()=>{if(coreSignalTimer)clearInterval(coreSignalTimer);});
   await app.listen({ port: config.port, host: '0.0.0.0' });
   console.info(`[server] listening on :${config.port} (${config.nodeEnv})`);
 
@@ -532,7 +535,15 @@ async function main(): Promise<void> {
   // private Deriv proposal unless an operator starts a bot run. Keeping it on
   // in multiplayer is what lets the shared Ghost Scout receive signals; the
   // account-isolation stop above still forbids any account order.
-  automation.watch();
+  if (multiplayerStore) {
+    const publishCore = () => {
+      const candidates = rankCoreCandidates(registry.coreMarkets()).filter(isCorePastureCandidate);
+      hub.emit({type:'signal',ts:Date.now(),phase:'core',signal:{candidates:candidates.slice(0,8),holds:!candidates.length||candidates[0].edge<=0,reason:'Core'}});
+    };
+    publishCore();
+    coreSignalTimer=setInterval(publishCore,1000);coreSignalTimer.unref();
+
+  } else automation.watch();
 
   const reconnectPrivate = async (): Promise<void> => {
     const session = getSession();
@@ -661,3 +672,4 @@ void main().catch((err) => {
   console.error('[server] fatal', err);
   process.exit(1);
 });
+

@@ -58,8 +58,9 @@ import {
 import './marketChooser.css';
 import { assessTimedManualEntry, confidenceForSetup, confirmedDigitTriggerProgress, exactCandidateForSetup, matchesDigitTrigger, priorityManualTargets, rankMarketsForSetup, strongestManualSetup, strongestManualSetupForBarrier, theoreticalWinForSetup, type ManualEntryMode, type ManualSetup } from './manualMarketRanking';
 import { HowToPlayPage } from './HowToPlayPage';
+import { CoreResearchPanel } from './CoreResearchPanel';
 
-type Page = 'home' | 'history' | 'backtest' | 'account' | 'howToPlay' | 'privacy' | 'terms' | 'refunds' | 'cookies';
+type Page = 'home' | 'history' | 'research' | 'backtest' | 'account' | 'howToPlay' | 'privacy' | 'terms' | 'refunds' | 'cookies';
 type ActivitySource = 'manual' | 'bot' | 'paper' | 'backtest';
 type ActivityDetail = { type: 'trade'; trade: TradeRow } | { type: 'run'; run: TestRunRow };
 
@@ -67,6 +68,7 @@ const PAGE_PATHS: Record<Page, string> = {
   home: '/',
   history: '/history',
   backtest: '/lab',
+  research: '/research',
   account: '/account',
   privacy: '/privacy',
   howToPlay: '/how-to-play',
@@ -399,7 +401,7 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const labels: Record<Page, string> = {
-      home: 'Deriv Cows', history: 'Trade history', backtest: 'Research lab', account: 'Account',
+      home: 'Deriv Cows', history: 'Trade history', backtest: 'Research lab', research: 'Research pasture', account: 'Account',
       privacy: 'Privacy policy', terms: 'Terms of use', refunds: 'Refund policy', cookies: 'Cookie and storage policy',
       howToPlay: 'How to play',
     };
@@ -415,6 +417,7 @@ export function App(): JSX.Element {
         </div>
         <div class="desk-side">
           {page === 'backtest' && <div class="view view-backtest"><TestLabPage /></div>}
+          {page === 'research' && <div class="view view-research"><CoreResearchPanel onBack={() => navigate('home')} /></div>}
           {(['privacy', 'terms', 'refunds', 'cookies'] as const).includes(page as 'privacy' | 'terms' | 'refunds' | 'cookies') && <div class="view view-legal"><LegalPage page={page as LegalPageId} /></div>}
           {page === 'howToPlay' && <div class="view view-how-to-play"><HowToPlayPage onBack={() => navigate('home')} onConnect={() => navigate('account')} /></div>}
         </div>
@@ -804,7 +807,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   const performance = usePlayerTrading ? fallbackPerformance : s.performance ?? fallbackPerformance;
 
   const candidates = s.signal?.signal.candidates ?? [];
-  const heroCandidates = decision ? candidates : (s.displaySignal?.candidates ?? candidates);
+  const heroCandidates = s.coreCandidates;
   const queuedMarket = pendingManualIntent
     ? s.markets.find((item) => item.symbol === pendingManualIntent.market) ?? null
     : null;
@@ -1269,7 +1272,8 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       recentDigits: item.recentDigits,
       recentTicks: item.recentTicks,
     })),
-    candidates: s.signal?.signal.candidates ?? s.displaySignal?.candidates ?? [],
+    candidates: s.coreCandidates,
+    engineVersion: 'core-v1',
     marketScout: s.marketScout,
     digitTradeEvidence: s.digitTradeEvidence,
     paperTrades: s.paperTrades.slice(0, 100).map((trade) => ({
@@ -1279,9 +1283,11 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       status: trade.status,
       profit: trade.profit,
     })),
-  }), [s.markets, s.signal, s.displaySignal, s.marketScout, s.digitTradeEvidence, s.paperTrades]);
+  }), [s.markets, s.coreCandidates, s.marketScout, s.digitTradeEvidence, s.paperTrades]);
 
   const roomState = useMemo(() => ({
+    engineVersion: 'core-v1',
+    coreAutoEnabled: s.coreAutoEnabled,
     balance: s.session?.balance ?? 0,
     currency: s.session?.currency ?? 'USD',
     profit: performance.profit,
@@ -1321,7 +1327,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       entrySpot: trade.entry_spot,
       exitDigit: trade.exit_digit,
     })),
-  }), [base.playerAuthStatus, digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.feed?.connected, s.digitRemainingLoss, s.owner, s.paperSimulation?.phase, s.paperSimulation?.totalTrades, s.paperSimulation?.wins, s.paperSimulation?.losses, s.paperSimulation?.netPnl, s.paperSimulation?.openContract, s.paperSimulation?.lastSettled, s.paperSimulation?.recentTrades, s.playerConnectionOpen, s.playerRecovery?.debt, s.session, s.testRuns, s.testlab, usePlayerTrading]);
+  }), [s.coreAutoEnabled, base.playerAuthStatus, digitTrades, manualBusy, manualMsg, market?.symbol, openAccountTrade, performance.profit, s.feed?.connected, s.digitRemainingLoss, s.owner, s.paperSimulation?.phase, s.paperSimulation?.totalTrades, s.paperSimulation?.wins, s.paperSimulation?.losses, s.paperSimulation?.netPnl, s.paperSimulation?.openContract, s.paperSimulation?.lastSettled, s.paperSimulation?.recentTrades, s.playerConnectionOpen, s.playerRecovery?.debt, s.session, s.testRuns, s.testlab, usePlayerTrading]);
 
   const postRoomLayout = useCallback(() => {
     const header = document.querySelector('.app[data-page="home"] .view-home .header') as HTMLElement | null;
@@ -1351,7 +1357,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
     stakeInput.dataset.stakeSync = stakeSignature;
 
     const connected = roomState.accountMode === 'demo' || roomState.accountMode === 'real';
-    const balanceLimit = roomState.balance > 0 ? Math.floor(roomState.balance * 0.9 * 100) / 100 : 0;
+    const balanceLimit = roomState.balance > 0 ? Math.floor(roomState.balance * 0.3 * 100) / 100 : 0;
     const stakeLimit = balanceLimit;
     if (connected && stakeLimit > 0) stakeInput.max = String(stakeLimit);
     else stakeInput.removeAttribute('max');
@@ -1368,7 +1374,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
         return;
       }
       if (requested > stakeLimit) {
-        stakeHint.textContent = `Final bet: ${fmtMoney(stakeLimit, roomState.currency)} (capped from ${fmtMoney(requested, roomState.currency)} by the 90% balance safeguard).`;
+        stakeHint.textContent = `Final bet: ${fmtMoney(stakeLimit, roomState.currency)} (capped from ${fmtMoney(requested, roomState.currency)} by the 30% per-trade limit).`;
         return;
       }
       stakeHint.textContent = `Starting stake: ${fmtMoney(requested, roomState.currency)}. Recovery may raise it based on current debt and the selected target, up to ${fmtMoney(stakeLimit, roomState.currency)}.`;
@@ -1378,7 +1384,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
       const requested = Number(stakeInput.value);
       if (connected && stakeLimit > 0 && Number.isFinite(requested) && requested > stakeLimit) {
         stakeInput.value = String(stakeLimit);
-        stakeHint.textContent = `Stake adjusted to ${fmtMoney(stakeLimit, roomState.currency)} by the 90% balance safeguard. Recovery may raise it based on current debt and the selected target.`;
+        stakeHint.textContent = `Stake adjusted to ${fmtMoney(stakeLimit, roomState.currency)} by the 30% per-trade limit. Recovery may raise it based on current debt and the selected target.`;
       }
     };
     updateStakeHint();
@@ -1424,7 +1430,7 @@ function HomePage({ page, active, onNavigate }: { page: Page; active: boolean; o
   useEffect(() => {
     const receiveRoomAction = (event: MessageEvent): void => {
       if (event.origin !== window.location.origin || event.source !== roomFrameRef.current?.contentWindow) return;
-      const message = event.data as { type?: string; page?: Page; running?: boolean; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string; rangerAutomation?: boolean; minEdge?: number | null; replayAttemptId?: string; minWin?: number; maxTrades?: number; takeProfit?: number; maxRunLoss?: number; lossLimit?: number; cooldownSeconds?: number; green?: boolean; gold?: boolean; red?: boolean } } | null;
+      const message = event.data as { type?: string; page?: Page; running?: boolean; payload?: { action?: string; direction?: string; barrier?: number; stake?: number; market?: string; rangerAutomation?: boolean; minEdge?: number | null; replayAttemptId?: string; cowDisplay?: {edge:number|null;confidence:number|null;shownAt:number;brainPick?:boolean;shotTick?:{quote:number;digit:number;epoch:number}|null}|null; minWin?: number; maxTrades?: number; takeProfit?: number; maxRunLoss?: number; lossLimit?: number; cooldownSeconds?: number; green?: boolean; gold?: boolean; red?: boolean } } | null;
       if (!message?.type) return;
       if (message.type === 'zeronine:room-auto-dismiss') {
         setRangerAutoMenuOpen(false);
@@ -6018,6 +6024,10 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
           <Icon name="history" size={20} />
           History
         </button>
+        <button class={`nav-item${page === 'research' ? ' active' : ''}`} aria-current={page === 'research' ? 'page' : undefined} onClick={() => setPage('research')}>
+          <Icon name="crosshair" size={20} />
+          Research
+        </button>
         <button class={`nav-item${page === 'account' ? ' active' : ''}`} aria-current={page === 'account' ? 'page' : undefined} onClick={() => setPage('account')}>
           <Icon name="account" size={20} />
           Account
@@ -6026,4 +6036,5 @@ function BottomNav({ page, setPage }: { page: Page; setPage: (p: Page) => void }
     </div>
   );
 }
+
 

@@ -4,13 +4,13 @@ import { readFileSync } from 'node:fs';
 
 const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
 
-// The Ghost Scout only trades what the public scanner publishes, so the scanner
-// must keep running in multiplayer mode. Watch mode is scan-only (it returns
-// before quoting while no bot run is active; see automationReconcile.test.ts),
-// and the account-isolation stop must stay in place.
-test('the public scanner feeds the ghost scout in multiplayer without account orders', () => {
-  assert.match(main, /^\s*automation\.watch\(\);$/m, 'watch mode starts unconditionally');
-  assert.doesNotMatch(main, /if \(!multiplayerStore\) automation\.watch\(\)/, 'multiplayer no longer skips the scanner');
+// The pasture shares Core candidates in multiplayer. Publishing market data
+// must not restart the archived account scanner or private order lane.
+test('multiplayer publishes canonical Core candidates without starting the archived scanner', () => {
+  assert.match(main, /if \(multiplayerStore\) \{\s*const publishCore =/);
+  assert.match(main, /rankCoreCandidates\(registry\.coreMarkets\(\)\)\.filter\(isCorePastureCandidate\)/);
+  assert.match(main, /coreSignalTimer=setInterval\(publishCore,1000\)/);
+  assert.doesNotMatch(main, /^\s*automation\.watch\(\);$/m, 'archived watch mode is not started unconditionally');
   assert.match(main, /automation\.stop\('multiplayer account isolation'\)/, 'account isolation stop is retained');
   assert.match(main, /paperSimulator\.start\(\)/, 'the virtual paper simulator still starts for every mode');
 });

@@ -1,3 +1,4 @@
+import { CoreEvidenceStore } from '../core/coreEvidenceStore.ts';
 import { Pool, type PoolClient } from 'pg';
 import { createHash, randomBytes } from 'node:crypto';
 import { decryptToken, encryptToken } from '../db/crypto.ts';
@@ -39,10 +40,12 @@ export function multiplayerConnectionString(connectionString: string, poolerHost
 /** Private database access stays on the server; no service credentials reach browsers. */
 export class MultiplayerStore {
   private readonly pool: Pool;
+  public readonly coreEvidence: CoreEvidenceStore;
 
   constructor(connectionString: string) {
     const effectiveConnection = multiplayerConnectionString(connectionString, process.env.MULTIPLAYER_POOLER_HOST, process.env.MULTIPLAYER_POOLER_USER);
     this.pool = new Pool({ connectionString: effectiveConnection, ssl: { rejectUnauthorized: false }, max: 8, connectionTimeoutMillis: 5000 });
+    this.coreEvidence = new CoreEvidenceStore(this.pool);
     this.pool.on('error', () => { console.error('[multiplayer database] idle connection lost'); });
   }
 
@@ -421,6 +424,7 @@ export class MultiplayerStore {
       [accountId, providerContractId, JSON.stringify(context)]);
     if (!result.rowCount) throw new Error('No matching contract found for trade context');
     this.invalidateBrainStorage(accountId);
+    void this.coreEvidence.requestEvaluation(accountId).catch(() => {});
   }
 
   /** Bounded, account-scoped samples used only by the Brain review endpoint. */
@@ -485,9 +489,13 @@ export class MultiplayerStore {
 
   async listTrades(accountId: string, limit = 30): Promise<Array<Record<string, unknown>>> {
     const result = await this.pool.query(
-      `select id, account_id, market, direction, barrier, stake, ask_price, payout, profit,
-              mode, status, provider_contract_id, created_at, settled_at
-       from multiplayer_private.contracts where account_id=$1 order by created_at desc limit $2`,
+      `select c.id, c.account_id, c.market, c.direction, c.barrier, c.stake, c.ask_price, c.payout, c.profit,
+              c.mode, c.status, c.provider_contract_id, c.created_at, c.settled_at,
+              x.context->>'source' as source, x.context->>'decisionId' as decision_id,
+              x.context->>'engineVersion' as engine_version, x.context->>'coreProbability' as core_probability
+       from multiplayer_private.contracts c
+       left join multiplayer_private.trade_context x on x.contract_id=c.id and x.account_id=c.account_id
+       where c.account_id=$1 order by c.created_at desc limit $2`,
       [accountId, Math.max(1, Math.min(100, limit))],
     );
     return result.rows;
@@ -501,3 +509,4 @@ export class MultiplayerStore {
     return result.rows[0] ?? null;
   }
 }
+

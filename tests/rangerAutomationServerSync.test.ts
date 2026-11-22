@@ -122,7 +122,7 @@ test('Ranger only kills one cow for the market and contract actually submitted b
   assert.equal(context.target, null, 'the same submitted contract cannot trigger another cow kill');
   assert.equal(context.rangerAutoServerVisualTarget, null);
   context.rangerAutoServerVisualConsumedId = '';
-  context.rangerAutoServerState = { running: true, phase: 'confirming-signal', candidate: { market: 'R_100', direction: 'over', barrier: 1 } };
+  context.rangerAutoServerState = { running: true, phase: 'confirming-signal', candidate: { market: 'R_100', direction: 'over', barrier: 1 }, lastSubmittedTrade: undefined as never };
   update();
   assert.equal(context.target, null, 'a market candidate without a submitted contract cannot trigger a kill');
   assert.match(core, /if\(rangerAutoServerOwned\)\{updateRangerServerVisual\(\);return\}/);
@@ -141,3 +141,4 @@ test('the automatic trade list uses a bounded vertical layout without horizontal
   assert.match(html, /#rangerAutoRecent\{[^}]*overflow-y:auto;overflow-x:hidden/);
   assert.match(html, /#rangerAutoRecent li\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
 });
+

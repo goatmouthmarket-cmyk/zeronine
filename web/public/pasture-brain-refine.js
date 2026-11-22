@@ -651,12 +651,12 @@
     else if (snipe.limited) parts.push('Stake capped by your account limits.');
     if (Number(snipe.edge) > 0) parts.push('Fresh price and positive estimated edge.');
     else parts.push('Selected from the current live setups.');
-    if (suggestionMode() === 'training') parts.push(snipe.lessonContext || 'Your lessons are still learning for this setup.');
+    if (snipe.lessonIds?.length) parts.push('A checked lesson helped shape this suggestion.');
     return parts.join(' ');
   }
 
   // A matching note is shown only if its exact digit condition is visible now.
-  // This is context for the player; lessons do not alter candidate ranking.
+  // Core supplies the ranking and applied lesson IDs; this legacy detail is display only.
   function lessonContextForPick(pick, insights) {
     if (!pick || pick.status !== 'target' || !Array.isArray(insights)) return '';
     const digits = bridge()?.recentDigits?.(pick.symbol);
@@ -766,11 +766,7 @@
   }
 
   let trainingCheckPending = false;
-  function suggestionMode() {
-    if (window.__brainSuggestionMode === 'training') return 'training';
-    if (window.__brainSuggestionMode === 'normal') return 'normal';
-    try { return localStorage.getItem('ranger-brain-suggestion-mode') === 'training' ? 'training' : 'normal'; } catch { return 'normal'; }
-  }
+  function suggestionMode() { return 'normal'; }
   async function suggest() {
     if (suggestionMode() === 'normal') {
       const result = bridge()?.suggest?.();
@@ -1166,4 +1162,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();
+
 

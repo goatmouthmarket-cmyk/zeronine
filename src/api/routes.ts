@@ -21,6 +21,8 @@ import { createPlayerSession, playerForSession, revokePlayerSession } from './pl
 import { getRangerProfile, normalizeRangerProfile, saveRangerProfile } from './rangerProfile.ts';
 import type { BrainInsightCategory, BrainExpectedDirection } from '../execution/multiplayerStore.ts';
 import type { MultiplayerStore } from '../execution/multiplayerStore.ts';
+import { normalizeLessonConditions, type LessonConditions } from '../core/lessonRules.ts';
+import type { CoreLessonSummary } from '../core/coreEvidenceStore.ts';
 import {
   buildAuthorizeUrl,
   exchangeOauthCode,
@@ -2007,13 +2009,22 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const accountId = await rangerProfileAccount(req);
       if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to keep personal Brain memories.' });
       const ownerKey = brainOwnerKey(accountId);
-      await deps.multiplayerStore.syncBrainInsightOutcomes(ownerKey, accountId);
-      const [rawInsights, progress, leaderboard, accountTrades, comparison, contexts, evaluationTrades, brainPerformance, storage] = await Promise.all([
+      // Structured lessons use durable condition checks, never the old market-only reward matcher.
+      let coreLessons: CoreLessonSummary[] = [];
+      let coreAvailable = false;
+      try {
+        coreAvailable = await deps.multiplayerStore.coreEvidence.health();
+        if (coreAvailable) {
+          await deps.multiplayerStore.coreEvidence.importLegacyLessons(accountId, ownerKey);
+          await deps.multiplayerStore.coreEvidence.requestEvaluation(accountId);
+          coreLessons = await deps.multiplayerStore.coreEvidence.lessonSummaries(accountId);
+        }
+      } catch { coreAvailable = false; }
+      const [rawInsights, progress, leaderboard, accountTrades, contexts, evaluationTrades, brainPerformance, storage] = await Promise.all([
         deps.multiplayerStore.listBrainInsights(ownerKey),
         deps.multiplayerStore.brainInsightProgress(ownerKey),
         deps.multiplayerStore.brainLeaderboard(10),
         deps.multiplayerStore.listTrades(accountId, 100),
-        deps.multiplayerStore.brainComparableOutcomes(ownerKey, accountId),
         deps.multiplayerStore.listTradeContexts(accountId),
         deps.multiplayerStore.listBrainEvaluationTrades(accountId),
         deps.multiplayerStore.brainPickPerformance(accountId),
@@ -2023,7 +2034,7 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const evaluationById = new Map(evaluationTrades.map(trade => [String(trade.id), trade]));
       const insights = rawInsights.map(insight => {
         const stance = /\n\[Brain stance: (good|warning)\]$/.exec(insight.observation)?.[1] ?? null;
-        const sourceTradeId = /\n\[Trade reference: ([0-9a-f-]{36})\]/i.exec(insight.observation)?.[1] ?? null;
+        const sourceTradeId = /\n\[Trade reference: ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\]\n\[Brain stance: (good|warning)\]$/i.exec(insight.observation)?.[1] ?? null;
         const sourceTrade = sourceTradeId ? (tradesById.get(sourceTradeId) ?? evaluationById.get(sourceTradeId)) : null;
         // The player's assessment is a judgment about the decision, separate
         // from whether this particular settled contract won or lost.
@@ -2032,53 +2043,32 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
           tradeResult: sourceTrade && (sourceTrade.status === 'won' || sourceTrade.status === 'lost')
             ? sourceTrade.status : null,
         } : null;
-        const patternMatch = /\n\[Brain pattern: (high|low):([234])\]/.exec(insight.observation);
-        const confirmedPattern = patternMatch ? { side: patternMatch[1], count: Number(patternMatch[2]) } : null;
-        // Only compare settled, later trades with recorded digits for the same
-        // account, account mode and contract. Similar contracts alone do not
-        // establish that the taught condition happened again.
-        const group = () => ({ trades: 0, wins: 0, profit: 0, stake: 0, tradeIds: [] as string[] });
-        const matched = group(), comparable = group();
-        if (confirmedPattern && sourceTrade && confirmedPattern.count <= 3 && (sourceTrade.mode === 'demo' || sourceTrade.mode === 'real')) {
-          for (const trade of evaluationTrades) {
-            const created = Date.parse(String(trade.created_at));
-            if (!Number.isFinite(created) || created <= insight.createdAt ||
-                trade.market !== insight.marketSymbol || trade.direction !== insight.expectedDirection ||
-                Number(trade.barrier) !== insight.barrier || trade.mode !== sourceTrade.mode ||
-                (trade.status !== 'won' && trade.status !== 'lost') || !trade.settled_at) continue;
-            const context = trade.context as { entryEpoch?: unknown; before?: Array<{ digit?: unknown }> } | undefined;
-            const before = Array.isArray(context?.before) ? context.before.slice(-confirmedPattern.count) : [];
-            if (!Number.isFinite(Number(context?.entryEpoch)) || Number(context?.entryEpoch) <= 0 ||
-                before.length !== confirmedPattern.count || before.some(tick => typeof tick?.digit !== 'number' || !Number.isInteger(tick.digit) || tick.digit < 0 || tick.digit > 9)) continue;
-            const isMatch = before.every(tick => confirmedPattern.side === 'high' ? Number(tick.digit) >= 5 : Number(tick.digit) <= 4);
-            const bucket = isMatch ? matched : comparable;
-            const profit = trade.profit == null ? NaN : Number(trade.profit);
-            const stake = trade.stake == null ? NaN : Number(trade.stake);
-            if (!Number.isFinite(profit) || !Number.isFinite(stake) || stake <= 0) continue;
-            bucket.trades++; if (trade.status === 'won') bucket.wins++;
-            bucket.profit += profit; bucket.stake += stake;
-            // The picker only exposes the latest 100; never link to inaccessible rows.
-            if (tradesById.has(String(trade.id))) bucket.tradeIds.push(String(trade.id));
-          }
-        }
-        const patternEvidence = confirmedPattern ? { matched, comparable, pending: matched.trades < 20 || comparable.trades < 20, scope: 'last_1000' as const, supported: confirmedPattern.count <= 3 } : null;
-        return { ...insight, observation: insight.observation.replace(/\n\[Brain pattern: (high|low):[234]\]/, '').replace(/\n\[Brain stance: (good|warning)\]$/, ''), stance, assessment, confirmedPattern, patternEvidence,
-          ...(comparison.byInsight[insight.id] ?? { similarTrades: 0, similarWins: 0, similarLosses: 0 }) };
+        const coreRule = coreLessons.find(rule => rule.legacyInsightId === insight.id);
+        const confirmedPattern = coreRule?.conditions.digitSequence ?? null;
+        const patternEvidence = coreRule ? {
+          matched: coreRule.matched, comparable: coreRule.comparable,
+          pending: coreRule.status === 'needs_examples', supported: true,
+          scope: 'persistent' as const, skipped: coreRule.skipped, core: true,
+        } : null;
+        return { ...insight,
+          observation: insight.observation.replace(/\n\[Brain pattern: (high|low):[234]\]/, '').replace(/\n\[Brain stance: (good|warning)\]$/, ''),
+          stance, assessment, confirmedPattern, patternEvidence, conditions: coreRule?.conditions ?? null,
+          coreLesson: coreRule ?? null, similarTrades: 0, similarWins: 0, similarLosses: 0 };
       });
       const structuredLessons = insights.filter(insight => insight.stance !== null).length;
-      const similarTrades = comparison.distinctTrades;
+      const similarTrades = 0; // Similar contract alone is not lesson evidence.
       const confirmed = insights.filter(insight => insight.confirmedPattern && insight.patternEvidence?.supported);
       const best = confirmed.reduce<typeof confirmed[number] | null>((current, insight) =>
         !current || Math.min(insight.patternEvidence!.matched.trades, insight.patternEvidence!.comparable.trades) >
           Math.min(current.patternEvidence!.matched.trades, current.patternEvidence!.comparable.trades) ? insight : current, null);
       const matches = best?.patternEvidence?.matched.trades ?? 0;
       const comparisons = best?.patternEvidence?.comparable.trades ?? 0;
-      const ready = structuredLessons >= 3 && confirmed.length >= 1 && matches >= 20 && comparisons >= 20;
+      const ready = structuredLessons >= 3 && confirmed.length >= 1 && matches >= 30 && comparisons >= 30;
       const training = { structuredLessons, similarTrades, ready, unlocked: ready, goals: [
         { key: 'reviews', label: 'Review 3 trades', current: structuredLessons, target: 3 },
         { key: 'pattern', label: 'Confirm a pattern', current: confirmed.length, target: 1 },
-        { key: 'matches', label: 'Record 20 matches', current: matches, target: 20 },
-        { key: 'comparison', label: 'Record 20 comparisons', current: comparisons, target: 20 },
+        { key: 'matches', label: 'Record 30 matches', current: matches, target: 30 },
+        { key: 'comparison', label: 'Record 30 comparisons', current: comparisons, target: 30 },
       ] };
       const trades = accountTrades
         .filter(trade => (trade.status === 'won' || trade.status === 'lost') && trade.settled_at && (trade.direction === 'over' || trade.direction === 'under') && trade.barrier != null && Number.isInteger(Number(trade.barrier)) && Number(trade.barrier) >= 0 && Number(trade.barrier) <= 9 && typeof trade.market === 'string' && trade.market.length > 0)
@@ -2094,7 +2084,8 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       const markets = deps.registry.allSnapshots().map(({ symbol, display }) => ({ symbol, name: display || brainMarketName(symbol) }));
       const latestIdea = insights.find(insight => insight.expectedDirection !== 'none') || null;
       const practiceEvidence = latestIdea ? brainDirectionalPractice(latestIdea) : null;
-      return { ok: true, insights, progress, leaderboard, markets, trades, training, brainPerformance, storage, practiceEvidence, evaluatedInsightId: latestIdea?.id || null };
+      return { ok: true, insights, progress, leaderboard, markets, trades, training, brainPerformance, storage, practiceEvidence, evaluatedInsightId: latestIdea?.id || null,
+        coreAvailable, coreLessons, engineEvidence: coreLessons.map(rule => rule.engineEvidence).filter(Boolean) };
     } catch {
       return reply.code(503).send({ error: 'The Brain could not reach its saved memories. Try again shortly.' });
     }
@@ -2116,22 +2107,36 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
       if (!sourceTrade) return reply.code(404).send({ error: 'That settled trade is not available for this account.' });
       const category = body?.category;
       const stance = body?.stance;
-      if (stance !== 'good' && stance !== 'warning') return reply.code(400).send({ error: 'Choose good sign or warning.' });
-      const observation = typeof body?.observation === 'string' ? body.observation.trim() : '';
+      if (stance !== 'good' && stance !== 'warning') return reply.code(400).send({ error: 'Choose Good call or Bad call.' });
       const confirmedPattern = typeof body?.confirmedPattern === 'string' ? body.confirmedPattern : '';
-      const phrase = /^\s*(?:after|following)\s+(?:the\s+)?(two|three|four|2|3|4)\s+(high|low)\s+digits?[.!]?\s*$/i.exec(observation);
-      const countWords: Record<string, number> = { two: 2, three: 3, four: 4 };
-      const parsedPattern = phrase ? phrase[2].toLowerCase() + ':' + (countWords[phrase[1].toLowerCase()] || Number(phrase[1])) : '';
-      if (confirmedPattern && confirmedPattern !== parsedPattern) {
-        return reply.code(400).send({ error: 'The selected pattern no longer matches your note. Please check it again.' });
+      const rawObservation = typeof body?.observation === 'string' ? body.observation.trim() : '';
+      let lessonConditions: LessonConditions | null = null;
+      try {
+        if (body?.conditions != null) lessonConditions = normalizeLessonConditions(body.conditions);
+        else if (confirmedPattern) {
+          const phrase = /^\s*(?:after|following)\s+(?:the\s+)?(two|three|2|3)\s+(high|low)\s+digits?[.!]?\s*$/i.exec(rawObservation);
+          const countWords: Record<string, number> = { two: 2, three: 3 };
+          const parsed = phrase ? phrase[2].toLowerCase() + ':' + (countWords[phrase[1].toLowerCase()] || Number(phrase[1])) : '';
+          if (!phrase || parsed !== confirmedPattern) throw new Error('Check the pattern you selected.');
+          lessonConditions = normalizeLessonConditions({ digitSequence: { side: phrase[2].toLowerCase(), count: countWords[phrase[1].toLowerCase()] || Number(phrase[1]) } });
+        }
+      } catch (error) {
+        return reply.code(400).send({ error: error instanceof Error ? error.message : 'Choose a pattern to check.' });
       }
+      if (lessonConditions) {
+        let ready = false;
+        try { ready = await deps.multiplayerStore.coreEvidence.health(); } catch { /* unavailable */ }
+        if (!ready) return reply.code(503).send({ error: 'Brain lesson checking is not ready. Your lesson has not been saved. Enable the Core tables and try again.' });
+      }
+      const sequence = lessonConditions?.digitSequence;
+      const observation = rawObservation || (sequence ? 'After ' + sequence.count + ' ' + sequence.side + ' digits' : lessonConditions ? 'Review the recorded entry edge and confidence.' : '');
       const horizon = body?.horizon;
       const confidence = Number(body?.confidence);
       if (!['market_behavior', 'setup', 'entry_timing', 'risk'].includes(String(category))) {
         return reply.code(400).send({ error: 'Choose what your observation is about.' });
       }
-      if (observation.length < 8 || observation.length > 400) {
-        return reply.code(400).send({ error: 'Write between 8 and 400 characters about what you noticed.' });
+      if ((!lessonConditions && observation.length < 8) || observation.length > 350) {
+        return reply.code(400).send({ error: 'Keep your note between 8 and 350 characters, or choose a pattern.' });
       }
       if (!['next_5', 'next_20', 'next_session'].includes(String(horizon))
         || !Number.isInteger(confidence) || confidence < 1 || confidence > 5) {
@@ -2141,13 +2146,27 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
         marketSymbol: sourceTrade.market,
         marketName: brainMarketName(sourceTrade.market),
         category: category as BrainInsightCategory,
-        observation: observation + (confirmedPattern ? '\n[Brain pattern: ' + confirmedPattern + ']' : '') + '\n[Trade reference: ' + sourceTrade.id + ']\n[Brain stance: ' + stance + ']',
+        observation: observation + (sequence ? '\n[Brain pattern: ' + sequence.side + ':' + sequence.count + ']' : '') + '\n[Trade reference: ' + sourceTrade.id + ']\n[Brain stance: ' + stance + ']',
         expectedDirection: sourceTrade.direction as BrainExpectedDirection,
         barrier: sourceTrade.barrier,
         horizon: horizon as 'next_5' | 'next_20' | 'next_session',
         confidence,
       });
       if (!insight) return reply.code(429).send({ error: 'You have added the daily limit of 20 Brain memories. Come back tomorrow to add more.' });
+      if (lessonConditions) {
+        try {
+          const coreLesson = await deps.multiplayerStore.coreEvidence.saveLesson(accountId, {
+            sourceTradeId: sourceTrade.id, marketSymbol: sourceTrade.market,
+            expectedDirection: sourceTrade.direction, barrier: sourceTrade.barrier,
+            stance, conditions: lessonConditions, note: observation, confidence,
+            legacyInsightId: insight.id, createdAt: insight.createdAt,
+          });
+          await deps.multiplayerStore.coreEvidence.requestEvaluation(accountId);
+          return reply.code(201).send({ ok: true, insight, coreLesson });
+        } catch {
+          return reply.code(503).send({ error: 'Your note was saved, but its pattern could not be enabled. Open Memories again before retrying.', savedInsightId: insight.id });
+        }
+      }
       return reply.code(201).send({ ok: true, insight });
     } catch {
       return reply.code(503).send({ error: 'The Brain could not save that memory to Supabase. Your note was not saved; try again shortly.' });
@@ -2156,27 +2175,10 @@ export function registerApi(app: FastifyInstance, deps: ApiDeps): void {
 
   app.post('/api/ranger-brain/contributions/:id/outcome', async (req, reply) => {
     reply.header('cache-control', 'private, no-store');
-    if (!sameOriginBrainWrite(req)) return reply.code(403).send({ error: 'This Brain note could not be verified. Refresh the pasture and try again.' });
-    if (!deps.multiplayerStore) return reply.code(503).send({ error: 'The Brain memory store is not ready yet.' });
-    try {
-      const accountId = await rangerProfileAccount(req);
-      if (!accountId) return reply.code(401).send({ error: 'Connect your Deriv account to review this memory.' });
-      const insightId = String((req.params as { id?: string }).id || '');
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(insightId)) {
-        return reply.code(400).send({ error: 'That Brain memory could not be found.' });
-      }
-      const body = req.body as { outcome?: unknown; note?: unknown } | undefined;
-      if (!['matched', 'unmatched', 'unclear'].includes(String(body?.outcome))) {
-        return reply.code(400).send({ error: 'Choose whether the idea matched, did not match, or was unclear.' });
-      }
-      const note = typeof body?.note === 'string' ? body.note.trim().slice(0, 300) : '';
-      const ownerKey = brainOwnerKey(accountId);
-      const insight = await deps.multiplayerStore.reviewBrainInsight(ownerKey, insightId, body!.outcome as BrainInsightOutcome, note);
-      if (!insight) return reply.code(404).send({ error: 'This memory was already reviewed or could not be found.' });
-      return { ok: true, insight, progress: await deps.multiplayerStore.brainInsightProgress(ownerKey) };
-    } catch {
-      return reply.code(503).send({ error: 'The Brain could not save this outcome to Supabase. Try again shortly.' });
-    }
+    if (!sameOriginBrainWrite(req)) return reply.code(403).send({ error: 'Refresh the pasture and try again.' });
+    const accountId = await rangerProfileAccount(req);
+    if (!accountId) return reply.code(401).send({ error: 'Connect Deriv to view your lessons.' });
+    return reply.code(410).send({ error: 'Lessons are checked against later trades automatically.' });
   });
 
   app.get('/api/ranger-brain/status', async (req, reply) => {
@@ -3221,3 +3223,4 @@ function settleInBackground(
   };
   settle();
 }
+

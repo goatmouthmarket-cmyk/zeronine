@@ -230,6 +230,7 @@
     .brain-tick-price { display:inline-block; white-space:nowrap; letter-spacing:-.02em; }
   `;
   sheet.textContent += "\n    @container (min-width:650px) {\n      .brain-review-input-column .brain-review-save {\n        grid-column:auto; grid-row:auto; justify-self:start; align-self:start;\n        width:min(220px,100%); min-height:42px; margin:0;\n      }\n    }\n    @container (max-width:649px) {\n      .brain-review-input-column .brain-review-save {\n        grid-column:auto; grid-row:auto; justify-self:start;\n        width:min(260px,100%); min-height:42px; margin:0;\n      }\n    }\n  ";
+  sheet.textContent += "\n    .brain-rule-options{border:0;padding:0;margin:0;min-width:0}\n    .brain-rule-options legend{font-size:11px;font-weight:800;color:#285638;margin-bottom:4px}\n    .brain-rule-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}\n    .brain-rule-choice{position:relative;cursor:pointer;min-width:0}\n    .brain-rule-choice input{position:absolute;opacity:0;width:1px;height:1px}\n    .brain-rule-choice span{display:grid;place-items:center;min-height:32px;padding:5px;border-radius:7px;background:#ecead9;color:#36563c;font-size:10px;font-weight:800;text-align:center}\n    .brain-rule-choice input:checked+span{background:#246742;color:#fff}\n    .brain-rule-choice input:focus-visible+span{outline:2px solid #e4ab40;outline-offset:2px}\n    .brain-rule-choice input:disabled+span{opacity:.5;cursor:default}\n    .brain-rule-ranges{font-size:10px;margin-top:5px;color:#345a3c}\n    .brain-rule-ranges summary{cursor:pointer;font-weight:800;padding:3px 0}\n    .brain-rule-range{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:5px;align-items:center;margin-top:4px}\n    .brain-rule-range small{font-size:9px;font-variant-numeric:tabular-nums}\n    .brain-rule-note{display:block;margin-top:4px;color:#70624b;font-size:9px;line-height:1.3}\n    .brain-task-memory-card[data-learning=\"helping\"] .brain-task-memory-result{background:#d9eed8;color:#245f37}\n    .brain-task-memory-card[data-learning=\"not_helping_yet\"] .brain-task-memory-result{background:#f3e0d4;color:#8a4534}\n";
   document.head.append(sheet);
 
 
@@ -455,6 +456,7 @@
     const selected=node('input',''); selected.type='hidden'; selected.name='sourceTradeId'; form.append(selected);
     let list=availableTrades.slice(0,100);
     let current=Math.max(0,list.findIndex(trade=>String(trade.id)===String(preferredTradeId)));
+    let refreshRuleControls=()=>{};
     const drawChoice=()=>{
       const trade=list[current], result=String(trade.status||'').toLowerCase();
       choices.replaceChildren();
@@ -474,6 +476,7 @@
       previous.addEventListener('click',()=>move(-1));next.addEventListener('click',()=>move(1));
       picker.append(previous,selectedTrade,next);
       choices.append(label,picker,node('small','brain-review-count',(current+1)+' / '+list.length));
+      refreshRuleControls();
     };
     selected.value=String(list[current].id); preferredTradeId=selected.value; showDetail(list[current]); drawChoice();
     // Preserve the selected trade and unsaved lesson fields while new trades arrive.
@@ -497,22 +500,41 @@
     });
     inputColumn.append(stance);
     const topic=node('label','brain-review-label brain-review-note','What did you notice?');
-    const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.minLength=8;observation.maxLength=500;observation.required=true;observation.placeholder='What made this trade look good or risky?';topic.append(observation);inputColumn.append(topic);
-    const interpretation=node('div','brain-note-interpretation'); interpretation.setAttribute('aria-live','polite'); inputColumn.append(interpretation);
-    const updateInterpretation=()=>{
-      interpretation.replaceChildren();
-      const pattern=notePattern(observation.value);
-      if (!pattern) {
-        if (observation.value.trim().length >= 8) interpretation.append(node('small','','Saved as your note. Try “after 3 high digits” to teach a pattern.'));
-        return;
+    const observation=node('textarea','');observation.name='observation';observation.rows=2;observation.maxLength=350;observation.required=false;observation.placeholder='Optional note about this trade';topic.append(observation);inputColumn.append(topic);
+    const patternBox=node('fieldset','brain-rule-options');
+    patternBox.append(node('legend','','Check this on later trades'));
+    const ruleGrid=node('div','brain-rule-grid');
+    for(const [value,label] of [['','Note only'],['high:2','2 high digits'],['high:3','3 high digits'],['low:2','2 low digits'],['low:3','3 low digits']]){
+      const choice=node('label','brain-rule-choice'),input=node('input','');input.type='radio';input.name='ruleSequence';input.value=value;input.checked=value==='';
+      choice.append(input,node('span','',label));ruleGrid.append(choice);
+    }
+    patternBox.append(ruleGrid);
+    const rangeBox=node('details','brain-rule-ranges');rangeBox.append(node('summary','','Entry conditions'));
+    const rangeFields={};
+    for(const [key,label] of [['edge','Similar entry edge'],['confidence','Similar cow confidence']]){
+      const choice=node('label','brain-rule-range'),input=node('input','');input.type='checkbox';input.name='ruleRange_'+key;
+      const copy=node('span','',label),value=node('small','');
+      choice.append(input,copy,value);rangeBox.append(choice);rangeFields[key]={input,value};
+    }
+    patternBox.append(rangeBox);
+    const ruleNote=node('small','brain-rule-note',state?.coreAvailable===false?'Lesson checks are unavailable. You can still save a note.':'High = 5–9 · Low = 0–4. Your call and the trade result are separate.');
+    patternBox.append(ruleNote);
+    inputColumn.insertBefore(patternBox,topic);
+    refreshRuleControls=()=>{
+      const context=list[current]?.context||{};
+      for(const [key,field] of Object.entries(rangeFields)){
+        const raw=context[key==='edge'?'cowEdge':'cowConfidence'],value=raw==null?NaN:Number(raw),width=key==='edge'?.02:.05,floor=key==='edge'?-1:0;
+        const available=Number.isFinite(value)&&state?.coreAvailable!==false;
+        field.input.disabled=!available;
+        if(!available){field.input.checked=false;field.value.textContent='Not recorded';delete field.input.dataset.min;delete field.input.dataset.max;continue;}
+        const min=Math.max(floor,value-width),max=Math.min(1,value+width);
+        field.input.dataset.min=String(min);field.input.dataset.max=String(max);
+        field.value.textContent=(min*100).toFixed(1)+'–'+(max*100).toFixed(1)+'%';
       }
-      const label=node('label','brain-review-label');
-      const confirm=node('input',''); confirm.type='checkbox'; confirm.name='confirmPattern'; confirm.value=pattern.side+':'+pattern.count;
-      label.append(confirm,document.createTextNode(' I mean after '+pattern.count+' '+pattern.side+' digits ('+(pattern.side==='high'?'5–9':'0–4')+').'));
-      interpretation.append(label,node('small','',pattern.count > 3 ? 'Four earlier digits are not recorded yet; this stays a note.' : 'I’ll compare later trades with recorded prices.'));
+      patternBox.querySelectorAll('[name="ruleSequence"]').forEach(input=>{input.disabled=state?.coreAvailable===false&&input.value!=='';if(input.disabled)input.checked=false;});
+      if(!patternBox.querySelector('[name="ruleSequence"]:checked'))patternBox.querySelector('[name="ruleSequence"][value=""]').checked=true;
     };
-    observation.addEventListener('input',updateInterpretation);
-
+    refreshRuleControls();
 
     const row=node('div','brain-review-row');
     const categoryLabel=node('label','brain-review-label','Your observation');
@@ -533,10 +555,20 @@
     if(!data.get('sourceTradeId')){setMessage('Choose a settled trade first.','bad');return;}
     submit.disabled=true;submit.textContent='Saving…';setMessage('Saving your lesson…','busy');
     const savedAccount = recentTradeAccount;
+    const conditions={};
+    const sequence=String(data.get('ruleSequence')||'');
+    if(sequence){const [side,count]=sequence.split(':');conditions.digitSequence={side,count:Number(count)};}
+    for(const key of ['edge','confidence']){
+      const input=form.querySelector('[name="ruleRange_'+key+'"]');
+      if(input?.checked&&!input.disabled)conditions[key]={min:Number(input.dataset.min),max:Number(input.dataset.max)};
+    }
+    if(!Object.keys(conditions).length&&String(data.get('observation')||'').trim().length<8){
+      submit.disabled=false;submit.textContent='Save lesson';setMessage('Choose a pattern or add a short note of at least 8 characters.','bad');return;
+    }
     try {
       const saved = await request('/api/ranger-brain/contributions',{method:'POST',headers:{'content-type':'application/json',accept:'application/json'},body:JSON.stringify({
         sourceTradeId:String(data.get('sourceTradeId')),category:data.get('category'),observation:data.get('observation'),stance:data.get('stance'),
-        confidence:Number(data.get('confidence')),horizon:data.get('horizon'), confirmedPattern:data.get('confirmPattern') || null
+        confidence:Number(data.get('confidence')),horizon:data.get('horizon'), conditions:Object.keys(conditions).length?conditions:null
       })});
       // The lesson is already saved. Switch tabs immediately, then animate only
       // after an account-scoped refresh confirms the new lesson is present.
@@ -655,15 +687,16 @@
       const matched=evidence?.matched || null, comparable=evidence?.comparable || null;
       const seen=Math.max(0,Number(matched?.trades)||0), wins=Math.max(0,Number(matched?.wins)||0);
       const pattern=insight.confirmedPattern;
-      const patternText=pattern && (pattern.side==='high'||pattern.side==='low') && [2,3,4].includes(Number(pattern.count))
-        ? 'After '+pattern.count+' '+pattern.side+' digits' : '';
+      const patternText=pattern && (pattern.side==='high'||pattern.side==='low') && [2,3].includes(Number(pattern.count))
+        ? 'After '+pattern.count+' '+pattern.side+' digits' : insight.coreLesson ? [insight.conditions?.edge?'Similar edge':'',insight.conditions?.confidence?'Similar confidence':''].filter(Boolean).join(' · ') : '';
       const card=node('details','brain-task-memory-card');card.dataset.result='pending';
       const summary=node('summary','brain-task-memory-summary');
       const mark=node('span','brain-task-memory-mark',patternText?'✦':'•');
       const copy=node('span','brain-task-memory-copy');
       copy.append(node('b','',insight.marketName+' · '+directionLabel(insight)),
         node('small','',patternText || 'Personal note'));
-      const badge=node('em','brain-task-memory-result',patternText ? (seen ? 'SEEN '+seen : 'WAITING') : 'SAVED');
+      const badge=node('em','brain-task-memory-result',insight.coreLesson?({helping:'HELPING',not_helping_yet:'NOT HELPING YET',needs_examples:'NEEDS EXAMPLES'}[insight.coreLesson.status]||'NEEDS EXAMPLES'): 'SAVED NOTE');
+      if(insight.coreLesson)card.dataset.learning=insight.coreLesson.status;
       summary.append(mark,copy,badge);card.append(summary);
       const detail=node('div','brain-task-memory-detail');
       detail.append(node('p','',String(insight.observation || '').replace(/\n\[Trade reference: [^\]]+\]$/, '')));
@@ -706,10 +739,12 @@
           };
           comparison.append(makeGroup(matched,'Pattern appeared'),makeGroup(comparable,'Pattern did not appear'));
           detail.append(comparison);
-          detail.append(node('small','',evidence.pending ? 'Still learning. Uses up to your 1,000 latest trades with recorded prices.' : 'Uses up to your 1,000 latest trades. Past results do not predict the next trade.'));
+          detail.append(node('small','',evidence.pending ? 'Collecting later examples. Matched trades and comparison trades stay saved.' : 'Recorded later trades. These results do not guarantee the next trade.'));
+          if(Number(evidence.skipped)>0)detail.append(node('small','','Missing entry details · '+Number(evidence.skipped)+' trades not counted'));
+          if(insight.coreLesson?.status==='helping')detail.append(node('small','',insight.stance==='warning'?'This condition has performed worse than comparison trades.':'This condition has performed better than comparison trades. It still needs ongoing checks.'));
         }
       }else{
-        detail.append(node('small','','This note is saved. Confirm a pattern in a new lesson to track it.'));
+        detail.append(node('small','','Saved note. It does not change predictions until a checkable condition is confirmed.'));
       }
       const when=insight.createdAt?new Date(insight.createdAt).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
       detail.append(node('small','',when+(insight.confidence?' · Your confidence '+insight.confidence+'/5':'')));
